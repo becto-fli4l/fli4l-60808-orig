@@ -1,0 +1,216 @@
+% Synchronized to r32928
+\section {RRDTOOL - Collect Data And Display Graphs About It}
+
+\subsection {Description}
+The package RRDTOOL collects system data and stores it in rrd-databases by
+the help of the 'collectd' daemon.
+In the web interface of the fli4l router graphics for download or display
+are generated from it by rrdtool.
+\\
+For example, the following data is recorded and displayed:
+ \begin{itemize}
+  \item Under System Status
+  \begin{itemize}
+   \item CPU load
+   \item System load
+   \item System uptime
+   \item RAM usage
+   \item Number of processes
+  \end{itemize}
+  \item Under Harddisk Status
+   \begin{itemize}
+   \item Partition usage of the root partition
+   \item Usage of the partition /boot
+   \item Usage of the partition /data (if existing)
+   \item Usage of the partition /opt (if existing)
+  \end{itemize}
+  \item Under Network Status
+  \begin{itemize}
+   \item For each network interface amount of data sent and received
+  \end{itemize}
+  \item Under Interrupts
+  \begin{itemize}
+   \item The number of interrupts
+  \end{itemize}
+  \item Under Active Connections
+  \begin{itemize}
+   \item The number of connections
+  \end{itemize}
+ \end{itemize}
+
+Optionally, also the acquisition and display of temperatures and voltages of the
+motherboard, WLAN informations, the values from an APC UPS, PING values of hosts
+or VPN endpoints a.s.o. is possible, depending on the configuration or the installed
+packages.
+
+\subsection {Hint concerning RRDTOOL versions}
+
+  RRD database files that were created with the old version of rrdtool
+  can not be used with the current version. The daemon uses a different data
+  format and thus the files are incompatible.
+
+\subsection {Hint concerning the use of RRDTOOL on different architectures}
+
+  If fli4l's processor architecture is switched (eg from 32 bit to 64 bit)
+  the rrdtool database files have to be converted manually by the user.
+  Direct conversion is not possible.
+
+  The old database has to be exported to XML files and imported then to the
+  new architecture instead. It is important to do the XML export while
+  the old architecture is still in use.
+
+  A german HowTo article on this topic can be found at
+  \altlink{https://ssl.nettworks.org/wiki/display/f/rrdtool-Datenbanken}.
+
+\subsection {Configuration Of the Package RRDTOOL}
+
+  The configuration is done by adapting the file
+  \var{Path/fli4l-\version/$<$config$>$/rrdtool.txt}
+  to your own needs, as with all FLI4L packages.
+
+\begin{description}
+
+\config {OPT\_RRDTOOL}{OPT\_RRDTOOL}{OPTRRDTOOL}
+
+  The setting \var{'no'} deactivates OPT\_RRDTOOL completely. No changes
+  to your \var{rootfs.img} resp. \var{opt.img} are made.
+  Furthermore, OPT\_RRDTOOL will never overwrite other parts of the
+  fli4l installation.\\
+  To activate OPT\_RRDTOOL set the variable \var{OPT\_RRDTOOL} to
+  \var{'yes'}.
+
+\config {RRDTOOL\_DB\_PATH}{RRDTOOL\_DB\_PATH}{RRDTOOLDBPATH}
+
+  Default Setting: \var{RRDTOOL\_DB\_PATH='/data/rrdtool/db'}
+
+  Path to RRDTOOL's database files. These files should always be located on
+  a persistent disk. It is no a problem to store the data on a
+  CompactFlash card as appropriate caching mechanisms are used in the
+  package RRDTOOL to minimize the number of disk accesses.
+  When using OPT\_QOS please ensure to use ext2/ext3/ext4 as file system in the
+  path's target because only these support the characters used in the file name.
+
+\config {RRDTOOL\_CACHETIME}{RRDTOOL\_CACHETIME}{RRDTOOLCACHETIME}
+
+  This optional configuration parameter can set after how many seconds cached values
+  will be written to the RRD database by the rrdcached daemon. With smaller values,
+  the cache file will be smaller in the ramdisk which is recommended for routers
+  with a rather small amount of RAM, but the disk will be accessed more often then.
+  Without activation of the variable, this is done after 3600 seconds or on
+  shutdown of fli4l.
+
+  The following values are possible:
+  \begin{itemize}
+    \item 3600
+    \item 1800
+    \item 1200
+    \item 900
+    \item 600
+    \item 450
+    \item 300
+  \end{itemize}
+
+
+\config {RRDTOOL\_NET}{RRDTOOL\_NET}{RRDTOOLNET}
+
+  Setting this varable to \var{'yes'} activates the network plugin of collectd.
+  This makes it possible to transfer the data detected/collected by collectd
+  to another computer on the network with active collectd-plugin running in
+  server mode.
+
+\config {RRDTOOL\_NET\_HOST}{RRDTOOL\_NET\_HOST}{RRDTOOLNETHOST}
+
+  FQDN or IP address of the computer running collectd with network plugin in
+  server mode.
+
+\config {RRDTOOL\_NET\_PORT}{RRDTOOL\_NET\_PORT}{RRDTOOLNETPORT}
+
+  This optional variable configures the port on which the server is listening
+  to incoming connections.
+
+\config {RRDTOOL\_UNIXSOCK}{RRDTOOL\_UNIXSOCK}{RRDTOOLUNIXSOCK}
+
+  Setting this to \var{'yes'} activiates the unixsock plugin of collectd.
+  On this socket other data collecting services/processes can transfer
+  data to collectd.
+
+\config {RRDTOOL\_PING\_N}{RRDTOOL\_PING\_N}{RRDTOOLPINGN}
+
+  Specifies the number of hosts where network ping times should
+  be determined.
+
+\config {RRDTOOL\_PING\_x}{RRDTOOL\_PING\_x}{RRDTOOLPINGx}
+
+  Defines the host for which network ping times should be determined.
+  Can be set as a FQDN or an IP address.
+
+\config {RRDTOOL\_PING\_x\_LABEL}{RRDTOOL\_PING\_x\_LABEL}{RRDTOOLPINGxLABEL}
+
+  Optionally defines a different description (label) for the ping target.
+
+\config {RRDTOOL\_PING\_x\_GRPNR}{RRDTOOL\_PING\_x\_GRPNR}{RRDTOOLPINGxGRPNR}
+
+  Assigns this ping target to the group defined in\\
+  \var{RRDTOOL\_PINGGROUP\_x\_LABEL} by the number of the index.
+
+\config {RRDTOOL\_PINGGROUP\_N}{RRDTOOL\_PINGGROUP\_N}{RRDTOOLPINGGROUPN}
+
+  Number of ping target groups. Each group defined will be displayed on a
+  separate tab in the web interface.
+
+\config {RRDTOOL\_PINGGROUP\_x\_LABEL}{RRDTOOL\_PINGGROUP\_x\_LABEL}{RRDTOOLPINGGROUPxLABEL}
+
+  Name of the ping target group.
+
+\config {RRDTOOL\_APCUPS}{RRDTOOL\_APCUPS}{RRDTOOLAPCUPS}
+
+  Activates resp. deactivates the collecting of data from an APC-USV.
+  For data collection the apcupsd daemon has to be active on a host
+  reachable via network.
+
+\config {RRDTOOL\_APCUPS\_HOST}{RRDTOOL\_APCUPS\_HOST}{RRDTOOLAPCUPSHOST}
+
+  Host on which the apcupsd daemon is running.
+
+\config {RRDTOOL\_APCUPS\_PORT}{RRDTOOL\_APCUPS\_PORT}{RRDTOOLAPCUPSPORT}
+
+  Network port on which the apcupsd daemon can be accessed.
+  Normally this is port 3351.
+
+\config{RRDTOOL\_PEERPING\_N}{RRDTOOL\_PEERPING\_N}{RRDTOOLPEERPINGN}
+
+  Sets the number of Peer-Ping targets. A Peer-Ping target is i.e. the target
+  of a VPN tunnel.
+
+\config {RRDTOOL\_PEERPING\_x}{RRDTOOL\_PEERPING\_x}{RRDTOOLPEERPINGx}
+
+  Defines the Peer-Ping target. \\
+  Possible targets are for example tun0, tun1, pppoe, a.s.o. Alias- resp. circuit
+  names can be used as well.
+
+\config {RRDTOOL\_PEERPING\_x\_LABEL}{RRDTOOL\_PEERPING\_x\_LABEL}{RRDTOOLPEERPINGxLABEL}
+
+  Optionally defines a different description (label) for the ping target.
+
+\config {RRDTOOL\_OWFS}{RRDTOOL\_OWFS}{RRDTOOLOWFS}
+
+  Activates resp. deactivates the collecting and graphical display of
+  data generated from package OW.
+
+\config {RRDTOOL\_OWFS\_HOST}{RRDTOOL\_OWFS\_HOST}{RRDTOOLOWFSHOST}
+
+  Host the OWFS service is running on. Usually this is the router
+  itself. Thus the value '127.0.0.1' has to be entered.
+
+\config {RRDTOOL\_OWFS\_PORT}{RRDTOOL\_OWFS\_PORT}{RRDTOOLOWFSPORT}
+
+  Network port on which the OWFS service is reachable.
+  Usually this is port 4304.
+
+\config {RRDTOOL\_NTP}{RRDTOOL\_NTP}{RRDTOOLNTP}
+
+  Activates resp. deactivates the collecting and graphical display of
+  data generated from package NTP.
+
+\end{description}
+

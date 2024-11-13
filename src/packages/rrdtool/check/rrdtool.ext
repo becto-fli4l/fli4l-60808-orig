@@ -1,0 +1,47 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for rrdtool
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2009-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if(opt_rrdtool)
+then
+    depends on fli4l version 4.0
+    depends on httpd version 4.0
+    provides rrdtool version 4.0.0
+
+    set files="status_system"
+
+    if (rrdtool_apcups == "yes")
+    then
+        set files="$files status_rrdapcups"
+    fi
+    
+    if (httpd_gui_lang == "auto")
+    then
+        set gui_lang=locale
+    else
+        set gui_lang=httpd_gui_lang
+    fi
+
+    split (gui_lang, lang_tmp_%, ' ')
+    foreach lang in lang_tmp_%
+    do
+        split (files, files_tmp_%, ' ')
+        foreach file in files_tmp_%
+        do
+            stat("opt/srv/www/lang/$file.$lang", langfile)
+            if(langfile_res == "OK")
+            then
+                add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+            else
+                warning "could not find 'srv/www/lang/$file.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+            fi    
+        done    
+    done
+    
+fi

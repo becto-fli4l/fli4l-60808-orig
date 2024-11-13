@@ -1,0 +1,301 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# OPT_RRDTOOL   /etc/rc.d/rc940.rrdtool                           __FLI4LVER__
+# Creation:     bastard
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_RRDTOOL" = "yes" ]
+then
+    begin_script RRDTOOL "starting rrdtool..."
+
+    RRDCACHED_SOCKET=unix:/var/run/rrdcached.sock
+    # the export won't work right now, I need to talk with jean about this
+    # we should create a common consense about settings the env.
+    export RRDCACHED_SOCKET
+
+    map2persistent RRDTOOL_DB_PATH
+
+    mkdir -p $RRDTOOL_DB_PATH/$HOSTNAME/
+    
+    # replace dbpath marker with real $RRDTOOL_DB_PATH
+    for f in /srv/www/include/rrd-*.inc
+    do
+        sed -i $f -e "s#{dbpath}#$RRDTOOL_DB_PATH/$HOSTNAME#"
+    done
+    sed -i /etc/rrd/settings.inc -e "s#{dbpath}#$RRDTOOL_DB_PATH/$HOSTNAME#"
+
+    # create config files for collectd
+    mkdir -p /etc/collectd.d/
+    {
+        echo "#global options"
+        echo "Hostname \"$HOSTNAME\""
+        echo "FQDNLookup true"
+        echo "#BaseDir \"/var/lib/collectd\""
+        echo "#PIDFile \"/var/run/collectd.pid\""
+        echo "PluginDir \"/usr/lib/collectd\""
+        echo "TypesDB \"/usr/share/collectd/types.db\""
+        echo "#Interval 10"
+        echo "ReadThreads 10"
+        echo "<Include \"/etc/collectd.d/\">"
+        echo "Filter \"*.conf\""
+        echo "</Include>"
+    }>/etc/collectd.conf
+    
+    {
+        echo "LoadPlugin syslog"
+        echo "<Plugin \"syslog\">"
+        echo "LogLevel \"info\""
+        echo "NotifyLevel \"OKAY\""
+        echo "</Plugin>"
+    }> /etc/collectd.d/collectd01_syslog.conf
+    
+    if [ "$RRDTOOL_NET" = "yes" ]
+    then
+        {
+             echo "LoadPlugin network"
+             echo "<Plugin network>"
+             if [ "x$RRDTOOL_NET_PORT" = "x" ]
+             then
+                 echo "Server \"$RRDTOOL_NET_HOST\""
+             else
+                 echo "Server \"$RRDTOOL_NET_HOST\" \"$RRDTOOL_NET_PORT\""
+             fi
+             echo "</Plugin>"
+        }>/etc/collectd.d/collectd_network.conf
+    fi
+
+    echo "LoadPlugin conntrack" > /etc/collectd.d/collectd_conntrack.conf
+    {
+        echo "LoadPlugin cpu"
+        if [ -e /sys/devices/system/cpu/cpu0/cpufreq ]
+        then
+            echo "LoadPlugin cpufreq"
+        fi
+    }>/etc/collectd.d/collectd_cpu.conf
+    
+    {
+        echo "LoadPlugin df"
+        echo "<Plugin df>"
+        for fs in `df | cut -c 57- | grep -v "Mounted" | sort -u`
+        do
+            if [ "$fs" != "/var/lib/persistent" ]
+            then
+                echo "MountPoint \"$fs\""
+            fi
+        done
+        echo "</Plugin>"
+    }>/etc/collectd.d/collectd_df.conf
+
+    echo "LoadPlugin entropy" > /etc/collectd.d/collectd_entropy.conf
+    echo "LoadPlugin irq" > /etc/collectd.d/collectd_irq.conf
+    echo "LoadPlugin load" > /etc/collectd.d/collectd_load.conf
+    echo "LoadPlugin memory" > /etc/collectd.d/collectd_memory.conf
+
+    {    
+        echo "LoadPlugin netlink"
+        echo "<Plugin netlink>"
+        echo "Interface \"All\""
+        if [ "$OPT_QOS" = "yes" ]
+        then
+            for cl in `tc class list dev imq0 | cut -d " " -f 3 | tr '[:]' '[_]'`
+            do
+                echo "Class \"imq0\" \"htb-${cl}\""
+            done
+            for cl in `tc class list dev imq1 | cut -d " " -f 3 | tr '[:]' '[_]'`
+            do
+                echo "Class \"imq1\" \"htb-${cl}\""
+            done
+        fi
+        echo "</Plugin>"
+    }>/etc/collectd.d/collectd_netlink.conf
+    
+    if [ "$RRDTOOL_NTP" = "yes" ]
+    then
+        echo "LoadPlugin ntpd" > /etc/collectd.d/collectd_ntpd.conf
+    fi
+    
+    if [ "$OPT_WLAN" = "yes" ]
+    then
+        wlan=false
+        for i in `ls -l /var/run/wlan_wlan*_idx.conf | cut -d "_" -f2`
+        do
+            mode=`grep WLAN_MODE /var/run/wlan_"$i".conf | cut -d "'" -f2`
+            if [ "$mode" = "managed" -o "$mode" = "ad-hoc" ]
+            then
+                wlan=true
+            fi
+        done
+        if [ "$wlan" == "true" ]
+        then
+            echo "LoadPlugin wireless" > /etc/collectd.d/collectd_wireless.conf
+        fi
+    fi
+
+    if [ "0$RRDTOOL_PING_N" -gt 0 ]
+    then
+        {
+            echo "LoadPlugin ping"
+            echo "<Plugin ping>"
+            for rrdtool_idx in `seq 1 $RRDTOOL_PING_N`
+            do
+                eval rrdtool_tmp='$RRDTOOL_PING_'$rrdtool_idx
+                echo "Host \"$rrdtool_tmp\""
+            done
+            if [ "$OPT_IPV6" != "yes" ]
+            then
+                echo "SourceAddress \"$HOSTNAME\""
+            fi
+            echo "TTL \"255\""
+            echo "Interval \"5\""
+            echo "MaxMissed \"5\""
+            echo "</Plugin>"
+        }>/etc/collectd.d/collectd_ping.conf_disable
+        httpd-menu.sh add -p 651 status_rrdping.cgi 'RRDtool&nbsp;/&nbsp;Host-Ping-Status' "" status
+    fi
+    
+    if [ "0$RRDTOOL_PEERPING_N" -gt 0 ]
+    then
+        {
+            echo LoadPlugin exec
+            echo "<Plugin exec>"
+            echo "Exec \"nobody\" \"/etc/collectd/peerping.sh\""
+            echo "</Plugin>"
+        }>/etc/collectd.d/collectd_exec.conf_disable
+        httpd-menu.sh add -p 652 status_rrdpeerping.cgi 'RRDtool&nbsp;/&nbsp;Peer-Ping-Status' "" status
+    fi
+    if [ "$RRDTOOL_UNIXSOCK" = "yes" ]
+    then
+        {
+            echo "LoadPlugin unixsock"
+            echo "<Plugin unixsock>"
+            echo "SocketFile \"/var/run/collectd.sock\""
+            echo "SocketGroup \"root\""
+            echo "SocketPerms \"0777\""
+            echo "</Plugin>"
+        }>/etc/collectd.d/collectd_unixsock.conf
+    fi
+
+    echo "LoadPlugin processes" > /etc/collectd.d/collectd_processes.conf
+    {
+        echo "LoadPlugin rrdcached"
+        echo "<Plugin rrdcached>"
+        echo "DaemonAddress \"$RRDCACHED_SOCKET\""
+        echo "DataDir \"$RRDTOOL_DB_PATH\""
+        echo "CreateFiles true"
+        echo "CreateFilesAsync true"
+        echo "</Plugin>"
+    }>/etc/collectd.d/collectd_rrdcached.conf
+
+    if [ -f /etc/sensors3.conf ]
+    then
+        echo "LoadPlugin sensors" >/etc/collectd.d/collectd_sensors.conf
+    fi
+
+    if [ "$RRDTOOL_OWFS" = "yes" ]
+    then
+        {
+            echo "LoadPlugin onewire"
+            echo "<Plugin onewire>"
+            echo "Interval 5"
+            echo "Device \"-s $RRDTOOL_OWFS_HOST:$RRDTOOL_OWFS_PORT\""
+            echo "</Plugin>"
+        }>/etc/collectd.d/collectd_owfs.conf
+        httpd-menu.sh add -p 653 status_ow_sensors.cgi 'RRDtool&nbsp;/&nbsp;OW_Sensor_Grafiken' "" status
+    fi
+    
+    if [ "$RRDTOOL_APCUPS" = "yes" ]
+    then
+        {
+            echo "LoadPlugin apcups"
+            echo "<Plugin apcups>"
+            echo "Host \"$RRDTOOL_APCUPS_HOST\""
+            echo "Port \"$RRDTOOL_APCUPS_PORT\""
+            echo "</Plugin>"
+        }>/etc/collectd.d/collectd_apcupsd.conf
+        httpd-menu.sh add -p 659 status_rrdapcups.cgi 'RRDtool&nbsp;/&nbsp;Apcups' "" status
+    fi
+    
+    echo "LoadPlugin uptime" >/etc/collectd.d/collectd_uptime.conf
+
+    ping_used=no
+
+    #save configvars for peerping
+    if [ "0$RRDTOOL_PEERPING_N" -gt 0 ]
+    then
+        grep RRDTOOL_PEERPING /etc/rc.cfg > /var/run/rrdtool_peerping.conf
+    fi
+
+    # save configvars for ping-cgi
+    if [ "0$RRDTOOL_PING_N" -gt 0 ]
+    then
+        grep RRDTOOL_PING /etc/rc.cfg > /var/run/rrdtool_ping.conf
+    fi
+
+    # add httpd entries for all system and other rrd cgi's
+    httpd-menu.sh add -p 101 status_system.cgi '$_MP_system' '$_MT_stat' status
+    httpd-menu.sh add -p 102 status_disk.cgi '$_MP_harddisk' '$_MT_stat' status
+    httpd-menu.sh add -p 103 status_network.cgi '$_MP_network' '$_MT_stat' status
+    httpd-menu.sh add -p 105 status_irq.cgi '$_MP_irq' '$_MT_stat' status
+    if [ "$OPT_QOS" = "yes" ]
+    then
+        httpd-menu.sh add -p 104 status_qos.cgi 'QualityOfService' '$_MT_stat' status
+    fi
+
+    ####################################################################
+    # code to move rrd-Datebases from interface-Plugin to netlink-Plugin
+    ####################################################################
+    old_pwd=`pwd`
+    cd $RRDTOOL_DB_PATH/$HOSTNAME
+    for d in interface-*
+    do
+        if [ -d "$d" ]
+        then
+            i=${d#*-}
+            if [ ! -d netlink-$i ]
+            then
+                mv interface-$i netlink-$i
+            fi
+        fi
+    done
+    cd $old_pwd
+    #####
+    # end
+    #####
+
+    # create dir in ramdisk for the rrdcached-journal to reduces write to
+    # harddisk like compactdisk, usb-stick,sd-card, ...
+    mkdir -p /var/run/rrdcached
+
+    log_info "starting rrdcached"
+    # Valid options are:
+    #  -l <address>  Socket address to listen to.
+    #                Default: unix:/tmp/rrdcached.sock
+    #  -P <perms>    Sets the permissions to assign to all following sockets
+    #  -w <seconds>  Interval in which to write data.
+    #  -z <delay>    Delay writes up to <delay> seconds to spread load
+    #  -t <threads>  Number of write threads.
+    #  -f <seconds>  Interval in which to flush dead data.
+    #  -p <file>     Location of the PID-file.
+    #  -b <dir>      Base directory to change to.
+    #  -B            Restrict file access to paths within -b <dir>
+    #  -g            Do not fork and run in the foreground.
+    #  -j <dir>      Directory in which to create the journal files.
+    #  -F            Always flush all updates at shutdown
+    #  -s <id|name>  Group owner of all following UNIX sockets
+    #                (the socket will also have read/write permissions for that group)
+    #  -m <mode>     File permissions (octal) of all following UNIX sockets
+
+    if [ "x$RRDTOOL_CACHETIME" != "x" ]
+    then
+        rrdcached -j /var/run/rrdcached -t 2 -F -z 5 -w $RRDTOOL_CACHETIME -f $((RRDTOOL_CACHETIME*2)) -l $RRDCACHED_SOCKET
+    else
+        rrdcached -j /var/run/rrdcached -t 2 -F -z 5 -l $RRDCACHED_SOCKET
+    fi
+    # wait some time, rrdcached need time to initalize
+    sleep 5
+    log_info "starting collectd"
+    # start colletd daemon to sample all available data
+    collectdmon
+    end_script
+fi

@@ -1,0 +1,227 @@
+% Do not remove the next line
+% Synchronized to r32928
+
+\section {RRDTOOL~- Capture de données et affichage graphique}
+
+\subsection {Description}
+
+Le paquetage RRDTOOL recueille les données du système en utilisant le démon
+"collectd" et les stocke dans une base de données RRD. Les données sont ensuite
+récupérées et traitées à l'aide de rrdtool, ils produiront des graphiques dans
+l'interface web du routeur fli4l.
+\\
+Vous pouvez par exemple, enregistrer et afficher les données suivantes~:
+ \begin{itemize}
+  \item Voir l'état du système avec
+  \begin{itemize}
+   \item Utilisation du CPU
+   \item Charge du système
+   \item Temps d'exécution du système
+   \item Utilisation de la mémoire
+   \item Nombre de processus
+  \end{itemize}
+  \item Voir l'état du disque dur avec
+   \begin{itemize}
+   \item L'utilisation de la partition /
+   \item L'utilisation de la partition /boot
+   \item L'utilisation de la partition /data (s'il existe)
+   \item L'utilisation de la partition /opt (s'il existe)
+  \end{itemize}
+  \item Voir l'état du réseau avec
+  \begin{itemize}
+   \item Les quantités de données transmises et reçues pour chaque interface réseau
+  \end{itemize}
+  \item Voir les services d'interruptions avec
+  \begin{itemize}
+   \item Le nombre de chaque service d'interruption
+  \end{itemize}
+  \item Voir les zones de connexions actives avec
+  \begin{itemize}
+   \item Le nombre de connexions
+  \end{itemize}
+ \end{itemize}
+
+En option, il est également possible en fonction de la configuration et des
+paquetages installés, d'afficher les températures de sortie et les tensions
+sur la carte mère, les informations du WLAN (ou sans fil), les valeurs de
+l'onduleur APC, les valeurs de PING sur l'hôte ou bien les critères
+d'évaluation du VPN, etc.
+
+\subsection {Remarque sur la version RRDTOOL}
+
+  Le fichier de la base de données RRD qui a été créé avec l'ancienne version
+  rrdtool, ne peut pas être utilisé avec la version courante. Car le nouveau démon
+  utilise un format de données différent, les fichiers ne sont pas compatibles.
+
+\subsection {Remarque sur l'utilisation de RRDTOOL avec les différentes architectures}
+
+  Si vous modifiez l'architecture du processeur de fli4l (par exemple de 32 bits
+  à 64 bits) vous devez également mettre à jour le fichier de base de données RRDTOOL.
+  Une conversion directe n'est pas possible.
+  
+  Pour cela, l'ancienne base de données doit être exporté dans un fichier XML, ensuite il
+  doit être importé vers la nouvelle architecture. Il est important que l'exportation de
+  l'ancienne architecture doit toujours être créée avec un fichier XML.
+  
+  Vous trouverez un article sur ce sujet dans cette HowTo
+  \altlink{https://ssl.nettworks.org/wiki/display/f/rrdtool-Datenbanken}.
+
+\subsection {Configuration du paquetage RRDTOOL}
+
+  La configuration se fait, comme pour tous les autres paquetages fli4l en
+  personnalisant\\
+  le fichier \var{Pfad/fli4l-\version/$<$config$>$/rrdtool.txt} selon vos besoins.
+
+\begin{description}
+
+\config {OPT\_RRDTOOL}{OPT\_RRDTOOL}{OPTRRDTOOL}
+
+  Si vous indiquez \var{'no'} dans cette variable vous désactivez
+  complètement l'OPT\_RRDTOOL. Il n'y aura aucun changement dans l'archive
+  \var{rootfs.img} ou l'archive \var{opt.img} de fli4l. De plus le paquetage
+  OPT\_RRDTOOL n'écrase aucune partie de l'installation fli4l.\\
+  Si vous voulez activez OPT\_RRDTOOL, vous devez indiquer \var{'yes'} dans
+  cette variable.
+
+\config {RRDTOOL\_DB\_PATH}{RRDTOOL\_DB\_PATH}{RRDTOOLDBPATH}
+
+  Configuration par défaut~: \var{RRDTOOL\_DB\_PATH='/data/rrdtool/db'}
+
+  Vous indiquez ici le chemin d'accès du fichier de la base de données RRDTOOL.
+  Ce fichier doit toujours être enregistré sur un disque persistant. Car
+  un mécanisme de mise en cache approprié est utilisé dans le paquetage RRDTOOL,
+  ainsi le nombre d'accès sera réduit sur le disque, ce n'est pas un problème
+  pour stocker les données sur une carte CompactFlash. Notez également, lorsque vous
+  utilisez le paquetage OPT\_QOS les systèmes de fichiers par ex. ext2/ext3/ext4
+  supportent les caractères utilisés dans le nom des répertoires et du fichier.
+
+\config {RRDTOOL\_CACHETIME}{RRDTOOL\_CACHETIME}{RRDTOOLCACHETIME}
+
+  Vous indiquez dans cette variable optionnelle un nombre en seconde, ce temp est
+  utilisé par le démon pour écrire les données qui sont dans le cache RRD vers le
+  fichier de la base de données RRD du disque. Si vous indiquez une petite valeur,
+  les données du fichier cache dans le diskRam seront faible, cela est recommandé
+  pour les routeurs qui on peut le RAM, cependant, il y aura un accès plus fréquent
+  sur le disque. Sans activation de la variable l'écriture se fera après 3600 secondes
+  ou lorsque vous arrêtez fli4l.
+
+  Voici les valeurs possibles que vous pouvez configurer~:
+  \begin{itemize}
+    \item 3600
+    \item 1800
+    \item 1200
+    \item 900
+    \item 600
+    \item 450
+    \item 300
+  \end{itemize}
+
+\config {RRDTOOL\_NET}{RRDTOOL\_NET}{RRDTOOLNET}
+
+  Si vous indiquez \var{'yes'} dans cette variable vous activez collectd avec le
+  plugin-réseau. Ainsi il sera possible de transférer les données capturées/recueillies
+  par collectd vers un autre ordinateur du réseau qui exécute collectd avec le
+  plugin-réseau activé en mode serveur.
+
+\config {RRDTOOL\_NET\_HOST}{RRDTOOL\_NET\_HOST}{RRDTOOLNETHOST}
+
+  Dans cette variable vous indiquez le nom de domaine complet ou l'adresse IP
+  de l'ordinateur exécutant collectd avec le plugin-réseau en mode serveur.
+
+\config {RRDTOOL\_NET\_PORT}{RRDTOOL\_NET\_PORT}{RRDTOOLNETPORT}
+
+  Dans cette variable optionnelle vous pouvez configurer le port sur lequel
+  le serveur sera à l'écoute des connexions entrantes.
+
+\config {RRDTOOL\_UNIXSOCK}{RRDTOOL\_UNIXSOCK}{RRDTOOLUNIXSOCK}
+
+  Si vous indiquez \var{'yes'} dans cette variable vous activez collectd avec
+  le plugin-unixsock. Avec ce socket d'autres services/processus peuvent
+  utiliser les données puis les remettre dans collectd.
+
+\config {RRDTOOL\_PING\_N}{RRDTOOL\_PING\_N}{RRDTOOLPINGN}
+
+  Dans cette variable vous indiquez le nombre d'hôtes à paramétrer, cela servira
+  à déterminer par un ping, la durée de vie de l'hôte dans le réseau.
+
+\config {RRDTOOL\_PING\_x}{RRDTOOL\_PING\_x}{RRDTOOLPINGx}
+
+  Dans cette variable vous indiquez l'hôte qui sera enregistré pour sa durée de vie
+  dans le réseau. Les valeurs possibles sont le nom de domaine complet
+  ou l'adresse IP.
+
+\config {RRDTOOL\_PING\_x\_LABEL}{RRDTOOL\_PING\_x\_LABEL}{RRDTOOLPINGxLABEL}
+
+  Vous pouvez éventuellement indiquer dans cette variable une autre description pour
+  le ping de destination.
+
+\config {RRDTOOL\_PING\_x\_GRPNR}{RRDTOOL\_PING\_x\_GRPNR}{RRDTOOLPINGxGRPNR}
+
+  Dans cette variable vous attribuez un numéro d'index pour un groupe qui sera
+  défini dans la variable \var{RRDTOOL\_PINGGROUP\_x\_LABEL}, cela servira à
+  effectuer un ping de destination.
+
+\config {RRDTOOL\_PINGGROUP\_N}{RRDTOOL\_PINGGROUP\_N}{RRDTOOLPINGGROUPN}
+
+  Dans cette variable vous indiquez le nombre de groupe, qui servira à regrouper
+  le ping de destination. Chaque groupe défini sera affiché dans un onglet séparé de
+  l'interface web du routeur.
+
+\config {RRDTOOL\_PINGGROUP\_x\_LABEL}{RRDTOOL\_PINGGROUP\_x\_LABEL}{RRDTOOLPINGGROUPxLABEL}
+
+  Dans cette variable vous indiquez le nom du groupe pour un ping de destination.
+
+\config {RRDTOOL\_APCUPS}{RRDTOOL\_APCUPS}{RRDTOOLAPCUPS}
+
+  Dans cette variable vous activez ou désactivez la collecte de données
+  d'un onduleur APC. Pour que la collecte des données fonctionne, le démon
+  apcupsd doit être actif sur un ordinateur et accessible par le réseau.
+
+\config {RRDTOOL\_APCUPS\_HOST}{RRDTOOL\_APCUPS\_HOST}{RRDTOOLAPCUPSHOST}
+
+  Dans cette variable vous indiquez l'hôte qui exécute le démon apcupsd.
+
+\config {RRDTOOL\_APCUPS\_PORT}{RRDTOOL\_APCUPS\_PORT}{RRDTOOLAPCUPSPORT}
+
+  Dans cette variable vous indiquez le port réseau sous lequel le démon apcupsd
+  est accessible. Normalement, ce port est 3351.
+
+\config{RRDTOOL\_PEERPING\_N}{RRDTOOL\_PEERPING\_N}{RRDTOOLPEERPINGN}
+
+  Dans cette variable vous indiquez le nombre de peer ping de destination (ou
+  un ping pour tout le monde). L'objectif du peer ping de destination est par
+  exemple de tester la destination d'un tunnels VPN.
+
+\config {RRDTOOL\_PEERPING\_x}{RRDTOOL\_PEERPING\_x}{RRDTOOLPEERPINGx}
+
+  Dans cette variable vous indiquez le peer ping de destination.\\
+  Les destinations possibles sont par exemple tun0, tun1, pppoe, etc. On peut
+  également indiquer le nom du circuit ou l'alias associé.
+
+\config {RRDTOOL\_PEERPING\_x\_LABEL}{RRDTOOL\_PEERPING\_x\_LABEL}{RRDTOOLPEERPINGxLABEL}
+
+  Vous pouvez éventuellement indiquer dans cette variable une autre description
+  pour le peer ping de destination.
+
+\config {RRDTOOL\_OWFS}{RRDTOOL\_OWFS}{RRDTOOLOWFS}
+
+  Dans cette variable vous activez ou désactivez la collecte de données et
+  la sortie graphique, qui sera envoyées par le paquetage OW.
+
+\config {RRDTOOL\_OWFS\_HOST}{RRDTOOL\_OWFS\_HOST}{RRDTOOLOWFSHOST}
+
+  Dans cette variable vous indiquez l'hôte sur lequel le service OWFS est
+  exécuté. Normalement, il est exécuté sur le routeur, la valeur du domaine
+  sera alors '127.0.0.1'.
+
+\config {RRDTOOL\_OWFS\_PORT}{RRDTOOL\_OWFS\_PORT}{RRDTOOLOWFSPORT}
+
+  Dans cette variable vous indiquez le port réseau sur lequel le service OWFS
+  est accessibles. Normalement, ce port est 4304.
+
+\config {RRDTOOL\_NTP}{RRDTOOL\_NTP}{RRDTOOLNTP}
+
+  Dans cette variable vous activez ou désactivez la collecte de données et
+  la sortie graphique, qui sera envoyées par le paquetage NTP.
+
+\end{description}
