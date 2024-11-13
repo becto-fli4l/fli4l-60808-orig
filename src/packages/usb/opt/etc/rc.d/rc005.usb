@@ -1,0 +1,44 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc005.usb - configuration of your usb-devices
+# 
+#
+# Creation:     01.01.2003  Kai-Christian Arndt
+# Modification: 06.06.2005  Frank Rudolph	
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+usb_translate ()
+{
+    # kristov: sometimes, additional modules must be loaded to achieve the
+    # desired functionality
+    extra_modules=
+
+    case $1 in
+        printer)   module="usblp" ;;
+        *)         module="$1" ;;
+    esac
+}
+
+case $OPT_USB in
+yes)
+    begin_script USB "loading USB drivers ..."
+
+    if [ 0$USB_EXTRA_DRIVER_N -ne 0 ]; then
+        log_info "loading USB high-level drivers ..."
+        for i in `seq 1 $USB_EXTRA_DRIVER_N`
+        do 
+            eval driver=\$USB_EXTRA_DRIVER_${i}
+            eval param=\$USB_EXTRA_DRIVER_${i}_PARAM
+            usb_translate $driver
+            do_modprobe "$module $param"
+            for m in $extra_modules
+            do
+                do_modprobe "$m"
+            done
+        done
+    fi
+    log_info "now waiting for the drivers to come up"
+    sleep 2
+    end_script
+;;
+esac

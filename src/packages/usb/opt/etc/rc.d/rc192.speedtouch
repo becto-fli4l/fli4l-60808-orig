@@ -1,0 +1,32 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc192.speedtouch - install driver for speedtouch usb-dsl-modem
+#
+# Creation:     2004/11/13 cka
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+
+if [ -f /lib/modules/$kernel_version/kernel/drivers/usb/speedtch.o -o -f /lib/modules/$kernel_version/kernel/drivers/usb/atm/speedtch.ko ]
+then
+    begin_script SPEEDTOUCH "Configuring driver for SpeedTouch ..." 
+
+    # waiting for the driver
+    : ${USB_MODEM_WAITSECONDS:=21}
+    log_info "take a nap. SpeedTouch needs much time initializing, waiting for $USB_MODEM_WAITSECONDS seconds." cy
+    log_info "hint: if SpeedTouch needs more time add USB_MODEM_WAITSECONDS='x' to config/usb.txt and give it" cy
+    log_info "      some more time to initialize." cy
+    for i in `seq 1 $USB_MODEM_WAITSECONDS`
+    do
+        echo -n "."
+        sleep 1
+    done
+    echo
+
+    # Load Firmware of SpeedTouch
+    log_info "sending firmware to SpeedTouch ..." cy
+    modem_run -k -f /etc/speedtch/firmware.bin
+
+    end_script
+fi
+

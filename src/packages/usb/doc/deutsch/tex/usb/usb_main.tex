@@ -1,0 +1,139 @@
+% Last Update: $Id$
+\marklabel{sec:opt-usb }
+{
+\section {USB - Support für USB-Geräte}
+}
+\begin{description}
+
+\config{OPT\_USB}{OPT\_USB}{OPTUSB}
+
+        Hier wird die grundsätzliche Unterstützung von USB-Geräten ein-
+        beziehungsweise ausgeschaltet. Erst wenn hier 'yes' eingetragen
+        wird, können USB-Geräte überhaupt verwendet werden. Sollten Sie
+        also in der base.txt ein USB-Gerät ausgewählt haben, so müssen Sie
+        hier zwingend 'yes' eintragen. Andernfalls wird das Gerät nicht
+        verwendet. Mit der Aktivierung ist auch der Support für USB Sticks,
+        externen Laufwerken und Tastaturen eingeschaltet.
+
+        Standard-Einstellung:  \var{OPT\_USB}='no'
+
+\config{USB\_EXTRA\_DRIVER\_N}{USB\_EXTRA\_DRIVER\_N}{USBEXTRADRIVERN}
+
+        Anzahl der zusätzlich zu ladenden Treiber. 
+
+        Standard-Einstellung: \var{USB\_EXTRA\_DRIVER\_N}='0'
+
+\config{USB\_EXTRA\_DRIVER\_x}{USB\_EXTRA\_DRIVER\_x}{USBEXTRADRIVERx}
+
+        Treiber der geladen werden soll.
+
+        Mögliche Werte im Moment
+        \begin{itemize}
+	    \item printer - Unterstützung für USB-Drucker
+	    \item belkin\_sa - USB Belkin Serial converter
+	    \item cyberjack - REINER SCT cyberJack pinpad/e-com USB Chipcard Reader
+	    \item digi\_acceleport - Digi AccelePort USB-2/USB-4 Serial Converter
+	    \item empeg - USB Empeg Mark I/II
+	    \item ftdi\_sio - USB FTDI Serial Converter
+	    \item io\_edgeport - Edgeport USB Serial
+	    \item io\_ti - Edgeport USB Serial
+	    \item ipaq - USB PocketPC PDA
+	    \item ir-usb - USB IR Dongle
+	    \item keyspan - Keyspan USB to Serial Converter
+	    \item keyspan\_pda - USB Keyspan PDA Converter
+	    \item kl5kusb105 - KLSI KL5KUSB105 chipset USB->Serial Converter
+	    \item kobil\_sct - KOBIL USB Smart Card Terminal (experimental)
+	    \item mct\_u232 - Magic Control Technology USB-RS232 converter
+	    \item omninet - USB ZyXEL omni.net LCD PLUS
+	    \item pl2303 - Prolific PL2303 USB to serial adaptor
+	    \item visor - USB HandSpring Visor / Palm OS
+	    \item whiteheat - USB ConnectTech WhiteHEAT
+        \end{itemize}
+
+        Standard-Einstellung: \var{USB\_EXTRA\_DRIVER\_x}=''
+
+\config{USB\_EXTRA\_DRIVER\_x\_PARAM}{USB\_EXTRA\_DRIVER\_x\_PARAM}{USBEXTRADRIVERxPARAM}
+
+        Parameter für den zusätzlichen Treiber. Im Normalfall muss hier
+        nichts eingegeben werden.
+
+        Standard-Einstellung: \var{USB\_EXTRA\_DRIVER\_x\_PARAM}=''
+
+\config{USB\_MODEM\_WAITSECONDS}{USB\_MODEM\_WAITSECONDS}{USBMODEMWAITSECONDS}
+
+        Standard-Einstellung: \var{USB\_MODEM\_WAITSECONDS}='21'
+
+        Leider braucht das Speedtouch USB Modem eine halbe 
+        Ewigkeit bis es bereit ist. In den meisten Fällen reichen 
+        die 21~Sekunden, die als Standardeinstellung genommen werden, 
+        für die Initialisierung aus. Manchmal hat man
+        das Glück das man den Wert auch halbieren kann und das
+        Speedtouch USB Modem bereits nach 10~Sekunden einsatzbereit ist, dann
+        kann man hier halt 10~Sekunden eintragen. Wenn man Pech hat
+        muss man den Wert erhöhen. Hier hilft leider nur probieren und
+        austesten.
+
+\end{description}
+
+\subsection{Probleme mit USB-Geräten}
+
+Es kann bei einigen USB-Geräten zu Problemen kommen. Das kann verschiedene
+Ursachen haben, wie Beispielsweise der Treiber-Software oder dem
+USB-Controller.
+
+\subsection{Hinweise zur Benutzung}
+
+Es ist darauf zu achten, dass die USB-Unterstützung hardwareseitig aktiviert 
+ist. Insbesondere bei Onboard-USB-Kontrollern ist das wichtig. So wird z. B. 
+ein WRAP ohne USB-Anschluss ausgeliefert. USB kann hier durch ein Zusatzmodul 
+nachgerüstet werden und ist aus diesem Grund im BIOS standardmäßig deaktiviert. 
+
+
+\subsection{Mounten von USB-Geräten}
+
+Eingesteckte USB-Geräte werden zwar automatisch erkannt, müssen aber 'von Hand' 
+sowohl an- als auch abgemeldet werden. Beim Einstecken z. B. eines USB-Stick 
+wird dieser als SCSI-Device erkannt. Aus diesem Grund erfolgt der Zugriff über 
+das Device sd\verb=#= bei SuperFloppy-Geräten bzw. über sd\verb=#=$<$Partitionsnummer$>$ bei
+Geräten mit einer Partitionstabelle. USB-Sticks werden wie Festplatten 
+behandelt, also bei zwei USB-Anschlüssen sda1 und sdb1 angesprochen. 
+USB-Floppies hingegen werden durch sda bzw. sdb angesprochen, also ohne Angabe
+einer Partitionsnummer.
+
+Somit kann ein USB-Stick durch das Kommando
+
+mount /dev/sda1 /mnt
+
+nach /mnt gemountet werden. Analog dazu durch
+
+mount /dev/sdb1 /mnt
+
+für das zweite USB-Gerät. Die Geräte werden in der Reihenfolge des Einsteckens
+benannt, also erstes USB-Gerät = sda, zweites USB-Gerät = sdb etc. pp. Es lässt 
+sich somit nicht fix definieren, welcher der USB-Ports welche 'Bezeichnung' 
+hat, da diese von der Reihenfolge des Einsteckens der Geräte abhängt. 
+Die Abmeldung der angemeldeten USB-Geräte erfolgt durch
+
+umount /mnt
+
+Bei gleichzeitiger Verwendung mehrerer USB-Geräte sollte es unbedingt vermieden
+werden, alles in ein Ziel zu mounten. Aus diesem Grund bietet es sich an, 
+unterhalb von /mnt weitere Verzeichnisse anzulegen, in welche die Geräte dann
+gemountet werden können. Dies kann z. B. wie folgt erledigt werden:
+
+mkdir /mnt/usba
+mkdir /mnt/usbb
+
+Beim Mounten der Geräte werden dann diese Verzeichnisse als Ziel angegeben:
+
+mount /dev/sda1 /mnt/usba
+mount /dev/sdb1 /mnt/usbb
+
+Somit ist der Inhalt der USB-Geräte unter /mnt/usba bzw. /mnt/usbb zu finden.
+Die Abmeldung erfolgt dann durch
+
+umount /mnt/usba
+umount /mnt/usbb
+
+Wenn mehrere Partitionen je USB-Gerät existieren, müssen die Verzeichnisse 
+unterhalb von /mnt entsprechend strukturiert werden.

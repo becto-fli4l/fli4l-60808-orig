@@ -1,0 +1,41 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# /etc/boot.d/rc030.usb - loading storage drivers and finish usb setup
+#
+# Last Update:  $Id$
+# ----------------------------------------------------------------------------
+
+begin_script USB "loading USB storage drivers ..."
+
+do_modprobe_if_exists kernel/drivers/usb/storage usb-libusual
+do_modprobe usb-storage
+
+sleep 1
+
+for i in alauda cypress datafab freecom isd200 jumpshot karma onetouch realtek sddr09 sddr55 usbat
+do
+  do_modprobe ums-$i
+done
+
+check="-d /sys/bus/usb/devices"
+getnum="ls -1 /sys/bus/usb/devices/*/product 2>/dev/null | grep -c \".*\""
+
+end_script USB
+
+begin_script USB "waiting for USB bus initial emumeration ..."
+
+if [ $check ]; then
+    log_info "Waiting for USB bus to settle up."
+    num=-1
+    for i in `seq 1 20`; do
+        oldnum=$num
+        eval num=\`$getnum\`
+        [ $num -eq $oldnum ] && break
+        sleep 1
+    done
+else
+    log_warn "No USB devices found"
+fi
+
+end_script USB
+
