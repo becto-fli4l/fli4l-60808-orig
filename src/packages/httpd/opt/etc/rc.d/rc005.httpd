@@ -1,0 +1,32 @@
+#!/bin/sh
+#-------------------------------------------------------------------------
+# /etc/rc.d/rc005.httpd - initialize /etc/httpd/menu
+#
+# Last Update:  $Id$
+#-------------------------------------------------------------------------
+
+. /etc/rc.d/bootmsg-filter-common
+
+# by default, don't filter anything
+httpd_add_bootmsg_filter "$."
+
+case $OPT_HTTPD in
+    yes)
+        begin_script HTTPD "preparing httpd menu and lang-support ..."
+        
+        mk_writable /etc/httpd/menu
+        
+        for f in /srv/www/lang/*
+        do
+            mk_writable $f
+        done
+        # remove UTF-8 BOM from /srv/www/lang files
+        # workaround, sed "s/\xEF\xBB\xBF//" isn't working on busybox
+        utf8bom=`printf "\xEF\xBB\xBF"`
+        chmod +w /srv/www/lang/*
+        sed -i "1s/${utf8bom}//" /srv/www/lang/*
+        chmod -w /srv/www/lang/*
+        
+        end_script
+    ;;
+esac

@@ -1,0 +1,287 @@
+% Last Update: $Id$
+
+\section{HTTPD - Status-Webserver}
+
+\marklabel{OPTHTTPD}{\subsection{OPT\_HTTPD - Mini-Webserver als Statusmonitor }}\index{OPT\_HTTPD}
+
+  Wer aus irgendeinem Grund keine Möglichkeit hat, den IMONC zu benutzen,
+  weil er z.B. einen Mac benutzt, kann den Webserver benutzen, um den
+  Status des fli4l-Routers abzurufen oder zu ändern. Mit \var{OPT\_HTTPD='yes'}
+  kann man den Statusmonitor verwenden.
+
+  Um den Status abzurufen, muss man in seinen Browser eine der folgenden
+  Adressen eingeben:
+
+\begin{example}
+\begin{verbatim}
+    http://fli4l/
+    http://fli4l.domain.lan/
+    http://192.168.6.1/
+\end{verbatim}
+\end{example}
+
+  Hat der fli4l-Router einen abweichenden Namen, muss dieser statt ``fli4l''
+  verwendet werden. Dies gilt auch für den Domain-Namen und die obige
+  IP-Adresse. Hat man den Webserver auf einen anderen Port gelegt (per
+  \var{HTTPD\_\-PORT}), muss man diesen mit angeben:
+
+\begin{example}
+\begin{verbatim}
+    http://fli4l:81/
+\end{verbatim}
+\end{example}
+
+  Es wird seit der Version 2.1.12 eine Login-Seite angezeigt, die nicht
+  passwortgeschützt ist. Die passwortgeschützten Seiten befinden sich im
+  Unterverzeichnis admin, also beispielsweise:
+\begin{example}
+\begin{verbatim}
+    http://fli4l.domain.lan/admin/
+\end{verbatim}
+\end{example}
+
+   Der Webserver lässt sich über folgende Variablen anpassen:
+
+\begin{description}
+
+\config{HTTPD\_GUI\_LANG}{HTTPD\_GUI\_LANG}{HTTPDGUILANG}
+
+    {Hiermit wird die Sprache eingestellt, in der das Webinterface
+    dargestellt werden soll. Wird hier 'auto' eingetragen, wird die 
+    Spracheinstellung der Variablen \var{LOCALE} (in der base.txt) 
+    verwendet.}
+
+\config{HTTPD\_LISTENIP}{HTTPD\_LISTENIP}{HTTPDLISTENIP}
+
+Der Webserver bindet sich normalerweise an eine sogenannte
+Wildcard-Adresse, so dass er auf einem beliebigen Interface
+angesprochen werden kann. Soll er sich nur an eine IP-Adresse binden,
+so kann es mit diesem Parameter eingestellt werden. Dazu die
+IP-Adressse wie folgt eintragen: \var{IP\_NET\_x\_IPADDR}.  Normalerweise
+bleibt dieser Parameter leer, damit die Standardeinstellung
+(ansprechbar auf einer beliebigen IP) greift.
+
+Dieser Parameter dient lediglich dazu, den httpd nur an eine IP zu
+binden, so dass sich andere Instanzen an die anderen IPs des Routers
+binden können. Er kann nicht ohne weiteres dazu genutzt werden, den
+Zugang einzelner Subnetze zum Webinterface des Routers zu
+sperren. Dazu benötigt man weiterhin die Hilfe des Paketfilters.
+
+Es ist auch möglich, hier durch Leerzeichen getrennt mehrere IP anzugeben.
+
+\config{HTTPD\_PORT}{HTTPD\_PORT}{HTTPDPORT}
+
+    {Soll der Webserver auf einem anderen Port laufen als 80, so ist
+    dieser Wert anzupassen. Das ist normalerweise nicht zu empfehlen, da
+    dann z.B. mit http://fli4l:81/ auf den Webserver zugegriffen werden
+    muß.}
+
+\config{HTTPD\_PORTFW}{HTTPD\_PORTFW}{HTTPDPORTFW} { Setzt man diese
+  Variable auf 'yes', kann man über das Webinterface Änderungen an der
+  Portweiterleitung vornehmen. Es können Regeln gelöscht und
+  hinzugefügt werden, Änderungen werden sofort wirksam. Änderungen an
+  den Regeln gelten nur für die Laufzeit des Routers. Wird der Router
+  neu gestartet, sind die Änderungen weg. 
+
+  Diese Variable hat einen Defaultwert von 'yes'.}
+
+\config{HTTPD\_ARPING}{HTTPD\_ARPING}{HTTPDARPING} { Der Webserver
+  stellt den Online-Zustand der mit \var{HOST\_x} aufgelisteten Hosts
+  dar. Dazu verwendet er den \emph{``Arp-Cache''}, ein Zwischenspeicher
+  der die Adressen der lokalen Hosts zwischenspeichert. Hat ein
+  Rechner lange nicht mehr mit dem Router kommuniziert, verschwindet
+  seine Adresse aus dem \emph{``Arp-Cache''} und der Host scheint aus
+  zu sein. Will man den \emph{``Arp-Cache''} aktuell halten (also das
+  rausfallen eigentlich nicht benötigter Einträge verhindern), kann
+  man \var{HTTPD\_ARPING} auf \emph{'yes'} setzen.}
+  
+\config{HTTPD\_ARPING\_IGNORE\_N}{HTTPD\_ARPING\_IGNORE\_N}{HTTPDARPINGIGNOREN}
+  {Legt die Anzahl der zu Ignorierenden Einträge fest}
+  
+\config{HTTPD\_ARPING\_IGNORE\_x}{HTTPD\_ARPING\_IGNORE\_x}{HTTPDARPINGIGNOREx}
+  { IP-Adresse oder Name des Hosts der nicht bei den ARPING-Test geprüft werden soll.
+  Dies kann z.B. sinnvoll sein, bei Hosts die durch die regelmäßigen Netzwerpakete 
+  Ihren Akku schneller verbrauchen (Handys im WLAN).}
+  
+\end{description}
+
+\subsection{Nutzerverwaltung }
+  Der Webserver bietet eine ausgefeilte Benutzerverwaltung:
+\begin{description}
+\config{HTTPD\_USER\_N}{HTTPD\_USER\_N}{HTTPDUSERN}
+    {Hiermit wird die Anzahl der Benutzer eingestellt. Wird diese Variable
+    auf 0 gesetzt, wird die Benutzerverwaltung komplett deaktiviert und
+    jeder hat die Möglichkeit, auf den Webserver zuzugreifen.}
+
+\configlabel{HTTPD\_USER\_x\_PASSWORD}{HTTPDUSERxPASSWORD}
+\configlabel{HTTPD\_USER\_x\_RIGHTS}{HTTPDUSERxRIGHTS}
+\config{HTTPD\_USER\_x\_USERNAME  HTTPD\_USER\_x\_PASSWORD  HTTPD\_USER\_x\_RIGHTS}
+       {HTTPD\_USER\_x\_USERNAME}
+       {HTTPDUSERxUSERNAME}
+   
+    {Hier werden Benutzername und Passwort der einzelnen Benutzer
+    eingetragen. Desweiteren wird für jeden Benutzer angegeben, auf
+    welche Funktionen des Webservers er zugreifen darf. Diese Funktion
+    wird mit der Variable \var{HTTPD\_\-RIGHTS\_\-x} geregelt. Im einfachsten Fall
+    steht dort nur 'all', was bedeutet, dass der entsprechende Benutzer
+    alles darf. Ansonsten hat die Variable den folgenden Aufbau:
+
+\begin{example}
+\begin{verbatim}
+       'bereich1:recht1,recht2,... bereich2:...'
+\end{verbatim}
+\end{example}
+
+    Statt für einen Bereich die einzelnen Rechte anzugeben, darf auch
+    hier das Wort ``all'' eingesetzt werden, was wiederum heißt, das
+    dieser Benutzer in diesem Bereich alle Rechte hat. Dabei gibt es
+    folgende Bereiche und Rechte:
+
+      \begin{description}
+      \item[Bereich ``status''] Alles, was im Menü Status zu sehen ist.
+        \begin{description}
+        \item[view] Der Benutzer darf alle Menüpunkte aufrufen.
+        \item[dial] Der Benutzer darf wählen und auflegen.
+        \item[boot] Der Benutzer darf den Router herunterfahren \&
+                    neu starten.
+        \item[link] Der Benutzer darf Kanalbündlung an- und abschalten.
+        \item[circuit] Der Benutzer darf den Circuit wechseln.
+        \item[dialmode] Der Benutzer daf den Dialmode (Auto, Manual,
+                        Off) ändern.
+        \item[conntrack] Der Benutzer darf die aktuell über den Router laufenden
+	                  Verbindungen ansehen.
+        \item[dyndns] Der Benutzer darf Log-Meldungen des \jump{sec:dyndns}{\var{DYNDNS}} Paketes sehen.
+       \end{description}
+
+      \item[Bereich ``logs''] Alles, was mit Logdateien zu tun hat
+            (Verbindungen, Anrufe, Syslog)
+        \begin{description}
+        \item[view] Der Benutzer darf die Logdateien betrachten.
+        \item[reset] Der Benutzer darf die Logdateien löschen.
+        \end{description}
+
+      \item[Bereich ``support''] Alles, was nützlich ist, wenn man beispielsweise
+                    in der Newsgroup Hilfestellung sucht.
+        \begin{description}
+        \item[view] Der Benutzer darf die Links zur Doku, fli4l-Webseite, usw. abrufen
+        \item[systeminfo] Der Benutzer darf detaillierte Informationen zur Konfiguration
+	                  und zum aktuellen Status des Routers (z. B.: Firewall) abfragen.
+        \end{description}
+
+      \end{description}
+
+    Hier noch einige Beispiele:
+        
+      \begin{description}
+      \item[HTTPD\_USER\_1\_RIGHTS='all']
+        Diese Angabe erlaubt einem Benutzer alles!
+
+      \item[HTTPD\_USER\_2\_RIGHTS='status:view logs:view support:all']
+        Dieser Benutzer darf sich zwar alles ansehen, aber nichts
+        ändern.
+
+      \item[HTTPD\_USER\_3\_RIGHTS='status:view,dial,link']
+        Dieser Benutzer darf sich den Status der Internetverbindung
+        ansehen, wählen und Kanalbündelung ein- und ausschalten.
+
+      \item[HTTPD\_USER\_4\_RIGHTS='status:all']
+        Dieser Benutzer darf alles mit der Internetverbindung machen
+        und neu starten (natürlich auch herunterfahren). Er darf aber
+        nicht die Logdateien sehen oder löschen, die Timetable darf
+        er auch nicht sehen...
+      \end{description}
+    }
+
+\end{description}
+
+\subsection{OPT\_OAC - Online Access Control}
+
+\begin{description}
+
+\config{OPT\_OAC}{OPT\_OAC}{OPTOAC} (optionale Variable)
+
+    Aktiviert das Modul 'Online Access Control'.
+    Hierüber kann der Internet-Zugang jedes im Paket \jump{sec:dnsdhcp}{dns\_dhcp}
+    konfigurierten Rechners selektiv deaktiviert werden.
+
+    Es gibt auch ein Kommandozeilen-Tool, welches die Steuerung über
+    andere Pakete wie z.B. EasyCron möglich macht:
+
+    /usr/local/bin/oac.sh
+
+    Die Optionen werden beim Aufruf angezeigt.
+
+\config{OAC\_WANDEVICE}{OAC\_WANDEVICE}{OACWANDEVICE} (optionale Variable)
+
+    Schränkt die Online Zugangssperre auf Verbindungen über dieses
+    Netzwerkdevice ein. z.B. 'pppoe'
+
+\config{OAC\_INPUT}{OAC\_INPUT}{OACINPUT} (optionale Variable)
+
+    Bietet Schutz vor der Umgehung via Proxy.
+    
+    OAC\_INPUT='default' sperrt die konfigurierten Ports von:
+    Privoxy, Squid, Tor, SS5, Transproxy.
+    
+    OAC\_INPUT='tcp:8080 tcp:3128' sperrt TCP Port 8080 und 3128.
+    Dies ist eine Space-separierte Liste an zu sperrenden Ports mit
+    dazugehörendem Protokoll (udp, tcp). Fehlt das Protokoll, werden
+    udp und tcp Ports gesperrt.
+    
+    Weglassen dieser Variable oder Inhalt 'no' deaktiviert die Funktion.
+
+\config{OAC\_ALL\_INVISIBLE}{OAC\_ALL\_INVISIBLE}{OACALLINVISIBLE} (optionale Variable)
+
+    Schaltet die Gesamtübersicht aus, wenn mindestens eine sichtbare Gruppe existiert.
+    Existiert nicht mindestens eine sichtbare Gruppe, so hat diese Variable keine Wirkung.
+
+\config{OAC\_LIMITS}{OAC\_LIMITS}{OACLIMITS} (optionale Variable)
+
+    Gibt eine durch Leerzeichen getrennte Liste der Zeitlimits an, die zur Auswahl stehen.
+    Die Limits werden in Minuten angegeben. Damit kann eine zeitlich limitierte Sperre oder
+    Freigabe erreicht werden.
+
+    Default: '30 60 90 120 180 360 540'
+    
+\config{OAC\_MODE}{OAC\_MODE}{OACMODE} (optionale Variable)
+
+    Mögliche Werte: \var{'DROP'} oder \var{'REJECT'} (default)
+
+\config{OAC\_GROUP\_N}{OAC\_GROUP\_N}{OACGROUPN} (optionale Variable)
+
+    Anzahl der Clientgruppen. Dient der Übersichtlichkeit, erlaubt aber
+    auch über das Web-Interface eine gesamte Gruppe gesammelt freizugeben
+    oder zu sperren.
+
+\config{OAC\_GROUP\_x\_NAME}{OAC\_GROUP\_x\_NAME}{OACGROUPxNAME} (optionale Variable)
+
+    Name der Gruppe - Dieser Name wird im Web-Interface angezeigt und ist auch
+    über die das Kommandozeilenscript 'oac.sh' nutzbar.
+
+\config{OAC\_GROUP\_x\_BOOTBLOCK}{OAC\_GROUP\_x\_BOOTBLOCK}{OACGROUPxBOOTBLOCK} (optionale Variable)
+
+    Wenn hier 'yes' steht, werden alle Clients der Gruppe beim Bootvorgang bereits
+    gesperrt. Hilfreich, wenn Rechner idr. gesperrt sein sollen und nur ausnahmsweise nicht.
+
+\config{OAC\_GROUP\_x\_INVISIBLE}{OAC\_GROUP\_x\_INVISIBLE}{OACGROUPxINVISIBLE} (optionale Variable)
+
+    Markiert die Gruppe als unsichtbar. Sinnvoll, wenn einige Rechner vorgesperrt werden sollen
+    aber diese nicht als eigene Gruppe im Web-If sichtbar sein sollen.
+    Das Kommandozeilentool oac.sh kann diese trotzdem ansprechen, wenn man das braucht, z.B. von
+    easycron aus.
+
+\config{OAC\_GROUP\_x\_CLIENT\_N}{OAC\_GROUP\_x\_CLIENT\_N}{OACGROUPxCLIENTN} (optionale Variable)
+
+    Anzahl der Clients in der Gruppe.
+
+\config{OAC\_GROUP\_x\_CLIENT\_x}{OAC\_GROUP\_x\_CLIENT\_x}{OACGROUPxCLIENTx} (optionale Variable)
+
+    Name des Clients wie in {\var{HOST\_x\_NAME}} des Pakets \jump{sec:dnsdhcp}{dns\_dhcp} definiert.
+
+\config{OAC\_BLOCK\_UNKNOWN\_IF\_x}{OAC\_BLOCK\_UNKNOWN\_IF\_x}{OACBLOCKUNKNOWNIF} (optionale Variable)
+
+    Liste der in base.txt definierten Interfaces, auf welchen nur in dns\_dhcp.txt definierte Hosts
+    ins Internet dürfen. Nicht-definierte Hosts sind hier damit generell gesperrt.
+
+\end{description}
+

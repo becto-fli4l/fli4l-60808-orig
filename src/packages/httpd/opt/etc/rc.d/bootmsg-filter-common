@@ -1,0 +1,28 @@
+#!/bin/sh
+#-------------------------------------------------------------------------
+# /etc/rc.d/bootmsg-filter-common
+#
+# Last Update:  $Id$
+#-------------------------------------------------------------------------
+
+httpd_boostmsg_filter_file=/var/run/httpd_bootmsg_filter
+
+# adds a filter used when processing bootmsg.txt
+# $1 = script to filter out
+httpd_add_bootmsg_filter()
+{
+    echo "$1" >> $httpd_boostmsg_filter_file
+}
+
+# build the complete regular expression for filtering
+httpd_get_bootmsg_regex()
+{
+    local result= script
+    while read script
+    do
+        [ -n "$result" ] && result="$result\\|"
+        result="$result\\($script\\)"
+    done < $httpd_boostmsg_filter_file
+    result="^\[\($result\)\]"
+    echo "$result"
+}

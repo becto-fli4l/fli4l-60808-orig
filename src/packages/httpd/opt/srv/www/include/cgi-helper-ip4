@@ -1,0 +1,51 @@
+#----------------------------------------------------------------------------
+# /www/srv/admin/cgi-helper-ip4
+#
+# Creation:     2013-11-07 LanSezi
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+cgi_helper_ip4="yes"
+
+#----------------------------------------------------------------------------
+# check a given adress for correct ipv4 ranges 
+#----------------------------------------------------------------------------
+ip4_isvalidaddr ()
+{
+    local ipcheck=$(netcalc canonicalize $1)
+    return $?
+}
+#----------------------------------------------------------------------------
+# remove leading zeros from ipv4 adress
+#----------------------------------------------------------------------------
+ip4_normalize ()
+{
+    
+    local ipnorm=$(netcalc canonicalize $1)
+    res=${ipnorm%/*}
+}
+
+#----------------------------------------------------------------------------
+# check a ipv4 is in a range between or is same as start- and end-adress
+#----------------------------------------------------------------------------
+ip4_isindhcprange ()
+{
+    isinrange=0
+    ip4_normalize $1
+    local addr=$res
+    ip4_normalize $2
+    local start=$res
+    ip4_normalize $3
+    local end=$res
+    if [ "$addr" == "$start" -o "$addr" == "$end" ]
+    then
+        return 0
+    else
+        if [ "` echo -e "${addr}addr\n${start}\n${end}" | sort -t . -k 1,1n -k 2,2n -k 3,3n -k 4,4n | grep -n addr`" == "2:${addr}addr" ]
+        then
+            return 0
+        else
+            return 1
+        fi
+    fi
+}

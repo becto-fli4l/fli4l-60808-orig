@@ -1,0 +1,176 @@
+#!/bin/sh
+#-------------------------------------------------------------------------
+# /etc/rc.d/rc430.httpd - start Webserver
+# was file /etc/rc.d/rc350.httpd
+#
+# Creation:     14.11.2000  tp
+# Last Update:  $Id$
+#-------------------------------------------------------------------------
+
+case $OPT_HTTPD in
+    yes)
+        begin_script HTTPD "Starting webserver ..."
+
+    cat <<-EOF>>/etc/services
+www             80/tcp
+www             80/udp
+https           443/tcp
+https           443/udp
+EOF
+        mkdir -p /etc/httpd
+        mkdir -p /var/run/webgui
+
+        # Make passwords for all users
+        if [ "$HTTPD_USER_N" -gt 0 ]
+        then
+            > /etc/httpd/htpasswd
+            > /etc/httpd/rights
+
+            idx=1
+            for idx in `seq 1 $HTTPD_USER_N`
+            do
+                eval user='$HTTPD_USER_'$idx'_USERNAME'
+                eval pass='$HTTPD_USER_'$idx'_PASSWORD'
+                eval rights='$HTTPD_USER_'$idx'_RIGHTS'
+                echo "$user:$pass" >> /etc/httpd/htpasswd
+                echo "$user=$rights" >> /etc/httpd/rights
+            done
+            
+            ln -s /etc/httpd/htpasswd /srv/www/admin/.htpasswd
+        fi
+
+        # Create menu entries in dependece of available services
+        httpd-menu.sh add -p 100 status.cgi '$_MP_ov' '$_MT_stat' status
+
+        # Only show timetable and connections if imond is available
+        case $OPT_IMOND in
+            yes)
+                # check if there are circuits defined
+                case `imond-send "circuits" | sed 's/.$//; s/OK //'` in
+                    0|1) ;;
+                    *) httpd-menu.sh add -p 105 status_timetable.cgi '$_MP_timetb' '$_MT_stat' status ;;
+                esac
+                case $IMOND_LOG in
+                    yes) httpd-menu.sh add -p 100 log_connections.cgi '$_MP_cnlst' '$_MT_log' logs ;;
+                esac
+            ;;
+        esac
+        # Only show calls if telmond is available
+        case $OPT_TELMOND$TELMOND_LOG in
+            yesyes) httpd-menu.sh add -p 105 log_calls.cgi '$_MP_calls' '$_MT_log' logs ;;
+        esac
+
+        # Only show syslog, if a target is in a local directory
+        case $OPT_SYSLOGD in
+            yes) 
+                found="no"
+                while read target to
+                do
+                    if [ -f "$to" ]
+                    then
+                        found="yes"
+                    fi
+                done < /etc/syslog.conf
+                case $found in yes) httpd-menu.sh add -p 120 log_syslog.cgi '$_MP_syslog' '$_MT_log' logs ;; esac
+            ;;
+        esac
+
+        if [ "$LOG_BOOT_SEQ" = "yes" ]
+        then
+           httpd-menu.sh add -p 121 log_bootlog.cgi '$_MP_bootlog' '$_MT_log' logs
+        fi
+
+        # Show only if LOGIP is available
+        if [ -f /var/run/logip.conf ]
+        then
+            httpd-menu.sh add -p 110 log_logip.cgi '$_MP_logip' '$_MT_log' logs
+        fi
+
+        if [ -f /var/lib/persistent/base/boot_upd.log ]
+        then
+            httpd-menu.sh add -p 129 log_boot-update.cgi 'Boot/Update' '$_MT_log' logs
+        fi
+
+        # Add packet filter section
+        httpd-menu.sh add -p 110 pf.cgi '$_MP_pf' '$_MT_firewall' support
+        if [ -f /srv/www/admin/portfw.cgi ]
+        then
+            httpd-menu.sh add -p 120 portfw.cgi '$_MP_portfw' '$_MT_firewall' firewall-portfw
+        fi
+
+        # Add control Panel
+        httpd-menu.sh add -p 100 control_common.cgi '$_MP_common' '$_MT_ctrl' control
+        
+        # Add circuits Page
+        httpd-menu.sh add -p 200 control_circuits.cgi '$_MP_circuits' '$_MT_ctrl' control
+        
+        # Add conntrack-table
+        httpd-menu.sh add -p 115 conntrack.cgi '$_MP_contrck' '$_MT_stat' conntrack
+
+        # Add support info section
+        httpd-menu.sh add -p 100 help_support.cgi '$_MP_supp' '$_MT_hlp' support
+
+        # Add download of boot-files section
+        if [ "$MOUNT_BOOT" != "no" ]
+        then
+            httpd-menu.sh add -p 200 help_bootfiles.cgi '$_MP_download' '$_MT_hlp' support
+        fi
+
+        # HTTPD options
+        httpd_options='-D -c **.cgi -T utf-8'
+
+        [ "$HTTPD_PORT" ] && httpd_options="$httpd_options -p $HTTPD_PORT"
+        [ "$HTTPD_USER" ] && httpd_options="$httpd_options -u $HTTPD_USER" || httpd_options="$httpd_options -u root"
+
+        # extract the active GUI Language and save it in HTTPD_GUI_LANG
+        # all available languages are stored in the HTTPD_AVAIL_LANGS variable
+        case $HTTPD_GUI_LANG in
+            auto) HTTPD_GUI_LANG="$LOCALE" ;;
+        esac
+        HTTPD_AVAIL_LANGS=$HTTPD_GUI_LANG
+        set -- $HTTPD_AVAIL_LANGS
+        HTTPD_GUI_LANG="$1"
+
+        echo "$HTTPD_AVAIL_LANGS" > /var/run/webgui/language.list
+        echo "$HTTPD_GUI_LANG"    > /var/run/webgui/language.conf
+        
+        # write version number if fli4l was built with mklinks.sh
+        case "__FLI4LVER__" in 
+            *FLI4LVER*) HTTPD_VERSION=`cat /etc/version`;; 
+            *) HTTPD_VERSION="__FLI4LVER__" ;;
+        esac
+
+        # determine xhtml cleaning based on doctype of template
+        if grep -i "^<!DOCTYPE" /srv/www/include/header.inc | grep -iq xhtml
+        then
+            HTTPD_GUI_XHTML_CLEANING='-e "s#<\(img\|input\|meta\|link\)\([^>]*\)\([^/]\)>#<\1\2\3 />#g; s#<\(b\|h\)\([^>]*\)r>#<\1r />#g; s#\"GET#\"get#g;s#\"POST#\"post#g;"'
+        fi
+
+        # write httpd variables and all needed system variables to /var/run/mini_httpd.conf
+        set | grep -e "^HTTPD_" -e "^HOSTNAME" -e "^DOMAIN_NAME" \
+                   -e "DNSDHCP_LEASES_DIR" -e "OPT_DNSDHCP" \
+                   -e "^IMOND_PORT" -e "^TELMOND_PORT" > /var/run/mini_httpd.conf
+
+        # to support legacy opts we have to create links
+        [ -d /usr/local/htdocs ] && /etc/mklinks.sh /usr/local/htdocs /srv/www/admin
+        cd /srv/www
+
+        #-------------------------------------------------------------------------
+        # start mini_httpd and restart it, if it is killed
+        #-------------------------------------------------------------------------
+        set -f
+        if [ "$HTTPD_LISTENIP" ]; then 
+	  for ipaddress in $HTTPD_LISTENIP
+	  do
+	    translate_ip_net $ipaddress && service-restart.sh 1 /usr/sbin/mini_httpd $httpd_options -h $res &
+	  done
+        else
+          service-restart.sh 1 /usr/sbin/mini_httpd $httpd_options &
+	fi 
+        set +f
+        cd /
+	service-restart.sh 1 /usr/local/bin/httpd-watch.sh &
+
+        end_script
+    ;;
+esac

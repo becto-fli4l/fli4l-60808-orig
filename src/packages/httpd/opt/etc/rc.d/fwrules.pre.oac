@@ -1,0 +1,38 @@
+#!/bin/sh
+fw_add_chain filter oac-fw
+
+case $PF_FORWARD_ACCEPT_DEF in
+    no)
+	[ 0$PF_FORWARD_N -eq 0 ] || for idx in `seq 1 $PF_FORWARD_N`
+	do
+	    var=PF_FORWARD_$idx
+	    eval rule=\$$var
+	    case "$rule" in
+		oac-chain)
+		    if [ -z "$OAC_WANDEVICE" -o "$OAC_WANDEVICE" = "any" ]
+		    then
+			eval $var="'if:any:any oac-fw'"
+		    else
+		        fw_add_chain filter oac-fw-pre
+			eval $var="'if:any:any oac-fw-pre'"
+			for device in $OAC_WANDEVICE
+			do
+			    fw_append_rule filter oac-fw-pre "if:any:${device} oac-fw" "oac-outgoing if ${device}"
+			    fw_append_rule filter oac-fw-pre "if:${device}:any oac-fw" "oac-incoming if ${device}"
+			done
+		    fi
+		    break
+		    ;;
+	    esac
+	done
+	;;
+esac
+
+fw_add_chain filter oac-inp
+if [ "$PF_INPUT_ACCEPT_DEF" = no ]; then
+    [ 0$PF_INPUT_N -eq 0 ] || for idx in `seq 1 $PF_INPUT_N`; do
+	var=PF_INPUT_$idx
+	eval rule=\$$var
+	[ "$rule" = oac-chain ] && eval $var="'oac-inp'"
+    done
+fi

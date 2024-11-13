@@ -1,0 +1,65 @@
+#----------------------------------------------------------------------------
+# /www/srv/admin/cgi-helper-ip6
+#
+# Creation:     2013-11-07 LanSezi
+# Last Update:  $Id: cgi-helper-ip4 51847 2018-03-06 14:55:07Z kristov $
+#----------------------------------------------------------------------------
+
+cgi_helper_ip6="yes"
+
+# 
+#----------------------------------------------------------------------------
+# joins strings with given divider 
+# join_by ', ', a b c ---> a,b,c
+#----------------------------------------------------------------------------
+join_by ()
+{
+    #joint_string=''
+    local IFS="$1";
+    shift;
+    #joint_string="$*";
+    echo "$*"
+}
+
+#----------------------------------------------------------------------------
+# get IPv6 addresses (will be several) for given MAC address 
+#----------------------------------------------------------------------------
+get_ip6_for_mac ()
+{
+    local mac=$1
+    local dev=$2
+    # if no mac address or dev given then break (e.g. if device is no longer online
+    # also omits given all IPv6 addresses to incorrect device
+    if [ -z $mac ] || [ -z $dev ]
+    then
+        return 1
+    fi
+    local ip6Adresses=""
+
+    for item in `ip -6 n | grep "$mac" | grep "$dev " | cut -d" " -f1 | sort -d`
+    do
+       local ip6_full=`netcalc canonicalize $item`
+       ip6Adresses=$(join_by ',' $ip6Adresses $ip6_full)
+    done
+    echo $ip6Adresses | sed 's/,/<br>/g'
+}
+
+
+
+#----------------------------------------------------------------------------
+# check a given adress for correct ipv6 ranges 
+#----------------------------------------------------------------------------
+ip6_isvalidaddr ()
+{
+    local ipcheck=$(netcalc canonicalize $1)
+    return $?
+}
+#----------------------------------------------------------------------------
+# remove leading zeros from ipv4 adress
+#----------------------------------------------------------------------------
+ip4_normalize ()
+{
+    
+    local ipnorm=$(netcalc canonicalize $1)
+    res=${ipnorm%/*}
+}

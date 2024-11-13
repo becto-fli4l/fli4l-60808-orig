@@ -1,0 +1,523 @@
+#----------------------------------------------------------------------------
+# /www/srv/admin/cgi-helper
+#
+# Creation:     2005-08-12 hh
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------
+# do some useful things
+#----------------------------------------------------------------------------
+# set_debug=yes
+# parse variables
+cgi_helper="yes"
+eval "`proccgi $*`"
+
+: ${set_debug:=$FORM_debug}
+# Write debug info to debug.log
+case $set_debug in
+    yes)
+        exec 2>/srv/www/admin/debug.log
+        set -x
+    ;;
+    *)
+        exec 2>/dev/null
+    ;;
+esac
+
+. /var/run/mini_httpd.conf
+myname=`basename $0`
+: ${cginame:=`basename $0 .cgi`}
+: ${lang:="$HTTPD_GUI_LANG"}
+: ${showmenu:=$FORM_showmenu}
+
+# get language files
+if [ -f /srv/www/lang/main.$lang ]
+then
+    . /srv/www/lang/main.$lang
+else
+    . /srv/www/lang/main.en
+fi
+if [ -f /srv/www/lang/$cginame.$lang ]
+then
+    . /srv/www/lang/$cginame.$lang
+else
+    [ -f /srv/www/lang/$cginame.en ] && . /srv/www/lang/$cginame.en
+fi
+
+#----------------------------------------------------------------------------
+# Security function
+#----------------------------------------------------------------------------
+
+user_has_rights ()
+{ # returns true if the user has access
+    [ -z "$1" ] && return 0
+    if grep ^$REMOTE_USER= /etc/httpd/rights | cut -d= -f2 | \
+       grep -vq -e "^all$" \
+                -e "\( \|^\)$1:all\( \|$\)" \
+                -e "\( \|^\)$1[^ ]*[:,]$2\( \|,\|$\)"
+    then
+        return 1
+    else
+        return 0
+    fi
+
+}
+
+check_rights ()
+{
+    : ${SEC_REALM:=$1}
+    : ${SEC_ACTION:=$2}
+
+    if [ -z "$SEC_REALM" -o -z "$SEC_ACTION" ]
+    then
+        show_html_header "$_MN_accdenied"
+        show_error "$_MN_seclib" "$_MN_nopar"
+        show_html_footer
+        # Exit the CGI-Script
+        exit 1
+    fi
+
+    case $REMOTE_USER in
+        "") ;;
+        *)
+            if ! user_has_rights $SEC_REALM $SEC_ACTION
+            then
+                show_html_header "$_MN_accdenied"
+                show_error "$_MN_accdenied" "$_MN_noright<br> \
+                                            $_MN_user: \"$REMOTE_USER\"<br> \
+                                            $_MN_realm: \"$SEC_REALM\"<br> \
+                                            $_MN_secaction: \"$SEC_ACTION\""
+                show_html_footer
+                # Exit the CGI-Script
+                exit 1
+            fi
+          ;;
+      esac
+
+}
+
+#----------------------------------------------------------------------------
+# some useful functions
+#----------------------------------------------------------------------------
+
+reload ()
+{  # Reload site
+    echo "Location: $myname"
+    echo
+}
+
+#
+# Output HTTP Header
+#
+# Echoes additional HTTP headers. Should at least contain Content-Type.
+#
+# According to RFC 2616 each header line must be terminated with CR LF,
+# which is \r\n. Shell adds \n but not \r so we must do this for each
+# header line!
+#
+# $1    output type (case)
+# $2    additional option string to be evaluated
+#
+http_header ()
+{
+    # need quoted string expansion, \r is not interpreted as is in heredoc
+    local CR=$'\r'
+
+    case "$1" in
+        ""|html)
+            cat <<-EOF
+Content-Type: text/html; charset=utf-8$CR
+Cache-Control: max-age=1, s-maxage=1, no-cache, must-revalidate, no-store$CR
+Pragma: no-cache$CR
+Expires: $(date -Ru)$CR
+EOF
+            ;;
+
+        htmlstatic)
+            cat <<-EOF
+Content-Type: text/html; charset=utf-8$CR
+Cache-control: max-age=3600$CR
+EOF
+            ;;
+
+        download)
+            eval $2
+            : ${ctype:=application/download}
+            : ${filename:=file.txt}
+            cat <<-EOF
+Content-Type: ${ctype}$CR
+Content-Disposition: attachment; filename=${filename}$CR
+EOF
+            ;;
+
+    esac
+
+    # headers are finished with an empty line ending with CR LF
+    echo "$CR"
+}
+
+create_menu ()
+{
+    # read the menu file and create a menu
+    menucache="/tmp/menu_${REMOTE_USER}`echo $menufile | sed 's#/#_#g'`"
+    if ! [ -f "$menucache" ]
+    then
+        sec_close=
+        cursec_print=
+        {
+            while read type prio link desc right
+            do
+            # Include the cgi-specific Language-File if available
+        cginame=`echo "$link" | sed 's/.*\///;s/\.cgi$//'`
+        if [ "$cginame" != '-' ]; then
+            if [ -f /srv/www/lang/$cginame.$lang ]
+            then
+            . /srv/www/lang/$cginame.$lang
+            else
+            [ -f /srv/www/lang/$cginame.en ] && . /srv/www/lang/$cginame.en
+            fi
+        fi
+        eval desc=\"$desc\"
+        case "$type" in
+            t)
+            case "$desc" in
+                Opt) cursec=$_MT_opt ;;
+                *)   cursec=$desc ;;
+            esac
+            cursec_print=yes
+            ;;
+            e)
+            if user_has_rights "$right" "view"
+            then
+                if [ -n "$cursec_print" ]
+                then
+                echo "$sec_close"'<li><span class="h1">'"$cursec"'</span><ul class="submenu">'
+                cursec_print=
+                sec_close="</ul></li>"
+                fi
+                echo "<li><a href=\"$link\">$desc</a></li>"
+            fi
+            ;;
+        esac
+            done < $menufile
+            echo '</ul></li>'
+    } > $menucache
+    fi
+    cat $menucache
+}
+
+show_html_header ()
+{ # usage: show_html_header "[title]" "refresh=$time;url=$url;cssfile=$file;showmenu=no;menufile=$file;marker=foo bar"
+    # get additional options
+    case $2 in
+        "") ;;
+        *) eval $2 ;;
+    esac
+    case $menufile in
+        "") menufile=/etc/httpd/menu ;;
+        *) [ -f $menufile ] || menufile=/etc/httpd/menu ;;
+    esac
+
+    # get name of opt
+    case x$FORM_link in
+        x)  optname=$cginame ;;
+        *)
+            optname="$(echo "$FORM_link" | cut -d? -f1)"
+         ;;
+    esac
+    eval optname=\"$(grep "$optname" "$menufile" | cut -d" " -f4)\"
+
+    # set title
+    case $1 in
+        "") title=$optname ;;
+        *) title=$1; shift ;;
+    esac
+
+    case $refresh in
+        "") ;;
+        *[^0-9]*) ;;
+        *[0-9]*)
+            : ${url:=$myname}
+            meta="<meta http-equiv=\"Refresh\" content=\"$refresh; url=$url\">"
+        ;;
+    esac
+    # if no css-file is specified, try to get file similar to cgi-filename
+    case $cssfile in
+        "") [ -f /srv/www/css/$cginame.css ] && css='<link rel="stylesheet" type="text/css" href="/css/'$cginame'.css">' ;;
+        *) css="<link rel=\"stylesheet\" type=\"text/css\" href=\"/css/$cssfile.css\">" ;;
+    esac
+    case $showmenu in
+        no) comment_start='<!--';comment_end='-->';;
+        *)
+            case $subtitle in
+            "")
+                case $REMOTE_USER in
+                    "") user="" ;;
+                    *)
+                        case $HTTPD_USER_N in
+                            1) user="${REMOTE_USER}@" ;;
+                            *) user='<a href="index.cgi?action=logout" title="'$_MN_TTIP_chg_user'">'$REMOTE_USER'</a>@' ;;
+                        esac
+                    ;;
+                esac
+                subtitle="${user}${HOSTNAME}.${DOMAIN_NAME}"
+            ;;
+            esac
+            menu=`create_menu`
+            date=`date`
+            version=$HTTPD_VERSION
+            flihost="${HOSTNAME}.${DOMAIN_NAME}"
+            fli_arch=`uname -m`
+            topnav='<li style="display: none;">&nbsp;</li>'
+        ;;
+    esac
+    # save stdout to filedescriptor 3
+    exec 3>&1
+    # redirect stdout to a file (everything after the header is supposed to be content)
+    exec 1>/tmp/content_$$.html
+}
+
+show_html_footer ()
+{
+    case $set_debug in
+        yes)
+            echo "<pre>"
+            cat /srv/www/admin/debug.log | htmlspecialchars
+            echo "</pre>"
+        ;;
+    esac
+    # restore stdout
+    exec 1>&3
+    # do the output
+    http_header
+    # with the redirection we are able to do a little cleaning
+    cat /srv/www/include/header.inc /tmp/content_$$.html /srv/www/include/footer.inc |
+        substitute_markers meta css title topnav subtitle date version menu comment_start comment_end flihost fli_arch $marker |
+        xhtml_cleaning
+    rm -f /tmp/content_$$.html
+}
+
+substitute_markers ()
+{
+    sedstring=
+    for _marker in $*
+    do
+        # we have to escape double quotes, ampersand, dollar
+        substitute=`eval echo '$'${_marker} | sed 's/"/\\\\\"/g; s/&/\\\&/g; s/\\\$/\\\\\$/g'`
+        if [ $_marker = "menu" ]
+        then
+            substitute2=${substitute}
+        else
+            substitute2=${substitute//%/\\%}
+        fi
+        sedstring="${sedstring}s%###${_marker//%/\\%}###%${substitute2}%g; "
+    done
+    eval sed \"$sedstring\"
+}
+
+translate_label ()
+{
+   local label=`echo "${1}" | sed -e 's/ /\&nbsp;/g'`
+   if [ -z "${label}" ]
+      then
+          label="missing&nbsp;translation"
+      fi
+   echo "${label}"
+}
+
+xhtml_cleaning ()
+{ # do a very basic xhtm cleaning, remove unused markers
+    # todo strtolower of tags
+    #img,br,hr,meta,link,base,area,input,param,col
+    # HTTPD_GUI_XHTML_CLEANING is set on boottime by rc430.httpd
+    eval sed $HTTPD_GUI_XHTML_CLEANING -e 's/\(###\)\([^#]*\)\(###\)//g'
+}
+
+# Cleans up standard input such that it can be safely used in eval'd context.
+# Only letters, digits, dots and underscores are kept.
+# Input:
+#   <stdin> = input that shall be cleaned up
+# Output:
+#   <stdout> = input free of problematic characters
+#
+cleanup_for_eval()
+{
+    sed 's/[^-.a-zA-Z0-9_]//g'
+}
+
+show_tab_header ()
+{
+    echo '<div class="tabmain"><ul class="tab">'
+    case $1 in "") echo '<td></td>' ;; esac # add table cells if no title is given to prevent html error
+
+    FORM_action="$(echo "$FORM_action" | cleanup_for_eval)"
+    eval selected='"$_'"$mod_prefx$FORM_action"'"'
+    selected="$(echo "$selected" | cleanup_for_eval)"
+
+    cols=0
+    while [ "x$1" != "x" ]
+    do
+        local cleantabcaption="$(echo "$1" | cleanup_for_eval)"
+        if [ "$cleantabcaption" = "$selected" -o "$2" = "no" ]
+        then
+            echo '<li class="selected"><span class="nolink">'$1'</span></li>'
+        else
+            echo '<li class="tab"><a href="'$2'">'$1'</a></li>'
+        fi
+        shift 2
+        cols=`expr $cols + 3`
+    done
+    echo '</ul>'
+    echo '<div class="tabcont">'
+}
+
+show_tab_footer ()
+{
+    echo '</div></div><div class="clear"></div>'
+}
+
+show_backlink ()
+{
+    echo "<a href=\"$myname\">&lt;&lt; $_MN_bck</a>"
+}
+
+show_box ()
+{   # Error: err, Info: info
+    echo "<div class=\"$1\">"
+    show_tab_header "$2" no
+    if [ "$3" ]; then
+        echo "$3"
+    else
+        while read line; do
+            echo "$line"
+        done
+    fi
+    show_tab_footer
+    echo '</div>'
+}
+
+show_error ()
+{
+    show_box "err" "$1" "$2"
+}
+
+show_warn ()
+{
+    show_box "warn" "$1" "$2"
+}
+
+show_info ()
+{
+    show_box "info" "$1" "$2"
+}
+
+# miscellaneous helpful functions
+do_tail ()
+{
+    tail -n $1
+}
+
+get_dns_name ()
+{
+    res=
+    set -- `nslookup $1 | sed -n -e '/^Server:/,/^Address/d;s/^Address[^:]*://p'`
+    [ "$2" ] && res=$2
+}
+
+have_imond ()
+{
+    [ -f /var/run/imond.port ] && return 0 || return 255
+}
+
+htmlspecialchars ()
+{   # escape html entities
+    # if the first parameter is set to "quot" or "apos",
+    # also espace double/single quotes
+    case $1 in
+    quot)
+      sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/\"/\&quot;/g;'
+      ;;
+    apos)
+      sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/'"'"'/\&apos;/g;'
+      ;;
+    *)
+      sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g;'
+      ;;
+    esac
+}
+
+url_encode ()
+{
+    echo "$*" |
+        sed 's/%/%25/g
+             s/ /%20/g
+             s/	/%09/g
+             s/!/%21/g
+             s/"/%22/g
+             s/#/%23/g
+             s/\$/%24/g
+             s/\&/%26/g
+             s/'\''/%27/g
+             s/(/%28/g
+             s/)/%29/g
+             s/\*/%2a/g
+             s/+/%2b/g
+             s/,/%2c/g
+             s/-/%2d/g
+             s/\./%2e/g
+             s/\//%2f/g
+             s/:/%3a/g
+             s/;/%3b/g
+             s/</%3c/g
+             s/\=/%3d/g
+             s/>/%3e/g
+             s/?/%3f/g
+             s/@/%40/g
+             s/\[/%5b/g
+             s/\\/%5c/g
+             s/\]/%5d/g
+             s/\^/%5e/g
+             s/_/%5f/g
+             s/`/%60/g
+             s/{/%7b/g
+             s/|/%7c/g
+             s/}/%7d/g
+             s/~/%7e/g
+             s/ï¿½/%f6/g
+             s/ï¿½/%fc/g
+             s/ï¿½/%e4/g
+             s/ï¿½/%d6/g
+             s/ï¿½/%dc/g
+             s/ï¿½/%c4/g
+             :a
+             $!{N
+             ba
+             }
+             s/\n/%0d/' || return 1
+             # the last five lines are the reason why sed is uncool - just
+             # replacing the newlines by %0d
+}
+
+cgi_log()
+{
+    if [ -f /var/run/syslogd.pid ]; then
+        logger -t "$0[$$]" "$1"
+    else
+    if cgi_script; then
+        echo "<pre>$0[$$]: $1</pre>"
+    else
+        echo "$0[$$]: $1"
+    fi
+    fi
+}
+
+cgi_log_errors()
+{
+    if [ -s "$2" ]; then
+    cgi_log "Errors while rendering '$1'"
+    while read line; do
+        cgi_log "$line"
+    done < $2
+    fi
+}

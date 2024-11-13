@@ -1,0 +1,263 @@
+% Synchronized to r48039
+\section{HTTPD - Webserver For Status-Display}
+
+\marklabel{OPTHTTPD}{\subsection{OPT\_HTTPD - Mini-Webserver As Status-Display}}\index{OPT\_HTTPD}
+
+  The webserver can be used to display or change the status of fli4l 
+  routers (IMONC can be used too). The status monitor can be activated by 
+  setting \verb*?OPT_HTTPD='yes'?.
+
+  If you are using the default configuration set your browser to one 
+  of the following addresses:
+
+\begin{example}
+\begin{verbatim}
+    http://fli4l/
+    http://fli4l.domain.lan/ 
+    http://192.168.6.1/
+\end{verbatim}
+\end{example}
+
+  If you configured fli4l to use another name and/or domain these have 
+  to be used. If the webserver is set to listen on another port than the 
+  default one specify it like this:
+
+\begin{example}
+\begin{verbatim}
+    http://fli4l:81/
+\end{verbatim}
+\end{example}
+
+  As of version 2.1.12  a login page will be displayed which is not 
+  protected by a password. Protected pages are in the subdirectory 
+  admin, for example:
+\begin{example}
+\begin{verbatim}
+    http://fli4l.domain.lan/admin/
+\end{verbatim}
+\end{example}
+
+   The web server can be configured by setting the following variables:
+
+\begin{description}
+
+\config{HTTPD\_GUI\_LANG}{HTTPD\_GUI\_LANG}{HTTPDGUILANG}
+
+    {This specifies the language in which the web interface is shown. 
+    If set to 'auto' the language setting is taken from the variable
+    \var{LOCALE} in base.txt.}
+
+\config{HTTPD\_LISTENIP}{HTTPD\_LISTENIP}{HTTPDLISTENIP}
+
+The web server usually binds to a so-called wildcard address 
+in order to be accessed on any router interface. Set the web server 
+with this parameter to only bind to one IP address. The corresponding 
+IP address is given here: \var{IP\_NET\_x\_IPADDR}. Normally
+this parameter is left blank, so the default (Accessible on any 
+interface IP) is used.
+
+This parameter is used to bind the httpd to only one IP so that other 
+instances can bind to other IPs on the router. It can not be used 
+to limit access to the web interface of the router. This would need 
+additional configuring of the packet filter, too.
+
+It is also possible to specify multiple IP addresses here (separated 
+by spaces).
+
+\config{HTTPD\_PORT}{HTTPD\_PORT}{HTTPDPORT}
+
+    {Set this value if the web server should run on another port than 
+    80. This is usually not recommended, since then it must be 
+    accessed through the browser by adding the port number. Example 
+    http://fli4l:81/.}
+
+\config{HTTPD\_PORTFW}{HTTPD\_PORTFW}{HTTPDPORTFW} {If setting this
+  variable to 'yes' you can change port forwarding via the web 
+  interface. Rules can be erased and/or added. Changes take effect 
+  immediately and only apply during router runtime. If the router is 
+  restarted, the changes are gone. The default setting is 'yes'.}
+
+\config{HTTPD\_ARPING}{HTTPD\_ARPING}{HTTPDARPING} {The web server displays
+  the online/offline state of the hosts listed in \var{HOST\_x}. To achieve 
+  this it uses the \emph{``Arp-Cache''}, a cache that buffers the addresses 
+  of the local hosts. If a host does not communicate with the router for 
+  longer its address will disappear from the \emph{``Arp-Cache''} and it 
+  appears to be offline. If you want to keep the \emph{``Arp-Cache''} up-to-date 
+  (keep the online hosts that are not communicating with the router in it) 
+  set \var{HTTPD\_ARPING='yes'?}.}
+
+\config{HTTPD\_ARPING\_IGNORE\_N}{HTTPD\_ARPING\_IGNORE\_N}{HTTPDARPINGIGNOREN}
+  {Sets the number of entries to be ignored when arping}
+  
+\config{HTTPD\_ARPING\_IGNORE\_x}{HTTPD\_ARPING\_IGNORE\_x}{HTTPDARPINGIGNOREx}
+  {IP-adress or name of the hosts not to be included in ARPING-tests.
+  This may be useful for battery based hosts consuming too much power by 
+  regular network queries (i.e. laptops or cell phones in WLAN).}
+  
+\end{description}
+
+\subsection{User Management}
+  The webserver provides a sophisticated user management:
+\begin{description}
+\config{HTTPD\_USER\_N}{HTTPD\_USER\_N}{HTTPDUSERN}
+    {Specify the number of users. If set to 0 user management 
+    will be switched off completely so everybody can access the 
+    web server.}
+
+\configlabel{HTTPD\_USER\_x\_PASSWORD}{HTTPDUSERxPASSWORD}
+\configlabel{HTTPD\_USER\_x\_RIGHTS}{HTTPDUSERxRIGHTS}
+\config{HTTPD\_USER\_x\_USERNAME  HTTPD\_USER\_x\_PASSWORD  HTTPD\_USER\_x\_RIGHTS}
+       {HTTPD\_USER\_x\_USERNAME}
+       {HTTPDUSERxUSERNAME}
+   
+    {enter username and password for each user here. On top specify for each 
+    user which functions of the the web server should be accessible to him. 
+    Functions are controlled via the variable \var{HTTPD\_\-RIGHTS\_\-x}. 
+    In the simplest case it is 'all', which means that the corresponding user
+    is allowed to access everything. The variable has the following 
+    structure:
+
+\begin{example}
+\begin{verbatim}
+       'Range1: right1,right2,... Range2:...'
+\end{verbatim}
+\end{example}
+
+    Instead of adding all rights for a certain range the word ``all'' can be used.
+    This means that the user has all rights in this range. The following ranges and 
+    rights exist:
+
+      \begin{description}
+      \item[Range ``status''] Everything in menu 'Status'.
+        \begin{description}
+        \item[view] User can access all menu items.
+        \item[dial] User can dial and hang up connections.
+        \item[boot] User can reboot and shut down the router.
+        \item[link] User can switch channel bundeling.
+        \item[circuit] User can switch circuits.
+        \item[dialmode] User can switch dialmodes (Auto, Manual, Off).
+        \item[conntrack] User can view currently active connections.
+        \item[dyndns] User can view logfiles of package \jump{sec:dyndns}{\var{DYNDNS}}.
+       \end{description}
+
+      \item[Range ``logs''] Everything concerning log files (connections, calls, syslog)
+        \begin{description}
+        \item[view] User can view logfiles.
+        \item[reset] User can delete logfiles.
+        \end{description}
+
+      \item[Range ``support''] Everything of use for getting help (Newsgroups a.s.o.).
+        \begin{description}
+        \item[view] User can access links to documentation, fli4l-website, a.s.o.
+        \item[systeminfo] User can query detailed informations about configuration 
+	                  and actual status of the router (i.e.: firewall).
+        \end{description}
+
+      \end{description}
+
+    Some examples:
+        
+      \begin{description}
+      \item[HTTPD\_USER\_1\_RIGHTS='all']
+        Allow a user to access everything in the webserver!
+
+      \item[HTTPD\_USER\_2\_RIGHTS='status:view logs:view support:all']
+        User can view everything but can't change settings.
+
+      \item[HTTPD\_USER\_3\_RIGHTS='status:view,dial,link']
+        User can view the status of internet connections, dial and switch channel bundeling.
+
+      \item[HTTPD\_USER\_4\_RIGHTS='status:all']
+        User can do everything concerning internet connections
+        and reboot/shutdown. He is not allowed to view or delete 
+	logfiles (nor timetables).
+      \end{description}
+    }
+
+\end{description}
+
+\subsection{OPT\_OAC - Online Access Control}
+
+\begin{description}
+
+\config{OPT\_OAC}{OPT\_OAC}{OPTOAC} (optional)
+ 
+    Activates 'Online Access Control'. By using this internet access of each host 
+    configured in package \jump{sec:dnsdhcp}{dns\_dhcp} can be controlled selectively.
+
+    A console tool is available too, providing an interface to other
+    packages like EasyCron:
+
+    /usr/local/bin/oac.sh
+
+    Options will be shown when executed on a console.
+
+\config{OAC\_WANDEVICE}{OAC\_WANDEVICE}{OACWANDEVICE} (optional)
+
+    Restricts the online access control to connections on this
+    network device (i.e. 'Pppoe').
+
+\config{OAC\_INPUT}{OAC\_INPUT}{OACINPUT} (optional)
+
+    Provides protection against circumvention via proxy.
+    
+    OAC\_INPUT='default' blocks default ports for Privoxy, Squid, Tor, SS5, Transproxy.
+    
+    OAC\_INPUT='tcp:8080 tcp:3128' blocks TCP Port 8080 and 3128.
+    This is a space separated list of ports to be blocked and their respective 
+    protocol (udp, tcp). Omitting protocols blocks both udp and tcp.
+    
+    Omitting this variable or setting it to \verb*?'no'? deactivates the function.
+
+\config{OAC\_ALL\_INVISIBLE}{OAC\_ALL\_INVISIBLE}{OACALLINVISIBLE} (optional)
+
+    Turns off overview if at least one group exists. If no groups exist the 
+    variable is without effect.
+    
+\config{OAC\_LIMITS}{OAC\_LIMITS}{OACLIMITS} (optional)
+
+    List of available time limits separated by spaces. Limits are set in minutes. 
+    This allows time period based blocking or access definition.
+
+    Default: '30 60 90 120 180 360 540'
+    
+\config{OAC\_MODE}{OAC\_MODE}{OACMODE} (optional)
+
+    Possible values: \var{'DROP'} or \var{'REJECT'} (default)
+
+\config{OAC\_GROUP\_N}{OAC\_GROUP\_N}{OACGROUPN} (optional)
+
+    Number of client groups. Used for clarity but also allows to block or allow 
+    access for a whole group at once over the web interface.
+
+\config{OAC\_GROUP\_x\_NAME}{OAC\_GROUP\_x\_NAME}{OACGROUPxNAME} (optional)
+
+    Name of the group - this name will be displayed in the web interface and may be 
+    used in console script 'oac.sh'.
+
+\config{OAC\_GROUP\_x\_BOOTBLOCK}{OAC\_GROUP\_x\_BOOTBLOCK}{OACGROUPxBOOTBLOCK} (optional)
+
+    If set to \verb*?'yes'? all clients of the group are blocked at boot. Useful if 
+    PCs should be blocked in general.
+
+\config{OAC\_GROUP\_x\_INVISIBLE}{OAC\_GROUP\_x\_INVISIBLE}{OACGROUPxINVISIBLE} (optional)
+
+    Marks the group as invisible. Useful to block a PC in general which should 
+    not be visible in the web interface. The console script oac.sh is not affected 
+    by this (for use in easycron).
+
+\config{OAC\_GROUP\_x\_CLIENT\_N}{OAC\_GROUP\_x\_CLIENT\_N}{OACGROUPxCLIENTN} (optional)
+
+    Number of clients in the group.
+
+\config{OAC\_GROUP\_x\_CLIENT\_x}{OAC\_GROUP\_x\_CLIENT\_x}{OACGROUPxCLIENTx} (optional)
+
+    Name of the client as defined in {\var{HOST\_x\_NAME}} in package \jump{sec:dnsdhcp}{dns\_dhcp}.
+
+\config{OAC\_BLOCK\_UNKNOWN\_IF\_x}{OAC\_BLOCK\_UNKNOWN\_IF\_x}{OACBLOCKUNKNOWNIF} (optional)
+
+    List of interfaces defined in base.txt allowing internet access only to 
+    hosts defined in dns\_dhcp.txt. Hosts not defined are blocked in general.
+
+\end{description}
+

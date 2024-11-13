@@ -1,0 +1,201 @@
+#!/bin/sh
+#-------------------------------------------------------------------------
+# /etc/rc.d/rc800.oac - initialize Online Access Control
+#
+# Creation:     24.011.2010  rresch
+# Last Update:  $Id$
+#-------------------------------------------------------------------------
+
+if [ "$OPT_OAC" = yes ]; then
+    begin_script OAC "Starting Online Access Control ..."
+
+    # Initialize Firewall-Chain if necessary
+    if [ "$PF_FORWARD_ACCEPT_DEF" = yes ]; then
+    	if [ -z "$OAC_WANDEVICE" -o "$OAC_WANDEVICE" = "any" ]
+	then
+	    fw_append_rule filter FORWARD-head "if:any:any oac-fw" "oac-traffic"
+	else
+	    fw_add_chain filter oac-fw-pre
+	    fw_append_rule filter FORWARD-head "if:any:any oac-fw-pre" "oac-traffic"
+	    for device in $OAC_WANDEVICE
+	    do
+	        fw_append_rule filter oac-fw-pre "if:any:${device} oac-fw" "oac-outgoing if ${device}"
+	        fw_append_rule filter oac-fw-pre "if:${device}:any oac-fw" "oac-incoming if ${device}"
+	    done
+
+	fi
+    fi
+
+    # Add hook to INPUT-Chain if needed
+    if [ "$OAC_INPUT" -a "$OAC_INPUT" != no ]; then
+        if [ "$PF_INPUT_ACCEPT_DEF" = yes ]; then
+	    fw_append_rule filter INPUT-head "oac-inp" "oac-traffic"
+	fi
+
+        if [ "$OAC_INPUT" = "default" ]
+        then
+	    [ 0$SQUID_HTTP_PORT -gt 0 ] && \
+                fw_append_rule filter oac-inp "prot:tcp $SQUID_HTTP_PORT oac-fw" "oac-traffic squid tcp:${LISTEN}"
+	    if [ "$OPT_PRIVOXY" = "yes" ]
+	    then
+	        for i in `seq 1 $PRIVOXY_N`
+	        do
+	            eval LISTEN=\$PRIVOXY_${i}_LISTEN
+	            [ -n "$LISTEN" ] && \
+  	                fw_append_rule filter oac-inp "prot:tcp $LISTEN oac-fw" "oac-traffic privoxy tcp:${LISTEN}"
+	        done
+	    fi
+	    if [ "$OPT_TOR" = "yes" ]
+	    then
+	        for i in `seq 1 $TOR_LISTEN_N`
+	        do
+	            eval LISTEN=\$TOR_LISTEN_${i}
+	            [ -n "$LISTEN" ] && \
+  	                fw_append_rule filter oac-inp "prot:tcp $LISTEN oac-fw" "oac-traffic tor tcp:${LISTEN}"
+	        done
+	    fi
+	    if [ "$OPT_SS5" = "yes" ]
+	    then
+	        for i in `seq 1 $SS5_LISTEN_N`
+	        do
+	            eval LISTEN=\$SS5_LISTEN_${i}
+	            [ -n "$LISTEN" ] && \
+  	                fw_append_rule filter oac-inp "prot:tcp $LISTEN oac-fw" "oac-traffic ss5 tcp:${LISTEN}"
+	        done
+	    fi
+	    if [ "$OPT_TRANSPROXY" = "yes" ]
+	    then
+	        for i in `seq 1 $TRANSPROXY_LISTEN_N`
+	        do
+	            eval LISTEN=\$TRANSPROXY_LISTEN_${i}
+	            [ -n "$LISTEN" ] && \
+  	                fw_append_rule filter oac-inp "prot:tcp $LISTEN oac-fw" "oac-traffic transproxy tcp:${LISTEN}"
+	        done
+	    fi
+        else
+	    for port in $OAC_INPUT
+	    do
+	        set `echo $port | sed 's/:/ /'`
+                if [ "$2" ]; then
+                    prot=prot:$1
+                    port=$2
+                else
+                    prot=
+                    port=$1
+                fi
+  	        fw_append_rule filter oac-inp "$prot $port oac-fw" "oac-traffic ${prot}:${port}"
+	    done
+	fi
+    fi
+
+    # Create Table with known clients
+    fw_add_chain filter oac-fw-knw
+
+    # Fill new Table with all know clients (if at least one is defined)
+    if [ "0$HOST_N" -gt 0 ]
+    then
+      for i in `seq 1 $HOST_N`
+      do
+        eval hostname='$HOST_'$i'_NAME'
+        eval ipaddr='$HOST_'$i'_IP4'
+        eval mac='$HOST_'$i'_MAC'
+        eval mac2='$HOST_'$i'_MAC2'
+	if [ -n "$mac" ]
+	then
+	  fw_append_rule filter oac-fw-knw "mac:$mac $ipaddr any RETURN" "client $hostname is ok"
+          if [ -n "$mac2" ]
+          then
+            fw_append_rule filter oac-fw-knw "mac:$mac2 $ipaddr any RETURN" "client $hostname is ok"
+          fi
+	  fw_append_rule filter oac-fw-knw "any $ipaddr RETURN" "client $hostname is ok"
+	else
+	  fw_append_rule filter oac-fw-knw "$ipaddr any RETURN BIDIRECTIONAL" "client $hostname is ok"
+	fi
+      done
+      fw_append_rule filter oac-fw-knw "REJECT" "everything else is not ok"
+      # Parse new table from OAC if wanted by config-variable
+      # If not wanted maybe another opt uses the just created table
+      # Hint: Maybe this table should be created by dns_dhcp instead?
+      if [ -n "$OAC_BLOCK_UNKNOWN_IF" ]
+      then
+	for interface in $OAC_BLOCK_UNKNOWN_IF
+	do
+	  fw_prepend_rule filter oac-fw-pre "if:${interface}_DEV:any oac-fw-knw" "oac-traffic known-filter $interface incoming"
+	  fw_prepend_rule filter oac-fw-pre "if:any:${interface}_DEV oac-fw-knw" "oac-traffic known-filter $interface outgoing"
+	  if [ "$OAC_INPUT" -a "$OAC_INPUT" != no ]
+	  then
+	    fw_prepend_rule filter oac-inp "if:${interface}_DEV:any oac-fw-knw" "oac-traffic known-filter $interface incoming"
+	  fi
+	done
+      fi
+    else
+      # Just return if none defined
+      fw_append_rule filter oac-fw-knw "RETURN" "no hosts defined"
+    fi
+
+    # initialize config file and mode
+    [ -z "$OAC_MODE" -o "$OAC_MODE" = REJECT ] >/var/run/oac-reject
+    for i in `seq 1 0$HOST_N`
+    do
+	eval name=\$HOST_${i}_NAME
+	eval ip4=\$HOST_${i}_IP4
+	eval mac=\$HOST_${i}_MAC
+        eval mac2=\$HOST_${i}_MAC2
+        echo "$i $name $ip4 $mac $mac2"
+    done >/var/run/oac.cfg
+
+	# Write Group-Config to /var/run/oac-groups.cfg
+    set | grep OAC_GROUP_ >/var/run/oac-groups.cfg
+    if [ -n "$OAC_ALL_INVISIBLE" ]
+    then
+	echo "OAC_ALL_INVISIBLE=\"$OAC_ALL_INVISIBLE\"" >>/var/run/oac-groups.cfg
+    fi
+
+	# Create <select> statement for OAC_LIMITS
+    : ${OAC_LIMITS:="30 60 90 120 180 360 540"}
+    echo >/var/run/oac-limits.cfg
+    for i in $OAC_LIMITS
+    do
+	hours=`expr $i / 60`
+	minutes=`(echo -n 0 ; expr $i % 60) | sed 's/.*\(..\)$/\1/'`
+	echo "<option value=\"$i\">$hours:$minutes \$_OAC_text_hours</option>" >>/var/run/oac-limits.cfg
+    done
+
+	# Boot-Group-Blocker
+    for i in `seq 1 0$OAC_GROUP_N`
+    do
+	eval j=\$OAC_GROUP_${i}_BOOTBLOCK
+	eval k=\$OAC_GROUP_${i}_NAME
+	if [ "$j" = "yes" ]
+	then
+	    /bin/sh /usr/local/bin/oac.sh blockgroup $i
+	fi
+	if [ -n "$LCD_LANIP" -a "$k" = "avr-net-io" ]
+	then
+	    if [ -n "$LCD_LANTYPE" ]
+	    then
+		if [ -n "$LCD_LANUSER" -a -n "$LCD_LANPASS" ]
+		then
+		    /usr/bin/service-restart.sh 10 /usr/local/bin/oac_avr.sh $LCD_LANIP $LCD_LANTYPE $LCD_LANUSER $LCD_LANPASS &
+		else
+		    /usr/bin/service-restart.sh 10 /usr/local/bin/oac_avr.sh $LCD_LANIP $LCD_LANTYPE &
+		fi
+	    else
+	        /usr/bin/service-restart.sh 10 /usr/local/bin/oac_avr.sh $LCD_LANIP &
+	    fi
+	fi
+    done
+
+	# Add Entry to HTTPD-Menu
+    if [ "$OPT_HTTPD" = "yes" ]
+    then
+	httpd-menu.sh add -p 800 'fw_oac.cgi' '$_OAC_navigation_title' '$_MT_firewall' 'oac'
+             # activate arping to get state of hosts
+        if [ ! -f /var/run/do_arping ]
+        then
+            echo "arping activated by oac"> /var/run/do_arping
+        fi
+    fi
+
+    end_script
+fi
