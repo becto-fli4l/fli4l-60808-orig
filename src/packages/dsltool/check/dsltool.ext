@@ -1,0 +1,129 @@
+﻿##-----------------------------------------------------------------------------
+## dsltool.ext - fli4l extended configuration check      __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##                                L E S E N 
+##
+## Creation:     04.02.2013  cspiess
+## Last Update:  $Id$
+##
+## Copyright (c) 2013
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_dsltool)
+then
+    provides dsltool version 4.0.0
+    depends on fli4l version 4.0
+    set use_rrd="no"
+    set use_debug="no"
+    
+    foreach n in DSLTOOL_N
+    do
+        # check modem and protocol match 
+        set modem=DSLTOOL_%_MODEM[n]
+        set protocol=DSLTOOL_%_PROTOCOL[n]
+        set rrd=DSLTOOL_%_RRD[n]
+        set debug=DSLTOOL_%_DEBUG[n]
+        
+        if (modem =~ "(RE:DSLTOOLMODEMDEMO)")
+        then
+            if (protocol != "demo")
+            then
+                error "DSLTOOL_${n}_PROTOCOL must be 'demo' when DSLTOOL_${n}_MODEM is '$modem'"
+            fi
+        else
+            if (modem =~ "(RE:DSLTOOLMODEMTELNET)")
+            then
+                if (protocol != "telnet")
+                then
+                    error "DSLTOOL_${n}_PROTOCOL must be 'telnet' when DSLTOOL_${n}_MODEM is '$modem'"
+                fi
+            else
+                if (modem =~ "(RE:DSLTOOLMODEMHTTP)")
+                then
+                    if (protocol != "http")
+                    then
+                        error "DSLTOOL_${n}_PROTOCOL must be 'http' when DSLTOOL_${n}_MODEM is '$modem'"
+                    fi
+                fi
+            fi
+        fi
+
+        if (rrd)
+        then
+            set use_rrd="yes"
+        fi
+        if (debug)
+        then
+            set use_debug="yes"
+        fi
+        
+        # add modem and protocol library
+        add_to_opt "usr/lib/libdsltool-$modem.so.${DSLTOOL_VERSION}"
+        add_to_opt "usr/lib/libdsltool-$protocol.so.${DSLTOOL_VERSION}"
+    done
+    
+    if (use_rrd == "yes")
+    then
+        add_to_opt "usr/bin/dsltoold" "mode=555"
+        add_to_opt "usr/bin/dsltoold.sh" "mode=555 flags=sh"
+        add_to_opt "etc/rc.d/rc950.dsltool" "mode=555 flags=sh"
+    fi
+
+    if (use_debug == "yes")
+    then
+        add_to_opt "usr/bin/dsltool-dump.sh" "mode=555 flags=sh"
+    fi    
+    
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+        add_to_opt "srv/www/admin/dsltool.cgi" "mode=555 flags=sh"
+        
+        if (use_rrd == "yes")
+        then
+            add_to_opt "srv/www/include/rrd-dsltool.inc" "mode=555 flags=sh"
+        fi
+
+        if (httpd_gui_lang == "auto")
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            stat("opt/srv/www/lang/dsltool.$lang", langfile)
+            if(langfile_res == "OK")
+            then
+                add_to_opt "srv/www/lang/dsltool.$lang" "mode=444 flags=sh"
+            else
+                warning "could not find 'srv/www/lang/dsltool.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/dsltool.en" "mode=444 flags=sh"
+            fi
+        done
+    fi
+
+    if (use_rrd)
+    then
+        depends on rrdtool version 4.0
+        if (opt_rrdtool) 
+        then
+            if (rrdtool_unixsock != "yes")
+            then
+                error "RRDTOOL_UNIXSOCK must be 'yes' when DSLTOOL_x_RRD is 'yes'"
+            fi
+        else
+            error "OPT_RRDTOOL must be 'yes' when DSLTOOL_x_RRD is 'yes'"
+        fi
+    fi
+fi

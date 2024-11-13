@@ -1,0 +1,65 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc006.dsltool                                __FLI4LVER__
+#
+# Creation:     06.02.2013  cspiess
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_DSLTOOL" = "yes" ]
+then
+    begin_script DSLTOOL "starting DSL-Tool"
+    
+    # add DSL tool support menu to httpd
+    # we only need to check if the file is here, since an ext
+    # script adds this file only if httpd is active
+    if [ -e /srv/www/admin/dsltool.cgi ]
+    then
+        log_info "add menu entry for DSL-Tool  to webgui"
+        httpd-menu.sh add -p 600 dsltool.cgi "DSL-Tool" "" dsltool
+    fi
+
+    # add dsltool types to collectd types.db
+    mk_writable /usr/share/collectd/types.db
+    # check all instances
+    for n in `seq 1 ${DSLTOOL_N}`
+    do
+        eval _rrd='$DSLTOOL_'$n'_RRD'
+        if [ "$_rrd" = "yes" ]
+        then
+            use_rrd=yes
+        fi
+    done
+    : ${use_rrd:=no}
+    
+    if [ "$use_rrd" = "yes" -a "$RRDTOOL_UNIXSOCK" = "yes" ]
+    then
+        {
+        cat <<EOF
+modemstate value:GAUGE:0:1
+noisemargin value:GAUGE:U:U
+attenuation value:GAUGE:U:U
+noisemargin1 value:GAUGE:U:U
+attenuation1 value:GAUGE:U:U
+noisemargin2 value:GAUGE:U:U
+attenuation2 value:GAUGE:U:U
+noisemargin3 value:GAUGE:U:U
+attenuation3 value:GAUGE:U:U
+noisemargin4 value:GAUGE:U:U
+attenuation4 value:GAUGE:U:U
+txpower value:GAUGE:U:U
+bandwidth value:GAUGE:U:U
+statistics value:GAUGE:U:U
+EOF
+        } >> /usr/share/collectd/types.db
+    fi
+    grep DSLTOOL /etc/rc.cfg > /var/run/dsltool.conf
+
+    # add services
+cat <<EOF>>/etc/services
+http            80/tcp
+telnet          23/tcp
+EOF
+
+   end_script
+fi
