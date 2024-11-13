@@ -1,0 +1,101 @@
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc400.samba - shut down samba
+#
+# Creation   : 20.01.2003 knuffel
+# Last Update: $Id$
+#----------------------------------------------------------------------------
+log_info "shutting down samba ..."
+sambanetsendbin='/bin/samba-netsend'
+
+if [ -f /boot/rc.cfg ]
+then
+    . /boot/rc.cfg
+fi
+
+if [ "$LOCALE" = "de" ]
+then
+    message="fli4l-samba-server auf `hostname` wird nun heruntergefahren..."
+else
+    message="fli4l-samba-server on `hostname` is going down now..."
+fi
+
+if [ -f "$sambanetsendbin" ]
+then
+    "$sambanetsendbin" "all" "$message"
+fi
+
+if [ -n "`cat /proc/mounts | grep smbfs`" ]
+then
+    cd /
+    for i in `cat /proc/mounts | grep smbfs | cut -d" " -f2`
+    do
+      echo "umounting smb filesystem in $i..."
+      smbumount $i
+
+      if [ $? -eq 0 ]
+      then
+          log_info "smb filesystem in $i umounted"
+      else
+          log_warn "cannot umount smb filesystem in $i!"
+      fi
+    done
+fi
+
+#for i in smbfs nls_iso8859-1 nls_cp850 nls_iso8859-2 nls_iso8859-5 nls_iso8859-7
+#do
+#  if [ -n "`lsmod | grep $i`" ]
+#  then
+#      rmmod "$i"
+
+#      if [ $? -eq 0 ]
+#      then
+#          log_info "$i unloaded"
+#      else
+#          log_warn "cannot rmmod $i!"
+#      fi
+#  fi
+#done
+
+smbdstopped='no'
+if [ -n "`ps | grep [s]mbd`" ]
+then
+    for i in `ps | grep [s]mbd | cut -c1-6`
+    do
+      kill -9 "$i" >/dev/null 2>&1
+
+      if [ $? -eq 0 ]
+      then
+          log_info "smbd with pid $i was stopped"
+	  smbdstopped='yes'
+      else
+          if [ "$smbdstopped" = "no" ]
+	  then
+	    log_warn "cannot stop smbd with pid $i!"
+	  fi
+      fi
+    done
+else
+    log_warn "smbd is not running!"
+fi
+
+nmbdstopped='no'
+if [ -n "`ps | grep [n]mbd`" ]
+then
+    for i in `ps | grep [n]mbd | cut -c1-6`
+    do
+      kill -9 "$i" >/dev/null 2>&1
+
+      if [ $? -eq 0 ]
+      then
+          log_info "nmbd with pid $i was stopped"
+	  nmbdstopped='yes'
+      else
+          if [ "$nmbdstopped" = "no" ]
+	  then
+            log_warn "cannot stop nmbd with pid $i!"
+	  fi
+      fi
+    done
+else
+    log_warn "nmbd is not running!"
+fi

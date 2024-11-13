@@ -1,0 +1,81 @@
+#! /bin/sh
+#------------------------------------------------------------------------------
+# /bin/smbprint - print to smb printer shares                      __FLI4LVER__
+#
+# Copyright (c) 2005 Thomas Bork, tom(at)fli4l(dot)de
+#
+# Creation   : 06.09.2004  tb
+# Last Update: $Id$
+#
+# reading the following variables set in the config file:
+# server
+# service
+# username (optional)
+# password
+# ip (optional)
+# debuglevel (optional)
+# trans (optional)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#------------------------------------------------------------------------------
+debugfile="/tmp/smb-print.log"
+>$debugfile
+eval acct_file=\${$#} 
+echo "acct_file is $acct_file" >>$debugfile
+config_file=$acct_file/.config
+echo "config_file is $config_file" >>$debugfile
+echo "reading config file:" >>$debugfile
+cat "$config_file" >>$debugfile
+echo "processing config file with debuglevel:" >>$debugfile
+
+. $config_file
+
+if [ "$debuglevel" = "0" ]
+then
+    rm -f $debugfile
+    debugargs=
+else
+    set -x
+    exec >>$debugfile 2>&1
+    debugargs="-l $debugfile -d $debuglevel"
+fi
+
+if [ "$password" = "" ]
+then
+    password="-N"
+fi
+
+if [ "$username" = "" ]
+then
+    username="$server";
+fi
+
+if [ "$smbconf" != "" ]
+then
+    smbconf="-s $smbconf"
+fi
+
+if [ "$ip" != "" ]
+then
+    ip="-I $ip"
+fi
+
+command="print - ;"
+
+if [ "$trans" = "1" ]
+then
+    command="translate;$command";
+fi
+
+/bin/smbclient \
+"\\\\$server\\$service" \
+$password \
+$smbconf \
+$ip \
+$debugargs \
+-U $username \
+-P \
+-c "$command"

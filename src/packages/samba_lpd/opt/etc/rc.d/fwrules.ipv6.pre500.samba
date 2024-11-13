@@ -1,0 +1,29 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/fwrules.ipv6.pre500.samba
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+pf6_in_samba_default () {
+    if [ "$SAMBA_BIND_ALL" = "yes" ]
+    then
+        for idx in $(seq 1 $IPV6_NET_N)
+        do
+            eval net=IPV6_NET_$idx
+            fw_append_rule6 filter INPUT "tmpl:samba $net ACCEPT" PF6_INPUT_ACCEPT_DEF
+        done
+    else
+        for idx in $(seq 1 $SAMBA_BIND_IPV6_N)
+        do
+            eval net=\$SAMBA_BIND_IPV6_$idx
+            fw_append_rule6 filter INPUT "tmpl:samba $net ACCEPT" PF6_INPUT_ACCEPT_DEF
+        done
+    fi
+}
+
+case $PF6_INPUT_ACCEPT_DEF in
+yes)
+    pf6_in_add_default pf6_in_samba_default
+    ;;
+esac

@@ -1,0 +1,753 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc455.samba - start samba                              __FLI4LVER__
+#
+# Creation   : 21.08.2000  fm
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+# smb_set <var name> <val> <default val>
+smb_set ()
+{
+    if [ "$2" ]; then
+        eval $1="'$2'"
+    else
+        eval $1="'$3'"
+    fi
+}
+
+# write printer configuration
+# $1 = printer identifier
+# $2 = comment
+write_printer_conf()
+{
+    cat <<EOF >>"$smbconffile"
+[$name]
+ comment = $2
+ browseable = yes
+ printable = yes
+ print command = $lprbin -U%U@%M -h -r -P$1 %s
+ lprm command = $lprmbin -U%U@%M -P$1 %j
+ lpq command = $lpqbin -U%U@%M -P$1
+ lppause command = $lpcbin -U%U@%M hold $1 %j
+ lpresume command = $lpcbin -U%U@%M release $1 %j
+ queuepause command  = $lpcbin -U%U@%M stop $1
+ queueresume command = $lpcbin -U%U@%M start $1
+ create mode = 0700
+ printer = $1
+ path = $smbspooldir
+ hosts allow = $lpnet1
+
+EOF
+}
+
+if [ "$OPT_SAMBA" = "yes" ]
+then
+    begin_script SAMBA "configuring samba on $HOSTNAME ..."
+
+    #--------------------------------------------------------------------------
+    # configuring parameters from config.txt:
+    #--------------------------------------------------------------------------
+    interface=''
+    sambahosts=''
+    start_samba='false'
+    smbconffile='/etc/samba/smb.conf'
+    smbpasswdfile='/etc/samba/smbpasswd'
+    msgcmdinfo=log_info
+    lpqbin='/usr/bin/lpq'
+    lprbin='/usr/bin/lpr'
+    lprmbin='/usr/bin/lprm'
+    lpcbin='/usr/sbin/lpc'
+    sambanetsendbin='/bin/samba-netsend'
+    smbdbin='/usr/sbin/smbd'
+    nmbdbin='/usr/sbin/nmbd'
+    smbtdbdir='/var/lib/samba'
+    smbspooldir='/var/spool/samba'
+
+    if [ "$LOCALE" = "de" ]
+    then
+        message="fli4l-samba-server auf $HOSTNAME ist nun gestartet..."
+    else
+        message="fli4l-samba-server on $HOSTNAME is up now..."
+    fi
+
+    idx='1'
+    idy='0'
+
+    mkdir -p /etc/samba
+    mkdir -p /var/lock/samba
+    >/var/lock/samba/STATUS..LCK
+    >/etc/samba/smbpasswd
+
+    #------------------------------------------------------------------
+    # prepare log files:
+    #------------------------------------------------------------------
+    case $SAMBA_LOG in
+    ''|no|0)
+        ;;
+    *)
+        if [ -z $SAMBA_LOGDIR ]
+        then
+            data_mount=`sed -n 's/^[^ ]\+ \/data \([^ ]\+\) rw.*/\1/p' < /proc/mounts`
+            case "$data_mount" in
+              minix | ext2 | ext3 | ext4)
+                  SAMBA_LOGDIR='/data' ;;
+              *)
+                  SAMBA_LOGDIR='/var/log' ;;
+            esac
+        fi
+        
+        mkdir -p "$SAMBA_LOGDIR"
+        if [ ! -d "$SAMBA_LOGDIR" ]; then
+            log_error "failed to create samba log dir '$SAMBA_LOGDIR', disabling logging"
+            SAMBA_LOGDIR='/var/log'
+            SAMBA_LOG='no'
+        fi
+        ;;
+    esac
+
+    #------------------------------------------------------------------
+    # enable/disable logging:
+    #------------------------------------------------------------------
+    case $SAMBA_LOG in
+    ''|no|0)
+        loglevel=0
+        ;;
+    yes)
+        loglevel=1
+        ;;
+    *)
+        loglevel=$SAMBA_LOG
+        ;;
+    esac
+
+    if [ ! -f "$smbconffile" ]
+    then
+        #----------------------------------------------------------------------
+        # configuring interfaces and networks for samba:
+        #----------------------------------------------------------------------
+        if [ "$SAMBA_BIND_ALL" = "yes" ]
+        then
+            for idx in `seq 1 $IP_NET_N`
+            do
+                eval net=IP_NET_$idx
+                translate_ip_net $net IP_NET_$idx || continue
+
+                for addr in $res
+                do
+                    netmask=${addr##*/}
+                    network=$(netcalc network $addr)
+                    
+                    interface="$interface $addr"
+                    sambahosts="$sambahosts $network/$netmask"
+                done
+            done
+            for idx in `seq 1 ${IPV6_NET_N:-0}`
+            do
+                eval net=IPV6_NET_$idx
+                translate_ip6_net $net IPV6_NET_$idx || continue
+
+                for addr in $res
+                do
+                    netmask=${addr##*/}
+                    network=$(netcalc network $addr)
+                    
+                    interface="$interface $addr"
+                    sambahosts="$sambahosts $network/$netmask"
+                done
+            done
+        else
+            for idx in $(seq 1 $SAMBA_BIND_IPV4_N)
+            do
+                eval net=\$SAMBA_BIND_IPV4_$idx
+                translate_ip_net $net SAMBA_BIND_IPV4_$idx || continue
+
+                for addr in $res
+                do
+                    netmask=${addr##*/}
+                    network=$(netcalc network $addr)
+                    
+                    interface="$interface $addr"
+                    sambahosts="$sambahosts $network/$netmask"
+                done
+            done
+            for idx in $(seq 1 $SAMBA_BIND_IPV6_N)
+            do
+                eval net=\$SAMBA_BIND_IPV6_$idx
+                translate_ip6_net $net SAMBA_BIND_IPV6_$idx || continue
+
+                for addr in $res
+                do
+                    netmask=${addr##*/}
+                    network=$(netcalc network $addr)
+                    
+                    interface="$interface $addr"
+                    sambahosts="$sambahosts $network/$netmask"
+                done
+            done
+        fi
+
+        # kristov: TODO: reinstall support for ppp/serial-server
+        if false && [ "$OPT_PPP" = "yes" ]
+        then
+            eval network='$PPP_NETWORK'
+            eval netmask='$PPP_NETMASK'
+
+            if ip route show | grep -q $network
+            then
+                interface="$interface $PPP_IPADDR/$netmask"
+                sambahosts="$sambahosts $network/$netmask"
+            fi
+        fi
+
+        if [ -n "$SAMBA_TRUSTED_NETS" ]
+        then
+            for i in $SAMBA_TRUSTED_NETS
+            do
+                network=`netcalc network $i`
+                netmask=`netcalc netmask $i`
+                var=$network/$netmask
+
+                if ! echo "$sambahosts" | grep -q $var
+                then
+                    sambahosts="$sambahosts $var"
+                fi
+            done
+        fi
+
+        if [ -z "$interface" ]
+        then
+            start_samba='false'
+            log_error "no interfaces available - samba will be not activated!"
+            sleep 5
+        else
+            start_samba='true'
+            log_info "samba on $HOSTNAME will be activated for interface(s):"
+            log_info "$interface"
+            log_info "samba on $HOSTNAME will be activated for network(s):"
+            log_info "$sambahosts"
+        fi
+
+        wins_support='no'
+        wins_proxy='no'
+        wins_server=''
+
+        if [ "$OPT_NMBD" = "yes" ]
+        then
+            if [ "$NMBD_MASTERBROWSER" = "yes" ]
+            then
+                oslevel='255'
+                localmaster='yes'
+                preferredmaster='yes'
+                announce=''
+                sync=''
+
+                [ 0"$NMBD_REMOTE_ANNOUNCE_N" -eq 0 ] || for idx in `seq 1 $NMBD_REMOTE_ANNOUNCE_N`; do
+                    eval network='$NMBD_REMOTE_ANNOUNCE_'$idx'_NETWORK'
+                    eval netmask='$NMBD_REMOTE_ANNOUNCE_'$idx'_NETMASK'
+                    broadcast=`netcalc broadcast $network $netmask`
+                    eval workgroup='$NMBD_REMOTE_ANNOUNCE_'$idx'_WORKGROUP'
+
+                    announce="$announce $broadcast/$workgroup"
+                    sync="$sync $broadcast"
+                done
+
+                if [ "$NMBD_DOMAIN_MASTERBROWSER" = "yes" ]
+                then
+                    domainmaster='yes'
+                else
+                    domainmaster='no'
+                fi
+            else
+                oslevel='0'
+                localmaster='no'
+                preferredmaster='no'
+                domainmaster='no'
+            fi
+
+            #------------------------------------------------------------------
+            # create wins options:
+            #------------------------------------------------------------------
+            if [ "$NMBD_WINSSERVER" = "yes" ]
+            then
+                wins_support='yes'
+                log_info "samba on $HOSTNAME will act as an WINS-Server"
+            else
+                if [ -n "$NMBD_EXTWINSIP" ]
+                then
+                    wins_server="$NMBD_EXTWINSIP"
+                    wins_proxy='yes'
+
+                    log_info "external WINS-Server for $HOSTNAME is:"
+                    log_info "$wins_server"
+                    log_info "samba on $HOSTNAME will act as an WINS-Proxy of:"
+                    log_info "$wins_server"
+                fi
+            fi
+        else
+            oslevel='0'
+            localmaster='no'
+            preferredmaster='no'
+            domainmaster='no'
+        fi
+
+        #----------------------------------------------------------------------
+        # create global config, could be overwritten with shares:
+        #----------------------------------------------------------------------
+        map2persistent SAMBA_TDBPATH /db
+        if [ -n "$SAMBA_TDBPATH" ]
+        then
+            if mkdir -p "$SAMBA_TDBPATH"
+            then
+                log_info "Samba TDB directory $SAMBA_TDBPATH on $HOSTNAME created"
+                mkdir -p "$(dirname "$smbtdbdir")"
+                ln -s "$SAMBA_TDBPATH" "$smbtdbdir"
+                smbtdbdir="$SAMBA_TDBPATH"
+            else
+                log_error "cannot create spool directory $SAMBA_TDBPATH on $HOSTNAME!"
+            fi
+        fi
+        if [ ! -e "$smbtdbdir" ]
+        then
+            mkdir -p "$smbtdbdir"
+            log_warn "Samba: storing TDBs in rootfs ramdisk!"
+            log_warn "After rebooting, any information about installed printer drivers will be gone!"
+        fi
+        mkdir -p "$smbtdbdir/private"
+
+        cat <<EOF >"$smbconffile"
+#----------------------------------------------------------------------------
+# $smbconffile
+# automatically created by rc455.samba
+#----------------------------------------------------------------------------
+[global]
+ workgroup = $SAMBA_WORKGROUP
+ serverstring = samba-server on $HOSTNAME
+ interfaces = $interface
+ bind interfaces only = yes
+ os level = $oslevel
+ local master = $localmaster
+ preferred master = $preferredmaster
+ domain master = $domainmaster
+ wins support = $wins_support
+ wins server = $wins_server
+ wins proxy = $wins_proxy
+ dns proxy = no
+ time server = yes
+ hosts allow = localhost $sambahosts
+ guest account = nobody
+ keep alive = 30
+ browseable = yes
+ public = yes
+ security = user
+ printing = lprng
+ load printers = no
+ socket options = TCP_NODELAY IPTOS_LOWDELAY SO_KEEPALIVE
+ case sensitive = no
+ default case = lower
+ preserve case = yes
+ short preserve case = yes
+ dos filetimes = yes
+ dos filetime resolution = yes
+ deadtime = 5
+ dfree command = /usr/bin/dfree
+ remote announce = $announce
+ remote browse sync = $sync
+ encrypt passwords = yes
+ delete readonly = yes
+ message command = sh -c 'rm %s' &
+ log level = $loglevel
+ cache directory = /var/lock/samba
+ state directory = $smbtdbdir
+
+ acl map full control = no
+ auth methods = guest sam
+ csc policy = disable
+ force unknown acl user = yes
+ nt acl support = no
+ passdb backend  = smbpasswd
+ unix charset = UTF8
+ client schannel = no
+ server schannel = no
+ client signing = disabled
+ client use spnego = no
+ guest only = yes
+ map to guest = bad user
+EOF
+
+        #----------------------------------------------------------------------
+        # create printer admin entry
+        #----------------------------------------------------------------------
+        if [ -n "$SAMBA_PRINT_ADMIN_NAME" ]
+        then
+            echo "printer admin = $SAMBA_PRINT_ADMIN_NAME" >> "$smbconffile"
+        fi
+
+        #----------------------------------------------------------------------
+        # create printcap entry if OPT_LPD is enabled
+        #----------------------------------------------------------------------
+        if [ "$OPT_LPD" = "yes" ]
+        then
+            echo " printcap name = /etc/printcap" >>"$smbconffile"
+        else
+            echo " printcap name = /dev/null" >>"$smbconffile"
+        fi
+
+        echo >> "$smbconffile"
+
+        #----------------------------------------------------------------------
+        # create samba printer admin user
+        #----------------------------------------------------------------------
+        if [ "$OPT_LPD" = "yes" -a "$OPT_SAMBA_POINT_AND_PRINT" = "yes" ]
+        then
+            smbprintdriversdir="$smbtdbdir/printers"
+            mkdir -p "$smbprintdriversdir"
+            for dir in COLOR IA64 W32ALPHA W32MIPS W32PPC W32X86 WIN40 X64
+            do 
+                mkdir -p "$smbprintdriversdir/$dir"
+            done
+            chown -R root:root "$smbprintdriversdir/"
+
+            > "$smbpasswdfile"
+            echo "$SAMBA_PRINT_ADMIN_PASSWORD" | tee - | smbpasswd -a -s $SAMBA_PRINT_ADMIN_NAME
+            cat <<EOF >>"$smbconffile"
+[print$]
+ path = $smbprintdriversdir
+ comment = Printer Drivers
+ browseable = yes
+ read only = yes
+ guest ok = yes
+ write list = $SAMBA_PRINT_ADMIN_NAME
+ force user = root
+ force group = root
+ oplocks = no
+ level2 oplocks = no
+
+EOF
+        fi
+
+        #----------------------------------------------------------------------
+        # create share for fli4l root directory:
+        #----------------------------------------------------------------------
+        if [ -n "$SAMBA_ADMINIP" ]
+        then
+            rootavailable='yes'
+            rootbrowseable='yes'
+            adminip="$SAMBA_ADMINIP"
+            log_info "root-directory on $HOSTNAME will be accessable for network(s):"
+            log_info "$adminip"
+
+            cat <<EOF >>"$smbconffile"
+[root]
+ comment = root-filesystem on $HOSTNAME
+ browseable = $rootbrowseable
+ available = $rootavailable
+ read only = no
+ path = /
+ hosts allow = $adminip
+ force user = root
+ dont descend = proc
+
+EOF
+        fi
+
+        #----------------------------------------------------------------------
+        # create share(s)for samba fileserver:
+        #----------------------------------------------------------------------
+
+        log_info "     configuring shares"
+        cat <<EOF >>"$smbconffile"
+#----------------------------------------------------------------------------
+# create share(s)for samba fileserver:
+# automatically created by rc455.samba
+#----------------------------------------------------------------------------
+
+EOF
+
+        [ 0"$SAMBA_SHARE_N" -eq 0 ] || for idx in `seq 1 $SAMBA_SHARE_N`; do
+            eval name='$SAMBA_SHARE_'$idx'_NAME'
+            eval write='$SAMBA_SHARE_'$idx'_RW'
+            eval browse='$SAMBA_SHARE_'$idx'_BROWSE'
+            eval path='$SAMBA_SHARE_'$idx'_PATH'
+            eval hosts='$SAMBA_SHARE_'$idx'_NET'
+
+            if [ ! -d "$path" ]
+            then
+                mkdir -p $path
+                if [ -d $path ]
+                then
+                    log_info "     directory $path for share $name on $HOSTNAME created" cy
+                else
+                    log_error "cannot create directory $path for share $name on $HOSTNAME!"
+                    log_error "check OPT_MOUNT and SAMBA_SHARE_PATH!"
+                fi
+            else
+                log_info "     directory for share $name on $HOSTNAME already exists"
+            fi
+
+            if [ "$hosts" != '' ]    # which net will be allowed to access the share?
+            then                     # net is defined
+                hosts1=$hosts        # net in SAMBA_SHARE_NET_X will be allowed
+                log_info "     share $name on $HOSTNAME will be accessable for network(s):"
+                log_info "     $hosts1"
+            else                     # net is not defined
+                hosts1=$sambahosts   # net in IP_ETH_X_NETWORK/$IP_ETH_X_NETMASK will be allowed
+                log_info "     share $name on $HOSTNAME will be accessable for network(s):"
+                log_info "     $hosts1"
+            fi
+
+            cat <<EOF >>"$smbconffile"
+[$name]
+   comment = share $name on $HOSTNAME
+   browseable = $browse
+   available = yes
+   writeable = $write
+   path = $path
+   hosts allow = $hosts1
+   force user = root
+
+EOF
+        done
+
+        #----------------------------------------------------------------------------
+        # create share(s) for cdrom(s):
+        #----------------------------------------------------------------------------
+
+        [ 0"$SAMBA_CDROM_N" -eq 0 ] || for idx in `seq 1 $SAMBA_CDROM_N`; do
+            eval dev='$SAMBA_CDROM_'$idx'_DEV'
+            eval hosts='$SAMBA_CDROM_'$idx'_NET'
+            path=''
+
+            if [ "$hosts" != '' ]    # which net will be allowed to access the share?
+            then                     # net is defined
+                hosts1=$hosts        # net in SAMBA_CDROM_NET_X will be allowed
+                log_info "     cdrom$idx on $HOSTNAME will be accessable for network(s):"
+                log_info "     $hosts1"
+            else                     # net is not defined
+                hosts1=$sambahosts   # net in IP_ETH_X_NETWORK/$IP_ETH_X_NETMASK will be allowed
+                log_info "     cdrom$idx on $HOSTNAME will be accessable for network(s):"
+                log_info "     $hosts1"
+            fi
+
+            if cat /proc/mounts | grep -q $dev
+            then                     # found mounted cdrom$idx
+                log_info "     cdrom$idx already mounted"
+                path=`cat /proc/mounts | grep /dev/$dev | cut -d" " -f2`  # cut mountpath for sharing
+                log_info "     path for cdrom$idx is $path"
+                exec=false
+            else                     # cdrom$idx not mounted
+                log_error "     cdrom$idx not mounted"
+                path=/mnt/cdrom$idx
+                log_error "     path for cdrom$idx is $path"
+                exec=true
+
+                if [ ! -d /mnt/cdrom$idx ]
+                then
+                    mkdir -p /mnt/cdrom$idx
+                fi
+            fi
+
+            cat <<EOF >>"$smbconffile"
+[cdrom$idx]
+   comment = cdrom$idx on $HOSTNAME at device $dev
+   read only = yes
+   hosts allow = $hosts1
+   path = $path
+
+EOF
+
+
+            if [ "$exec" = "true" ]
+            then
+                cat <<EOF >>"$smbconffile"
+   root preexec = /bin/mount -t iso9660 /dev/$dev /mnt/cdrom$idx -o ro
+   root postexec = /bin/umount /dev/$dev
+EOF
+
+            fi
+        done
+
+        #----------------------------------------------------------------------
+        # configuring printer share(s):
+        #----------------------------------------------------------------------
+        if [ "$OPT_LPD" = "yes" ]
+        then
+            map2persistent SAMBA_SPOOLPATH /spool
+            if [ -n "$SAMBA_SPOOLPATH" ]
+            then
+                if mkdir -p "$SAMBA_SPOOLPATH"
+                then
+                    log_info "Samba print spooling directory $SAMBA_SPOOLPATH on $HOSTNAME created"
+                    rm -rf "$SAMBA_SPOOLPATH"/*
+                    ln -s "$SAMBA_SPOOLPATH" "$smbspooldir"
+                else
+                    log_error "cannot create spool directory $SAMBA_SPOOLPATH on $HOSTNAME!"
+                fi
+            fi
+            if [ ! -e "$smbspooldir" ]
+            then
+                mkdir -p "$smbspooldir"
+                log_warn "Samba: spooling into rootfs ramdisk!"
+                log_warn "big jobs can break router functionality!"
+            fi
+            chmod 1777 "$smbspooldir"
+
+            if [ "$OPT_LPD_PARPORT" = "yes" ]
+            then
+                #----------------------------------------------------------
+                # create share(s) for local parallel printer(s):
+                #----------------------------------------------------------
+                [ 0"$LPD_PARPORT_N" -eq 0 ] || for idx in `seq 1 $LPD_PARPORT_N`; do
+                    eval lpname='$LPD_PARPORT_'$idx'_SAMBA_NAME'
+                    eval lpnet='$LPD_PARPORT_'$idx'_SAMBA_NET'
+                    eval port='$LPD_PARPORT_'$idx'_IO'
+
+                    smb_set name   "$lpname" "pr$idx"
+                    smb_set lpnet1 "$lpnet"  "$sambahosts"
+
+                    log_info "printer pr$idx on $HOSTNAME at port $port will be accessable for network(s):"
+                    log_info "$lpnet1"
+
+                    write_printer_conf pr$idx "local printer pr$idx on $HOSTNAME at port $port"
+                done
+            fi
+
+            if [ "$OPT_LPD_USBPORT" = "yes" ]
+            then
+                #----------------------------------------------------------
+                # create share(s) for local usb printer(s):
+                #----------------------------------------------------------
+                [ 0"$LPD_USBPORT_N" -eq 0 ] || for idx in `seq 1 $LPD_USBPORT_N`; do
+                    eval lpname='$LPD_USBPORT_'$idx'_SAMBA_NAME'
+                    eval lpnet='$LPD_USBPORT_'$idx'_SAMBA_NET'
+
+                    smb_set name   "$lpname" "usbpr$idx"
+                    smb_set lpnet1 "$lpnet"  "$sambahosts"
+
+                    log_info "printer usbpr$idx on $HOSTNAME will be accessable for network(s):"
+                    log_info "$lpnet1"
+
+                    write_printer_conf usbpr$idx "local printer usbpr$idx on $HOSTNAME"
+                done
+            fi
+
+            if [ "$OPT_LPD_REMOTE" = "yes" ]
+            then
+                #----------------------------------------------------------
+                # create share(s) for remote printer(s):
+                #----------------------------------------------------------
+                [ 0"$LPD_REMOTE_N" -eq 0 ] || for idx in `seq 1 $LPD_REMOTE_N`; do
+                    eval lpname='$LPD_REMOTE_'$idx'_SAMBA_NAME'
+                    eval lpnet='$LPD_REMOTE_'$idx'_SAMBA_NET'
+                    eval ip='$LPD_REMOTE_'$idx'_IP'
+                    eval remotequeuename='$LPD_REMOTE_'$idx'_QUEUENAME'
+
+                    smb_set name   "$lpname" "repr$idx"
+                    smb_set lpnet1 "$lpnet"  "$sambahosts"
+
+                    log_info "printer repr$idx on $HOSTNAME for ip $ip will be accessable for network(s):"
+                    log_info "$lpnet1"
+
+                    write_printer_conf repr$idx "remote printer repr$idx on $HOSTNAME for ip $ip queue $remotequeuename"
+                done
+            fi
+
+            if [ "$OPT_LPD_SMBREMOTE" = "yes" ]
+            then
+                    #----------------------------------------------------------
+                    # create share(s) for remote smb printer(s):
+                    #----------------------------------------------------------
+                [ 0"$LPD_SMBREMOTE_N" -eq 0 ] || for idx in `seq 1 $LPD_SMBREMOTE_N`; do
+                    eval lpname='$LPD_SMBREMOTE_'$idx'_SAMBA_NAME'
+                    eval lpnet='$LPD_SMBREMOTE_'$idx'_SAMBA_NET'
+                    eval server='$LPD_SMBREMOTE_'$idx'_SERVER'
+                    eval service='$LPD_SMBREMOTE_'$idx'_SERVICE'
+
+                    smb_set name   "$lpname" "smbrepr$idx"
+                    smb_set lpnet1 "$lpnet"  "$sambahosts"
+
+                    log_info "printer smbrepr$idx on $HOSTNAME for winprinter $service will be accessable for network(s):"
+                    log_info "$lpnet1"
+
+                    write_printer_conf smbrepr$idx "smb remote printer smbrepr$idx on $HOSTNAME for smb server $server winprinter $service"
+                done
+            fi
+        fi
+
+        #----------------------------------------------------------------------
+        # starting nmbd and smbd, if configured from fli4l:
+        #----------------------------------------------------------------------
+        if [ "$start_samba" = "true" ]
+        then
+            if [ -f "$nmbdbin" ]
+            then
+                begin_script SAMBA "starting netbios nameserver on $HOSTNAME ..."
+                "$nmbdbin" -D -l "$SAMBA_LOGDIR"
+
+                if [ $? -ne 0 ]
+                then
+                    log_error "cannot start nmbd on $HOSTNAME!"
+                    log_error "check OPT_NMBD and if HOSTNAME of fli4l exists under HOST_x in dns_dhcp.txt!"
+                fi
+	        end_script
+            fi
+
+            if [ -f "$smbdbin" ]
+            then
+                begin_script SAMBA "starting samba on $HOSTNAME ..."
+                "$smbdbin" -D -l "$SAMBA_LOGDIR"
+
+                if [ $? -ne 0 ]
+                then
+                    log_error "cannot start samba on $HOSTNAME!"
+                    log_error "check OPT_SAMBA!"
+                fi
+		end_script
+            fi
+
+            #------------------------------------------------------------------
+            # load smbfs.o, nls-files are already loaded by rc010.nls
+            #------------------------------------------------------------------
+            [ "$SAMBA_TOOLS" = yes ] && do_modprobe smbfs
+
+            #------------------------------------------------------------------
+            # show samba start message:
+            #------------------------------------------------------------------
+            if [ -f "$sambanetsendbin" ]
+            then
+                "$sambanetsendbin" "all" "$message" &
+            fi
+        fi
+    else
+        # ---------------------------------------------------------------------
+        # starting nmbd and smbd, if configured by individual smb.conf:
+        #----------------------------------------------------------------------
+        if [ -f "$nmbdbin" ]
+        then
+            begin_script SAMBA "starting netbios nameserver on $HOSTNAME ..."
+            "$nmbdbin" -D -l "$nmblog"
+
+            if [ $? -ne 0 ]
+            then
+                log_error "cannot start nmbd on $HOSTNAME!"
+                log_error "check OPT_NMBD and if HOSTNAME of fli4l exists under HOST_x in dns_dhcp.txt!"
+            fi
+	    end_script
+        fi
+
+        if [ -f "$smbdbin" ]
+        then
+            begin_script SAMBA "starting samba on $HOSTNAME ..."
+            "$smbdbin" -D -l "$smblog"
+
+            if [ $? -ne 0 ]
+            then
+                log_error "cannot start samba on $HOSTNAME!"
+                log_error "check OPT_SAMBA and your smb.conf!"
+            fi
+	    end_script
+        fi
+    fi
+
+    end_script
+fi

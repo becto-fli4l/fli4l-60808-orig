@@ -1,0 +1,2042 @@
+% Synchronized to r35642
+\section{SAMBA\_LPD - Support For Windows Print- And File Services In A fli4l Network}
+
+The package \var{SAMBA\_\-LPD} consist of the OPT packages
+
+\begin{itemize}
+\item \var{OPT\_\-SAMBA} - Samba as a file and print server
+\item \var{OPT\_\-SAMBATOOLS} - tools for Samba like i.e.
+  for sending messages to Windows clients, mounting of
+  network shares to the router's file system, ...
+\item \var{OPT\_\-NMBD} - NETBIOS name server (support for network shares)
+\item \var{OPT\_\-LPD} - printer support
+\end{itemize}
+
+Although all four OPT packages are combined into one installation package,
+they may be enabled or disabled all individually. When disabling you loose the
+functionality of the according OPT. An exception is \var{OPT\_\-NMBD}, which does
+not work without \var{OPT\_\-SAMBA}.
+
+\wichtig{When using \var{OPT\_\-LPD} you have to disable \var{OPT\_\-LPDSRV}!}
+
+The individual OPT packages are described in the following sections.
+
+\marklabel{sec:OPTSAMBA}{\subsection {OPT\_SAMBA - Samba As A File- And Print Server}}
+\configlabel{OPT\_SAMBA}{OPTSAMBA}
+
+
+    With \var{OPT\_\-SAMBA}='yes' Windows clients may print directly over the SMB protocol.
+    No additional client software (except for the printer driver) is needed.
+
+    The most important precondition for printing over Samba is always setting
+     \smalljump{sec:OPTLPD}{\var{OPT\_LPD}}='yes'!
+
+    Furthermore, this optional package provides rudimentary
+    file server functions.
+    Rudimentary is because fli4l has no user management, and therefore the
+    shares are not restricted. If a full-blown file server is needed, better use
+
+        \altlink{http://www.eisfair.org/}.
+
+    The version of Samba integrated in this system is always up
+    to date and has no problems neither with large partitions nor with
+    its use as a Primary Domain Controller (PDC). The configuration is similar
+    to fli4l's and thus simple. Samba for fli4l is primarily intended for a simpler
+    printer configuration under Windows.
+
+    It is possible to install Samba without Nmbd (NetBios Name Server, see \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}})
+    because both together need a lot of free space on the boot medium.
+
+    Hence the programs normally belonging together have been split into single OPT-
+    packages - \var{OPT\_\-SAMBA} und \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}}.
+    Although this OPT packages are tied to a big Package together with \smalljump{sec:OPTLPD}{\var{OPT\_LPD}}
+    they may be activated individually.
+    An exception is \var{OPT\_\-NMBD}, which does not work without \var{OPT\_\-SAMBA}.
+
+    Those that do not need network neighborhood browsing under Windows set
+    \var{OPT\_\-SAMBA}='yes' and \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}}='no'.
+    Although the printer shares are not shown under Windows, they may as well be
+    accessed if the path to them is known. A detailed description can be found later
+    under ``Setting up a Windows-SMB client with Samba activated (OPT\_SAMBA='yes')''.
+
+    Those that need network neighborhood browsing under Windows set
+\begin{example}
+\begin{verbatim}
+    OPT_SAMBA='yes' and OPT_NMBD='yes'.
+\end{verbatim}
+\end{example}
+
+    Regarding the firewall: if \verb+PF_INPUT_ACCEPT_DEF='yes'+ (resp.
+    \verb+PF6_INPUT_ACCEPT_DEF='yes'+ for IPv6) is set, then rules will be added
+    to the the INPUT chain which will open the Samba ports (137--139 and 445)
+    for access from the nets configured (see variables
+    \jump{SAMBABINDALL}{\var{SAMBA\_BIND\_ALL}},
+    \jump{SAMBABINDIPV4x}{\var{SAMBA\_BIND\_IPV4\_x}} and
+    \jump{SAMBABINDIPV6x}{\var{SAMBA\_BIND\_IPV6\_x}}). If specifying
+    \verb+PF_INPUT_ACCEPT_DEF='no'+ (resp. \verb+PF6_INPUT_ACCEPT_DEF='no'+ for
+    IPv6) you will have to ensure access for your clients manually.
+
+\begin{description}
+\config{SAMBA\_WORKGROUP}{SAMBA\_WORKGROUP}{SAMBAWORKGROUP}
+
+    In order for the printer shares to become visible in the workgroup defined
+    in Windows, the workgroup name for Samba must match the Windows' workgroup name.
+    If for example on Windows the workgroup name is ``workgroup'', this variable must
+    be defined as follows:
+
+\begin{example}
+\begin{verbatim}
+    SAMBA_WORKGROUP='workgroup'
+\end{verbatim}
+\end{example}
+
+    This is also the default setting.
+
+\config{SAMBA\_TRUSTED\_NETS}{SAMBA\_TRUSTED\_NETS}{SAMBATRUSTEDNETS}
+
+    Which nets are allowed to access Samba?
+
+    This parameter defines which nets should be able to access Samba.
+    Samba determines and considers the internal networks from fli4l's
+    basic settings when creating a new configuration. For security reasons
+    only computers from these networks are permitted access.
+    If computers from other networks should be able to access Samba, they
+    must be configured separately here. It is sufficient to specify the
+    additional networks like this:
+
+\begin{example}
+\begin{verbatim}
+    NETWORK/NETMASK
+\end{verbatim}
+\end{example}
+
+     for example the net 192.168.6.0:
+
+\begin{example}
+\begin{verbatim}
+     SAMBA_TRUSTED_NETS='192.168.6.0/24'
+\end{verbatim}
+\end{example}
+
+    Default Setting: \var{SAMBA\_\-TRUSTED\_\-NETS}=''
+
+
+\config{SAMBA\_LOG}{SAMBA\_LOG}{SAMBALOG} Logging errors in log.smb and log.nmb:
+    'yes' or 'no'
+
+    This variable specifies whether actions are recorded in the files
+    log.smb and log.nmb or not. To which directory these files are written
+    is decided using \smalljump{SAMBALOGDIR}{\var{SAMBA\_LOGDIR}}
+    or by the selected installation type. The variable should only
+    be set to 'yes' for debugging, because the log files may be written
+    to the RAM disk, depending on the setting for \smalljump{SAMBALOGDIR}{\var{SAMBA\_LOGDIR}}
+    and cause overflows there. \var{SAMBA\_\-LOG} applies to both
+    \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}} and \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}},
+    because they both depend on and won't run without each other.
+    If you set \var{SAMBA\_\-LOG}='no' we urge you to read what to obey for
+    \smalljump{SAMBALOGDIR}{\var{SAMBA\_LOGDIR}}.
+
+    Default Setting: \var{SAMBA\_\-LOG}='no'
+
+
+\config{SAMBA\_LOGDIR}{SAMBA\_LOGDIR}{SAMBALOGDIR}
+
+    The log directory for the files log.smb and log.nmb
+
+    This variable sets the directory to which the
+    files log.smb and log.nmb are written. The variable can
+    either be empty or must hold an absolute path to a
+    writable directory. An absolute path always starts
+    with a '/'. The directory has to exist already.
+    If the variable is empty, the presence of a writable
+    partition mounted under /data determines
+    where the log files are stored:
+
+    If no writable partition mounted under /data exists
+    (typically all installation types except for B) the files are
+    written to /var/log on the RAM disk.
+
+    If it exists the files will be written to /data (the data partition).
+
+    If the variable is not empty the files log.smb and log.nmb
+    will be written to the directory specified (if it is writable). Setting this
+    to a read only directory (i.e. the opt partition) does not make sense.
+    If the log files can not be written Samba may not start. So please think
+    carefully about the content of \var{SAMBA\_\-LOGDIR}.
+
+    If setting \smalljump{SAMBALOG}{\var{SAMBA\_LOG}}='no' the variable
+    \var{SAMBA\_\-LOGDIR} has to be either empty or point to a directory
+    on a linux file system (minix, ext2/3/4) because with
+    \smalljump{SAMBALOG}{\var{SAMBA\_LOG}}='no' log.smb and log.nmb will
+    be symlinked to /dev/null which only works there.
+    If you definitely do not want to have Samba log files or symlinks to
+    /var/log you may specify for example
+
+\begin{example}
+\begin{verbatim}
+     SAMBA_LOG='no'
+     SAMBA_LOGDIR='/tmp'
+\end{verbatim}
+\end{example}
+
+    In most use cases \var{SAMBA\_\-LOGDIR}='' is the right decision,
+    this is why this is the default setting.
+
+    Default Setting: \var{SAMBA\_\-LOGDIR}=''
+
+\config{SAMBA\_TDBPATH}{SAMBA\_TDBPATH}{SAMBATDBPATH}
+
+    This variable configures the directory where the Samba server stores
+    its data in so-called TDB files. Among other things these files
+    contain informations about which printer drivers have been uploaded
+    to the fli4l printer server (for details refer to section
+    \jump{sec:OPTSAMBAPOINTANDPRINT}{``Point'n'Print''}). The
+    actual printer drivers are also stored in this directory.
+    You can set this variable to `auto '; in this case fli4l
+    will create a directory on a persistent storage medium
+    and mount it under \texttt{/var/lib/persistent/samba/db}.
+
+    Default Setting: \verb+SAMBA_TDBPATH='auto'+
+
+    Example: \verb+SAMBA_TDBPATH='/data/samba/tdb'+
+
+\config{SAMBA\_SPOOLPATH}{SAMBA\_SPOOLPATH}{SAMBASPOOLPATH}
+
+    This variable configures the so-called spool directory for
+    incoming print jobs. When printed through the Samba protocol,
+    the print data will first be spooled to the directory set here before
+    being passed to the LPD print server. You may set this variable to
+    `auto', in this case fli4l will create a spool directory on a persistent
+    storage medium and mount it to \texttt{/var/lib/persistent/samba/spool}.
+
+    Please note that the content of this directory will be erased when starting
+    your fli4l router. So you should not specify a directory here that contains
+    other important data!
+
+    Default Setting: \verb+SAMBA_SPOOLPATH='auto'+
+
+    Example: \verb+SAMBA_SPOOLPATH='/data/samba/spool'+
+
+\config{SAMBA\_BIND\_ALL}{SAMBA\_BIND\_ALL}{SAMBABINDALL}
+
+    With \verb+SAMBA_BIND_ALL='yes'+ the Samba server will listen for queries
+    on \emph{all} available local network interfaces. If this is not desired
+    you have to set \verb+SAMBA_BIND_ALL='no'+ and in addition configure
+    the nets to be processed by the Samba server using the arrays \var{SAMBA\_BIND\_IPV4\_\%}
+    resp. \var{SAMBA\_BIND\_IPV6\_\%}.
+
+    Default Setting: \verb+SAMBA_BIND_ALL='no'+
+
+\configlabel{SAMBA\_BIND\_IPV4\_N}{SAMBABINDIPV4N}
+\config{SAMBA\_BIND\_IPV4\_x}{SAMBA\_BIND\_IPV4\_x}{SAMBABINDIPV4x}
+
+    If \verb+SAMBA_BIND_ALL='no'+, you have to use this array to configure the IPv4 nets
+    for which the Samba server will answer on queries.
+
+    Example:
+\begin{example}
+\begin{verbatim}
+    SAMBA_BIND_IPV4_N='1'
+    SAMBA_BIND_IPV4_1='IP_NET_1'
+\end{verbatim}
+\end{example}
+
+    Default Setting: \verb+SAMBA_BIND_IPV4_N='0'+
+
+\configlabel{SAMBA\_BIND\_IPV6\_N}{SAMBABINDIPV6N}
+\config{SAMBA\_BIND\_IPV6\_x}{SAMBA\_BIND\_IPV6\_x}{SAMBABINDIPV6x}
+
+    If \verb+SAMBA_BIND_ALL='no'+, you have to use this array to configure the IPv6 nets
+    for which the Samba server will answer on queries.
+
+    Example:
+\begin{example}
+\begin{verbatim}
+    SAMBA_BIND_IPV6_N='1'
+    SAMBA_BIND_IPV6_1='IPV6_NET_1'
+\end{verbatim}
+\end{example}
+
+    Default Setting: \verb+SAMBA_BIND_IPV6_N='0'+
+
+\config{LPD\_PARPORT\_x\_SAMBA\_NAME}{LPD\_PARPORT\_x\_SAMBA\_NAME}{LPDPARPORTxSAMBANAME}
+
+    Set the fli4l printer name in network neighborhood for the x'th printer on fli4l's parallel port
+    (\smalljump{LPDPARPORTxIO}{\var{LPD\_PARPORT\_x\_IO}}) here. Of course
+
+\begin{example}
+\begin{verbatim}
+    OPT_NMBD='yes'
+\end{verbatim}
+\end{example}
+
+    has to be set else it won't show up there. Valid names have a maximum of 8 characters
+    and only consist of chars or numbers. Umlauts and special characters like ä, ö, ü,
+    ß, \_, @, a.s.o. are not allowed!
+
+    If the variable is left empty the predefined printer name is used. This is
+    prx for local printers at the parallel port, x stands for 1, 2, 3 a.s.o., meaning the
+    first, second, third ... port.
+
+    Default Setting: \var{LPD\_\-PARPORT\_\-1\_\-SAMBA\_\-NAME}=''
+
+
+\config{LPD\_PARPORT\_x\_SAMBA\_NET}{LPD\_PARPORT\_x\_SAMBA\_NET}{LPDPARPORTxSAMBANET}
+
+    This variable can be used to control which hosts may use the local
+    printer at fli4l's x-th parallel port. You can use this to restrict access
+    to individual computers or individual subnets. By default the variable remains empty.
+    This enables all computers of the internal network (including all subnets) to print
+    on this printer (see \smalljump{LPDPARPORTxIO}{\var{LPD\_PARPORT\_x\_IO}}). With
+    two printers on fli4l's parallel ports
+    \textbf{\var{LPD\_\-PARPORT\_\-1\_\-SAMBA\_\-NET}} and
+    \textbf{\var{LPD\_\-PARPORT\_\-2\_\-SAMBA\_\-NET}} have to exist.
+
+    Set the variable like this:
+
+\begin{itemize}
+\item Specification of IP addresses in one line separated by spaces:
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_1_SAMBA_NET='192.168.6.2 192.168.0.1'
+\end{verbatim}
+\end{example}
+
+    With two nets 192.168.141.0/255.255.255.0 and
+    192.168.142.0/255.255.255.0 and one printer on the first parallel port:
+
+\item  Specification of an IP range without host part:
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_1_SAMBA_NET='192.168.141. 192.168.142.'
+\end{verbatim}
+\end{example}
+
+    or better
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_1_SAMBA_NET='192.168.'
+\end{verbatim}
+\end{example}
+
+    Please note the dot at the end!
+\end{itemize}
+
+    Default Setting: \var{LPD\_\-PARPORT\_\-1\_\-SAMBA\_\-NET}=''
+
+
+\config{LPD\_USBPORT\_x\_SAMBA\_NAME}{LPD\_USBPORT\_x\_SAMBA\_NAME}{LPDUSBPORTxSAMBANAME}
+
+    Set the fli4l network neighborhood name for the x'th printer on fli4l's USB port here.
+    Of course
+
+\begin{example}
+\begin{verbatim}
+    OPT_NMBD='yes'
+\end{verbatim}
+\end{example}
+
+    has to be set else it won't show up there. Valid names have a maximum of 8 characters
+    and only consist of chars or numbers. Umlauts and special characters like ä, ö, ü,
+    ß, \_, @, a.s.o. are not allowed!
+
+    If the variable is left empty the predefined printer name is used. This is
+    usbprx for local printers at the USB port, x stands for 1, 2, 3 a.s.o., meaning the
+    first, second, third ... port.
+
+    Default Setting: \var{LPD\_\-USBPORT\_\-1\_\-SAMBA\_\-NAME}=''
+
+\config{LPD\_USBPORT\_x\_SAMBA\_NET}{LPD\_USBPORT\_x\_SAMBA\_NET}{LPDUSBPORTxSAMBANET}
+
+    This variable can be used to control which hosts may use the local
+    printer at fli4l's x-th USB port. You can use this to restrict access
+    to individual computers or individual subnets. By default the variable remains empty.
+    This enables all computers of the internal network (including all subnets) to print
+    on this printer (see \smalljump{LPDPARPORTxIO}{\var{LPD\_PARPORT\_x\_IO}}). With
+    two printers on fli4l's USB ports
+    \textbf{\var{LPD\_\-USBPORT\_\-1\_\-SAMBA\_\-NET}} and
+    \textbf{\var{LPD\_\-USBPORT\_\-2\_\-SAMBA\_\-NET}} have to exist.
+
+    See \smalljump{LPDPARPORTxSAMBANET}{\var{LPD\_PARPORT\_x\_SAMBA\_NET}} for restricting
+    access to individual hosts or subnets.
+
+    Default Setting: \var{LPD\_\-USBPORT\_\-1\_\-SAMBA\_\-NET}=''
+
+
+\config{LPD\_REMOTE\_x\_SAMBA\_NAME}{LPD\_REMOTE\_x\_SAMBA\_NAME}{LPDREMOTExSAMBANAME}
+
+    Set the fli4l network neighborhood name for the x'th printer on fli4l's
+    \smalljump{LPDREMOTExIP}{\var{LPD\_REMOTE\_x\_IP}} here. Of course
+
+\begin{example}
+\begin{verbatim}
+    OPT_NMBD='yes'
+\end{verbatim}
+\end{example}
+
+    has to be set else it won't show up there. Valid names have a maximum of 8 characters
+    and only consist of chars or numbers. Umlauts and special characters like ä, ö, ü,
+    ß, \_, @, a.s.o. are not allowed!
+
+    If the variable is left empty the predefined printer name is used. This is
+    reprx for remote printers, x stands for 1, 2, 3 a.s.o., meaning the
+    first, second, third ... port.
+
+    Default Setting: \var{LPD\_\-REMOTE\_\-1\_\-SAMBA\_\-NAME}=''
+
+
+\config{LPD\_REMOTE\_x\_SAMBA\_NET}{LPD\_REMOTE\_x\_SAMBA\_NET}{LPDREMOTExSAMBANET}
+
+    This variable can be used to control which hosts may use fli4l's remote
+    printers. You can use this to restrict access
+    to individual computers or individual subnets. By default the variable remains empty.
+    This enables all computers of the internal network (including all subnets) to print
+    on this printer (see \smalljump{LPDREMOTExIP}{\var{LPD\_REMOTE\_x\_IP}}).
+
+    See \smalljump{LPDPARPORTxSAMBANET}{\var{LPD\_PARPORT\_x\_SAMBA\_NET}} for restricting
+    access to individual hosts or subnets.
+
+    Default Setting: \var{LPD\_\-REMOTE\_\-1\_\-SAMBA\_\-NET}=''
+
+
+\config{LPD\_SMBREMOTE\_x\_SAMBA\_NAME}{LPD\_SMBREMOTE\_x\_SAMBA\_NAME}{LPDSMBREMOTExSAMBANAME}
+
+    Set the fli4l network neighborhood name for the x'th printer on fli4l's
+    \smalljump{LPDSMBREMOTExSERVER}{\var{LPD\_SMBREMOTE\_x\_SERVER}} here. Of course
+
+\begin{example}
+\begin{verbatim}
+    OPT_NMBD='yes'
+\end{verbatim}
+\end{example}
+
+    has to be set else it won't show up there. Valid names have a maximum of 8 characters
+    and only consist of chars or numbers. Umlauts and special characters like ä, ö, ü,
+    ß, \_, @, a.s.o. are not allowed!
+
+    If the variable is left empty the predefined printer name is used. This is
+    smbreprx for SMB remote printers, x stands for 1, 2, 3 a.s.o., meaning the
+    first, second, third ... port.
+
+    Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-SAMBA\_\-NAME}=''
+
+
+\config{LPD\_SMBREMOTE\_x\_SAMBA\_NET}{LPD\_SMBREMOTE\_x\_SAMBA\_NET}{LPDSMBREMOTExSAMBANET}
+
+    This variable can be used to control which hosts may use fli4l's smb remote
+    printers. You can use this to restrict access
+    to individual computers or individual subnets. By default the variable remains empty.
+    This enables all computers of the internal network (including all subnets) to print
+    on this printer (see \smalljump{LPDSMBREMOTExSERVER}{\var{LPD\_SMBREMOTE\_x\_SERVER}}).
+
+    See \smalljump{LPDPARPORTxSAMBANET}{\var{LPD\_PARPORT\_x\_SAMBA\_NET}} for restricting
+    access to individual hosts or subnets.
+
+    Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-SAMBA\_\-NET}=''
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_ADMINIP}{SAMBA\_ADMINIP}{SAMBAADMINIP}
+
+    If an IP address or an address range from the local network
+    is specified here, the according computers have full access to
+    the fli4l ramdisk over the network.
+    If using \var{OPT\_NMBD='yes'} those computers can access
+    fli4l over Windows' network neighborhood.
+
+    An example with the IP address 192.168.6.2:
+
+\begin{example}
+\begin{verbatim}
+    SAMBA_ADMINIP='192.168.6.2'
+\end{verbatim}
+\end{example}
+
+    If you want to allow such access for multiple computers there are
+    different ways:
+
+    - Specify the IP addresses in a line separated by spaces:
+
+    \var{SAMBA\_ADMINIP='192.168.6.2 192.168.6.3'}
+
+    - Specify an IP range without host part:
+
+    \var{SAMBA\_ADMINIP='192.168.'}
+
+    Please note the dot at the end!
+
+    Due to security concerns this variable should only be used for debugging!
+
+    In the default settings fli4l's Ram disk is not accessable in
+    network neighborhood.
+
+    Default Setting: \var{SAMBA\_ADMINIP=''}
+\end{description}
+
+\begin{description}
+\config{SAMBA\_SHARE\_N}{SAMBA\_SHARE\_N}{SAMBASHAREN}
+
+    Creation of a defined number of shares: i.e. '2'
+
+    By \var{SAMBA\_SHARE\_N} the number of shares to be created resp. mounted is set.
+    If shares do not exist they will be created, if the do they will be simply used.
+    Creating shares makes only sense with a mounted medium like a harddisk, a CD ROM
+    drive or a Compact-Flash disk (see \var{OPT\_MOUNT}).
+
+    If i.e. 2 is set here, the variables\\
+
+        \var{SAMBA\_SHARE\_NAME\_1}\\
+        \var{SAMBA\_SHARE\_RW\_1}\\
+        \var{SAMBA\_SHARE\_BROWSE\_1}\\
+        \var{SAMBA\_SHARE\_PATH\_1}\\
+        \var{SAMBA\_SHARE\_NET\_1}\\
+
+        and\\
+
+        \var{SAMBA\_SHARE\_NAME\_2}\\
+        \var{SAMBA\_SHARE\_RW\_2}\\
+        \var{SAMBA\_SHARE\_BROWSE\_2}\\
+        \var{SAMBA\_SHARE\_PATH\_2}\\
+        \var{SAMBA\_SHARE\_NET\_2}\\
+
+        have to be defined with meaningful content.
+
+        Default Setting: \var{SAMBA\_SHARE\_N='0'}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_SHARE\_NAME\_x}{SAMBA\_SHARE\_NAME\_x}{SAMBASHARE_NAMEX}
+
+        With \var{SAMBA\_SHARE\_NAME\_x} the name of the x'th share is defined.
+        The share can be accessed by this name resp. with \var{OPT\_NMBD}
+        activated can be seen in network neighborhood on Windows clients
+        (see \var{SAMBA\_SHARE\_BROWSE\_x} below).
+
+        Although under Windows more characters and umlauts are allowed
+        you should stick to 8 characters length without umlauts for
+        compatibility with DOS,
+        i.e.
+
+\begin{example}
+\begin{verbatim}
+    SAMBA_SHARE_NAME_1='share1'
+\end{verbatim}
+\end{example}
+
+  In addition share names have to be unique on the network and should not
+  appear twice.
+  This name will be automatically added to the path setting from
+
+  \var{SAMBA\_SHARE\_PATH\_x}.
+
+  Hence fli4l will try to create a directory by the name of ``share'' if it does
+  not exist.
+  It is absolutely necessary that the partition on this path is mounted
+  writable. If this is not the case an error message on boot will occur.
+  If the directory already exists it will not be overwritten to preserve
+  the data stored there.
+
+  Default Setting: \var{SAMBA\_SHARE\_NAME\_1='share1'}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_SHARE\_RW\_x}{SAMBA\_SHARE\_RW\_x}{SAMBASHARERWX}
+
+  Should the share be writable: 'yes' or 'no'
+
+  With \var{SAMBA\_SHARE\_RW\_x} it is defined whether the x'th share
+  should be writable or not.
+
+  If choosing 'no' files from this share can only be read but nothing can
+  be stored or changed in there. This makes sense for files that should
+  be shared with others but should not be deleted or altered in any way.
+
+  If 'yes' is set the share is read/writable for all IP addresses or
+  networks defined in
+
+  \var{SAMBA\_SHARE\_NET\_x]}
+
+  or if this variable is empty then for all computers of the internal network
+  (including all subnets).
+
+  Default Setting: \var{SAMBA\_SHARE\_RW\_1='yes'}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_SHARE\_BROWSE\_x}{SAMBA\_SHARE\_BROWSE\_x}{SAMBASHAREBROWSEX} (needs \var{OPT\_NMBD='yes'})
+
+  Should the x'th share be browsable: 'yes' or 'no'
+
+  By \var{SAMBA\_SHARE\_BROWSE\_x} is defined whether the x'th share should be
+  displayed in network neighborhood when \var{OPT\_NMBD} is activated or not.
+  If you want to prevent other users in the network environment from seeing
+  and accessing the share, specify
+
+  \var{SAMBA\_SHARE\_BROWSE\_x='no'}
+
+  Users knowing of the existence of the share may access it nevertheless by i.e.
+  using
+
+      $\backslash\backslash$fli4l$\backslash$sharename
+
+  as the address in an explorer window. ``fli4l'' has to be replaced by your fli4l router's
+  name - if different - and "sharename" has to be replaced by the name
+  defined in \var{SAMBA\_SHARE\_NAME\_x}.
+
+  Default Setting: \var{SAMBA\_SHARE\_BROWSE\_1='yes'}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_SHARE\_PATH\_x}{SAMBA\_SHARE\_PATH\_x}{SAMBASHAREPATHX}
+
+  The path to the x'th share.
+
+  By \var{SAMBA\_SHARE\_PATH\_x} the path to the x'th share is defined.
+
+  An example: By\\
+
+  \var{OPT\_MOUNT='yes'}\\
+  \var{MOUNT\_N='1'}\\
+  \var{MOUNT\_1\_DEV='sda4'}\\
+  \var{MOUNT\_1\_POINT='/usr/local/data'}\\
+  \var{MOUNT\_1\_FS='ext2'}\\
+  \var{MOUNT\_1\_CHECK='yes'}\\
+  \var{MOUNT\_1\_OPTION='rw'}\\
+
+  the fourth primary partition of the first harddisk is mounted to
+  the file system under /usr/local/data.
+
+  A single share is defined with\\
+
+  \var{SAMBA\_SHARE\_N='1'}\\
+  \var{SAMBA\_SHARE\_NAME\_1='share1'}\\
+  \var{SAMBA\_SHARE\_RW\_1='yes'}\\
+  \var{SAMBA\_SHARE\_BROWSE='yes'}\\
+
+  and you may create and mount the directory "share1" under /usr/local/data by defining
+
+  \var{SAMBA\_SHARE\_PATH\_1='/usr/local/data'}
+
+  The share name is taken from
+
+  \var{SAMBA\_SHARE\_NAME\_1}
+
+  i.e. in this case ``share1''.
+
+  If the directory does not exist it will be created automatically, if it does
+  it will be simply used. At the moment there is no option to delete created
+  directories again via samba\_lpd.txt, an error could delete files still needed.
+  If \var{OPT\_NMBD} is installed and configured files existing in the share can
+  be deleted by a file manager if the share is defined writable in \var{SAMBA\_SHARE\_RW\_1}.
+  The directory itself can only be deleted on the router console.
+
+  Default Setting: \var{SAMBA\_SHARE\_PATH\_1='/usr/local/data'}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_SHARE\_NET\_x}{SAMBA\_SHARE\_NET\_x}{SAMBASHARENETX}
+
+  This variable can be used to control which computers
+  may use the x'th share. You can restrict access to
+  individual computers or individual subnets.
+  By default, the variable remains empty. By this
+  all computers in the internal network (including all subnets)
+  can access the share.
+
+  The variable can be defined like \var{SAMBA\_ADMINIP}.
+
+  - Specify the IP addresses in a line separated by spaces:
+
+  \var{SAMBA\_SHARE\_NET\_1='192.168.6.2 192.168.0.1'}
+
+  - Specify an IP range without host part:
+
+  \var{SAMBA\_SHARE\_NET\_1='192.168.141. 192.168.142.'}
+
+  For two nets 192.168.141.0/255.255.255.0 and
+  192.168.142.0/255.255.255.0
+
+  or better
+
+  \var{SAMBA\_SHARE\_NET\_1='192.168.'}
+
+  Please note the dot at the end!
+
+  Default Setting: \var{SAMBA\_SHARE\_NET\_1=''}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_CDROM\_N}{SAMBA\_CDROM\_N}{SAMBACDROMN}
+
+  Creation of a number of shares for CDROMs: i.e. '2'
+
+  \var{SAMBA\_CDROM\_N} defines the number of shares for CD-ROM drives.
+
+  This and the following variables and the extensions in
+  the script rc.samba were created to make sharing of CD-ROMs
+  more fault-tolerant. The script shares CDROMs
+  mounted at the mount point defined in \var{OPT\_MOUNT}
+  or generates a mount point for CDROMs not yet mounted
+  and shares it afterwards.
+
+  In the latter case the drive is mounted to
+
+  /mnt/cdromx
+
+  when needed (access via network neighborhood), the x representing
+  the x'th CD-ROM. Pay attention to avoid collisions with own mount
+  points with the same name. If nobody accesses the share anymore the
+  drive gets unmounted automatically after some time in order to be able to
+  eject the CDROM without having to unmount it manually. This eases handling
+  on CDROM servers with more drives where CDs have to be swapped from time to time.
+
+  If \var{SAMBA\_CDROM\_N} is set to the variables
+
+  \var{SAMBA\_CDROM\_DEV\_1}
+  \var{SAMBA\_CDROM\_NET\_1}
+
+  and
+
+  \var{SAMBA\_CDROM\_DEV\_2}
+  \var{SAMBA\_CDROM\_NET\_2}
+
+  have to be defined with meaningful values.
+
+  Default Setting:     \var{SAMBA\_CDROM\_N='0'}
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_CDROM\_DEV\_x}{SAMBA\_CDROM\_DEV\_x}{SAMBACDROMDEVX}
+
+  Device name of the CDROM drive: i.e. 'sdc'
+
+  Specify here the device to be shared. Conventions in device naming
+  are explained in the documentation of \var{OPT\_MOUNT}.
+
+\end{description}
+
+\begin{description}
+\config{SAMBA\_CDROM\_NET\_x}{SAMBA\_CDROM\_NET\_x}{SAMBACDROMNETX}
+
+  This variable can be used to control which computers
+  may use the x'th CDROM drive. You can restrict access to
+  individual computers or individual subnets.
+  By default, the variable remains empty. By this
+  all computers in the internal network (including all subnets)
+  can access the share.
+
+  With two CDROM drives connected to fli4l
+
+  \var{SAMBA\_CDROM\_NET\_1}
+
+  and
+
+  \var{SAMBA\_CDROM\_NET\_2}
+
+  have to exist.
+
+  The variable can be defined like \var{SAMBA\_ADMINIP}.
+
+  - Specify the IP addresses in a line separated by spaces:
+
+  \var{SAMBA\_CDROM\_NET\_1='192.168.6.2 192.168.0.1'}
+
+  - Specify an IP range without host part:
+
+  \var{SAMBA\_CDROM\_NET\_1='192.168.141. 192.168.142.'}
+
+  For two nets 192.168.141.0/255.255.255.0 and
+  192.168.142.0/255.255.255.0
+
+  or better
+
+  \var{SAMBA\_CDROM\_NET\_1='192.168.'}
+
+  Please note the dot at the end!
+
+  Default Setting: \var{SAMBA\_CDROM\_NET\_1=''}
+
+\end{description}
+
+\marklabel{sec:OPTSAMBATOOLS}{\subsection {OPT\_SAMBATOOLS - Special Tools For Samba }}
+\configlabel{OPT\_SAMBATOOLS}{OPTSAMBATOOLS}
+  Activate installation of additional Samba tools: 'yes' or 'no'.
+
+  By setting this additional tools for Samba will be installed.
+  It was asked repeatedly whether it is possible to send messages to
+  the Windows clients or mount shares on Windows clients on fli4l so
+  we decided to provide the appropriate tools.
+
+  Using this tools without further knowledge is error prone.
+  Who does not know the dangers, for example, of mounting
+  shares on fli4l, should avoid the stuff here. I have
+  tried to exclude some common sources of error with scripts
+  that mount and unmount shares or send messages to one, some
+  or all available Windows clients.
+
+  Further support will not be given, hence read the documentation
+  thoroughly!
+
+  Additional files will be copied to the router:
+
+\begin{example}
+\begin{verbatim}
+    smbfs.o
+    nls_iso8859-1.o
+    nls_cp850.o
+    nmblookup
+    samba-netsend
+    smbclient
+    smbstatus
+\end{verbatim}
+\end{example}
+
+    Most important are the scripts which are exlained below.\\
+
+\begin{verbatim}
+    samba-netsend
+\end{verbatim}
+
+    With this script you may send messages to SMB hosts interactively.
+    Entering this on the console the following message appears:
+
+\begin{verbatim}
+Send Message to SMB Hosts
+
+To which SMB Hosts the message should be send?
+
+Choice 1
+--------
+All SMB Hosts on configured Subnets on fli4l - type 'all'.
+
+Choice 2
+--------
+fli4l Samba Clients with active connections - type 'active'.
+
+Choice 3
+--------
+One ore more active SMB Hosts, type NETBIOS Names
+separated with a blank, for instance 'client1 client2':
+\end{verbatim}
+
+As you see, there are three choices in the first step:
+
+\begin{enumerate}
+\item
+Sending of messages to all SMB hosts in the nets configured on
+the fli4l. Samba accesses the file
+
+\begin{example}
+\begin{verbatim}
+   /config/base.txt
+\end{verbatim}
+\end{example}
+
+while writing its configuration and all network interfaces configured there are
+automatically inserted in the Samba configuration. From this the information is
+generated in what nets should be searched for SMB clients and the message is sent
+to all of these (except for fli4l itself). The broadcast addresses and the
+NetBIOS names of the computers to which the message has to be sent will be issued.
+
+To choose this option, enter
+
+\begin{example}
+\begin{verbatim}
+   all
+\end{verbatim}
+\end{example}
+
+here.
+
+\item
+Sending messages to all fli4l Samba clients with active
+connections to fli4l - this only means those actually having
+open connections to fli4l's Samba.
+
+To choose this enter
+
+\begin{example}
+\begin{verbatim}
+   active
+\end{verbatim}
+\end{example}
+
+here.
+
+\item
+Sending messages to one or more active SMB hosts.
+The computers have to be specified with their NETBIOS names. In case
+of more computers they have to be separated by a space.
+
+After giving the relevant information the second step is reached:
+
+Send Message to SMB Hosts
+
+Which Message should be send?
+For instance 'fli4l-Samba-Server is going down in 3 Minutes ...':
+
+Enter the message to be sent here.
+This message is displayed on clients with news service enabled.
+The news service on Windows NT, Windows 2000 and Windows XP is
+normally activated, in other cases it has to be activated/installed later.
+On Windows 9x clients such as Windows 98 or Windows ME, the program WinPopUp
+must be runnning.
+
+\end{enumerate}
+
+  Default Setting: \var{OPT\_\-SAMBATOOLS}='no'
+
+\marklabel{sec:OPTNMBD}{\subsection {OPT\_NMBD - NETBIOS Name Server }}
+\configlabel{OPT\_NMBD}{OPTNMBD}
+
+  This is the program for displaying shares in Windows' network
+  neighborhood (needs \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}}='yes').
+  To browse the shared ramdisk from \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}}
+  or own shares, set \var{OPT\_\-NMBD}='yes'.
+
+  The SMB name server needs an additional 100 KB on fli4l's boot medium. In case
+  of shortage you should try to get by without it and bind your printers by
+  direct use of the network path, i.e. as \verb+\\fli4l\pr1+.
+
+  A detailed description of the interaction of both programs can be found
+  here: \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}}.
+
+  Default Setting: \var{OPT\_\-NMBD}='no'
+
+
+\begin{description}
+\config{NMBD\_MASTERBROWSER}{NMBD\_MASTERBROWSER}{NMBDMASTERBROWSER}
+
+  Samba as the master browser: 'yes' or 'no'
+
+  Since fli4l in most cases runs continuously, it sometimes
+  makes sense to use it as a master browser. A master browser
+  in Windows networks is a computer that holds a list of available SMB
+  servers (including all Windows computers with activated file and
+  printer sharing). So the Windows clients can learn from
+  the master browser which computers with activated file and
+  printer sharing  exist in the network. In networks with a dedicated
+  Server it is better to leave this task to it. In networks with
+  a few Windows computers fli4l can do the job nicely.
+
+  With \var{NMBD\_\-MASTERBROWSER}='yes' fli4l wins the master browser
+  election against all Windows machines.
+
+  Default Setting: \var{NMBD\_\-MASTERBROWSER}='no'
+
+
+\config{NMBD\_DOMAIN\_MASTERBROWSER}{NMBD\_DOMAIN\_MASTERBROWSER}{NMBDDOMAINMASTERBROWSER} (needs NMBD\_MASTERBROWSER='yes')
+
+  Samba as the domain master browser: 'yes' or 'no'
+
+  I have resisted long to include this variable in the configuration
+  because it is dangerous when improperly used.
+  If you activate this option in a network with a domain controller
+  which always is also the domain master browser at the same time,
+  this is a reliable means to sabotage this domain controller.
+  In this case, the strangest effects can occur.
+  On the other hand, a domain master browser is the best solution
+  to realize browsing over subnets (see cipe HOWTO).
+
+  In what cases it is necessary to configure a domain master browser can
+  not be explained in one or two words. Fortunately, however, others made this:
+
+  \altlink{http://samba.sernet.de/dokumentation/browsing-2.html}
+
+  \wichtig{For proper operation you need a configured WINS server
+  that has to be known by all clients!
+  }
+
+  With \var{NMBD\_\-DOMAIN\_\-MASTERBROWSER}='yes' fli4l attempts to win
+  the domain master browser election, but only succeeds if no other
+  domain master browser exists. Is there another domain master browser
+  and this setting is set, errors will definitely occur on the network
+  caused by so-called browse wars, where both computers attempt to win.
+  So if you do not know exactly whether your network is already running
+  a domain master browser or not, keep your fingers off and stick with
+  the default!
+
+  Default Setting: \var{NMBD\_\-DOMAIN\_\-MASTERBROWSER}='no'
+
+
+\config{NMBD\_WINSSERVER}{NMBD\_WINSSERVER}{NMBDWINSSERVER}
+
+  Samba as a WINS server: 'yes' or 'no'
+
+  In order to resolve NetBIOS names in Windows networks, there are two
+  possibilities. The first one uses a static resolution with the file
+  lmhosts and is hard to maintain like the DNS Name Resolution with hosts files.
+  Hence, Microsoft developed WINS:
+  \textbf{W}indows \textbf{I}nternet \textbf{N}ame \textbf{S}ervice
+
+  WINS has the advantage that the NETBIOS name resolution is achieved
+  via direct requests to a WINS server and not by broadcasts. The
+  WINS database is created dynamically by the server, but has the
+  disadvantage that the server has to be entered in the TCP/IP protocol
+  properties of every client. Samba has this server implemented and
+  thus it is available also for fli4l.
+
+  To run fli4l as a WINS server, \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}},
+  \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}} and \var{NMBD\_\-WINSSERVER}
+  must be set to ``yes'' and in the TCP/IP protocol properties of the
+  client's network card the ``WINS-resoltuion'' has to be activated.
+
+  Under WINS server search order the IP address of the fli4 machine
+  has to be added.
+
+  Although only the choice between WINS OR DHCP is possible, specifying the
+  IP address of the fli4l WINS server does not complete a correct TCP/IP
+  configuration. You will still have to configure either the IP address of each client
+  or DHCP.
+
+  In networks with a Windows server on which the WINS Server service
+  is enabled, you should leave this task to Windows. But in
+  Networks with a few Windows computers also fli4l can fulfil this task
+  easily.
+
+\begin{example}
+\begin{verbatim}
+    NMBD_WINSSERVER='yes'
+\end{verbatim}
+\end{example}
+
+  activates this function.
+  With \var{OPT\_\-DHCP} installed and activated
+\begin{example}
+\begin{verbatim}
+    NMBD_WINSSERVER='yes'
+\end{verbatim}
+\end{example}
+
+  the IP address of fli4l will be transferred as the WINS server's IP
+  to the clients.
+
+  Default Setting: \var{NMBD\_\-WINSSERVER}='no'
+
+
+\config{NMBD\_EXTWINSIP}{NMBD\_EXTWINSIP}{NMBDEXTWINSIP} (needs NMBD\_WINSSERVER='no')
+
+  The IP address of the remote WINS server for Samba
+
+  If, as noted above, in networks with a Windows server,
+  the task to manage the WINS database should be done by it.
+  In this variable you can configure fli4l as a WINS client. the
+  fli4l computer then tries to register with the configured WINS server.
+  It should be ensured that flil4 can not be configured as server and
+  client at the same sime - the options
+
+\begin{example}
+\begin{verbatim}
+  NMBD_WINSSERVER='yes'
+\end{verbatim}
+\end{example}
+
+  and
+
+\begin{example}
+\begin{verbatim}
+  NMBD_EXTWINSIP='IP-Adresse'
+\end{verbatim}
+\end{example}
+
+  exclude each other. Generation of a boot medium will not work with this
+  configuration. In this mode Samba works as a WINS-Proxy. This is of
+  advantage if the net does not consist only of WINS clients, the WINS
+  server is located in another subnet not reachable via broadcast
+  and the Non-WINS clients are in need of a NETBIOS name resolution.
+  Then the fli4l answers broadcasts of Non-WINS clients by querying the
+  WINS server and redirecting the answer via broadcast to the client.
+
+  If you want to run fli4l as a WINS client it has to know the
+  IP address of the external WINS servers to register with. Precondition
+  for this is \smalljump{NMBDWINSSERVER}{\var{NMBD\_WINSSERVER}}='no'.
+
+  An example with IP address 192.168.6.11:
+
+\begin{example}
+\begin{verbatim}
+  NMBD_EXTWINSIP='192.168.6.11'
+\end{verbatim}
+\end{example}
+
+  With \var{OPT\_\-DHCP} installed and activated the IP address configured
+  there will be transferred to the clients as the IP address of the WINS servers.
+
+  Default Setting: \var{NMBD\_\-EXTWINSIP}=''
+
+
+\end{description}
+
+\marklabel{sec:OPTLPD}{\subsection {OPT\_LPD - Print Server For The lpr/lpd-Protocol}}
+\configlabel{OPT\_LPD}{OPTLPD}
+
+  With \var{OPT\_\-LPD}='yes' fli4l may also be used as a print server. Then
+  lpd and one or more printer queues (depending on the number of printers
+  connected to fli4l) will be installed to the Ram disk of the root file
+  systems or to the harddisk.
+
+  \wichtig{To make printing work seamlessly even in a multi-user environment,
+  the lpd spooler is used. The print data will be stored in a spool directory.
+  A separate spool directory is created for each printer. This spool directories
+  are located in the ramdisk of the root file system or, if available,
+  will use the hard disk. If at the start of fli4l no writable minix, ext2/3/4
+  partition mounted to /data is found, each printer configured uses the ramdisk
+  of the root file system. With three printers connected and simultaneously
+  printing the spooled files for all three printers are created in the ramdisk.
+  Note that even at small text file already causes large print jobs on Windows
+  and they shortly will exists twice in memory requiring two times the ram space
+  needed when printing via Samba . To make print spooling on the ramdisk work
+  seamlessly you should have enough memory in the fli4l computer - the more, the
+  better. For those who often have to print large documents without having at
+  least 4 MB of memory left for printing, it is absolutely essential to
+  use a hard drive installation to avaoid afffecting the function of the router
+  by an overflowing ramdisk. Yes, you got that right. If a print job does not
+  fit in the ramdisk, the result could be a router that no longer routes...}
+
+  \emph{When spooling to disk, the processing of print jobs is limited by the space
+  available on the hard disk. For this purpose, the hard drive installation
+  type B should be used with an ext data partition mounted to /data.}
+
+  \emph{If problems occur when printing large files on a non-harddisk installation
+  there is simply not enough memory in the router.}
+
+  \emph{Rule of thumb: fli4l as a router needs about 10 MB of memory (8 - 12,
+  depending on the configuration). With 32 MB memory in the router the rest
+  is available for printing - hence 32 - 10 = 22 MB.
+  When printing with Samba the available space is reduced by half, because
+  print jobs are stored twice in ram while printing:
+  This means a print job can have a maximum size of 11 MB and with two jobs
+  at the same time the router stops routing...
+  Therefore we strongly advice a harddisk installation for printing.}
+
+  Default Setting: \var{OPT\_\-LPD}='no'
+
+
+\begin{description}
+
+\config{LPD\_DEBUG}{LPD\_DEBUG}{LPDDEBUG}
+
+  This variable activates or deactivates the log function for the
+  LPD print server. It is recommended to activate logging only in
+  case of debuging because the protocol is quite big in file size.
+
+  The variable can either have the values `yes', `no' or a number
+  between 1 and 5, where a higher value causes more log details.
+  The setting `yes' is equivalent to the value 1.
+
+  Default Setting: \verb+LPD_DEBUG='no'+
+
+  Example: \verb+LPD_DEBUG='2'+
+
+\config{LPD\_DEBUG\_FILE}{LPD\_DEBUG\_FILE}{LPDDEBUGFILE}
+
+  This variable contains the path to the logfile, to which the logs
+  of the LPD print server are written in case of an activated protocol
+  function (see description of variable \jump{LPDDEBUG}{\var{LPD\_DEBUG}}).
+  It is also possible to set the the value to `auto' to select the
+  default location of the log file \texttt{/var/log/lpd.log}.
+
+  The content of this variable will be ignored if logging is disabled
+  by specifying \verb+LPD_DEBUG='no'+.
+
+  Default Setting: \verb+LPD_DEBUG_FILE='auto'+
+
+  Beispiel: \verb+LPD_DEBUG_FILE='/data/log/lpd.log'+
+
+\config{LPD\_SPOOLPATH}{LPD\_SPOOLPATH}{LPDSPOOLPATH}
+
+  This variable configures the so-called spool directory of the LPD print
+  server for incoming print jobs. All print data will first be spooled to
+  the directory set here before being passed to printers by the print server.
+  You may set this variable to `auto', in this case fli4l will create a spool
+  directory on a persistent storage medium and mount it to
+  \texttt{/var/lib/persistent/samba/spool}.
+
+  Please note that the content of this directory will be erased when starting
+  your fli4l router. So you should not specify a directory here that contains
+  other important data! Also note that the path configured here may not be the
+  same as in \var{SAMBA\_SPOOLPATH} (with the exception that both variables
+  have the value 'auto') because the two spool directories serve for different
+  purposes and hence need different access settings.
+
+  Default Setting: \verb+LPD_SPOOLPATH='auto'+
+
+  Example: \verb+LPD_SPOOLPATH='/data/lpd/spool'+
+
+\config{OPT\_LPD\_PARPORT}{OPT\_LPD\_PARPORT}{OPTLPDPARPORT}
+
+  \var{OPT\_\-LPD\_\-PARPORT}='yes' specifies that local parallel printer
+  ports should be used. If only USB- or remote printers are used,
+  you may keep the default of the variable:
+
+  Default Setting: \var{OPT\_\-LPD\_\-PARPORT}='no'
+
+\config{LPD\_NETWORK\_N}{LPD\_NETWORK\_N}{LPDNETWORKN}
+
+  This variable contains the number of entries in the array
+  \var{LPD\_NETWORK\_x} (see below).
+
+  Example: \verb+LPD_NETWORK_N='1'+
+
+\config{LPD\_NETWORK\_x}{LPD\_NETWORK\_x}{LPDNETWORKx}
+
+  Each entry in this array specifies a host- or network address for which
+  printing via the LPD protocol \footnote{see RFC 1179} is allowed. Possible
+  entries are IPv4 addresses like \verb+192.168.1.0/24+, symbolic addresses
+  like \verb+IP_NET_1+ and host references like \verb+@peacock+.
+
+  Please note that this settings are \emph{not} necessary if printer access
+  is only accomplished via the Samba server! This is \emph{only} relevant if printing
+  via the LPD protocol is desired and hence is mostly of interest for Linux- and Mac
+  machines. It is more convenient for Windows machines to print over Samba because
+  LPD needs the additional installation of the ``UNIX print services for Windows''.
+
+  Example:
+\begin{example}
+\begin{verbatim}
+    LPD_NETWORK_1='IP_NET_1'
+    LPD_NETWORK_2='192.168.1.0/24'
+    LPD_NETWORK_3='@client'
+\end{verbatim}
+\end{example}
+
+\config{LPD\_PARPORT\_N}{LPD\_PARPORT\_N}{LPDPARPORTN} (needs OPT\_LPD\_PARPORT='yes')
+
+  By \var{LPD\_\-PARPORT\_\-N} the number of local parallel ports in use
+  is determined. With a printer at the first parallel port configured in
+  samba\_lpd.txt set
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_N='1'
+\end{verbatim}
+\end{example}
+  For two printer ports increment \var{LPD\_\-PARPORT\_\-N},
+  hence
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_N='2'
+\end{verbatim}
+\end{example}
+
+  The corresponding settings in\\
+      \emph{\var{LPD\_\-PARPORT\_\-1\_\-IO}}\\
+      \emph{\var{LPD\_\-PARPORT\_\-1\_\-IRQ}}\\
+      \emph{\var{LPD\_\-PARPORT\_\-1\_\-DMA}}\\
+  and\\
+      \emph{\var{LPD\_\-PARPORT\_\-2\_\-IO}}\\
+      \emph{\var{LPD\_\-PARPORT\_\-2\_\-IRQ}}\\
+      \emph{\var{LPD\_\-PARPORT\_\-2\_\-DMA}}\\
+
+  and, if using Samba in addition, also\\
+
+      \emph{\var{LPD\_\-PARPORT\_\-1\_\-SAMBA\_\-NET}}\\
+      \emph{\var{LPD\_\-PARPORT\_\-2\_\-SAMBA\_\-NET}}\\
+
+  and, if Samba printer names should be used, also\\
+
+      \emph{\var{LPD\_\-PARPORT\_\-1\_\-SAMBA\_\-NAME}}\\
+      \emph{\var{LPD\_\-PARPORT\_\-2\_\-SAMBA\_\-NAME}}\\
+
+  have to exist.\\
+
+  Default Setting: \var{LPD\_\-PARPORT\_\-N}='1'
+
+
+\config{LPD\_PARPORT\_x\_IO}{LPD\_PARPORT\_x\_IO}{LPDPARPORTxIO}
+
+  \var{LPD\_\-PARPORT\_\-x\_\-IO} configures the x'th local parallel printer port.
+  For two printers at fli4l's parallel ports two entries with the valid values of
+
+\begin{itemize}
+\item 0x3bc
+\item 0x378 or
+\item 0x278
+\end{itemize}
+
+  have to exist, i.e.
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_1_IO='0x378'
+\end{verbatim}
+\end{example}
+
+  and
+
+\begin{example}
+\begin{verbatim}
+    LPD_PARPORT_2_IO='0x278'
+\end{verbatim}
+\end{example}
+
+  \wichtig{
+  Parallel ports on the mainboard or on ISA interface cards are supported with
+  the values mentioned above. PCI cards with certain NETMOS chips providing parallel
+  ports are also possible. You have to determine the device via}
+
+\begin{example}
+\begin{verbatim}
+        cat /proc/pci
+\end{verbatim}
+\end{example}
+  \emph{. Search for the device with matching Vendor-ID and Device-ID and choose the
+  IO-addresses from the following list:}
+
+      \begin{itemize}
+      \item Nm9705CV  (Vendor id=9710, Device id=9705, Port1 1st entry)
+      \item Nm9735CV  (Vendor id=9710, Device id=9735, Port1 3rd entry)
+      \item Nm9805CV  (Vendor id=9710, Device id=9805, Port1 1st entry)
+      \item Nm9715CV  (Vendor id=9710, Device id=9815, Port1 1st entry, Port2 3rd entry)
+      \item Nm9835CV  (Vendor id=9710, Device id=9835, Port1 3rd entry)
+      \item Nm9755CV  (Vendor id=9710, Device id=9855, Port1 1st entry, Port2 3rd entry)
+      \end{itemize}
+
+  \emph{This was included without matching hardware to test. Consider this an
+  experimental feature. In case of errors please report to the newsgroups
+  and provide all possible informations!}
+
+  To make printing work ensure yourself to which io addresses the built-in
+  interfaces are set. The io addresses can either be set in the BIOS of the
+  computer or in very old computers are not configurable, but only displayed
+  at boot time. Additional ports can usually be configured via jumpers on the
+  card which are desribed in the (hopefully still existing) documentation.
+
+  In case of \var{OPT\_\-LCD}='yes' in addition make sure that the address
+  set there in \var{LCD\_\-ADDRESS} does not collide with the address set
+  in samba\_lpd.txt. A boot media can not be build with this conflict!
+
+  Default Setting: \var{LPD\_\-PARPORT\_\-1\_\-IO}='0x378'
+
+
+\config{LPD\_PARPORT\_x\_IRQ}{LPD\_PARPORT\_x\_IRQ}{LPDPARPORTxIRQ}
+
+  {\var{LPD\_\-PARPORT\_\-x\_\-IRQ} specifies whether interrupt mode is used
+  for printing to reduce processor load or not. To use this mode the
+  interfaces on the mainboard or addon cards have to be set to ECP/EPP
+  mode either via BIOS or Jumpers. Activate interrupt mode like this:
+
+\begin{example}
+\begin{verbatim}
+        LPD_PARPORT_1_IRQ='yes'
+\end{verbatim}
+\end{example}
+
+  deativate it like this:
+
+\begin{example}
+\begin{verbatim}
+        LPD_PARPORT_1_IRQ='no'
+\end{verbatim}
+\end{example}
+
+  and configure normal or SPP mode for the interfaces in mainboard or addon
+  cards. If errors occur and somthing goes wrong first try to test with
+
+\begin{example}
+\begin{verbatim}
+        LPD_PARPORT_1_IRQ='no'
+\end{verbatim}
+\end{example}
+
+  Default Setting: \var{LPD\_\-PARPORT\_\-1\_\-IRQ}='no'}
+
+
+\config{LPD\_PARPORT\_x\_DMA}{LPD\_PARPORT\_x\_DMA}{LPDPARPORTxDMA}
+
+  {\var{LPD\_\-PARPORT\_\-x\_\-DMA} specifies whether DMA mode is used
+  for printing to reduce processor load or not. To use this mode the
+  interfaces on the mainboard or addon cards have to be set to ECP/EPP
+  mode either via BIOS or Jumpers. Activate interrupt mode like this:
+
+\begin{example}
+\begin{verbatim}
+        LPD_PARPORT_1_DMA='yes'
+\end{verbatim}
+\end{example}
+
+  Precondition is to set
+
+\begin{example}
+\begin{verbatim}
+  LPD_PARPORT_1_IRQ='yes'
+\end{verbatim}
+\end{example}
+
+  deativate it like this:
+
+\begin{example}
+\begin{verbatim}
+  LPD_PARPORT_1_DMA='no'
+\end{verbatim}
+\end{example}
+
+  and configure normal or SPP mode for the interfaces in mainboard or addon
+  cards. If errors occur and somthing goes wrong first try to test with
+
+\begin{example}
+\begin{verbatim}
+  LPD_PARPORT_1_DMA='no'
+\end{verbatim}
+\end{example}
+
+  Default Setting: \var{LPD\_\-PARPORT\_\-1\_\-DMA}='no'}
+
+
+\config{OPT\_LPD\_USBPORT}{OPT\_LPD\_USBPORT}{OPTLPDUSBPORT}
+
+  \var{OPT\_\-LPD\_\-USBPORT}='yes' specifies the use of local
+  USB printer ports.
+
+  Support for USB printers has to be activated in package \var{OPT\_\-USB}
+  in addition. Depending on the driver this might look like this:
+
+\begin{example}
+\begin{verbatim}
+    OPT_USB='yes'
+    USB_LOWLEVEL='uhci'
+    USB_PRINTER='yes'
+\end{verbatim}
+\end{example}
+
+    or like this:
+
+\begin{example}
+\begin{verbatim}
+    OPT_USB='yes'
+    USB_LOWLEVEL='usb-ohci'
+    USB_PRINTER='yes'
+\end{verbatim}
+\end{example}
+
+  \wichtig{The configuration option for USB printers has been integrated,
+  without having appropriate hardware available for testing. Hence this
+  has to be regarded as an experimental feature. In case of errors, please
+  post detailed information in the newsgroup!
+  Many USB printers are GDI printers. GDI printers can not be addressed.
+  Questions about problems with USB printers will only be answered if you
+  communicate that you have ensured that the affected printer is not a GDI printer!
+  }
+
+  If you only want to use printers on parallel ports or remote printers
+  the variable can be left at its default:
+
+  Default Setting: \var{OPT\_\-LPD\_\-USBPORT}='no'
+
+
+\config{LPD\_USBPORT\_N}{LPD\_USBPORT\_N}{LPDUSBPORTN} (needs OPT\_LPD\_USBPORT='yes')
+
+  In \var{LPD\_\-USBPORT\_\-N} set the number of local USB printer ports to be used.
+  A printer on the first USB interface is set like this
+
+\begin{example}
+\begin{verbatim}
+    LPD_USBPORT_N='1'
+\end{verbatim}
+\end{example}
+
+  For two USB printer ports \var{LPD\_\-USBPORT\_\-N} has to be incremented:
+
+\begin{example}
+\begin{verbatim}
+  LPD_USBPORT_N='2'
+\end{verbatim}
+\end{example}
+
+  When using Samba the corresponding settings in\\
+  \var{LPD\_\-USBPORT\_\-1\_\-SAMBA\_\-NET}\\
+  \var{LPD\_\-USBPORT\_\-2\_\-SAMBA\_\-NET}\\
+  and, if Samba printer names have been assigned,\\
+  also \var{LPD\_\-USBPORT\_\-1\_\-SAMBA\_\-NAME}\\
+  and \var{LPD\_\-USBPORT\_\-2\_\-SAMBA\_\-NAME}\\
+  have to exist.\\
+
+  \wichtig{If more than one USB printer is used, note that the order
+  of turning on the printers determines which is the first and the second
+  USB printer. The second USB printer will automatically become the first
+  printer if the first USB printer is not turned on. If the printers
+  are different printer models and require different drivers on the client
+  it can thus happen that printing to the selected printer produces garbage
+  because of using the wrong printer language for the  print job.
+  }
+
+  Default Setting: \var{LPD\_\-USBPORT\_\-N}='1'
+
+\config{OPT\_LPD\_REMOTE}{OPT\_LPD\_REMOTE}{OPTLPDREMOTE}
+
+  \var{OPT\_\-LPD\_\-REMOTE}='yes' specifies that remote printers
+  (not local) should be used. If only printers on local parallel or USB
+  interfaces should be used leave the default untouched here:
+
+  Default Setting: \var{OPT\_\-LPD\_\-REMOTE}='no'
+
+
+\config{LPD\_REMOTE\_N}{LPD\_REMOTE\_N}{LPDREMOTEN} (needs OPT\_LPD\_REMOTE='yes')
+
+  By \var{LPD\_REMOTE\_\-N} the number of remote printers in use
+  is determined. When using this the print job from the client is sent to fli4
+  and then forwarded to a remote LPD print server.
+
+  This will also work together with Samba. If a remote printer on a non-local
+  print server should be accessed over fli4l
+
+\begin{example}
+\begin{verbatim}
+    LPD_REMOTE_N='1'
+\end{verbatim}
+\end{example}
+
+  has to be set. For two remote print servers with two printer queues
+  increment \var{LPD\_\-REMOTE\_\-N}, hence
+
+\begin{example}
+\begin{verbatim}
+    LPD_REMOTE_N='2'
+\end{verbatim}
+\end{example}
+
+  In addition the corresponding settings in
+
+\begin{itemize}
+\item \var{LPD\_\-REMOTE\_\-1\_\-IP}
+\item \var{LPD\_\-REMOTE\_\-1\_\-PORT}
+\item \var{LPD\_\-REMOTE\_\-1\_\-QUEUENAME}
+\item \var{LPD\_\-REMOTE\_\-2\_\-IP}
+\item \var{LPD\_\-REMOTE\_\-2\_\-PORT}
+\item \var{LPD\_\-REMOTE\_\-2\_\-QUEUENAME}
+\end{itemize}
+
+  and, if Samba is used, also
+
+\begin{itemize}
+\item \var{LPD\_\-REMOTE\_\-1\_\-SAMBA\_\-NAME}
+\item \var{LPD\_\-REMOTE\_\-1\_\-SAMBA\_\-NET}
+\item \var{LPD\_\-REMOTE\_\-2\_\-SAMBA\_\-NAME}
+\item \var{LPD\_\-REMOTE\_\-2\_\-SAMBA\_\-NET}
+\end{itemize}
+
+  have to exist.
+
+  Default Setting: \var{LPD\_\-REMOTE\_\-N}='0'
+
+
+\config{LPD\_REMOTE\_x\_IP}{LPD\_REMOTE\_x\_IP}{LPDREMOTExIP}
+
+  By \var{LPD\_\-REMOTE\_\-x\_\-IP} the IP of the x'th remote print server is set.
+
+  The default is a second fli4 computer accessable at 192.168.6.99.
+
+  Default Setting: \var{LPD\_\-REMOTE\_\-1\_\-IP}='192.168.6.99'
+
+
+\config{LPD\_REMOTE\_x\_PORT}{LPD\_REMOTE\_x\_PORT}{LPDREMOTExPORT}
+
+  By \var{LPD\_\-REMOTE\_\-x\_\-PORT} the port of the x'th remote printer is set.
+  Define this variable only if printing to print servers able to receive print
+  jobs via ftp or netcat. If using print servers able to understand the lpd
+  protocol leave this variable empty and use \smalljump{LPDREMOTExQUEUENAME}{\var{LPD\_REMOTE\_x\_QUEUENAME}}
+  instead.
+  Hence use EITHER \var{LPD\_\-REMOTE\_\-x\_\-PORT} OR
+  \smalljump{LPDREMOTExQUEUENAME}{\var{LPD\_REMOTE\_x\_QUEUENAME}} and never
+  both at the same time! One of the two variables has to be defined.
+
+  Consult the manual of your print server or the manufacturer's website to find
+  out which category your print server belongs to.
+  An incomplete overview can be found at
+
+  \altlink{http://www.lprng.com/LPRng-Reference/LPRng-Reference.html\#AEN4990}
+
+  The default defines a third remote printer repr3 on a HP JetDirect print server
+  (Interface card) with the IP 192.168.6.100 reached via port 9100 (as the link above
+  shows this would also be reachable on the print queue by the name raw...).
+
+  Here's a hint:
+  If the corresponding printer is not reachable or turned off at the time of print
+  job creation lpd will reach a timeout and the job can not be processed. This job
+  can not be deleted with the lprm command and remains in the queue until fli4 is
+  rebooted!
+
+  Default Setting: \var{LPD\_\-REMOTE\_\-3\_\-PORT}='9100'
+
+
+\config{LPD\_REMOTE\_x\_QUEUENAME}{LPD\_REMOTE\_x\_QUEUENAME}{LPDREMOTExQUEUENAME}
+
+  By \var{LPD\_\-REMOTE\_\-x\_\-QUEUENAME} the printer queue name of the x'th
+  remote printer is specified.
+
+  Define this variable only if you want to print to print servers that
+  understand the lpd protocol.
+  If you want to access print servers which allow sending data via ftp or netcat
+  this variable should be left blank and instead
+  \smalljump{LPDREMOTExPORT}{\var{LPD\_REMOTE\_x\_PORT}} should be used.
+  Hence use EITHER \var{LPD\_\-REMOTE\_\-x\_\-QUEUENAME} OR
+  \smalljump{LPDREMOTExPORT}{\var{LPD\_REMOTE\_x\_PORT}} and never both
+  at the same time! One of the two variables has to be defined.
+
+  Consult the manual of your print server or the manufacturer's website to find
+  out which category your print server belongs to.
+  An incomplete overview can be found at
+
+  \altlink{http://www.lprng.com/LPRng-Reference/LPRng-Reference.html\#AEN4990}
+
+  The default defines a second fli4 computer with a printer queue by the name
+  of pr1.
+
+  Default Setting: \var{LPD\_\-REMOTE\_\-1\_\-QUEUENAME}='pr1'
+
+
+\config{OPT\_LPD\_SMBREMOTE}{OPT\_LPD\_SMBREMOTE}{OPTLPDSMBREMOTE}
+
+  \var{OPT\_\-LPD\_\-SMBREMOTE}='yes' defines the use of remote SMB printers.
+  This may be shared printers on Windows- or Samba- computers.
+
+  \wichtig{
+  The configuration of such printers only makes sense if these remote
+  SMB printers are turned on at printing time - spooling and storing the print
+  jobs until the remote computer is online again is not possible due to the
+  realization of this function as a pre-filter script for lpd.
+  }
+
+  If you only want to use printers on local parallel or USB ports or remote
+  LPD printers, the variable can be left at its default:
+
+  Default Setting: \var{OPT\_\-LPD\_\-SMBREMOTE}='no'
+
+
+\config{LPD\_SMBREMOTE\_DEBUGLEVEL}{LPD\_SMBREMOTE\_DEBUGLEVEL}{LPDSMBREMOTEDEBUGLEVEL} (needs OPT\_LPD\_SMBREMOTE='yes')
+
+  \var{LPD\_SMBREMOTE\_\-DEBUGLEVEL} sets the number of debug messages to be
+  logged when printing to remote SMB printers. Only printing of one Job will
+  be logged to the file /tmp/smb-print.log and it will be overwritten with every
+  new job. With \var{LPD\_SMBREMOTE\_DEBUGLEVEL}='0' logging is disabled.
+  If problems occur try a higher value here for debugging by the help of the
+  messages in /tmp/smb-print.log.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-DEBUGLEVEL}='0'
+
+\config{LPD\_SMBREMOTE\_N}{LPD\_SMBREMOTE\_N}{LPDSMBREMOTEN} (needs OPT\_LPD\_SMBREMOTE='yes')
+
+  \var{LPD\_SMBREMOTE\_\-N} sets the number of SMB remote printers to be configured.
+  In this way it is possible for a client to send a print job to fli4l which in turn
+  will forward this print job to a remote SMB printer share.
+  This also works in conjunction with Samba. If you want to access a
+  SMB remote printer on a remote Windows or Samba host over flil4 set
+
+\begin{example}
+\begin{verbatim}
+  LPD_SMBREMOTE_N='1'
+\end{verbatim}
+\end{example}
+
+  here. For two remote Windows- or Samba computers or one remote Windows-
+  or Samba computer with two printer shares \var{LPD\_\-SMBREMOTE\_\-N}
+  has to be incremented, hence
+
+\begin{example}
+\begin{verbatim}
+  LPD_SMBREMOTE_N='2'
+\end{verbatim}
+\end{example}
+
+  In addition the corresponding settings in
+
+\begin{itemize}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-SERVER}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-SERVICE}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-USER}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-PASSWORD}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-IP}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-SERVER}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-SERVICE}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-USER}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-PASSWORD}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-IP}
+\end{itemize}
+
+  and, if Samba is used, also
+
+\begin{itemize}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-SAMBA\_\-NAME}
+\item \var{LPD\_\-SMBREMOTE\_\-1\_\-SAMBA\_\-NET}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-SAMBA\_\-NAME}
+\item \var{LPD\_\-SMBREMOTE\_\-2\_\-SAMBA\_\-NET}
+\end{itemize}
+
+  have to exist.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-N}='0'
+
+
+\config{LPD\_SMBREMOTE\_x\_SERVER}{LPD\_SMBREMOTE\_x\_SERVER}{LPDSMBREMOTExSERVER}
+
+  By \var{LPD\_\-SMBREMOTE\_\-x\_\-SERVER} the NETBIOS name of the computer
+  with the x'th printer share is specified. This name is necessary because
+  smbclient is used to print.
+
+  Default is a Windows computer with the NETBIOS name ``ente''.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-SERVER}='ente'
+
+\config{LPD\_SMBREMOTE\_x\_SERVICE}{LPD\_SMBREMOTE\_x\_SERVICE}{LPDSMBREMOTExSERVICE}
+
+  With \var{LPD\_\-SMBREMOTE\_\-x\_\-SERVICE} the name of the x'th
+  printer share of the SMB remote printer is set. Default is the printer
+  share name ``pr2''.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-SERVICE}='pr2'
+
+\config{LPD\_SMBREMOTE\_x\_USER}{LPD\_SMBREMOTE\_x\_USER}{LPDSMBREMOTExUSER}
+
+  \var{LPD\_\-SMBREMOTE\_\-x\_\-USER} sets the username for accessing the
+  x'th printer share. Default is the username ``king''.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-USER}='king'
+
+
+\config{LPD\_SMBREMOTE\_x\_PASSWORD}{LPD\_SMBREMOTE\_x\_PASSWORD}{LPDSMBREMOTExPASSWORD}
+
+  \var{LPD\_\-SMBREMOTE\_\-x\_\-PASSWORD} sets the password of the x'th
+  user for accessing the printer share. Default is the password ``kong''.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-PASSWORD}='kong'
+
+
+\config{LPD\_SMBREMOTE\_x\_IP}{LPD\_SMBREMOTE\_x\_IP}{LPDSMBREMOTExIP}
+
+  \var{LPD\_\-SMBREMOTE\_\-x\_\-IP} sets the IP of the Windows- or
+  Samba-computer with the x'th printer share. Default is a Windows
+  computer reachable at the IP 192.168.0.6.
+
+  Default Setting: \var{LPD\_\-SMBREMOTE\_\-1\_\-IP}='192.168.0.6'
+
+
+\end{description}
+
+\marklabel{sec:OPTSAMBAPOINTANDPRINT}{
+\subsection{\var{OPT\_SAMBA\_POINT\_AND\_PRINT} -- Server-side Management of Windows Printer Drivers}}
+
+Point'n'Print is a Windows technology for server-side management of
+printer drivers. The idea is simple: If a Windows server is also a
+print server offering printing services, then it is reasonable that
+he also offers printer drivers for the printers connected to avoid
+manually copying those drivers to each Windows client.
+Point'n'Print does exactly that: First, an administrator uploads
+printer drivers for all printers and computer architectures in question
+to the print server. A normal user can now connect to a printer on the
+server (like using file shares on the server) and the Windows client
+automatically retrieves the appropriate printer driver from the print
+server and installs it locally on the client. Thus, using the shared
+printer on the network is possible quickly and without much
+installation effort.
+
+In the \jump{sec:OPTSAMBAPOINTANDPRINT:XP}{Appendix} it is shown how to
+set up a Point'n'Print Configuration using a Windows XP clients.
+
+\begin{description}
+
+\config{OPT\_SAMBA\_POINT\_AND\_PRINT}{OPT\_SAMBA\_POINT\_AND\_PRINT}{OPTSAMBAPOINTANDPRINT}
+
+This variable activates Point'n'Print functionality. For activation
+\verb+OPT_SAMBA='yes'+ and \verb+OPT_LPD='yes'+  are mandatory.
+
+Default Setting: \verb+OPT_SAMBA_POINT_AND_PRINT='no'+
+
+Example: \verb+OPT_SAMBA_POINT_AND_PRINT='yes'+
+
+\config{SAMBA\_PRINT\_ADMIN\_NAME}{SAMBA\_PRINT\_ADMIN\_NAME}{SAMBAPRINTADMINNAME}
+
+In order to avoid installing and uninstalling of printer drivers by any user
+(in most cases undesirable), this is only allowed to \emph{Printer Administrators}.
+The name of the Windows account with such privileges is noted here.
+
+Example: \verb+SAMBA_PRINT_ADMIN_NAME='pradmin'+
+
+\config{SAMBA\_PRINT\_ADMIN\_PASSWORD}{SAMBA\_PRINT\_ADMIN\_PASSWORD}{SAMBAPRINTADMINPASSWORD}
+
+Specify the password of the Windows account with printer administrator privileges.
+
+Example: \verb+SAMBA_PRINT_ADMIN_PASSWORD='secret'+
+
+\end{description}
+
+\marklabel{sec:DRUCKEREINRICHTUNG}{\subsection {Printer Setup On The Clients}}
+
+  Setting up a fli4l printer on the clients is depending on activation of
+  \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}} and with activated
+  \smalljump{sec:OPTSAMBA}{\var{OPT\_SAMBA}} whether \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}}
+  is activated in addition. Also differences of client operating systems
+  concerning configuration and options have to be obeyed. Therefore,
+  there is a section for each configuration option.
+
+\subsubsection{If OPT\_SAMBA Is Deactivated}
+\begin{enumerate}
+\item \textbf{NT4.0/2000/XP/Win7}
+
+  If Samba is not used, install the Print Services for Unix in Windows NT4.0/2000/XP
+  to access to fli4l's LPD, because Windows Standard TCP printing is using wrong ports.
+  This service is called LPD Printservice in Windows 7 and above.
+
+  The Print Services for Unix can be added with
+
+  Start/Settings/System settings/Software/Add Windows Components/Additional
+  File An d Print Service for Networks/Details/
+  Print services for UNIX.
+
+  This will crate a new printer port by the name of ``LPR Port''. Now
+  install and configure a new printer with the driver for the printer
+  connected to fli4l. Use
+
+  Start/Settings/Printer
+
+  double click ``New Printer''. In the introduction click ``proceed'', choose
+  ``Local Printer'', deactivate ``Automatic Printer Recognition and Installation
+  of Plug \& Play-Printers'' and click ``Proceed'' again. Under ``Choose Printer Port''
+  activate ``Create a new port'' and as ``Type'' choose the den ``LPR Port''
+  created above. After confirming these settings with clicking ``Proceed''
+  insert into ``Name or Address of the LPD Server PD'' the IP address of the
+  fli4l computer and write the name of it's printer queue into the field
+  ``Name of the printer or printer queue on the server''. Use ``prx'' for local
+  printers at the parallel ports, ``usbprx'' for local printers at the USB ports,
+  ``reprx'' for remote printers and ``smbprx'' for SMB remote printers, where
+  ``x'' stands for 1, 2, 3 for the first, second, third port a.s.o.
+  In the next screen choose the manufacturer of the printer connected to fli4l
+  on the left side and on the right side the according type, then click ``Proceed''
+  again. Now specify a printer name for the printer in the field ``Printer Name''.
+  Under Printer sharing choose ``Don't share this printer'', because it is already
+  shared by fli4l. After clicking ``Next'' deny the question for printing a test page
+  because not all settings are made by now and click ``Proceed''. Now a window
+  appears showing a summary of the configuration made up to now. If everything
+  was entered correctly press ``Finish''. After copying the printer driver a new
+  icon will appear for your printer in the printer folder. Right click on it and
+  choose ``Properties'' from the context menu. On the tab ``Port'' deactivate
+  ``Activate Bidirectionale Printing''. On the tab ``Advanced'' click on ``Print
+  processor'' and set it to ``WinPrint'', ``Standard data type'' to ``RAW'', now
+  leave the dialogue with ``OK'' (for Windows NT 4.0 make an additional tick at
+  ``always spool Raw-Data''). Back on the tab ``Advanced'' activate ``Use Spooler
+  to speed up printing'' and ``Start printing after spooling of last page''.
+  Untick ``activate advanced printing functions'' to disable its use. Now store
+  all settings made by now by clicking ``Apply'' and leave the configuration
+  window with ``OK'', for else Windows NT 4.0/2000 will not save the settings
+  correctly.
+
+\end{enumerate}
+\subsubsection{If OPT\_SAMBA Is Activated}
+
+  Setting up printing over Samba on a Windows client is different depending
+  on whether \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}} is set to 'yes' or 'no'.
+
+\begin{enumerate}
+\item \textbf{OPT\_NMBD='no'}
+
+  If \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}} is 'no' fli4l printers can not be
+  browsed in the network neighborhood of a Windows computer. They may be installed
+  using the UNC path though.
+
+  For this it is necessary to create an entry in the hosts file of the client.
+  You may find a sample file host.sam in Windows 95, Windows 98 and Windows Me
+  in \verb+C:\WINDOWS+ in a standard Installation. In Windows NT 4.0/2000/XP
+  the file can be found in the Windows directory under \verb+SYSTEM32\DRIVERS\ETC+.
+
+  Add an entry for the router at the end of the file with a text editor.
+  If in base.txt the IP address of the network interface for fli4l's internal
+  net was set to
+
+\begin{example}
+\begin{verbatim}
+    IP_NET_1='192.168.6.1/24'
+\end{verbatim}
+\end{example}
+
+  and the name of the fli4l routers was set to
+
+\begin{example}
+\begin{verbatim}
+  HOST_1='192.168.6.1 fli4l'
+\end{verbatim}
+\end{example}
+
+  the following entry for the IP address and the name of the router should be added:
+
+  192.168.6.1     fli4l
+
+  Save the file again with the filename \textbf{hosts}. If using i.e. Notepad the
+  file will get a suffix .txt added, which has to be removed to make this work.
+  You may have to deactivate the explorer option ``Hide file name suffixes for
+  known file extensions'' otherwise the suffix is not shown. Rename the file
+  to ``hosts'' if necessary. After rebooting Windows the preparations are complete.
+
+  When creating a new printer (Start/Settings/Printer/New Printer) choose ``Network
+  printer''. For ``Network path or queue name'' specify \verb+\\fli4lNAME\PRINTERNAME+.
+  Change ``fli4lNAME'' to the name of the fli4l router and PRINTERNAME to the name
+  of the printer. PRINTERNAME is different depending on the port (parallel, USB, Remote).
+  In general applies:
+  ``prx'' for local printers on parallel ports, ``usbprx'' for
+  local printers on USB ports, ``reprx'' for remote printers and ``smbreprx''
+  for SMB remote printers, x standing for 1, 2, 3, hence for the first, second,
+  third port a.s.o.
+  To choose the first local printer at the parallel port \verb+\\fli4l\pr1+ would
+  have to be set if your router really is named fli4l.
+  Maybe you have set another Windows printer name by using \var{LPD\_\-PARPORT\_\-x\_\-SAMBA\_\-NAME},
+  \var{LPD\_\-USBPORT\_\-x\_\-SAMBA\_\-NAME}, \var{LPD\_\-REMOTE\_\-x\_\-SAMBA\_\-NAME}
+  and \var{LPD\_\-SMBREMOTE\_\-x\_\-SAMBA\_\-NAME}, obviously you have to use it then.
+  For printers already installed you may use the tab ``Details'' in the printer properties
+  to add a new port in analog to the procedere described above to assign it later with
+  ``Port for Printing''. The following depends on the OS version used:
+
+  For Windows 9x/Me:
+
+  On the tab ``Details'' edit the ``Spool Settings'' by ticking ``Spool print jobs
+  (faster printing)'' and ``Start printing after last page''.
+  As data type choose ``RAW'' and tick ``Deactivated bidirectional printing''.
+
+  For Windows NT 4.0/2000/XP:
+
+  On the tab ``Ports'' deactivate ``Activate bidirectional printing''.
+  On the tab ``Advanced'' click ``Print processor'' and set it to ``WinPrint'',
+  under ``Standard data type'' to ``RAW'' leave the dialogue with
+  ``OK'' (for Windows NT 4.0 make an additional tick at ``always spool Raw-Data'').
+  Back on the tab ``Advanced'' activate ``Print to spooler to speed up
+  printing'' and ``Start printing after spooling of last page''. Untick
+  ``Activate advanced print functions'' to avoid using this setting. Now store
+  all settings made by now by clicking ``Apply'' and leave the configuration
+  window with ``OK'', for else Windows NT 4.0/2000 will not save the settings
+  correctly.
+
+\item \textbf{OPT\_NMBD='yes'}
+
+
+  With \smalljump{sec:OPTNMBD}{\var{OPT\_NMBD}}='yes' fli4l's printers are
+  displayed in the network neighborhood of Windows clients.
+
+  When creating a new printer (Start/Settings/Printer/New Printer) choose ``Network
+  printer''. For ``Network path or queue name'' you may use the ``Search'' button.
+  You will find the fli4l by its name defined in base.txt (HOSTNAME='fli4l') and
+  printer shares like ``prx'', ``usbprx'', ``reprx'' or ``smbreprx''.
+  ``prx'' for local printers on parallel ports, ``usbprx'' for
+  local printers on USB ports, ``reprx'' for remote printers and ``smbreprx''
+  for SMB remote printers, x standing for 1, 2, 3, hence for the first, second,
+  third port a.s.o.
+  To choose the first local printer at the parallel port \verb+\\fli4l\pr1+ would
+  have to be set if your router really is named fli4l.
+  Maybe you have set another Windows printer name by using \var{LPD\_\-PARPORT\_\-x\_\-SAMBA\_\-NAME},
+  \var{LPD\_\-USBPORT\_\-x\_\-SAMBA\_\-NAME}, \var{LPD\_\-REMOTE\_\-x\_\-SAMBA\_\-NAME}
+  and \var{LPD\_\-SMBREMOTE\_\-x\_\-SAMBA\_\-NAME}, obviously you have to use it then.
+  For printers already installed you may use the tab ``Details'' in the printer properties
+  to add a new port in analog to the procedere described above to assign it later with
+  ``Port for Printing''. The following depends on the OS version used:
+
+  For Windows 9x/Me:
+
+  On the tab ``Details'' edit the ``Spool Settings'' by ticking ``Spool print jobs
+  (faster printing)'' and ``Start printing after last page''.
+  As data type choose ``RAW'' and tick ``Deactivated bidirectional printing''.
+
+  For Windows NT 4.0/2000/XP:
+
+  On the tab ``Ports'' deactivate ``Activate bidirectional printing''.
+  On the tab ``Advanced'' click ``Print processor'' and set it to ``WinPrint'',
+  under ``Standard data type'' to ``RAW'' leave the dialogue with
+  ``OK'' (for Windows NT 4.0 make an additional tick at ``always spool Raw-Data'').
+  Back on the tab ``Advanced'' activate ``Print to spooler to speed up
+  printing'' and ``Start printing after spooling of last page''. Untick
+  ``Activate advanced print functions'' to avoid using this setting. Now store
+  all settings made by now by clicking ``Apply'' and leave the configuration
+  window with ``OK'', for else Windows NT 4.0/2000 will not save the settings
+  correctly.
+
+  Hint:
+
+  The Network protocol TCP/IP must be installed and configured on the Windows machine.
+  As the default Windows activates ``NETBIOS over TCP/IP'' which is the protocol Samba uses.
+
+\end{enumerate}
+\subsubsection{Setting Up A Linux LPR Client}
+
+  On a Linux client fli4l's network printers may be inserted to the file
+  /etc/printcap. For CUPS (common for newer distributions) see below.
+
+  Example (name of the printer: ``drucker''):
+
+\begin{example}
+\begin{verbatim}
+    drucker:\
+            :lp=:\
+            :rm=fli4l:\
+            :rp=pr1:\
+            :sd=/var/spool/lpd/drucker:\
+            :sh:mx#0:
+\end{verbatim}
+\end{example}
+
+  ``rm=fli4l'' sets the name of the fli4l router and has to be adapted
+  to your settings. If the Linux printing queue is named different
+  adapt ``drucker'' as well.
+
+  The name of the remote queue in ``rp=pr1'' is as follows:
+
+  \begin{description}
+  \item[:rp=pr1:\ ] for fli4l's first parallel printer
+  \item[:rp=pr2:\ ] for fli4l's second parallel printer
+
+  \item[:rp=usbpr1:\ ] for fli4l's first USB printer
+  \item[:rp=usbpr2:\ ] for fli4l's second USB printer
+
+  \item[:rp=repr1:\ bzw. :rp=repr2:\ ] for configured remote-
+  printer server ports
+
+  \item[:rp=smbrepr1:\ bzw. :rp=smbrepr2:\ ] for configured SMB remote-
+  printer server ports
+  \end{description}
+
+  \wichtig{After inserting this entry to etc/printcap
+  the directory /var/spool/lpd/drucker has to be created
+  with the mkdir command.}
+
+  By executing ``lpr -P drucker FILENAME'' you may now print
+  files from the Linux client on fli4l.
+
+  Many newer distributions use alternative printing systems and own
+  configuration tools, where the above described process will fail.
+  For this reason Peter Schöne has contributed a description for the
+  OpenSuSE distribution:
+
+  Use YAST2 and choose Hardware -> Printer configuration. If local printers
+  are already configured you may skip automatic detection. In the window
+  ``Printer Setup'' choose the button ``Configure...'', and next the
+  Option ``Show more connections...'' now click ``Proceed''.
+  Now some different printer types will be shown. As we are using a LPD
+  compatible package pick the first entry ``LPD-Prefilter- and -Forward-Queue''.
+  After clicking ``Proceed'' we get to the configuration:
+  Here you may search for the right router name with the button ``Lookup''-``LPD-Servers''
+  and have it entered automatically else set the IP address of the router directly.
+  The second box is for the name of the printer queue. Use one of the names
+  explained above, i.e. ``pr1'', ``usbpr1'', ``repr1'', ``smbrepr1''
+  etc. A click on the button ``Test remote LPD'' checks the settings for correctness.
+  If the test is passsed click ``Proceed''. In the next window a name has to be set
+  under which the printer is accessable from programs. The fields ``Description''
+  and ``Location of the printer'' may be empty. Again, ``Proceed''...
+  Now pick the printer type connected to the router and the right driver and
+  store all your settings by clicking ``Save'' and a confirmation with ``Yes''.
+  Now the printer has been set up completetly and should be accessable
+  from most programs.
+
+\subsubsection{Einrichtung eines Mac-Clients (For MacOSX 10.3 And Up)}
+
+  Open the ``Printer assistent'' in ``System Settings'' and click ``Add''.
+  Now choose ``TCP/IP - Printer'' and ``LPD/LPR'' as printer type. Specify the
+  IP address of the router under ``Printer address''. Now add the name of
+  the queue like described above, i.e. ``pr1'', ``usbpr1'', ``repr1'', ``smbrepr1''
+  etc. Now choose the printer model from the list and click ``Add''.
+

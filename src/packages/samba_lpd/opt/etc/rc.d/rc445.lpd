@@ -1,0 +1,361 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc445.lpd - start lpd                                  __FLI4LVER__
+# was file /etc/rc.d/rc550.lpd
+#
+# Creation   : 27.12.2000  fm
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+# function to create a spool directory
+# $1 = printer name
+create_spool_dir() {
+    mkdir -p "$lpdir/$1"
+    chmod 700 "$lpdir/$1"
+    chown root:lp "$lpdir/$1"
+}
+
+if [ "$OPT_LPD" = "yes" ]
+then
+    begin_script LPD "configuring lpd..."
+    echo "lp:x:7:" >>/etc/group
+    echo "printer 515/tcp" >>/etc/services
+
+    #--------------------------------------------------------------------------
+    # create ramdisk and directories for spooling:
+    #--------------------------------------------------------------------------
+    port=''
+    io=''
+    irq=''
+    interrupt=''
+    parport=''
+    dma=''
+    direct=''
+    spooldir_error='true'
+    path=''
+    lpconfdir='/etc/lpd'
+    lpdir='/var/spool/lp'
+    lpddir='/var/spool/lpd'
+    printcapfile='/etc/printcap'
+    hostslpdfile='/etc/hosts.lpd'
+
+    mkdir -p "$lpddir"
+    chmod 775 "$lpddir"
+    chown root "$lpddir"
+    chgrp root "$lpddir"
+
+    mkdir -p "$lpconfdir"
+
+    map2persistent LPD_SPOOLPATH /spool
+    if [ -n "$LPD_SPOOLPATH" ]
+    then
+        if mkdir -p "$LPD_SPOOLPATH"
+        then
+            log_info "LPRng print spooling directory $LPD_SPOOLPATH on $HOSTNAME created"
+            rm -rf "$LPD_SPOOLPATH"/*
+            ln -s "$LPD_SPOOLPATH" "$lpdir"
+        else
+            log_error "cannot create LRPng print spooling directory $LPD_SPOOLPATH on $HOSTNAME!"
+        fi
+    fi
+    if [ ! -e "$lpdir" ]
+    then
+        mkdir -p "$lpdir"
+        log_warn "LPRng: spooling into rootfs ramdisk!"
+        log_warn "big jobs can break router functionality!"
+    fi
+
+    #--------------------------------------------------------------------------
+    # begin writing /etc/printcap, if not exists:
+    #--------------------------------------------------------------------------
+    overwrite='false'
+
+    if [ ! -f "$printcapfile" ]
+    then
+        overwrite='true'
+        {
+            echo "#----------------------------------------------------------------------------"
+            echo "# $printcapfile"
+            echo "# automatically created by rc445.lpd"
+            echo "#----------------------------------------------------------------------------"
+        } >"$printcapfile"
+    fi
+
+    #----------------------------------------------------------------------
+    # configuration for local parallel printers
+    #----------------------------------------------------------------------
+    if [ "$OPT_LPD_PARPORT" = "yes" ]
+    then
+        idx='1'
+        idy='0'
+
+        while [ "$idx" -le "$LPD_PARPORT_N" ]
+        do
+            create_spool_dir "pr$idx"
+
+            eval port='$LPD_PARPORT_'$idx'_IO'
+            eval interrupt='$LPD_PARPORT_'$idx'_IRQ'
+            eval direct='$LPD_PARPORT_'$idx'_DMA'
+            port=`echo $port | tr 'A-FX' 'a-fx'`
+
+            if [ "$interrupt" = "yes" ]
+            then
+                interrupt='auto'
+            else
+                interrupt='none'
+            fi
+
+            if [ "$direct" = "yes" ]
+            then
+                direct='auto'
+            else
+                direct='none'
+            fi
+
+            if [ -z "$parport" ]
+            then
+                parport="$idy"
+            else
+                parport="$parport,$idy"
+            fi
+
+            if [ -z "$io" ]
+            then
+                io="$port"
+            else
+                io="$io,$port"
+            fi
+
+            if [ -z "$irq" ]
+            then
+                irq="$interrupt"
+            else
+                irq="$irq,$interrupt"
+            fi
+
+            if [ -z "$dma" ]
+            then
+                dma="$direct"
+            else
+                dma="$dma,$direct"
+            fi
+
+            if [ "$overwrite" = true ]
+            then
+                {
+                    echo "pr$idx:\\"
+                    echo " :sh:\\"
+                    echo " :lp=/dev/lp$idy:\\"
+                    echo " :sd=$lpdir/pr$idx:\\"
+                    echo " :fx=flp:\\"
+                    echo " :sf:\\"
+                    echo " :mx#0:"
+                    echo
+                } >>"$printcapfile"
+            fi
+
+            idx=`expr $idx + 1`
+            idy=`expr $idy + 1`
+        done
+    fi
+
+    #----------------------------------------------------------------------
+    # configuration for local usb printers
+    #----------------------------------------------------------------------
+    if [ "$OPT_LPD_USBPORT" = "yes" ]
+    then
+        idx='1'
+        idy='0'
+
+        while [ "$idx" -le "$LPD_USBPORT_N" ]
+        do
+            create_spool_dir "usbpr$idx"
+            # FFL-532: don't create the device nodes, as mdev does it for us;
+            # use /dev/usb/lpX instead of /dev/usblpX
+
+            if [ "$overwrite" = "true" ]
+            then
+                {
+                    echo "usbpr$idx:\\"
+                    echo " :sh:\\"
+                    echo " :lp=/dev/usb/lp$idy:\\"
+                    echo " :sd=$lpdir/usbpr$idx:\\"
+                    echo " :fx=flp:\\"
+                    echo " :sf:\\"
+                    echo " :mx#0:"
+                    echo
+                } >>"$printcapfile"
+            fi
+
+            idx=`expr $idx + 1`
+            idy=`expr $idy + 1`
+        done
+    fi
+
+    #----------------------------------------------------------------------
+    # configuration for remote printers
+    #----------------------------------------------------------------------
+    if [ "$OPT_LPD_REMOTE" = "yes" ]
+    then
+        idx='1'
+
+        while [ "$idx" -le "$LPD_REMOTE_N" ]
+        do
+            create_spool_dir "repr$idx"
+
+            eval remoteip='$LPD_REMOTE_'$idx'_IP'
+            eval remoteport='$LPD_REMOTE_'$idx'_PORT'
+            eval remotequeuename='$LPD_REMOTE_'$idx'_QUEUENAME'
+
+            if [ "$overwrite" = "true" ]
+            then
+                {
+                    echo "repr$idx:\\"
+                    echo " :sh:\\"
+                    echo " :sd=$lpdir/repr$idx:\\"
+                    echo " :fx=flp:\\"
+                    echo " :sf:\\"
+
+                    if [ -n "$remoteport" ]
+                    then
+                        echo " :lp=$remoteport@$remoteip:\\"
+                    else
+                        echo " :lp=:\\"
+                        echo " :rm=$remoteip:\\"
+                        echo " :rp=$remotequeuename:\\"
+                    fi
+
+                    echo " :mx#0:"
+                    echo
+                } >>$printcapfile
+            fi
+
+            idx=`expr $idx + 1`
+        done
+    fi
+
+    #----------------------------------------------------------------------
+    # configuration for remote smb printers
+    #----------------------------------------------------------------------
+    if [ "$OPT_LPD_SMBREMOTE" = "yes" ]
+    then
+        eval debuglevel='$LPD_SMBREMOTE_DEBUGLEVEL'
+
+        idx='1'
+
+        while [ "$idx" -le "$LPD_SMBREMOTE_N" ]
+        do
+            create_spool_dir "smbrepr$idx"
+            mkdir "$lpdir/smbrepr$idx/acct"
+            >"/dev/smbrepr$idx"
+
+            eval server='$LPD_SMBREMOTE_'$idx'_SERVER'
+            eval service='$LPD_SMBREMOTE_'$idx'_SERVICE'
+            eval user='$LPD_SMBREMOTE_'$idx'_USER'
+            eval password='$LPD_SMBREMOTE_'$idx'_PASSWORD'
+            eval ip='$LPD_SMBREMOTE_'$idx'_IP'
+
+            if [ "$overwrite" = "true" ]
+            then
+                {
+                    echo "server=$server"
+                    echo "service=$service"
+                    echo "username=\"$user\""
+                    echo "password=\"$password\""
+                    echo "ip=$ip"
+                    echo "debuglevel=$debuglevel"
+                } >>"$lpdir/smbrepr$idx/acct/.config"
+
+                {
+                    echo "smbrepr$idx:\\"
+                    echo " :sh:\\"
+                    echo " :lp=/dev/smbrepr$idx:\\"
+                    echo " :sd=$lpdir/smbrepr$idx:\\"
+                    echo " :if=/bin/smbprint:\\"
+                    echo " :af=$lpdir/smbrepr$idx/acct:\\"
+                    echo " :fx=flp:\\"
+                    echo " :sf:\\"
+                    echo " :mx#0:"
+                    echo
+                } >>"$printcapfile"
+            fi
+
+            idx=`expr $idx + 1`
+        done
+    fi
+
+    #--------------------------------------------------------------------------
+    # write /etc/hosts.lpd to allow remote printing via lpr
+    #--------------------------------------------------------------------------
+    if [ ! -f "$hostslpdfile" ]
+    then
+        {
+            echo "#----------------------------------------------------------------------------"
+            echo "# $hostslpdfile"
+            echo "# automatically created by rc445.lpd"
+            echo "#----------------------------------------------------------------------------"
+        } >"$hostslpdfile"
+
+        for netidx in $(seq 1 ${LPD_NETWORK_N:-0})
+        do
+            eval net=\$LPD_NETWORK_${netidx}
+            if translate_ip_net $net LPD_NETWORK_${netidx} net
+            then
+                echo "$net" >> "$hostslpdfile"
+            fi
+        done
+    fi
+
+    {
+        echo "ACCEPT SERVICE=X SERVER"
+        echo "ACCEPT SERVICE=X REMOTEHOST=<$hostslpdfile"
+        echo "REJECT SERVICE=X"
+    } > "$lpconfdir/lpd.perms"
+
+    # FFL-532: create lpd.conf
+    cat <<EOF > "$lpconfdir/lpd.conf"
+done_jobs=0
+done_jobs_max_age=0
+save_when_done=0
+save_on_error=1
+EOF
+
+    #--------------------------------------------------------------------------
+    # loading drivers
+    #--------------------------------------------------------------------------
+    if [ "$OPT_LPD_PARPORT" = "yes" -a "$LPD_PARPORT_N" != "0" ]
+    then
+        log_info "loading parport on io $io, irq $irq, dma $dma ..."
+        do_modprobe parport_pc io=$io irq=$irq dma=$dma
+        do_modprobe lp parport=$parport
+    fi
+
+    if [ "$OPT_LPD_USBPORT" = "yes" -a "$LPD_USBPORT_N" != "0" ]
+    then
+        do_modprobe usblp
+    fi
+
+    #----------------------------------------------------------------------------
+    # start server
+    #----------------------------------------------------------------------------
+    lpd_opt=
+
+    case ${LPD_DEBUG:-no} in
+    no)  ;;
+    yes) lpd_opt="-D1" ;;
+    *)   lpd_opt="-D${LPD_DEBUG}" ;;
+    esac
+
+    if [ "${LPD_DEBUG_FILE:-auto}" = "auto" ]
+    then
+        LPD_DEBUG_FILE="/var/log/lpd.log"
+    fi
+
+    log_info "starting lpd..."
+    case ${LPD_DEBUG:-no} in
+    no)  lpd $lpd_opt ;;
+    *)   nohup lpd $lpd_opt -F >"$LPD_DEBUG_FILE" 2>&1 &
+    esac
+
+    end_script
+fi

@@ -1,0 +1,147 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for samba_lpd
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2003-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_lpd)
+then
+    provides lpd version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_samba)
+then
+    provides samba version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_sambatools)
+then
+    provides sambatools version 4.0.0
+    depends on fli4l version 4.0
+fi
+
+if (opt_samba && opt_ipv6)
+then
+    add_to_opt "etc/rc.d/fwrules.ipv6.pre500.samba" "flags=sh"
+fi
+
+if (opt_lpd && opt_lcd)
+then
+    # is lcd_address a port address ? 
+    if (lcd_address =~ "0x[[:xdigit:]]+")
+    then
+        # convert lcd_address to numerical value
+        split (lcd_address, tmp_addr_%, ' ', numeric)
+        foreach i in lpd_parport_%_io
+        do
+          if (i == tmp_addr_%[1])
+          then
+              error "SAMBA_LPD: You cannot use the same address %i='$i' for lpd and lcd!"
+          fi
+        done
+    fi
+fi
+
+if (nmbd_winsserver && nmbd_extwinsip != "")
+then
+    error "SAMBA_LPD: You cannot use samba as wins server and wins client at the same time!"
+fi
+
+if (opt_nmbd && !opt_samba)
+then
+    error "SAMBA_LPD: You cannot use OPT_NMBD without OPT_SAMBA!"
+fi
+
+if (opt_samba_point_and_print && !opt_lpd)
+then
+    error "SAMBA_LPD: You cannot use OPT_SAMBA_POINT_AND_PRINT without OPT_LPT!"
+fi
+
+if (opt_lpdsrv && opt_lpd)
+then
+    error "SAMBA_LPD: You cannot use OPT_LPD='yes' and OPT_LPDSRV='yes' together!"
+fi
+
+if (opt_lpdsrv_usbport && opt_lpd)
+then
+    error "SAMBA_LPD: You cannot use OPT_LPD='yes' and OPT_LPDSRV_USBPORT='yes' together!"
+fi
+
+if (opt_lpd_usbport)
+then
+    set usbprinter = "no"
+
+    if (opt_usb)
+    then
+        foreach i in usb_extra_driver_n
+        do
+          if (usb_extra_driver_%[i] == "printer")
+          then
+              set usbprinter = "yes"
+          fi
+        done
+    fi
+
+    if (usbprinter == "no")
+    then
+        error "SAMBA_LPD: OPT_USB and USB_EXTRA_DRIVER_x='printer' is required for OPT_LPD and usb printers!"
+    fi
+fi
+
+if (opt_lpd_parport)
+then
+    foreach i in lpd_parport_n
+    do
+      if (lpd_parport_%_irq[i] == "yes")
+      then
+          set irqset = "yes"
+      else
+          set irqset = "no"
+      fi
+
+      if (lpd_parport_%_dma[i] == "yes")
+      then
+          set dmaset = "yes"
+      else
+          set dmaset = "no"
+      fi
+
+      if (dmaset == "yes") && (irqset == "no")
+      then
+          error "SAMBA_LPD: You cannot use dma without irq! Set LPD_PARPORT_${i}_IRQ to 'yes' or LPD_PARPORT_${i}_DMA to 'no'!"
+      fi
+    done
+fi
+
+if (opt_lpd_remote)
+then
+    foreach i in lpd_remote_n
+    do
+      if (lpd_remote_%_port[i] != "")
+      then
+          set lpd_remoteport = "yes"
+      else
+          set lpd_remoteport = "no"
+      fi
+
+      if (lpd_remote_%_queuename[i] != "")
+      then
+          set lpd_remotequeuename = "yes"
+      else
+          set lpd_remotequeuename = "no"
+      fi
+
+      if (lpd_remoteport == "yes") && (lpd_remotequeuename == "yes")
+      then
+          error "SAMBA_LPD: You cannot use port and queuename at the same time! Set LPD_REMOTE_${i}_PORT to '' or LPD_REMOTE_${i}_QUEUENAME to ''!"
+      fi
+
+      if (lpd_remoteport == "no") && (lpd_remotequeuename == "no")
+      then
+          error "SAMBA_LPD: One of LPD_REMOTE_${i}_PORT and LPD_REMOTE_${i}_QUEUENAME must be filled, read documentation!"
+      fi
+    done
+fi

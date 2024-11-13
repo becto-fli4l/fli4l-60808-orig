@@ -1,0 +1,29 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/fwrules.pre500.samba
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+pf_in_samba_default () {
+    if [ "$SAMBA_BIND_ALL" = "yes" ]
+    then
+        for idx in $(seq 1 $IP_NET_N)
+        do
+            eval net=IP_NET_$idx
+            fw_append_rule filter INPUT "tmpl:samba $net ACCEPT" PF_INPUT_ACCEPT_DEF
+        done
+    else
+        for idx in $(seq 1 $SAMBA_BIND_IPV4_N)
+        do
+            eval net=\$SAMBA_BIND_IPV4_$idx
+            fw_append_rule filter INPUT "tmpl:samba $net ACCEPT" PF_INPUT_ACCEPT_DEF
+        done
+    fi
+}
+
+case $PF_INPUT_ACCEPT_DEF in
+yes)
+    pf_in_add_default pf_in_samba_default
+    ;;
+esac

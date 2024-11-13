@@ -1,0 +1,334 @@
+#! /bin/sh
+#----------------------------------------------------------------------------
+# samba-netsend - send message to SMB Hosts                        __FLI4LVER__
+#
+# Copyright (c) 2007 Thomas Bork, tom(at)fli4l(dot)de
+#
+# usage: samba-netsend
+#    or: samba-netsend {all|active|"host1 host2 ..."} "message"
+#
+# Creation   : 04.11.2001  tb
+# Last Update: $Id$
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#----------------------------------------------------------------------------
+#set -x
+case $#
+in
+  0)
+    interactive='true'
+    hosts=''
+    message=''
+    broadcast=''
+    ;;
+  2)
+    interactive='false'
+    hosts="$1"
+    message="$2"
+    broadcast=''
+    ;;
+  *)
+    echo "usage: `basename $0`" >&2
+    echo "   or: `basename $0` {all|active|\"host1 host2 ...\"} \"message\"" >&2
+    exit 1
+    ;;
+esac
+
+colechobin="/usr/local/bin/colecho"
+smbclientbin="/bin/smbclient"
+nmblookupbin="/bin/nmblookup"
+hostname=`hostname | sed 'y#[abcdefghijklmnopqrstuvwxyzäöü]#[ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ]#'`
+
+if [ -f /boot/rc.cfg ]
+then
+    . /boot/rc.cfg
+fi
+
+if [ "$LOCALE" = "de" ]
+then
+    on="auf"
+
+    do_title ()
+    {
+     clrhome
+     $colechobin "Sende Nachrichten an SMB Host" gn
+     echo
+    }
+
+    do_askhosts ()
+    {
+     echo "An welche SMB Hosts soll die Nachricht gesendet werden?"
+     echo
+     echo "Auswahl 1"
+     echo "---------"
+     echo "Alle SMB-Hosts in konfigurierten Subnetzen von fli4l - gebe 'all' ein."
+     echo
+     echo "Auswahl 2"
+     echo "---------"
+     echo "fli4l-Samba-Clients mit aktiven Verbindungen - gebe 'active' ein."
+     echo
+     echo "Auswahl 3"
+     echo "---------"
+     echo "Ein oder mehrere aktive SMB-Hosts, gebe die NETBIOS-Namen mit einem"
+     echo "Leerzeichen getrennt ein, z.B. 'client1 client2':"
+    }
+
+    do_emptyhosts ()
+    {
+     $colechobin "Kein Host angegeben" br x br
+    }
+
+    do_message ()
+    {
+     echo "Welche Nachricht soll gesendet werden?"
+     echo "z.B. 'fli4l-Samba-Server wird in 3 Minuten heruntergefahren...':"
+    }
+
+    do_emptymessage ()
+    {
+     $colechobin "Keine Nachricht angegeben" br x br
+    }
+
+    do_broadcast ()
+    {
+     $colechobin "Sende Nachrichten auf Broadcast-Adresse $y..." bl x br
+    }
+
+    do_emptyactive ()
+    {
+     $colechobin "Kein fli4l-Samba-Client aktiv" br x br
+    }
+
+    do_sendmessageinfo ()
+    {
+     echo "Sende Nachricht an NETBIOS-Name $name ($i)..."
+    }
+
+    do_sendmessageinfofailed ()
+    {
+     $colechobin "Senden der Nachricht an NETBIOS-Name $name ($i) fehlgeschlagen" br x br
+    }
+
+    do_sendmessageinfoipfailed ()
+    {
+     $colechobin "Senden der Nachricht an NETBIOS-Name $name fehlgeschlagen (keine IP gefunden)" br x br
+    }
+else
+    on="on"
+
+    do_title ()
+    {
+     clrhome
+     $colechobin "Send message to SMB hosts" gn
+     echo
+    }
+
+    do_askhosts ()
+    {
+     echo "To which SMB hosts the message should be send?"
+     echo
+     echo "Choice 1"
+     echo "--------"
+     echo "All SMB hosts on configured subnets on fli4l - type 'all'."
+     echo
+     echo "Choice 2"
+     echo "--------"
+     echo "fli4l Samba clients with active connections - type 'active'."
+     echo
+     echo "Choice 3"
+     echo "--------"
+     echo "One ore more active SMB hosts, type NETBIOS names"
+     echo "separated with a blank, for instance 'client1 client2':"
+    }
+
+    do_emptyhosts ()
+    {
+     $colechobin "No host specified" br x br
+    }
+
+    do_message ()
+    {
+     echo "Which message should be send?"
+     echo "For instance 'fli4l samba server is going down in 3 minutes...':"
+    }
+
+    do_emptymessage ()
+    {
+     $colechobin "No message specified" br x br
+    }
+
+    do_broadcast ()
+    {
+     $colechobin "Sending messages on broadcast address $y..." bl x br
+    }
+
+    do_emptyactive ()
+    {
+     $colechobin "No fli4l Samba client active" br x br
+    }
+
+    do_sendmessageinfo ()
+    {
+     echo "Sending message to netbios name $name ($i)..."
+    }
+
+    do_sendmessageinfofailed ()
+    {
+     $colechobin "Sending message to netbios name $name ($i) failed" br x br
+    }
+
+    do_sendmessageinfoipfailed ()
+    {
+     $colechobin "Sending message to netbios name $name failed (no ip found)" br x br
+    }
+fi
+
+from="fli4l-samba-server $on $hostname"
+
+do_sendmessage ()
+{
+   name="`echo "$name" | sed 'y#[abcdefghijklmnopqrstuvwxyzäöü]#[ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜ]#'`"
+   if [ "$name" != "$hostname" -a -n "$name" ]
+   then
+       ip=`$nmblookupbin $name                     \
+       | grep -v '^Sending queries to '            \
+       | grep -v '^name_query failed to find name' \
+       | cut -d' ' -f1`
+
+       if [ -n "$ip" ]
+       then
+           for i in $ip
+           do
+             if [ -n "$i" ]
+             then
+                 do_sendmessageinfo
+                 echo "$message" | $smbclientbin -U "$from" -M "$name" -I "$i" 1>/dev/null
+                 if [ $? -ne 0 ]
+                 then
+                     do_sendmessageinfofailed
+                 fi
+             fi
+           done
+       else
+           do_sendmessageinfoipfailed
+       fi
+   fi	
+}
+
+if [ "$interactive" = "true" ]
+then
+    do_title
+fi
+
+if [ -z "$hosts" ]
+then
+    do_askhosts
+    echo
+    read hosts
+
+    if [ -z "$hosts" ]
+    then
+        echo
+        do_emptyhosts
+        exit 1
+    fi
+fi
+
+if [ "$interactive" = "true" ]
+then
+    do_title
+fi
+
+if [ -z "$message" ]
+then
+    do_message
+    echo
+    read message
+
+    if [ -z "$message" ]
+    then
+        echo
+        do_emptymessage
+        exit 1
+    fi
+fi
+
+if [ "$interactive" = "true" ]
+then
+    do_title
+fi
+
+case "$hosts"
+in
+  all)
+      for b in `grep " interfaces = " /etc/smb.conf | cut -c15-`
+      do
+        ipaddr=`echo $b | cut -d'/' -f1`
+        netmask=`echo $b | cut -d'/' -f2`
+        network=`netcalc network $ipaddr $netmask`
+        newbroadcast=`netcalc broadcast $network $netmask`
+
+        case $broadcast
+        in
+          *$newbroadcast*)
+                          ;;
+                        *)
+                          broadcast="$broadcast $newbroadcast"
+                          ;;
+        esac
+      done
+
+      for y in $broadcast
+      do
+        do_broadcast
+
+        for z in `$nmblookupbin '*' -B $y             \
+        | grep -v "^Sending queries to "              \
+        | grep -v "^name_query failed to find name *" \
+        | cut -d' ' -f1`
+        do
+          name=`$nmblookupbin -A $z \
+          | grep \<00\>             \
+          | grep -v GROUP           \
+          | grep -v 'IS~'           \
+          | sed "s/ .*//"           \
+          | sort -u`
+
+          name=`echo $name \
+          | sed "s/ //"    \
+          | sed "s/\t//"`
+
+          do_sendmessage
+        done
+      done
+      ;;
+active)
+      int_samba_version=`smbstatus -b | grep '^Samba version '`
+      status=`smbstatus -b                              \
+      | grep -vi "^$int_samba_version"                  \
+      | grep -vi "^PID     Username "                   \
+      | sed -e 's#^[[:space:]]\+##;s#[[:space:]]\+# #g' \
+      | grep '^[0-9]' | cut -d' ' -f3 | sort -u`
+
+      if [ -z "$status" ]
+      then
+          do_emptyactive
+          exit 1
+      else
+          for name in $status
+          do
+            do_sendmessage
+          done
+      fi
+      ;;
+    *)
+      # hosts = separate list
+      for name in $hosts
+      do
+        do_sendmessage
+      done
+      ;;
+esac
