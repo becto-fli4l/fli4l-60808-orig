@@ -1,0 +1,151 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for faxrcv
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2004-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_faxrcv)
+then
+
+    provides faxrcv version 4.0.0
+    depends on fli4l version 4.0
+    depends on isdn version 4.0
+
+    # Check for OPT_ISDN
+    if (defined(isdn_type) && ISDN_TYPE < 100)
+    then
+        error "faxrcv: You must use a CAPI-capable driver (see ISDN-Docs!) to use OPT_FAXRCV"
+    fi
+
+    # Check for OPT_HTTPD
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+
+        add_to_opt "srv/www/admin/faxrcv.cgi" "mode=555 flags=sh"
+        add_to_opt "srv/www/css/faxrcv.css"
+        add_to_opt "srv/www/img/fax_delete.gif"
+        add_to_opt "srv/www/img/fax_download.gif"
+        add_to_opt "srv/www/img/fax_view.gif"
+
+        if (httpd_gui_lang == "auto")
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            stat("opt/srv/www/lang/faxrcv.$lang", langfile)
+            if(langfile_res == "OK")
+            then
+                add_to_opt "srv/www/lang/faxrcv.$lang" "mode=444 flags=sh"
+            else
+                warning "could not find 'srv/www/lang/faxrcv.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/faxrcv.en" "mode=444 flags=sh"
+            fi
+        done
+    fi
+
+    foreach n in FAXRCV_N
+    do
+        set dir=FAXRCV_%_DIRECTORY[n]
+        set tmp=FAXRCV_%_TEMP[n]
+        set ntfycmd_n=FAXRCV_%_NTFYCMD_N[n]
+        set faxrcv_n_mail=FAXRCV_%_MAIL[n]
+        set faxrcv_n_mail_account=FAXRCV_%_MAIL_ACCOUNT[n]
+        
+        # check FAXRCV_x_DIRECTORY differs from FAXRCV_x_TEMP
+        if (dir == tmp)
+        then
+            error "the directory FAXRCV_${n}_TEMP must be different to FAXRCV_${n}_DIRECTORY"
+        fi
+
+        if (faxrcv_n_mail)
+        then
+            if (opt_mailsend)
+            then
+                depends on mailsend version 4.0
+    
+                if (faxrcv_n_mail_account != "default")
+                then
+                    set found="no"
+                    foreach m in MAILSEND_N
+                    do
+                        if (mailsend_%_account[m] == faxrcv_n_mail_account)
+                        then
+                            set found="yes" 
+                        fi
+                    done
+                    if (found != "yes")
+                    then
+                        error "Account '${faxrcv_n_mail_account}' not found in MAILSEND_x_ACCOUNT"
+                    fi
+                fi
+            else
+                error "OPT_MAILSEND must be 'yes' when FAXRCV_${n}_MAIL is 'yes'"
+            fi
+        fi
+        
+        foreach c in ntfycmd_n
+        do
+            set ntfycmd=faxrcv_%_ntfycmd_%[n][c]
+            stat("$config_dir$ntfycmd", script)
+            if( script_res == "OK" )
+            then
+                add_to_opt "$config_dir$ntfycmd" "mode=555"
+            else
+                stat("opt$ntfycmd", script)
+                if( script_res == "OK" )
+                then
+                    add_to_opt ".$ntfycmd" "mode=555"
+                else
+                    error "scriptfile FAXRCV_${n}_NTFYCMD_${c}='$ntfycmd' not found"
+                fi
+            fi
+        done 
+    done
+    
+    # Check for IMONC_DIR
+    if (faxrcv_imonc_list =~ "[[:space:]]")
+    then
+        if (!defined(faxrcv_imonc_dir))
+        then
+            error "faxrcv: When you access multiple MSN through Imonc, you must specify FAXRCV_IMONC_DIR (see docs!)"
+        fi
+    else
+        if (defined(faxrcv_imonc_dir))
+        then
+            error "faxrcv: Unless you want to access multiple MSN though Imonc please do not specify FAXRCV_IMONC_DIR (see docs!)"
+        fi
+    fi
+    
+    if (opt_hwsupp)
+    then
+        depends on hwsupp version 4.0
+ 
+        foreach i in hwsupp_led_n
+        do
+            set action=hwsupp_led_%[i]
+            if (action == "faxrcv")
+            then
+                add_to_opt "usr/local/bin/faxrcv_setleds" "mode=555 flags=sh"
+                add_to_opt "etc/rc.d/rc999.faxrcv" "mode=555 flags=sh"
+            fi
+        done
+        
+        foreach i in hwsupp_button_n
+        do
+            set action=hwsupp_button_%[i]
+            if (action == "faxrcv")
+            then
+                add_to_opt "usr/bin/faxrcv_keyprog" "mode=555 flags=sh"
+            fi
+        done
+    fi
+fi
