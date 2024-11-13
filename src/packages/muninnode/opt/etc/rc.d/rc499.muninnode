@@ -1,0 +1,162 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc499.muninnode - configuration/startup of munin-node
+#----------------------------------------------------------------------------
+
+case $OPT_MUNINNODE in
+yes)
+    begin_script MUNINNODE "starting munin-node ..."
+
+    PLUGINS=""
+
+    if [ "$MUNINNODE_DF" = "yes" ]
+    then
+      PLUGINS="$PLUGINS df"
+    fi 
+    if [ "$MUNINNODE_DFABS" = "yes" ]
+    then
+      PLUGINS="$PLUGINS df_abs"
+    fi 
+    if [ "$MUNINNODE_CPU" = "yes" ]
+    then
+      PLUGINS="$PLUGINS cpu"
+    fi 
+    if [ "$MUNINNODE_IF" = "yes" ]
+    then
+      PLUGINS="$PLUGINS if_"
+    fi 
+    if [ "$MUNINNODE_IFERR" = "yes" ]
+    then
+      PLUGINS="$PLUGINS if_err_"
+    fi 
+    if [ "$MUNINNODE_LOAD" = "yes" ]
+    then
+      PLUGINS="$PLUGINS load"
+    fi 
+    if [ "$MUNINNODE_MEM" = "yes" ]
+    then
+      PLUGINS="$PLUGINS memory"
+    fi 
+    if [ "$MUNINNODE_PROC" = "yes" ]
+    then
+      PLUGINS="$PLUGINS processes"
+    fi 
+    if [ "$MUNINNODE_SWAP" = "yes" ]
+    then
+      PLUGINS="$PLUGINS swap"
+    fi 
+    if [ "$MUNINNODE_NETSTAT" = "yes" ]
+    then
+      PLUGINS="$PLUGINS netstat"
+    fi 
+    if [ "$MUNINNODE_UPTIME" = "yes" ]
+    then
+      PLUGINS="$PLUGINS uptime"
+    fi 
+    if [ "$MUNINNODE_INT" = "yes" ]
+    then
+      PLUGINS="$PLUGINS interrupts"
+    fi 
+    if [ "$MUNINNODE_IRQ" = "yes" ]
+    then
+      PLUGINS="$PLUGINS irqstats"
+    fi 
+    if [ "$MUNINNODE_ALIX" = "yes" ]
+    then
+      PLUGINS="$PLUGINS alix"
+    fi
+ 
+
+    echo "# runtime config munin-node" > /var/run/muninnode.conf
+    for idx in $(seq 1 $MUNINNODE_IFUSER_N)
+    do
+      PLUGINS="$PLUGINS ifuser$idx"
+      eval caption='$MUNINNODE_IFUSER_'$idx'_CAPTION'
+      eval total='$MUNINNODE_IFUSER_'$idx'_TOTAL'
+      eval devices='$MUNINNODE_IFUSER_'$idx'_DEVICE_N'
+      { echo "config_ifuser$idx() {"
+        echo "echo \"graph_title $caption\""
+        echo "echo \"graph_category network\""
+        echo "echo \"graph_vlabel bits in (-) / out (+)\""
+        echo "echo \"graph_args --base 1000\""
+      } >> /var/run/muninnode.conf
+      if [ "$total" = "yes" ]
+      then
+        echo "echo graph_total Total" >> /var/run/muninnode.conf
+      fi
+      for idy in $(seq 1 $devices)
+      do
+        eval caption='$MUNINNODE_IFUSER_'$idx'_DEVICE_'$idy'_CAPTION'
+        { echo "echo \"down$idy.label $caption\""
+          echo "echo \"down$idy.type ABSOLUTE\""
+          echo "echo \"down$idy.min 0\""
+          echo "echo \"down$idy.graph no\""
+          echo "echo \"up$idy.label $caption\""
+          echo "echo \"up$idy.type ABSOLUTE\""
+          echo "echo \"up$idy.min 0\""
+          echo "echo \"up$idy.negative down$idy\""
+          echo "echo \"up$idy.label $caption\""
+        } >> /var/run/muninnode.conf
+      done
+      { echo "}"
+        echo "fetch_ifuser$idx() {"
+      } >>/var/run/muninnode.conf
+      for idy in $(seq 1 $devices)
+      do
+        eval device='$MUNINNODE_IFUSER_'$idx'_DEVICE_'$idy'_NAME'
+        { echo "IINFO=\$(grep \"$device:\" /proc/net/dev | cut -d: -f2 | sed -e 's/  / /g')"
+          echo "echo \"down$idy.value \$(echo \$IINFO | cut -d\  -f1)\""
+          echo "echo \"up$idy.value \$(echo \$IINFO | cut -d\  -f9)\""
+        } >> /var/run/muninnode.conf
+      done
+      echo "}" >>/var/run/muninnode.conf
+    done
+    for idx in $(seq 1 $MUNINNODE_AVRNET_N)
+    do
+      PLUGINS="$PLUGINS avrnet$idx"
+      eval caption='$MUNINNODE_AVRNET_'$idx'_CAPTION'
+      eval vlabel='$MUNINNODE_AVRNET_'$idx'_LABEL'
+      eval host='$MUNINNODE_AVRNET_'$idx'_HOST'
+      eval netport='$MUNINNODE_AVRNET_'$idx'_NETPORT'
+      eval channels='$MUNINNODE_AVRNET_'$idx'_CHANNEL_N'
+      { echo "config_avrnet$idx() {"
+        echo "echo \"graph_title $caption\""
+        echo "echo \"graph_category sensors\""
+        echo "echo \"graph_vlabel $vlabel\""
+        echo "echo \"graph_args --base 1000\""
+      } >> /var/run/muninnode.conf
+      for idy in $(seq 1 $channels)
+      do
+        eval caption='$MUNINNODE_AVRNET_'$idx'_CHANNEL_'$idy'_CAPTION'
+        { echo "echo \"avrnet$idy.label $caption\""
+          echo "echo \"avrnet$idy.type DERIVE\""
+          echo "echo \"avrnet$idy.min 0\""
+        } >> /var/run/muninnode.conf
+      done
+      { echo "}"
+        echo "fetch_avrnet$idx() {"
+      } >>/var/run/muninnode.conf
+      for idy in $(seq 1 $channels)
+      do
+        eval port='$MUNINNODE_AVRNET_'$idx'_CHANNEL_'$idy'_PORT'
+        eval ioffset='$MUNINNODE_AVRNET_'$idx'_CHANNEL_'$idy'_INPUTOFFSET'
+        eval poffset='$MUNINNODE_AVRNET_'$idx'_CHANNEL_'$idy'_PLOTOFFSET'
+        eval gain='$MUNINNODE_AVRNET_'$idx'_CHANNEL_'$idy'_GAIN'
+        { echo "VAL=\$(echo \"get$port\" | netcat -q 3 \"$host\" $netport)"
+          echo "VAL=\$(echo \"($VAL-$ioffset)/$gain+$poffset\" | bc)"
+          echo "echo \"avrnet$idy.value \$VAL\""
+         } >> /var/run/muninnode.conf
+      done
+      echo "}" >>/var/run/muninnode.conf
+    done
+
+    echo "PLUGINS=\"$PLUGINS\"" >> /var/run/muninnode.conf
+
+    echo "munin  $MUNINNODE_PORT/tcp" >> /etc/services
+    echo "munin	 stream    tcp nowait root /usr/sbin/munin-node" >> /etc/inetd.conf
+
+    # inetd wird durch /etc/rc.d/rc998.base gestartet
+
+    end_script
+    ;;
+esac

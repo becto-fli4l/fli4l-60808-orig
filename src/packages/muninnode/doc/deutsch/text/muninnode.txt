@@ -1,0 +1,128 @@
+Munin-Node fuer fli4l 3.2.x/3.3.x/3.4x
+Author: Siegfried Schmidt (software@schmidt.ath.cx)
+Version: 1.3
+------------------------------------------------------------------
+
+
+Munin ist ein auf einer RRD-Datenbank basierendes Monitoring-Tool zur 
+netzwerkweiten Status-Überwachung (http://munin.projects.linpro.no/)
+
+Sie besteht aus einem zentralen Munin-Server und beliebig vielen Munin-Nodes 
+zur Datenerfassung.
+
+Der Original-Munin-Node ist eine größtenteils Perl-basierende 
+Software, die sich nicht auf dem fli4l betreiben lässt.  
+
+Es gibt jedoch eine shellbasierende Version von Munin-Node 
+(http://sourceforge.net/projects/muninlite/). Für dieses Opt wurde Muninlite 
+1.0.0 an die ash der busybox angepasst, die Plugins überarbeitet, ergänzt
+und mit einem neuen Konfigurationsprogramm versehen.
+
+
+Folgende Plugins sind integriert:
+
+Name         		Anzeige					Kategorie
+--------------------------------------------------------------------------
+* df  			Filesystem usage in %			disk	
+* df_abs		Filesystem usage in kByte		disk
+* cpu  			CPU usage				system
+* if_  			network traffic 			network
+* if_err_  		network errors				network
+* load  		load average				system
+* memory  		memory usage				system
+* processes  		number of processes			processes
+* swap  		swap in/out				system
+* netstat  		netstat					network
+* uptime  		uptime					other
+* interrupts 		interrupts and context switches		system
+* irqstats 		individual interrupts			system
+* alix			Tempsensor Alix-Boards			sensors
+* ifuser		userkonfigurierbarer network traffic	network
+* avrnet		je 4 digitale/analoge Kanäle AVR-NET-IO	sensors
+
+
+Die Plugings konfigurieren sich selbst sich auf vorhandenen Devices.  
+Zusammenfassungen und Gruppierungen im Netzwerkbereich sind mit dem Plugin ifuser möglich, 
+dass sich ohne jede Automatik ausschliesslich an die Vorgaben aus der Konfiguration hält.
+
+Weitere Konfiguration siehe Beipiele und Kommentare in config/muninnode.txt
+
+Alle Plugins unterstützen die volle Bandbreite der Möglichkeiten von Munin. Andere Linienarten, 
+Flächen, Skalierungen und die Definition von Warnschwellen werden serverseitig konfiguriert,
+das erspart den Neustart des Routers nach jeder Änderung.  
+
+
+
+Hinweise zum AVR-NET-IO-Board (Pollin BestNr 810 058) 
+-----------------------------
+Das Board ist ein preiswerte Möglichkeit zur Abfrage von Messwerten und Steuerung über 
+Ethernet. Gegenüber einem direkten Anschluss von Sensoren an den Router gibt es hier keine 
+Einschränkungen in der Entfernung.
+
+Je Graph kann eine beliebige Auswahl aus den 4 analogen und 4 digitalen Eingangskanälen
+EINES Boards mit individueller Bezeichnung und Skalierung dargestellt werden. Die 
+Skalierung erlaubt auch das gemischte Darstellen analoger und digitaler Kanäle sowie 
+das "Stapeln" digitaler Kanäle.
+
+Der geplottete Wert berechnet sich wie folgt:
+
+Ausgangswert = (Eingangswert - Inputoffset) * Gain + Plotoffset
+
+Eingangswert digitaler Kanäle: 0..1
+Eingangswert analoger Kanäle: 0..1023
+
+
+An den Analogeingängen können preiswerte Temperatursensoren (z.B. aus der KTY-10..19-Reihe) 
+angeschlossen werden:
+
+            _____
+ + 5V o-----_____------*---------> ADC		mit Rv = 2..4 kOhm (niedriger TK)
+              Rv       |			
+                      | |			
+                      | |KTY-xx
+                      | |
+                       |
+                       |
+                       *---------> Gnd
+
+ + 3.3V o------------------------> Uref	ext	erhöht gegenüber der Standardeinstellung 5V die Auflösung
+
+
+Für Überwachungszwecke reicht eine einfache 2-Punkt-Kalibierung: 
+- Input0ffset = 0, Gain = 1, Plotoffset = 0 einstellen
+- Zwei Temperaturen im interessanten Bereich mit Thermometer vergleichen und
+  Anzeigewerte notieren
+- Skalierung berechnen:  Beispiel    Temperatur   Anzeigewert
+                                     ------------------------
+					20           450
+					50   	     567
+				
+			  Inputoffset = 450
+                          Plotoffset  = 20
+			  Gain = (567-450) / (50-20) = 3.9
+
+
+Die Abfrage des Boards durch das Munin-Plugin stört nicht den parallelen Zugriff mit anderen 
+Anwendungen auf die Ports
+
+
+  
+Historie/Änderungen
+---------------------------------------------------------------------------
+1.3	04-2010		zusätzliches Plugin für AVR-NET-IO
+
+1.2	03-2010		alle Plugins in config einzeln zuschaltbar
+			
+			zusätzliche Plugins:
+                        - df_abs (filesystem usage in kByte)
+			- alix   (Tempsensors für Alix-Boards)
+  			- ifuser (network traffic in/out für mehrere Devices pro Graph)
+1.1	01-2009		netstat jetzt mit im Packet enthalten
+
+			Plugin df_ zeigt für '/' keinen Wert an:
+ 			-> Aufruf 'df /' geht nicht unter flil 3.[0-2] für tempfs 
+			-> unter flil 3.3 gefixt
+
+			Plugin if_ zeigt keine (i)ppp oder tun-Devices:
+			-> Plugin geändert für if_ (nicht für if_err_)
+				
