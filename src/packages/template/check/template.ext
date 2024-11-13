@@ -1,0 +1,97 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for template
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+#
+# In den folgenden Beispielen wird nur warning statt error oder
+# fatal_error verwendet, damit man sieht, was die Tests bewirken.
+#
+# Nehmen wir mal an, es müßten einige zusätzliche Dinge gegeben
+# sein. Opt_Depend hängt von Opt_Template ab, da es Funktionen von Opt_Template
+# benutzt. Wenn Opt_Depend auf 'yes' gesetzt wird, muß auch Opt_Template auf
+# 'yes' stehen 
+
+if (opt_depend && !opt_template) 
+then
+   warning "If you want to use OPT_DEPEND, you have to enable OPT_TEMPLATE too"
+fi
+
+if (opt_template) 
+then
+    # Paket-Identifer für andere Pakete bereitstellen
+    provides template version 4.0.0
+
+    # Abhängigkeit zu einem bestimmten Paket definieren
+    depends on fli4l version 4.0
+
+# für jede TEMPLATE_VAR_% Variable muß ein File kopiert worden sein
+
+    foreach i in template_var_%
+    do
+	if (copy_pending("%i"))
+	then
+	    error "No file for %i=$i found, check template/opt/template.txt"
+	fi
+
+# check whether $i contains foo or bar
+	if (i =~ ".*(foo|bar).*")
+	then	
+		warning "%i == '$i'"
+	fi
+    done
+
+#
+# Prüfe. ob Variable vorhanden ist, oder nicht
+#
+    foreach i in template_var_%_opt
+    do
+	if (i != "")
+	then
+	    warning "%i is present (%i='$i')"
+	else
+	    warning "%i is undefined (empty)"
+	fi
+    done
+
+    foreach j in template_var_n
+    do
+	set i = template_var_%_opt[j]
+	if (i != "")
+	then
+	    warning "template_var_${j}_opt is present (template_var_${j}_opt='$i')"
+	else
+	    warning "template_var_${j}_opt is undefined (empty)"
+	fi
+    done
+
+# Die in Opt_Template verwendeten IP-Adressen müssen alle verschieden sein
+    foreach i in template_var_%_ipaddr
+    do
+	foreach j in template_var_%_ipaddr
+	do
+	    if ("%i" != "%j" && "$i" == "$j")
+	    then
+		warning "%i and %j have the same ip addresses"
+	    fi
+	done
+    done
+
+# Prüfe, ob die letzte template variable den Wert 'argh' enthält
+    if (template_var_n != 0)
+    then
+	if (template_var_% [template_var_n] == "argh")
+	then
+	    warning "TEMPLATE_VAR_$template_var_n == 'argh'"
+	fi
+    fi
+fi
+
+# Prüfe, ein File in Abhängigkeit von opt_template kopiert wurde
+if (!copy_pending (opt_template))
+then
+	warning "es wurde mindestens ein file in abhängigkeit von opt_template kopiert"
+fi

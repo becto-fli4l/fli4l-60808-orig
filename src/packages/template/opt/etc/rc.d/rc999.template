@@ -1,0 +1,58 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc999.template - template rc file
+#
+# Creation:     19.03.2002 jw5
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# Das rc script macht nichts weiter, als die Variablen für eine
+# spätere Verwendung in eine Datei zu schreiben. Es könnte natürlich
+# auch beliebige andere Dinge tun, die notwendig sind, um den Dienst
+# hochzuziehen.
+
+
+# Ist das Paket überhaupt überhaupt aktiv?
+if [ "$OPT_TEMPLATE" = yes ]
+then
+    # Debug-Möglichkeit 
+    begin_script TEMPLATE "starting template rc file ..."
+
+    # Laufvariable für % Variablen
+    idx=1
+    # Iteriere über alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$TEMPLATE_VAR_N" ]
+    do
+        # Inhalt der Variable
+        eval name='$TEMPLATE_VAR_'$idx
+        # die IP-Adresse
+        eval ipaddr='$TEMPLATE_VAR_'$idx'_IPADDR'
+        # die IP-Route
+        eval route='$TEMPLATE_VAR_'$idx'_ROUTE'
+
+        # von der Route brauchen wir Netzwerk und Maske separat
+        temp=`echo $route | /usr/bin/sed 's/:/ /g'`
+        set "$temp"
+
+        # etwas magisch :) Der Wert von route wird durch sed 
+        # geschickt, welches den ':' durch ein ' ' ersetzt.
+        # Mit dem Ergebnis fürhren wir ein 'set' aus, was
+        # wiederum bewirkt, daß jeder einzele Teil einer
+        # Variablen zugewiesen wird, hier $1 und $2
+        network=$1
+        netmask=$2
+        
+        # Nun schreiben wir das ganze in eine Datei der Form
+        # name ipaddr network netmask
+
+        echo "$name $ipaddr $network $netmask"
+
+        # index um eins erhöhen
+        idx=`/usr/bin/expr $idx + 1`
+    done >> /var/run/template.conf
+
+    end_script
+fi
+
+
