@@ -1,0 +1,147 @@
+% Last Update: $Id$
+\section {OPT\_YAPS - Versenden von SMS-Nachrichten}
+\configlabel{OPT\_YAPS}{OPTYAPS}
+
+\subsection {Einleitung}
+
+Mit YAPS können über eine ISDN-Karte oder ein Modem des fli4l-Routers
+SMS-Nachrichten verschickt werden, wobei je nach Provider weniger Kosten
+entstehen, als beim SMS-Versand mit einem Handy. Außerdem ist das Eintippen
+der SMS an der PC-Tastatur angenehmer.
+
+Dieses Paket ist eine Anpassung des OPT\_YAPS-Pakets von Ralf Dausend
+an fli4l 3.x. Es beruht auf dem Linux Programm ``yaps'' von Ulrich Dessauer
+und war ursprünglich von Stefan Rupprecht. Ralf Dausend hat es ausgebaut und
+die ursprüngliche Fassung der Anleitung geschrieben.
+
+\subsection {Voraussetzungen}
+
+YAPS benötigt nur einen fli4l-Router mit ISDN-Karte oder einem Modem.
+Konfiguriert wird YAPS über die Datei \texttt{config/yaps.txt}. Die von YAPS
+benötigte Datei \texttt{/etc/yaps.rc} wird beim Booten des Routers vom Skript
+\texttt{rc500.yaps} erstellt.
+
+\wichtig{YAPS funktioniert nicht über DSL oder Internet! YAPS benötigt auf
+jeden Fall eine ISDN-Karte oder ein Modem!}
+
+\subsection {Mobilfunknetze}
+
+Für Deutschland sind folgende Dienste für den SMS-Versand eingerichtet:
+\begin{itemize}
+\item D1 mit den Vorwahlen 0151, 0160, 0161, 0170, 0171, 0175
+\item D2 mit den Vorwahlen 0152, 0162, 0172, 0173, 0174
+\item E-Plus mit den Vorwahlen 0163, 0177, 0178
+\end{itemize}
+
+Viag Interkom bzw. O2 bot lange Zeit gar keinen SMS-Gateway an und hat jetzt
+nur einen schlecht funktionierenden und langsamen Gateway (Stand 2005), deshalb
+ist O2 so konfiguriert, dass über den D2-Gateway gesendet wird. Die Vorwahlen
+sind 0176 und 0179.
+
+Peter Egli hat YAPS für die Schweiz um folgende Dienste erweitert: Swisscom,
+Orange, Sunrise und Tele2 (über Swisscom). Vielen Dank dafür, Peter!
+
+YAPS ist ohne internationale Vorwahlen konfiguriert, so dass Nutzer aus
+Deutschland und der Schweiz direkt ohne weitere Konfiguration jeweils ihre
+landeseigenen Netze erreichen können. Sollte jemand aus Deutschland in ein
+Schweizer Netz senden wollen oder umgekehrt, müssen in der \texttt{rc500.yaps}
+noch die jeweiligen internationalen Vorwahlen für die jeweiligen Netze ergänzt
+werden.
+
+\subsection {Kosten}
+
+Da die Kosten im Mobilfunksektor in ständiger Bewegung sind und auch stark vom
+gewählten Tarif abhängen, muss jeder User selbst entscheiden, was ihm der Service
+von OPT\_YAPS wert ist und was er kostet.
+
+\wichtig{Vor einiger Zeit haben sich mehrere Nutzer gemeldet, bei denen die
+Verbindung von YAPS zum SMS-Gateway über mehrere Stunden gehalten wurde. Da die
+Verbindung zu einer Mobilfunknummer hergestellt wird, war das entsprechend
+teuer. Der Fehler lag höchstwahrscheinlich beim SMS-Gateway und nicht bei
+YAPS, trotzdem mussten die Leute aber die hohe Telefonrechnung zahlen.
+Deswegen der Hinweis: Bei der Benutzung von YAPS sollte immer überprüft werden,
+dass nach dem Versenden der SMS die Verbindung getrennt wurde. Das Versenden
+dauert normalerweise drei bis vier Sekunden, in Ausnahmefällen auch mal zehn
+bis zwanzig Sekunden.}
+
+\achtung{Die Nutzung von YAPS erfolgt auf eigene Gefahr!\\
+Das fli4l-Team kann nicht für eventuell entstehende Kosten aufkommen!}
+
+\subsection {Konfiguration}
+
+\begin{description}
+\config{OPT\_YAPS}{OPT\_YAPS}{OPTYAPS}{
+Steht dieser Wert auf ``yes'', wird das Paket aktiviert.
+}
+
+\config{YAPS\_USE\_CID}{YAPS\_USE\_CID}{YAPSUSECID}{
+Diese Variable muss auf ``True'' oder ``False'' gesetzt werden. Wenn ``True''
+gewählt wird, wird die Caller-ID beim Versand aktiviert (siehe nächste Option).
+Die Caller-ID ist die Absendernummer, die auf dem Handy, das die SMS empfängt,
+angezeigt wird. Leider funktioniert das scheinbar nur bei D2, bei D1 wird
+immer die Telefonnummer (MSN) angezeigt, von der aus die SMS verschickt wurde.
+Bei E-Plus wird immer die Nummer der SMS-Zentrale angezeigt.}
+
+\config{YAPS\_CID}{YAPS\_CID}{YAPSCID}{
+Diese Variable enthält die Absendernummer, ohne Leerstellen oder sonstige
+Trennzeichen.}
+
+\config{YAPS\_USE\_SIG}{YAPS\_USE\_SIG}{YAPSUSESIG}{
+Diese Variable muss auf ``True'' oder ``False'' gesetzt werden. Wenn ``True''
+gewählt wird, wird eine Signatur an die SMS angehängt (siehe nächste Option).}
+
+\config{YAPS\_SIG}{YAPS\_SIG}{YAPSSIG}{
+Die zu verwendende Signatur, dabei bitte die max. Länge von 160 Zeichen pro SMS
+beachten. Ist die Signatur 50 Zeichen lang, bleiben nur noch 110 Zeichen für
+die SMS. Ist eine SMS (inklusive Signatur) länger als 160 Zeichen, zerlegt
+YAPS sie in mehrere SMS zu je max. 160 Zeichen, d.h. wenn man z.B. einen 500
+Zeichen langen Text eingibt, schickt YAPS einfach 4 SMS-Nachrichten
+hintereinander.}
+
+\config{YAPS\_CBC}{YAPS\_CBC}{YAPSCBC}{
+Will man einen Call-by-Call Provider nutzen, kann man hier dessen Vorwahl
+eintragen. Wenn ihr Provider im Minutentakt abrechnet, ist ein CbC Provider schon
+sinnvoll, wenn man einen hat, der bei Mobilfunknummern im Sekundentakt
+abrechnet, weil eine SMS normalerweise in drei bis fünf Sekunden verschickt
+wird.}
+
+\config{YAPS\_MSN}{YAPS\_MSN}{YAPSMSN}{
+Hier muss die MSN des eigenen Telefonanschlusses (ohne Vorwahl) eingetragen
+werden. Das Feld darf nicht leer bleiben; wenn eine falsche Nummer angegeben
+wird,ist das aber nicht schlimm, da die Vermittlungsstelle dann einfach eine
+der verfügbaren MSNs des Anschlusses setzt.}
+
+\config{YAPS\_VERBOSE}{YAPS\_VERBOSE}{YAPSVERBOSE}{
+Diese Variable beschreibt mit einem Wert von eins bis vier den von YAPS zu
+nutzenden Debuglevel. Der Debuglevel gibt an, wieviele Infos YAPS zurückgibt.
+Normalerweise sollte 1 hier ausreichen. Wenn etwas nicht funktioniert, kann man
+einen höheren angeben, um zu sehen, woran es liegt.}
+
+\config{YAPS\_LOG}{YAPS\_LOG}{YAPSLOG}{
+Diese Variable enthält den Pfad und Namen der Log-Datei, die von YAPS angelegt
+wird. Standardmäßig wird \texttt{/var/log/yaps.log} als Log-Datei verwendet. Das
+Verzeichnis \texttt{/var/log} liegt normalerweise in der Ramdisk und ist daher
+nur solange verfügbar, wie der Router läuft; nach einem Reboot z.B. ist sie
+weg. Soll die Logdatei nicht gelöscht werden, muss eine Datei z.B. auf der
+Festplatte angegeben werden.}
+\end{description}
+
+\subsection {Bedienung}
+
+YAPS kann über die Konsole oder über Telnet/SSH aufgerufen werden:
+\begin{small}
+\begin{example}
+\begin{verbatim}
+yaps <nummer> "<text>"
+\end{verbatim}
+\end{example}
+\end{small}
+
+z.B. \verb|yaps 0171xxx "Hallo, wie gehts?"|.
+
+Ruft man YAPS ohne weitere Parameter auf, wird eine kleine Hilfe zu möglichen
+Parametern angezeigt.
+
+Es gibt auch eine Eingabeoberfläche für den Mini-HTTPD von fli4l. Diese wurde
+usrpünglich von Felix Eckhofer geschrieben und kann über die Variable
+\var{OPT\_YAPSGUI} aktiviert werden. Sie wird im nächsten Abschnitt dokumentiert.

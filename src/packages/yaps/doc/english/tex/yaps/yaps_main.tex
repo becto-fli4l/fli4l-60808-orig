@@ -1,0 +1,140 @@
+% Synchronized to r30458
+\section {OPT\_YAPS - Sending Of SMS Short Messages}
+\configlabel{OPT\_YAPS}{OPTYAPS}
+
+\subsection {Introduction}
+
+With YAPS SMS messages can be sent sent via an ISDN card or a modem with
+the fli4l router and depending on the provider lower costs arise as if
+sending SMS with a mobile phone. In addition, the typing of an
+SMS on the PC keyboard is more comfortable.
+
+This package adapts the OPT\_YAPS package by Ralf Dausend to
+fli4l 3.x. It is based on the Linux program ``yaps'' by Ulrich Dessauer
+and was originally developed by Stefan Rupprecht. Ralf Dausend has expanded
+it and wrote the original version of the manual.
+
+\subsection {Preconditions}
+
+YAPS requires a fli4l router with an ISDN card or a modem. YAPS is configured
+via the file \texttt{config/yaps.txt}. The file \texttt{/etc/yaps.rc} required by YAPS
+is created by the script \texttt{rc500.yaps} when booting the router.
+
+\wichtig{YAPS does not work over DSL or Internet! YAPS needs an ISDN card or
+a modem in any case!}
+
+\subsection {Mobile Phone Networks}
+
+For Germany the following services for sending SMS messages are set:
+\begin{itemize}
+\item D1 with the prefixes 0151, 0160, 0161, 0170, 0171, 0175
+\item D2 with the prefixes 0152, 0162, 0172, 0173, 0174
+\item E-Plus with the prefixes 0163, 0177, 0178
+\end{itemize}
+
+Viag Intercom or O2 offered no SMS gateway for a long time and now have
+only a poorly functioning and slow gateway (as of 2005), so
+O2 is configured in a way that D2 is used as the gateway. The prefixes
+are 0176 and 0179.
+
+Peter Egli enhanced YAPS for Switzerland with the following services: Swisscom,
+Orange, Sunrise and Tele2 (Swisscom). Thank you, Peter!
+
+YAPS is configured without international prefixes so users from Germany and
+Switzerland may reach their respective networks directly without further
+configuration. If someone from Germany wants to send over the Swiss network
+or vice versa, in  \texttt{rc500.yaps} the relevant international prefixes have
+to be added for the respective networks.
+
+\subsection {Costs}
+Since the costs in the mobile sector are in constant motion and also depend
+very much on the chosen rates each user must decide for himself
+what the service of OPT\_YAPS is worth and what it costs.
+
+\wichtig{Some time ago, several users have reported, that the connection
+to the SMS gateway is kept for several hours when using YAPS. Since this
+is a connection to a mobile phone number this can be very expensive.
+The fault was most likely the SMS gateway and not with YAPS, yet the
+people had to pay a high phone bill.
+Therefore, the Note: When using YAPS always check that after sending the
+SMS the connection to the gateway was closed. Sending usually takes three
+to four seconds, in exceptional cases, ten to twenty seconds.}
+
+\achtung{Use YAPS at your own risk! The FLI4L team can and will not pay for any expenses incurred!}
+
+\subsection {Configuration}
+
+\begin{description}
+\config{OPT\_YAPS}{OPT\_YAPS}{OPTYAPS}{
+If this is set to ``yes'', the package will be activated.
+}
+
+\config{YAPS\_USE\_CID}{YAPS\_USE\_CID}{YAPSUSECID}{
+This variable must be set to ``True'' or ``False''. If ``True'' is specified,
+the Caller-ID will be activated when sending an SMS (see next option).
+The Caller ID is the originating address which is displayed on the phone
+that receives the SMS. Unfortunately, this seems to work only with D2, D1
+always display the phone number (MSN) from which the SMS was sent.
+With E-Plus the number of the SMS center is displayed.}
+
+\config{YAPS\_CID}{YAPS\_CID}{YAPSCID}{
+This variable contains the sender's number, without spaces or other
+separators.}
+
+\config{YAPS\_USE\_SIG}{YAPS\_USE\_SIG}{YAPSUSESIG}{
+This variable must be set to ``True'' or ``False''. If ``True''
+is selected, a signature is appended to the SMS (see next option).}
+
+\config{YAPS\_SIG}{YAPS\_SIG}{YAPSSIG}{
+The signature to be used, please respect the max. length of 160 characters per SMS
+note. If the signature is 50 characters long, only 110 characters are left for
+the SMS. If a text message (including signature) is longer than 160 characters,
+YAPS will split it into several SMS of max 160 characters. So if you, for example,
+create a text 500 characters long, YAPS simply sends 4 SMS messages,
+one after the other.}
+
+\config{YAPS\_CBC}{YAPS\_CBC}{YAPSCBC}{
+If you want to use a call-by-call provider, you may enter its prefix here. If your
+provider charges per minute, a CbC provider is useful if you have one that
+charges per second, because a text message is normally sent in three to
+five seconds.}
+
+\config{YAPS\_MSN}{YAPS\_MSN}{YAPSMSN}{
+Here the MSN of your own telephone line must be entered (without prefix).
+This field must not be empty, but setting a wrong number is not a problem
+since the telephone switch of your provider will simply set one of the available
+MSNs for the connection.}
+
+\config{YAPS\_VERBOSE}{YAPS\_VERBOSE}{YAPSVERBOSE}{
+This variable sets YAPS's debug level, choose  a value of ``1'' to ``4''. The
+debug level specifies how many information YAPS returns. Normally ``1'' should
+suffice here. If something does not work, you can set a higher value for debugging.}
+
+\config{YAPS\_LOG}{YAPS\_LOG}{YAPSLOG}{
+This variable contains the path and name of the log file created by YAPS.
+The default is \texttt{/var/log/yaps.log}. The directory \texttt{/var/log} is situated
+in the ramdisk ususally and is therefore only available as long as the router is
+running, i.e. after a reboot it is gone. If you want to keep the log file
+you may, i.e. specify a file on the hard disk.}
+
+\end{description}
+
+\subsection {Operation}
+
+YAPS may be executed on the console or via Telnet/SSH:
+\begin{small}
+\begin{example}
+\begin{verbatim}
+yaps <number> "<text>"
+\end{verbatim}
+\end{example}
+\end{small}
+
+i.e. \verb|yaps 0171xxx "Hello, how are you?"|.
+
+If you execute YAPS without any parameters, a little help on possible
+parameters is displayed.
+
+There is also an input interface for fli4l's httpd. This was originally
+written by Felix Eckhofer and may be activated with the variable
+\var{OPT\_YAPSGUI}. It is documented in the next section.
