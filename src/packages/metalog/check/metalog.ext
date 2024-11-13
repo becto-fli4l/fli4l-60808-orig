@@ -1,0 +1,50 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for metalog
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+﻿provides metalog version 4.0.0
+
+if (opt_metalog)
+then
+    if (opt_syslogd || opt_klogd) 
+    then
+        error "If you want to use OPT_METALOG, OPT_SYSLOG and OPT_KLOGD must be disabled"
+    fi
+  
+    stat("$config_dir/etc/metalog.conf", metconf)
+    if(metconf_res == "OK")
+    then
+        add_to_opt "etc/metalog.conf" "flags=utxt"
+    fi
+
+	if (opt_httpd)
+	then
+		add_to_opt "srv/www/admin/log_metalog.cgi" "mode=555 flags=sh"
+
+        if httpd_gui_lang == "auto"
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang    
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            stat("opt/srv/www/lang/log_metalog.$lang", langfile)
+            if(langfile_res == "OK")
+            then
+                add_to_opt "srv/www/lang/log_metalog.$lang" "mode=444 flags=sh"
+            else
+                warning "could not find 'srv/www/lang/log_metalog.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/log_metalog.en" "mode=444 flags=sh"
+            fi    
+        done    
+    fi
+
+fi

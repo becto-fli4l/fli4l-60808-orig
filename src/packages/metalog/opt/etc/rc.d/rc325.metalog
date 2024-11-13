@@ -1,0 +1,145 @@
+#! /bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc325.metalog - configure and start metalog            __FLI4LVER__
+#
+# Creation:     2006-04-29 abe 
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_METALOG in
+yes)
+
+	begin_script METALOG "starting metalog ..."
+
+
+    # touch files for compatibility reason:
+    # imond, telmond and ip-up are looking for them
+    > /etc/rc.d/rc325.syslogd
+    > /etc/rc.d/rc330.klogd
+    > /etc/syslog.conf
+
+    cat <<-EOF >> /etc/services
+	syslog		514/udp
+EOF
+
+    metalog_conf="/etc/metalog.conf"
+   
+    metalog_dir=`echo $METALOG_DIR | sed -e 's#/$##'`
+    [ ! -d $metalog_dir ] && mkdir -p $metalog_dir
+
+	echo $metalog_dir > /var/run/metalog.dir
+
+    if [ ! -f $metalog_conf ]                   # already existing?
+    then                                        # yes, don't overwrite
+        cat <<-EOF > $metalog_conf
+	#---------------------------------------------------------------------
+	# /etc/metalog.conf
+	# Automatically created by rc325.metalog
+	#---------------------------------------------------------------------
+	maxsize  = $METALOG_MAXSIZE
+	maxtime  = $METALOG_MAXTIME
+	maxfiles = $METALOG_MAXFILES
+
+	Everything important :
+	facility = "*"
+	minimum  = 6
+	logdir   = "$metalog_dir/everything"
+
+	Everything very important :
+	facility = "*"
+	minimum  = 1
+	logdir   = "$metalog_dir/critical"
+
+	Password failures :
+	regex    = "(password|login|authentication)\s+(fail|invalid)"
+	regex    = "(failed|invalid)\s+(password|login|authentication)"
+	regex    = "ILLEGAL ROOT LOGIN"
+	logdir   = "$metalog_dir/pwdfail"
+	#    command  = "/usr/local/sbin/mail_pwd_failures.sh"
+
+	Pipe caller numbers to telmond via script:
+	regex    = "isdn_net"
+	command  = "/usr/sbin/pipe2telmond.sh"
+
+	Kernel messages :
+	facility = "kern"
+	logdir   = "$metalog_dir/kernel"
+	break    = 1
+
+	Crond :
+	facility = "cron"
+	logdir   = "$metalog_dir/cron"
+	break    = 1
+  
+	SSH Server :
+	program  = "dropbear"
+	logdir   = "$metalog_dir/sshd"
+	break    = 1
+
+	Ppp :
+	program_regex = "^ppp"
+	logdir	  = "$metalog_dir/ppp"
+	break     = 1
+
+	OPENVPN Connects :
+	program_regex = "^openvpn"
+	logdir	  = "$metalog_dir/openvpn"
+	break     = 1
+
+	PPTP Connects:
+	program  = "pptpd"
+	logdir   = "$metalog_dir/pptp"
+	break    = 1
+
+	DHCP Server:
+	program_regex = "dnsmasq|dhcp"
+	regex	 = "DHCP"
+	logdir   = "$metalog_dir/dhcp"
+	break    = 1
+
+	DNS Server:
+	program  = "dnsmasq"
+	logdir   = "$metalog_dir/dns"
+	break    = 1
+
+	Imond:
+	program  = "imond"
+	logdir   = "$metalog_dir/imond"
+	break    = 1
+
+	NTP Server:
+	program_regex = "chrony|ntpd"
+	logdir   = "$metalog_dir/ntp"
+	break    = 1
+
+	Ident:
+	program  = "oidentd"
+	logdir   = "$metalog_dir/oidentd"
+	break    = 1
+
+	IP-Up events:
+	program  = "ip-up"
+	logdir   = "$metalog_dir/ip-up"
+	break    = 1
+
+	IP-Down events:
+	program  = "ip-down"
+	logdir   = "$metalog_dir/ip-down"
+	break    = 1
+
+	CPMVRMlog:
+	program  = "cpmvrmlog"
+	logdir   = "$metalog_dir/cpmvrmlog"
+	break    = 1
+EOF
+    fi
+
+    metalog --sync --daemonize --configfile $metalog_conf
+    sleep 1
+
+    # add menu entry for web-gui
+    [ -f /srv/www/admin/log_metalog.cgi ] && httpd-menu.sh add -p 110 log_metalog.cgi '$_MP_syslog' '$_MT_log' logs
+
+    end_script
+;;
+esac
