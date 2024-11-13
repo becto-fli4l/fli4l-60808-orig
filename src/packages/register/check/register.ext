@@ -1,0 +1,86 @@
+#------------------------------------------------------------------------------
+# register.ext - configuration checks for package "register"       __FLI4LVER__
+#
+#  P L E A S E  R E A D  T H E  D O C U M E N T A T I O N !
+#
+#  B I T T E  U N B E D I N G T  D I E  D O K U M E N T A T I O N  L E S E N !
+#
+#------------------------------------------------------------------------------
+# Last Update:  $Id$
+#
+# Copyright (c) 2017 - fli4l-Team <team@fli4l.de>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#------------------------------------------------------------------------------
+
+if (opt_register)
+then
+    provides register version 4.0.0
+    depends on fli4l version 4.0
+    depends on curl version 4.0
+    depends on cert_x509 version 4.0
+
+    if (register_interval > 0 && register_interval < 600)
+    then
+        error "REGISTER_INTERVAL must be either 0 or at least 600 seconds"
+    fi
+
+    if (register_num_attempts == 0)
+    then
+        error "REGISTER_NUM_ATTEMPTS must be at least 1"
+    fi
+
+    if (register_retry_interval < 60)
+    then
+        error "REGISTER_RETRY_INTERVAL must be at least 60 seconds"
+    fi
+    
+    if (opt_cert && opt_cert_x509 && !cert_x509_mozilla)
+    then
+        error "OPT_REGISTER='yes' requires 'CERT_X509_MOZILLA='yes'"
+    fi
+
+    if (!defined(fli4l_uuid))
+    then
+        error "OPT_REGISTER='yes' requires FLI4L_UUID to be non-empty"
+    fi
+
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+        set files="status_register"
+    
+        split(files, files_tmp_%, ' ')
+        foreach file in files_tmp_%
+        do
+            add_to_opt "srv/www/admin/$file.cgi" "mode=555 flags=sh"
+            add_to_opt "srv/www/css/$file.css" "flags=utxt"
+        done
+
+        if (httpd_gui_lang == "auto")
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split(gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            foreach file in files_tmp_%
+            do
+                stat("opt/srv/www/lang/$file.$lang", langfile)
+                if (langfile_res == "OK" )
+                then
+                    add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+                else
+                    warning "OPT_REGISTER: Could not find 'srv/www/lang/$file.$lang', perhaps this file has not been translated yet. Falling back to English."
+                    add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+                fi
+            done
+        done
+     fi
+fi

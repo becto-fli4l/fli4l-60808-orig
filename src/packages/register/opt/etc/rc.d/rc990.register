@@ -1,0 +1,40 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc990.register - convey system information             __FLI4LVER__
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+REGISTER_CONFIG=/var/run/registerc.conf
+
+if [ "$OPT_REGISTER" = yes ]
+then
+    begin_script REGISTER "starting registration..."
+
+    # check whether a UUID is available
+    if [ -n "$FLI4L_UUID" ]
+    then
+        {
+            grep "^REGISTER_" /etc/rc.cfg
+            grep "^ARCH=" /etc/rc.cfg
+            echo "FLI4L_UUID='$FLI4L_UUID'"
+            cat /etc/os-release
+        } >> "$REGISTER_CONFIG"
+
+        if [ $REGISTER_INTERVAL -ne 0 ]
+        then
+            service-restart.sh $REGISTER_INTERVAL /usr/local/bin/registerc &
+        else
+            /usr/local/bin/registerc &
+        fi
+        
+        if [ "$OPT_HTTPD" = yes ]
+        then
+            httpd-menu.sh add -p 900 status_register.cgi REGISTER '$_MT_opt' register
+        fi
+    else
+        log_error "OPT_REGISTER needs the FLI4L_UUID variable to be set!"
+    fi
+
+    end_script
+fi

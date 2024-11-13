@@ -1,0 +1,106 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/local/bin/registerc_once - convey system information        __FLI4LVER__
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+CONFIG=/var/run/registerc.conf
+# keep synchronised with opt/srv/www/admin/status_register.cgi
+DATA=/var/run/registerc.last
+LOG=/var/log/registerc.log
+URL='https://register.fli4l.de/cgi-bin/registerd.cgi'
+TIMESTAMP_FORMAT="%Y%m%dT%H%M%S"
+
+# $1 = error message
+log_error()
+{
+    logmsg registerc daemon.err "$1"
+}
+
+# $1 = error message
+log_info()
+{
+    logmsg registerc daemon.info "$1"
+}
+
+# Generates a text file containing information about
+# the current system and the activated OPTs.
+#####################################################
+# Data format:
+# ------------
+# Each element is represented by a single line.
+# The first character describes the type of the file.
+#
+# Type | Parameters
+# ---------------------------------------------------
+# F    | <format> of the following data (currently 1)
+# I    | <ID> uniquely representing this system
+# T    | <timestamp> in UTC, YYYYmmdd'T'HHMMSS
+# V    | <system> <version>
+# K    | <kernel version>
+# A    | <architecture>
+# P    | <package> <OPT>
+#####################################################
+generate_data()
+{
+    packages=
+    current_package=
+    package_written=
+
+    # the data format used
+    echo "F 1"
+
+    # the unique ID of this system
+    echo "I $FLI4L_UUID"
+
+    # the current timestamp
+    echo "T $(date -u +"$TIMESTAMP_FORMAT")"
+
+    # the attributes of this system (version, revision)
+    echo "V $PRETTY_NAME"
+
+    # the kernel version
+    echo "K $(uname -r)"
+
+    # the architecture
+    echo "A $ARCH"
+
+    # the activated OPTs, together with the containing package
+    while read line
+    do
+        if echo "$line" | grep -q "^# package"
+        then
+            current_package=$(echo "$line" | sed -n "s/^# package '\\(.*\\)'\$/\\1/p")
+        elif echo "$line" | grep -q "^OPT_.*=['\"]yes['\"]\$"
+        then
+            opt=$(echo "$line" | sed -n "s/^\\(OPT_.*\\)=.*\$/\1/p")
+            echo "P $current_package $opt"
+        fi
+    done
+}
+
+# Sends the data to a server.
+send_data()
+{
+    curl -X POST -L --data-binary @- -s -S "$URL"
+}
+
+if [ ! -f "$CONFIG" ]
+then
+    log_error "Configuration file $CONFIG not found"
+    exit 1
+fi
+
+. "$CONFIG"
+
+generate_data < /etc/rc.cfg > "$DATA"
+result=$(send_data < "$DATA" 2>&1)
+if [ -z "$result" ]
+then
+    log_info "data successfully sent"
+    exit 0
+else
+    log_error "data transfer failed: $result"
+    exit 1
+fi
