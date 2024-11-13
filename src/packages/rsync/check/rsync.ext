@@ -1,0 +1,42 @@
+﻿##-----------------------------------------------------------------------------
+## check/rsync.ext - fli4l extended configuration check          __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##
+## Creation:     2008-12-17  Claas Hilbrecht
+## Last Update:  $Id$
+##
+## Copyright (c) 2008 - Linum Software GmbH <support@fli4l-support.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_rsync)
+then
+  provides RSYNC version 4.0.0
+
+  set rsync_add_secretsfile="no"
+  foreach i in rsync_module_n
+  do
+    if (rsync_module_%_user_n[i] > 0)
+    then
+      set rsync_add_secretsfile="yes"
+    fi
+  done
+
+  if (rsync_add_secretsfile)
+  then
+    stat("$config_dir/etc/rsync.secrets", rsyncsecrets)
+    if(rsyncsecrets_res == "OK")
+    then
+      add_to_opt "etc/rsync.secrets" "flags=utxt mode=600"
+    else
+      error "rsync: If you define user level access control with any RSYNC_MODULE_x_USER_N > '0' you must provide a rsync secretfile at $config_dir/etc/rsync.secrets"
+    fi
+  fi
+fi

@@ -1,0 +1,73 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc700.rsync - create rsync configuration     __FLI4LVER__
+#
+# Creation:    23.12.2005 - Claas Hilbrecht
+# Last Update: $Id$
+#
+# Copyright (c) 2005 - Linum Software GmbH <support@fli4l-support.de>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#--------------------------------------------------------------------
+
+if [ "$OPT_RSYNC" = "yes" ]
+then
+
+  begin_script rsync "starting rsync daemon..."
+
+  conf=/etc/rsyncd.conf
+
+  cat <<EOF>$conf
+log file=/var/log/rsyncd.log
+log format=%t %h %o %f %l %b
+pid file=/var/run/rsync.pid
+lock file=/var/run/rsyncd.lock
+read only=no
+gid=nogroup
+uid=nobody
+use chroot=yes
+max connections=10
+transfer logging=yes
+list=yes
+dont compress=*
+EOF
+
+  [ -e /etc/rsync.secrets ] && echo "secrets file=/etc/rsync.secrets" >> $conf
+  [ "$RSYNC_LOG" != "yes" ] && ln -s /dev/null /var/log/rsyncd.log
+
+  [ "$RSYNC_MODULE_N" -eq 0 ] || for idx in `seq 1 $RSYNC_MODULE_N`
+  do
+    eval rsync_label='$RSYNC_MODULE_'$idx'_NAME'
+    eval rsync_path='$RSYNC_MODULE_'$idx'_PATH'
+    eval user_n='$RSYNC_MODULE_'$idx'_USER_N'
+    echo "[$rsync_label]">>$conf
+    echo "path=$rsync_path">>$conf
+    if [ 0$user_n -gt 0 ]
+    then
+      echo -n "auth users=">>$conf
+      for udx in `seq 1 $user_n`
+      do
+        eval rsync_user='$RSYNC_MODULE_'$idx'_USER_'$udx
+        echo -n "$rsync_user ">>$conf
+        if [ $udx -eq $user_n ]
+        then
+           echo "">>$conf
+        else
+           echo -n ",">>$conf
+        fi
+      done
+    fi
+  done 
+
+  chmod 600 $conf
+
+  [ -n "$RSYNC_BIND_ADDRESS" ] && RSYNC_BIND_ADDRESS="--address=$RSYNC_BIND_ADDRESS"
+
+  rsync --daemon $RSYNC_BIND_ADDRESS
+
+  end_script
+
+fi
