@@ -1,0 +1,231 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc340.circuits.modem - setup modem circuits
+#
+# Creation:         01.04.2003  fm
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+begin_script CIRCUITS
+
+idx=1
+
+if [ -f /var/run/next_ppp_device ]
+then
+    ppp_idx=`cat /var/run/next_ppp_device`
+else
+    ppp_idx=0
+fi
+
+ip_cnt=1                                        # for dummy ip addresses
+if [ -f /var/run/next_circuit_id ]
+then
+    next_id=`cat /var/run/next_circuit_id`
+else
+    next_id=0
+fi
+
+log_info "setting up modem circuits ..."
+
+>/etc/ppp-devices          # here we write a list of isdn devices
+
+while [ "$idx" -le "$MODEM_CIRC_N" ]
+do
+    dev=ppp$ppp_idx
+    eval name='$MODEM_CIRC_'$idx'_NAME'
+    eval ttydev='$MODEM_CIRC_'$idx'_DEVICE'
+    eval ttyrate='$MODEM_CIRC_'$idx'_RATE'
+    eval ttycommands='$MODEM_CIRC_'$idx'_COMMANDS'
+    eval chatcommands='$MODEM_CIRC_'$idx'_CHAT_COMMANDS'
+    eval usepeerdns='$MODM_CIRC_'$idx'_USEPEERDNS'
+    eval dialout='$MODEM_CIRC_'$idx'_DIALOUT'
+    eval dialin='$MODEM_CIRC_'$idx'_DIALIN'
+    eval callback='$MODEM_CIRC_'$idx'_CALLBACK'
+    eval hup_timeout='$MODEM_CIRC_'$idx'_HUP_TIMEOUT'
+    eval cbdelay='$MODEM_CIRC_'$idx'_CBDELAY'
+    eval chargeint='$MODEM_CIRC_'$idx'_CHARGEINT'
+    eval times='$MODEM_CIRC_'$idx'_TIMES'
+    eval netmask='$MODEM_CIRC_'$idx'_NETMASK'
+    eval mtu='$MODEM_CIRC_'$idx'_MTU'
+    eval mru='$MODEM_CIRC_'$idx'_MRU'
+    eval user='$MODEM_CIRC_'$idx'_USER'
+    eval passwd='$MODEM_CIRC_'$idx'_PASS'
+    eval remotename='$MODEM_CIRC_'$idx'_REMOTENAME'
+    eval route='$MODEM_CIRC_'$idx'_ROUTE'
+    eval auth='$MODEM_CIRC_'$idx'_AUTH'
+    eval local='$MODEM_CIRC_'$idx'_LOCAL'
+    eval remote='$MODEM_CIRC_'$idx'_REMOTE'
+    eval debug='$MODEM_CIRC_'$idx'_DEBUG'
+
+    echo "\"$user\"  *  \"$passwd\"  *" >> /etc/ppp/pap-secrets
+
+    if [ "$local" = "" ]
+    then
+        local=192.168.223.$ip_cnt
+        ip_cnt=`/usr/bin/expr $ip_cnt + 1`
+    fi
+
+    if [ "$remote" = "" ]
+    then
+        remote=0.0.0.0
+    fi
+
+    if [ "$remotename" != "" ]
+    then
+        remotename="remotename $remotename"
+    fi
+
+    if [ "$debug" = "yes" ]
+    then
+        debug='debug'
+    else
+        debug=''
+    fi
+
+    case "$auth"
+    in
+        pap | PAP)   auth='+pap';;
+        chap | CHAP) auth='+chap';;
+        *)           auth='';;
+    esac
+
+    do=`echo "$dialout" | sed 's/  */,/g'`
+
+    phone="$do:$do"
+
+    echo $local >/var/run/$dev.conf
+    echo $remote >>/var/run/$dev.conf
+    echo $usepeerdns >/var/run/$dev.usepeerdns
+    echo $DIALMODE >/var/run/$dev.dialmode
+
+    if [ "$usepeerdns" = "yes" ]
+    then
+        usepeerdns='usepeerdns'
+    else
+        usepeerdns=''
+    fi
+
+    {
+        echo "ABORT BUSY"
+        echo "ABORT 'NO CARRIER'"
+        echo "ABORT VOICE"
+        echo "ABORT 'NO DIALTONE'"
+        echo "ABORT 'NO ANSWER'"
+        echo "'' ATZ"
+        echo "OK ATL1M1"
+        echo "OK ATX3"
+
+        if [ ! "chatcommands$" = "" ]
+        then
+            echo "$chatcommands"
+        fi
+
+        echo "OK ATDT$do"
+        echo "CONNECT \\d\\c"
+    } > /etc/chatscript.$dev
+
+    {
+        echo "$ttydev"
+        echo "$ttyrate"
+        echo "noauth"
+        echo "modem"
+        echo "crtscts"
+        echo "lock"
+        echo "noipdefault"
+        echo "ipcp-accept-local"
+        echo "ipcp-accept-remote"
+        echo "connect '/usr/sbin/chat -f /etc/chatscript.$dev'"
+        if [ ! "$usepeerdns" = "" ]
+        then
+            echo "$usepeerdns"
+        fi
+        if [ ! "$debug" = "" ]
+        then
+            echo "$debug"
+        fi
+        if [ ! "$remotename" = "" ]
+        then
+            echo "$remotename"
+        fi
+        if [ ! "$auth" = "" ]
+        then
+            echo "$auth"
+        fi
+        echo "mtu $mtu"
+        echo "mru $mru"
+        echo "$local:$remote"
+        echo "demand"
+        echo "ktune"
+        echo "idle $hup_timeout"
+        echo "name \"$user\""
+        echo "user \"$user\""
+        if [ ! "$ttycommands" = "" ]
+        then
+            echo "$ttycommands"
+        fi
+    } > /etc/ppp/peers/modem.$dev
+
+    /usr/sbin/pppd call modem.$dev
+
+    /bin/sleep 1
+
+    bandwidth=-1:-1
+    set $times
+    all=`echo $*`
+    for j in $all
+    do
+        set `echo $j | /usr/bin/sed 's/:/ /g'`
+        days=$1
+        hours=$2
+        charge=$3
+        is_lcr=$4
+        if [ "$route" = "0.0.0.0" -o "$route" = "default" ]
+        then
+            if [ "$is_lcr" = "Y" -o "$is_lcr" = "y" ]
+            then
+                lcr='yes'
+            else
+                lcr='no'
+            fi
+            droute='yes'
+        else
+            lcr='no'
+            droute='no'
+        fi
+        echo    $days $hours $dev $bandwidth            \
+                $hup_timeout $lcr $droute $phone $name  \
+                $charge $chargeint
+
+    done >>/etc/imond.conf
+
+    if [ "$route" != "0.0.0.0" -a "$route" != "default" ]
+    then
+        for j in $route
+        do
+            set `echo $j | sed 's/:/ /'`
+            n=$1
+            nm=$2
+            if [ "$nm" = "" ]
+            then
+                nm=255.255.255.0
+            fi
+            /sbin/route add -net $n netmask $nm dev $dev
+        done
+    fi
+
+    echo $DIALMODE >/var/run/$dev.dialmode
+
+    echo $dev >>/etc/modem-devices
+    circ_idx=`/usr/bin/expr $idx + $next_id`
+    echo $dev >/var/run/circuit-$circ_idx
+
+    net_alias_add $name $dev
+
+    ppp_idx=`/usr/bin/expr $ppp_idx + 1`
+    idx=`/usr/bin/expr $idx + 1`
+done
+
+circ_idx=`/usr/bin/expr $idx + $next_id`
+echo $circ_idx > /var/run/next_circuit_id
+echo $ppp_idx > /var/run/next_ppp_device
+
+end_script
