@@ -1,0 +1,91 @@
+﻿##-----------------------------------------------------------------------------
+## wol.ext - extended check of wol parameters                      __FLI4LVER__
+##
+## Creation:     12.10.2002  gk
+## Last Update:  $Id$
+##
+## Copyright (c) 2002-2004 - Georg Kainzbauer <georgkainzbauer@gmx.net>
+## Copyright (c) 2004-2006 - Matthias Pilz <fli4l.pilz@faventia.de>
+##                           Frank Rudolph <fli4l@fr-net.de>
+## Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_wol)
+then
+    provides wol version 4.0.0
+    depends on fli4l version 4.0
+
+    if ( wol_list_n == 0 )
+    then
+        if ( wol_list == "black" )
+        then
+            warning "You are using an empty blacklist, all clients will be available for WOL"
+        else
+            warning "You are using an empty whitelist, no client will be available for WOL"
+        fi
+    else
+        set names=" $hostname "
+        if (defined(host_n))
+        then
+            foreach name in HOST_%_ALIAS_% HOST_%_NAME
+            do
+                set names="$names$name "
+            done
+        fi
+
+        foreach wolhost in WOL_LIST_% 
+        do
+            if (wolhost =~ "@([^[:space:]:]+)")
+            then
+                set name=match_1
+                if (! names =~ " $match_1 ")
+                then
+                    error "Unknown host '$name' referenced in %wolhost='$wolhost'"
+                fi
+            fi
+        done
+    fi
+
+
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+    
+        # webgui files
+        add_to_opt "srv/www/admin/control_wol.cgi" "mode=555 flags=sh"
+        add_to_opt "srv/www/img/online.png"
+        add_to_opt "srv/www/img/offline.png"
+        add_to_opt "srv/www/img/execute.png"
+
+        # language files    
+        set files="control_wol"
+        if ( httpd_gui_lang == "auto" )
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            split (files, files_tmp_%, ' ')
+            foreach file in files_tmp_%
+            do
+                stat("opt/srv/www/lang/$file.$lang", langfile)
+                if( langfile_res == "OK" )
+                then
+                    add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+                else
+                    warning "could not find 'srv/www/lang/$file.$lang', perhaps this file isn't translated yet. Falling back to English."
+                    add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+                fi
+            done
+        done
+    fi
+fi

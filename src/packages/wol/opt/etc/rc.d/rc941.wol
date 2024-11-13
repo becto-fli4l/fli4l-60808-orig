@@ -1,0 +1,154 @@
+#!/bin/sh
+##-----------------------------------------------------------------------------
+## rc941.wol - fli4l configuration parameters                      __FLI4LVER__
+##
+## Creation:     12.10.2002  gk
+## Last Update:  $Id$
+##
+## Copyright (c) 2002-2004 - Georg Kainzbauer <georgkainzbauer@gmx.net>
+## Copyright (c) 2004-2006 - Frank Rudolph <fli4l@fr-net.de>
+## Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+##
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+
+# find the ethX for act. HOST_X_NAME
+find_eth ()
+{
+    [ 0$IP_NET_N -eq 0 ] || for idx in `seq 1 $IP_NET_N`
+    do
+        eval IP_NET_X='$IP_NET_'$idx''
+        case "$IP_NET_X" in
+        {*}*)
+            continue;
+        esac
+        eval HOST_X_DEV='$IP_NET_'$idx'_DEV'
+        eval net1=`netcalc network $IP_NET_X`
+        eval HOST_X_MASK=`echo $IP_NET_X | cut -d"/" -f 2`
+        eval HOST_X_NET=`netcalc network $HOST_X_IP/$HOST_X_MASK`
+        if [ "$net1" = "$HOST_X_NET" ]
+        then
+            break
+        fi
+    done
+}
+
+addhost()
+{
+    eval echo '$HOST_X_MAC $HOST_X_IP $HOST_X_NAME $HOST_X_DEV ' >> /var/run/wol/hosts.mac
+}
+
+
+build_host_list()
+{
+    [ 0$HOST_N -eq 0 ] || for i in `seq 1 $HOST_N`
+    do
+        eval HOST_X_MAC='$HOST_'$i'_MAC'
+        eval HOST_X_IP='$HOST_'$i'_IP4'
+        eval HOST_X_NAME='$HOST_'$i'_NAME'
+            
+        found=0
+        
+        # if there is no MAC we couldn't wakeup the host            
+        if [ -n "$HOST_X_MAC" ]
+        then
+            find_eth
+            [ 0$WOL_LIST_N -eq 0 ] || for j in `seq 1 $WOL_LIST_N`
+            do
+                eval WOL_LIST_X='$WOL_LIST_'$j''
+
+                translate_ip_net $WOL_LIST_X
+
+                if echo $WOL_LIST_X | egrep '(ip_net|IP_NET)_([1-9]|[1-9][0-9])' > /dev/null
+                then
+                    eval WOL_LIST_X=`netcalc network $res`
+                else
+                    WOL_LIST_X=$res
+                fi
+
+                if [ "$WOL_LIST_X" = "$HOST_X_NET" ] 
+                then
+                    if ( [ "$WOL_LIST" = "black" ] )
+                    then
+                        found=1
+                    else
+                        addhost
+                    fi
+                    break
+                fi
+
+                if ( [ "$WOL_LIST_X" = "$HOST_X_IP" ] )
+                then
+                    if ( [ "$WOL_LIST" = "black" ] )
+                    then
+                        found=1
+                    else #if ( [ "$WOL_LIST" = "white" ] ) 
+                       addhost
+                    fi
+                    break
+                fi
+            done
+
+            if ( [ 0 -eq $found ] && [ "$WOL_LIST" = "black" ])
+            then
+                addhost
+            fi
+        fi
+    done
+}
+
+
+if [ "$OPT_WOL" = "yes" ]
+then
+begin_script WOL "setting up WakeOnLan (etherwake)"
+
+    if [ "$OPT_HTTPD" = "yes" ]
+    then
+        httpd-menu.sh add -p 900 'control_wol.cgi' 'WakeOnLAN' '$_MT_ctrl' 'wol'
+    fi
+
+    # only add host to wol 
+    # - 0 to x clients are blacklisted, 0 means all hosts will be added to hosts.mac (this is default)
+    # - 1 to x clients are whitelisted, 0 means no  hosts will be added to hosts.mac
+    if (( [ $WOL_LIST_N -ge 0 ] && [ "$WOL_LIST" = "black" ] ) || ( [ $WOL_LIST_N -gt 0 ] && [ "$WOL_LIST" = "white" ] ))
+    then
+        mkdir /var/run/wol
+        build_host_list
+    fi
+
+# --- experimental code piece start ---
+    if [ "$WOL_BOOT" = yes ]
+    then
+        [ 0$WOL_BOOT_N -eq 0 ] || for j in `seq 1 $WOL_BOOT_N`
+        do
+            eval WOL_HOST_X='$WOL_BOOT_'$j''
+            translate_ip_net $WOL_HOST_X
+            [ 0$HOST_N -eq 0 ] || for i in `seq 1 $HOST_N`
+            do
+                eval HOST_X_IP='$HOST_'$i'_IP4'
+                if [ "$res" = "$HOST_X_IP" ]
+                then
+                    eval HOST_X_MAC='$HOST_'$i'_MAC'
+                    # if there is no MAC we couldn't wakeup the host            
+                    if [ -n "$HOST_X_MAC" ]
+                    then
+                        find_eth
+                        ether-wake -i $HOST_X_DEV $HOST_X_MAC
+                        log_info "Send wol-paket to client $WOL_HOST_X \($HOST_X_MAC\) via $HOST_X_DEV."
+                    else
+                        log_error "Cant send a wol-paket to host $WOL_HOST_X, because no mac is defined for the host"
+                    fi
+                    break
+                fi
+            done
+        done
+    fi
+# --- experimental code piece end ---
+
+end_script
+fi

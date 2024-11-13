@@ -1,0 +1,132 @@
+% Last Update: $Id$
+\marklabel{sec:opt-wol}
+{
+\section {WOL - Wake On LAN}
+}
+OPT\_WOL erweitert fli4l um die Möglichkeit Rechner, die mit einer Wake on LAN
+fähigen Netzwerkkarte ausgerüstet sind, über das Konsolenkommando 'wol.sh' oder
+über das WebInterface vom Router zu booten.
+
+Damit das klappt, muss die Netzwerkkarte normalerweise mit einem kleinen
+dreiadrigen Kabel mit dem Mainboard verbunden sein, damit die Netzwerkkarte
+auch bei abgeschaltetem Rechner vom ATX-Netzteil mit StandBy-Strom versorgt
+werden kann.
+
+\subsection {Konfiguration}
+
+\begin{description}
+
+\config{OPT\_WOL}{OPT\_WOL}{OPTWOL}
+
+	Standard-Wert:  \var{OPT\_WOL}='no'
+
+	Die Einstellung \var{'no'} deaktiviert das OPT\_WOL Paket vollständig.
+	Es werden keine Änderungen am der fli4l Bootmedium bzw. dem Archiv
+	\var{opt.img} vorgenommen.\\
+	Die Einstellung \var{'yes'} aktiviert das OPT\_WOL Paket.
+
+	Damit ein Client per WOL angeschaltet werden kann muss in der
+	$<$config-dir$>$/dns\_dhcp.txt seine
+	MAC-Adresse (HOST\_x\_MAC) angegeben sein.
+	Alle Rechner für die keine MAC-Adresse angegeben ist werden automatisch von
+	WOL ausgeschlossen.
+
+\config{WOL\_LIST}{WOL\_LIST}{WOLLIST}
+
+    Die Konfiguration erfolgt über black oder whitelisting.
+    blacklisting bedeutet das alle clients auf dieser Liste von WOL ausgenommen
+    sind, whitelisting bedeutet das für die clients auf der Liste WOL möglich ist.
+
+	Standard-Wert:  \var{WOL\_LIST}='black'
+
+	Gültige Werte:
+	\begin{itemize}
+		\item black - bedeutet das alle Clients auf dieser Liste nicht geweckt werden können
+		\item white - bedeutet das alle Clients auf dieser Liste geweckt werden können
+	\end{itemize}
+
+\config{WOL\_LIST\_N}{WOL\_LIST\_N}{WOLLISTN}
+
+	Standard-Wert:  \var{WOL\_LIST\_N}='0'
+
+	In der Default Einstellung steht also kein Client auf der Blacklist, somit kann
+	jeder Client per WOL angeschaltet werden.
+
+\config{WOL\_LIST\_x}{WOL\_LIST\_x}{WOLLISTx}
+
+	Standard-Wert:  \var{WOL\_LIST\_x}=''
+
+	Gültige Werte:
+	\begin{itemize}
+		\item IP\_NET\_1	- Alle Clients die über \var{IP\_NET\_x} erreicht werden können (hier IP\_NET\_1)
+		\item @client1		- Der Name eines Clients (\var{HOST\_x\_NAME}) hier 'client1'
+		\item IP-Adresse	- Die IP eines Clients (\var{HOST\_x\_IP4} oder \var{HOST\_x\_IP6})
+	\end{itemize}
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+      WOL_LIST='black'            # black oder white listing
+      WOL_LIST_N='3'              # Anzahl Listeinträge
+      WOL_LIST_1='IP_NET_1'       # Alle Clients im Netzwerk IP_NET_1
+      WOL_LIST_2='@client1'       # Client mit dem Namen HOST_1_x
+      WOL_LIST_3='192.168.6.3'    # Client mit der angegebenen IP
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection{Wake On Lan beim Booten des Routers}
+\begin{description}
+
+\config{WOL\_BOOT}{WOL\_BOOT}{WOLBOOT}
+
+Diese Einstellung sollte nur dann auf 'yes' gesetzt werden wenn Sie einen
+Rechner in ihrem Netzwerk beim Starten des Routers mit Wake on LAN booten
+wollen. Diese Konfiguration ist unabhängig von \var{WOL\_LIST}, d.h. hier können
+Clients angegeben werden die in \var{WOL\_LIST} nicht aufgeführt sind.
+
+\config{WOL\_BOOT\_N}{WOL\_BOOT\_N}{WOLBOOTN}
+
+	Standard-Wert:  \var{WOL\_BOOT\_N}='0'
+
+	In der Default Einstellung stehen also keine Clients auf der Liste, somit werden
+	beim starten des routers keine Clients mit Wake on LAN gebootet.
+
+\config{WOL\_BOOT\_x}{WOL\_BOOT\_x}{WOLBOOTx}
+
+	Standard-Wert:  \var{WOL\_BOOT\_x}=''
+
+	Gültige Werte:
+	\begin{itemize}
+		\item IP\_NET\_1   - Alle Clients die über \var{IP\_NET\_x} erreicht werden können (hier IP\_NET\_1)
+		\item @client1     - Der Name eines Clients (\var{HOST\_x\_NAME}) hier 'client1'
+		\item IP-Adresse   - Die IP eines Clients (\var{HOST\_x\_IP4} oder \var{HOST\_x\_IP6})
+	\end{itemize}
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+      WOL_BOOT='yes'               # installiere WOL on Boot: yes or no
+      WOL_BOOT_N='2'               # Anzahl der Rechner
+      WOL_BOOT_1='@client1'        # erster Client
+      WOL_BOOT_2='192.162.6.17     # zweiter Client
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection{Benutzung}
+
+Mit SSH oder direkt an der Konsole einloggen und einen Rechner wie folgt starten:
+'wol.sh~$<$Rechnername$>$' oder 'wol.sh~$<$IP-Adresse$>$' oder 'wol.sh~$<$MAC-Adresse$>$'.
+
+Nicht in der $<$config-dir$>$/wol.txt eingetragene Rechner können auch über
+'etherwake~$<$MAC-Adresse$>$'
+gestartet werden.
+
+\subsection{Weboberfläche}
+
+    Das Paket bringt außerdem eine Weboberfläche für den mini-httpd mit.
+    Die Weboberfläche wird beim Setzen \var{OPT\_HTTPD='yes'} 
+    automatisch mit aktiviert.

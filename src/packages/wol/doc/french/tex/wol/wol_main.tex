@@ -1,0 +1,142 @@
+% Do not remove the next line
+% Synchronized to r45129
+
+\marklabel{sec:opt-wol}
+{
+\section {WOL~- Wake On LAN}
+}
+Le paquetage OPT\_WOL permet d'étendre le routeur fli4l, avec la possibilité
+de démarrer des ordinateurs équipés d'une carte réseau compatible Wake On LAN,
+vous pouvez utliser la commande 'wol.sh' sur la console ou via l'interface web
+du routeur.
+
+Pour que cela fonctionne, la carte réseau doit généralement être relié avec
+un câble de trois petits fils à la carte mère, ainsi la carte réseau peut être
+alimenté par un courant de l'alimentation ATX, même lorsque l'ordinateur est
+en veille.
+
+\subsection {Configuration}
+
+\begin{description}
+
+\config{OPT\_WOL}{OPT\_WOL}{OPTWOL}
+
+  Configuration par défaut~:  \var{OPT\_WOL}='no'
+
+  La valeur \var{'no'} dans cette variable désactive complètement le paquetage
+  OPT\_WOL. Il n'y aura aucun changement sur le support de boot de l'archive
+  \var{opt.img} de fli4l. Pour activer le paquetage OPT\_WOL vous devez placer
+  la valeur \var{'yes'} dans cette variable.
+
+  Les clients qui seront connectés à WOL doivent être engegistrés dans le
+  fichier $<$config-dir$>$/dns\_dhcp.txt et avec leur adresse MAC dans la
+  variable (HOST\_x\_MAC). Tout ordinateur sans adresse MAC spécifiée sera
+  automatiquement exclus de WOL.
+
+\config{WOL\_LIST}{WOL\_LIST}{WOLLIST}
+
+    La configuration se fait à l'aide de liste noire ou blanche. les clients
+    paramétrés dans la liste noir seront exclus de WOL, les clients paramétrés
+    dans la liste blanche seront inclus de WOL.
+
+  Configuration par défaut~:  \var{WOL\_LIST}='black'
+
+  Les valeurs dans cette variable sont les suivantes~:
+  \begin{itemize}
+    \item black - Tous les clients indiqué dans cette liste ne seront pas réveillé
+    \item white - Tous les clients indiqué dans cette liste seront réveillé
+  \end{itemize}
+
+\config{WOL\_LIST\_N}{WOL\_LIST\_N}{WOLLISTN}
+
+  Configuration par défaut~:  \var{WOL\_LIST\_N}='0'
+
+  Dans la configuration par défaut zéro client ne sera dans la liste noire,
+  donc chaque client peut être réveillé par WOL.
+
+\config{WOL\_LIST\_x}{WOL\_LIST\_x}{WOLLISTx}
+
+  Configuration par défaut~:  \var{WOL\_LIST\_x}=''
+
+  Les valeurs dans cette variable sont les suivantes~:
+  \begin{itemize}
+    \item IP\_NET\_1 - Tous les clients qui fond partie de \var{IP\_NET\_x}
+      peuvent être réveillés (ici IP\_NET\_1)
+    \item @client1 - Le nom du client qui fait partie de (\var{HOST\_x\_NAME})
+      peut être réveillé, ici 'client1'
+    \item Adresse IP - L'adresse IP du client qui fait partie de (\var{HOST\_x\_IP4}
+      ou \var{HOST\_x\_IP6}) peut être réveillé
+  \end{itemize}
+
+Exemple~:
+\begin{example}
+\begin{verbatim}
+      WOL_LIST='black'            # Liste black ou white
+      WOL_LIST_N='3'              # Nombre d'entré dans la liste
+      WOL_LIST_1='IP_NET_1'       # Tous les Clients du réseau IP_NET_1
+      WOL_LIST_2='@client1'       # Nom du client dans HOST_1_x
+      WOL_LIST_3='192.168.6.3'    # Adresse IP du client
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection{Wake On Lan lors du boot du routeur}
+\begin{description}
+
+\config{WOL\_BOOT}{WOL\_BOOT}{WOLBOOT}
+
+Ce paramètre doit être réglé sur 'yes' seulement si vous voulez démarrer un
+ordinateur de votre réseau avec Wake On LAN après un démarrage du routeur fli4l.
+Cette configuration est indépendante de la variable \var{WOL\_LIST}, c'est à
+dire, que les clients qui seront enregistrés ne figurent pas dans la liste
+\var{WOL\_LIST}.
+
+\config{WOL\_BOOT\_N}{WOL\_BOOT\_N}{WOLBOOTN}
+
+  Configuration par défaut~:  \var{WOL\_BOOT\_N}='0'
+
+  Dans la configuration par défaut zéro client ne sera dans la liste, donc aucun
+  client ne sera réveillé avec Wake-on-LAN lors du démarrage du routeur.
+
+\config{WOL\_BOOT\_x}{WOL\_BOOT\_x}{WOLBOOTx}
+
+  Configuration par défaut~:  \var{WOL\_BOOT\_x}=''
+
+  Les valeurs dans cette variable sont les suivantes~:
+  \begin{itemize}
+    \item IP\_NET\_1 - Tous les clients qui fond partie de \var{IP\_NET\_x}
+      peuvent être réveillés (ici IP\_NET\_1)
+    \item @client1 - Le nom du client qui fait partie de (\var{HOST\_x\_NAME})
+      peut être réveillé, ici 'client1'
+    \item Adresse IP - L'adresse IP du client qui fait partie de (\var{HOST\_x\_IP4}
+      ou \var{HOST\_x\_IP6}) peut être réveillé
+  \end{itemize}
+
+Exemple~:
+\begin{example}
+\begin{verbatim}
+      WOL_BOOT='yes'               # Activer WOL au Boot: yes or no
+      WOL_BOOT_N='2'               # Nombre d'ordinateurs
+      WOL_BOOT_1='@client1'        # Premier client
+      WOL_BOOT_2='192.162.6.17     # Deuxième client
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection{Utilisation}
+
+Vous pouvez vous connecter avec le SSH ou avec la console du routeur pour
+démarrer un client (ou ordinateur) avec les commandes suivantes~:\\
+'wol.sh~$<$Nom-Client$>$' ou 'wol.sh~$<$Adresse-IP$>$' ou 'wol.sh~$<$Adresse-MAC$>$'.
+
+Les ordinateurs qui ne sont pas enregistrés dans le fichier $<$config-dir$>$/wol.txt,
+peuvent aussi être démarrés avec la commande 'etherwake~$<$Adresse-MAC$>$'
+
+\subsection {Web GUI (ou interface Web)}
+
+    Ce paquetage met à disposition une interface Web qui fonctionne avec mini-httpd. 
+    L'interface Web sera automatiquement activée si la variable \var{OPT\_HTTPD='yes'}
+	du paquetage httpd est activée.
+
