@@ -1,0 +1,169 @@
+% Do not remove the next line
+% Synchronized to r31455
+
+\marklabel{sec:opt-usercmd}
+{
+\section {OPT\_USERCMD~- Exécution de commandes personnalisées au début/fin du système}
+}
+
+\subsection{Configuration}
+
+Avec le paquetage opt\_usercmd vous pouvez exécuter des commandes et des
+scripts après le démarrage ou à l'arrêt du système selon votre choix.
+Voici des exemples possibles~:
+
+\begin{itemize}
+    \item Un montage supplémentaire de fichier système (en particulier pour CD bootable).
+    \item L'ajout d'une route supplémentaire en dehors du cadre de base.
+    \item L'envoie d'un ping à un hôte pour déconnecter (automatiquement un système
+      en ligne avec \var{DIALMODE}='auto').
+\end{itemize}
+
+En outre, il est possible d'utiliser vos propres fichiers depuis le répertoire
+de configuration, ils seront intégrés dans l'image de fli4l.
+
+Pour la configuration on utilise les variables suivantes~:
+
+\begin{description}
+
+\config{OPT\_USERCMD}{OPT\_USERCMD}{OPTUSERCMD}
+
+        Configuration par défaut~: \var{OPT\_USERCMD}='no'
+
+    Si vous paramétrez la variable \var{OPT\_USERCMD}='yes' le paquetage sera
+    activé. Vous pourrez alors paramétrer les commandes et les scripts
+    supplémentaires au démarrage ou à l'arrêt du système.
+
+\config{USERCMD\_BOOT\_N}{USERCMD\_BOOT\_N}{USERCMDBOOTN}
+
+        Configuration par défaut~: \var{USERCMD\_BOOT\_N}='0'
+
+    Vous indiquez dans cette variable le nombre de commande/script qui sera
+    activé au démarrage du système (boot). Les variables peuvent être traitées
+    consécutivements.
+
+\config{USERCMD\_BOOT\_x}{USERCMD\_BOOT\_x}{USERCMDBOOTx}
+
+        Configuration par défaut~: \var{USERCMD\_BOOT\_x}='echo user-defined boot-command here'
+
+    Instruction à exécuter au démarrage du système.
+
+    \wichtig{Normalement une seule commande peut être saisie dans chaque
+    variable. Si vous indiquez plusieurs commandes à la suite, ils doivent être
+    séparés par un point-virgule. (Voir les exemples)}
+
+\config{USERCMD\_HALT\_N}{USERCMD\_HALT\_N}{USERCMDHALTN}
+
+        Configuration par défaut~: \var{USERCMD\_HALT\_N}='0'
+
+    Vous indiquez dans cette variable le nombre de commande/script qui sera
+    activé à l'arrêt du système (halt, shutdown, reboot). Les variables peuvent
+    être traitées consécutivement.
+
+\config{USERCMD\_HALT\_x}{USERCMD\_HALT\_x}{USERCMDHALTx}
+
+        Configuration par défaut~: \var{USERCMD\_HALT\_x}='echo user-defined halt-command here'
+
+    Commande à exécuter lors de l'arrêt du système.
+
+    \wichtig{Normalement une seule commande peut être saisie dans chaque
+    variable. Si vous indiquez plusieurs commandes à la suite, ils doivent être
+    séparés par un point-virgule. (Voir les exemples)}
+
+\config{USERCMD\_FILE\_N}{USERCMD\_FILE\_N}{USERCMDFILEN}
+
+        Configuration par défaut~: \var{USERCMD\_FILE\_N}='0'
+
+   Parfois, il est nécessaire d'inclure vos propres fichiers dans l'image
+   opt.img de fli4l (il n'est pas possible d'intégrer des fichiers dans l'image
+   rootfs.img), sans créer un paquetage-opt suppémentaire. Dans ce cas, un petit
+   nombre de fichiers peut être inclus directement dans l'image fli4l ils seront
+   placés dans le répertoire \var{$<$config$>$/etc/usercmd}.
+   
+   Dans la variable \var{USERCMD\_FILE\_N}='x' vous indiquez le nombre de fichiers
+   à intégrer dans l'image fli4l.
+
+\config{USERCMD\_FILE\_x\_SRC}{USERCMD\_FILE\_x\_SRC}{USERCMDFILExSRC}
+
+	Dans cette variable vous indiquez le nom du fichier source qui sera placé dans
+	le répertoire de configuration \var{$<$config$>$/etc/usercmd}. Seuls les fichiers
+	résidant dans ce répertoire seront intégrés~!
+
+\config{USERCMD\_FILE\_x\_DST}{USERCMD\_FILE\_x\_DST}{USERCMDFILExDST}
+
+	Dans cette variable vous indiquez le nom du fichier absolu, comme il doit être
+	exactement inclus dans l'image fli4l qui sera ensuite générée. Vous pouvez par
+	exemple spécifié \var{USERCMD\_BOOT\_x}='/usr/bin/mystuff.sh', ce fichier sera
+	alors appelé lors du démarrage de fli4l.
+
+\config{USERCMD\_FILE\_x\_MODE}{USERCMD\_FILE\_x\_MODE}{USERCMDFILExMODE}
+
+    Dans cette variable vous indiquez le droits d'accès du fichier qui sera intégré
+	au fichier image de fli4l. Les droits d'accès des fichier Unix sont en fonction
+	des conventions habituelles de Unix. Vous pouvez trouver des détails dans la
+	documentation pour développeur (voir la section \ref{sec:opt_txt}) ou consulter
+	le site Wikipedia \altlink{http://fr.wikipedia.org/wiki/Permissions_UNIX}.
+
+\config{USERCMD\_FILE\_x\_FLAGS}{USERCMD\_FILE\_x\_FLAGS}{USERCMDFILExFLAGS}
+
+    Dans cette variable vous indiquez le flags= du fichier conformément au 
+	opt/<package>.txt, voir aussi \ref{sec:Dateiformate}.
+	
+	Les options suivantes existent pour convertir le format du fichier texte avant
+	de l'inclusion dans l'image~:
+    \newline\newline
+    \begin{tabular}{lp{6cm}}
+        \emph{utxt} & Conversion au format Unix\\
+        \emph{dtxt} & Conversion au format DOS\\
+        \emph{sh}   & Shell-Skript: Conversion au format Unix, avec la suppression des
+		caractères inutiles, recommandé pour les scripts shell
+    \end{tabular}
+
+\end{description}
+
+\subsection{Exemples}
+
+\begin{verbatim}
+USERCMD_BOOT_x='fli4lctrl dial pppoe'
+\end{verbatim}
+
+Active une connexion Internet DSL à la fin du processus de boot. 
+
+\begin{verbatim}
+USERCMD_BOOT_x='sleep 60; ip link set tr0 down; ip link set tr0 up'
+\end{verbatim}
+
+On définit au départ du processus de boot une pause d'une minute, puis on monte
+l'interface tr0, ensuite on descend l'interface, on remonte à nouveau l'interface.
+Peut être utilisé pour laisser du temps au démarrage un switch Token Ring et
+ensuite au démarrage du réseau.
+
+\begin{verbatim}
+USERCMD_BOOT_N='1'
+USERCMD_BOOT_1='cp /data/log/imond.log /var/log/'
+USERCMD_HALT_N='2'
+USERCMD_HALT_1='cp /var/log/sys.log /data/log/sys`date +%Y%m%d`.log'
+USERCMD_HALT_2='fli4lctrl hangup pppoe ; sleep 2 ; cp /var/log/imond.log /data/log/'
+\end{verbatim}
+
+On copie le fichier imond.log du répertoire de sauvegarder vers un répertoire à
+la fin du processus de boot. Ensuite on copie le fichier sys.log avec la date
+actuelle dans un répertoire de sauvegarder avant l'arrêt du système, pour
+finir la connexion DSL est coupé et on sauvegarde le fichier imond.log
+
+\subsection{Support}
+
+Un soutien est accordé sur ce paquetage uniquement dans le groupe
+de discussion fli4l.
+
+\subsection{Observation}
+
+\begin{itemize}
+    \item L'utilisation du caractère \flqq{}'\frqq{} n'est pas possible dans
+      une ligne de commande.
+    \item Une ligne de commande ne peut pas commencer par le caractère \flqq{}-\frqq{}.
+\end{itemize}
+
+
+% Diese Dokumentation wurde dankenswerterweise bereitgestellt von Oliver Musch (23 Feb. 2005).
+% Überarbeitet und erweitert hat sie Michael Köhler (3. Jan. 2005).

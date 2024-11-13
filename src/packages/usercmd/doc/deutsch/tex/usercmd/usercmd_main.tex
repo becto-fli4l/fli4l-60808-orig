@@ -1,0 +1,164 @@
+% Last Update: $Id$
+\marklabel{sec:opt-usercmd}
+{
+\section {OPT\_USERCMD - Benutzerdefinierte Ausführung von Befehlen zum Systemstart/Systemende}
+}
+
+\subsection{Konfiguration}
+
+Mit opt\_usercmd können beliebige Befehle und Scripte nach dem Booten bzw. beim Herunterfahren
+ausgeführt werden. Mögliche Anwendungsbeispiele wären:
+
+\begin{itemize}
+    \item Das zusätzliche Mounten von Filesystemen (insbesondere bei CD-Boot).
+    \item Das Setzen zusätzlicher Routen ausserhalb der Basiseinstellung.
+    \item Einen Ping zu einem Host absetzen (automatisches Onlinegehen bei der Option \var{DIALMODE}='auto').
+\end{itemize}
+
+Zusätzlich ist es möglich eigene Dateien aus dem config Verzeichnis in
+das fli4l Image zu integrieren. Dabei werden folgende Einträge
+benutzt:
+
+\begin{description}
+
+\config{OPT\_USERCMD}{OPT\_USERCMD}{OPTUSERCMD}
+
+        Standard-Einstellung: \var{OPT\_USERCMD}='no'
+
+    Mit \var{OPT\_USERCMD}='yes' wird das Paket aktiviert. Erst dann ist werden die zu
+    konfigurierenden Befehle und Scripte beim Systemstart bzw. beim Systemende
+    ausgeführt.
+
+
+\config{USERCMD\_BOOT\_N}{USERCMD\_BOOT\_N}{USERCMDBOOTN}
+
+        Standard-Einstellung: \var{USERCMD\_BOOT\_N}='0'
+
+    Anzahl der Befehle/Scripte, welche nach dem Systemstart (Boot) ausgeführt werden
+    sollen. Die Zeilen werden jeweils nacheinander abgearbeitet.
+
+\config{USERCMD\_BOOT\_x}{USERCMD\_BOOT\_x}{USERCMDBOOTx}
+
+        Standard-Einstellung: \var{USERCMD\_BOOT\_x}='echo user-defined boot-command here'
+
+    Auszuführender Befehl beim Systemstart.
+
+    \wichtig{Pro Eintrag darf normalerweise nur ein Befehl eingetragen werden. Sollen
+    mehrere Befehle in einer Zeile untergebracht werden, müssen sie mit einem Semikolon
+    getrennt werden. (Siehe Beispiele)}
+
+
+\config{USERCMD\_HALT\_N}{USERCMD\_HALT\_N}{USERCMDHALTN}
+
+        Standard-Einstellung: \var{USERCMD\_HALT\_N}='0'
+
+    Anzahl der Befehle/Scripte, welche beim Herunterfahren des Systems (halt, shutdown, reboot)
+    ausgeführt werden sollen. Die Zeilen werden jeweils nacheinander abgearbeitet.
+
+\config{USERCMD\_HALT\_x}{USERCMD\_HALT\_x}{USERCMDHALTx}
+
+        Standard-Einstellung: \var{USERCMD\_HALT\_x}='echo user-defined halt-command here'
+
+    Auszuführender Befehl beim Beenden des Systems.
+
+    \wichtig{Pro Eintrag darf normalerweise nur ein Befehl eingetragen werden. Sollen
+    mehrere Befehle in einer Zeile untergebracht werden, müssen sie mit einem Semikolon
+    getrennt werden. (Siehe Beispiele)}
+
+\config{USERCMD\_FILE\_N}{USERCMD\_FILE\_N}{USERCMDFILEN}
+
+        Standard-Einstellung: \var{USERCMD\_FILE\_N}='0'
+
+   Manchmal kann es notwendig sein eigene Dateien in das fli4l Image
+   opt.img (es ist aktuell nicht möglich Dateien in das rootfs.img
+   einzubinden) einzubinden, ohne das ein eigenständiges opt-Paket
+   Sinn macht. Für diese Fälle gibt es die Möglichkeit eine kleine
+   Anzahl von Dateien direkt aus dem
+   Verzeichnis \var{$<$config$>$/etc/usercmd} in das entsprechende
+   fli4l Image einzubinden.
+
+   Mit \var{USERCMD\_FILE\_N}='x' geben Sie die Anzahl der Dateien an,
+   die in ein fli4l Image integriert werden sollen.
+
+\config{USERCMD\_FILE\_x\_SRC}{USERCMD\_FILE\_x\_SRC}{USERCMDFILExSRC}
+
+    Dateiname der Quelldatei im aktuellen
+    Konfigurationsverzeichnis \var{$<$config$>$/etc/usercmd}. Es
+    werden wirklich nur Dateien direkt aus diesem Verzeichnis
+    eingebunden!
+
+\config{USERCMD\_FILE\_x\_DST}{USERCMD\_FILE\_x\_DST}{USERCMDFILExDST}
+
+    Absoluter Dateiname genau so wie er in das erzeugte fli4l Image
+    eingebunden werden soll. Der so angegebene Dateiname kann dann
+    z.B. beim Starten von fli4l durch ein
+    entsprechendes \var{USERCMD\_BOOT\_x}='/usr/bin/mystuff.sh'
+    aufgerufen werden.
+
+\config{USERCMD\_FILE\_x\_MODE}{USERCMD\_FILE\_x\_MODE}{USERCMDFILExMODE}
+
+    Der Filemodus der Datei im fli4l Image. Der Unixdateimode
+    entsprechend den üblichen Unixkonventionen. Die Details können Sie
+    in der Entwicklerdokumentation im Abschnitt 'Die Liste der zu
+    kopierenden Dateien' (siehe auch \ref{sec:opt_txt})
+    nachlesen oder bei
+    Wikipedia \altlink{http://de.wikipedia.org/wiki/Unix-Dateirechte}.
+
+\config{USERCMD\_FILE\_x\_FLAGS}{USERCMD\_FILE\_x\_FLAGS}{USERCMDFILExFLAGS}
+
+    Entspricht der flags= Angabe aus der opt/<package>.txt
+    Datei. Siehe auch \ref{sec:Dateiformate}.
+
+    Es gibt folgende Möglichkeiten Textdateien vor der Aufnahme ins das fli4l Image zu konvertieren:
+    \newline\newline
+    \begin{tabular}{lp{6cm}}
+        \emph{utxt} & Konvertierung ins Unix-Format\\
+        \emph{dtxt} & Konvertierung ins DOS-Format\\
+        \emph{sh}   & Shell-Skript: Konvertierung ins Unix-Format, Entfernen überflüssiger Zeichen,
+        empfohlen für Shellscripte
+    \end{tabular}
+
+\end{description}
+
+\subsection{Beispiele}
+
+\begin{verbatim}
+USERCMD_BOOT_x='fli4lctrl dial pppoe'
+\end{verbatim}
+Baut am Ende des Bootvorgangs eine DSL-Internetverbindung auf.
+
+
+\begin{verbatim}
+
+USERCMD_BOOT_x='sleep 60; ip link set tr0 down; ip link set tr0 up'
+\end{verbatim}
+Legt nach dem Systemstart eine Minute Pause ein, fährt dann das Interface tr0 runter
+und wieder rauf. Kann dazu benutzt werden einem Tokenring-Switch die Zeit
+zum Booten zu lassen und anschließend das Netzwerk neu zu starten.
+
+
+\begin{verbatim}
+
+USERCMD_BOOT_N='1'
+USERCMD_BOOT_1='cp /data/log/imond.log /var/log/'
+USERCMD_HALT_N='2'
+USERCMD_HALT_1='cp /var/log/sys.log /data/log/sys`date +%Y%m%d`.log'
+USERCMD_HALT_2='fli4lctrl hangup pppoe ; sleep 2 ; cp /var/log/imond.log /data/log/'
+\end{verbatim}
+Stellt am Ende des Bootvorgang eine vorher gesicherte imond-Logdatei wieder her.
+Beim Herunterfahren wird das Syslog mit aktuellem Datum im Dateinamen gesichert,
+die DSL-Internetverbindung getrennt und die imond-Logdatei gesichert.
+
+\subsection{Support}
+Support wird nur im Rahmen der fli4l Newsgroups geleistet.
+
+\subsection{Anmerkungen}
+\begin{itemize}
+    \item Die Nutzung des Zeichens \glqq{}'\grqq{} ist in den Befehlszeilen nicht möglich.
+    \item Eine Befehlszeile darf nicht mit dem Zeichen \glqq{}-\grqq{} beginnen.
+\end{itemize}
+
+
+
+% Diese Dokumentation wurde dankenswerterweise bereitgestellt von Oliver Musch (23 Feb. 2005).
+% Überarbeitet und erweitert hat sie Michael Köhler (3. Jan. 2005).

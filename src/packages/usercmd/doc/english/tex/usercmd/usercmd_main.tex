@@ -1,0 +1,146 @@
+% Synchronized to r31455
+\marklabel{sec:opt-usercmd}
+{
+\section {OPT\_USERCMD - Execution Of User Defined Commands At System Start/Shutdown}
+}
+
+\subsection{Configuration}
+
+Opt\_usercmd can execute arbitrary commands and scripts after boot or shutdown.
+Possible examples would be:
+\begin{itemize}
+    \item Mounting of additional file systemf (i.e. when booting from a CD).
+    \item Definiton of additional router beside the basic configuration.
+    \item Ping a host (i.e. trigger automatic connections when using the option \var{DIALMODE}='auto').
+\end{itemize}
+
+You may include own files residing in the config directory into the fli4l image.
+
+The following entries are used:
+
+\begin{description}
+
+\config{OPT\_USERCMD}{OPT\_USERCMD}{OPTUSERCMD}
+
+        Default Setting: \var{OPT\_USERCMD}='no'
+
+    \var{OPT\_USERCMD}='yes' activates the package. Only then the configured
+    commands and scripts will be excuted on system start resp. shutdown.
+
+
+\config{USERCMD\_BOOT\_N}{USERCMD\_BOOT\_N}{USERCMDBOOTN}
+
+        Default Setting: \var{USERCMD\_BOOT\_N}='0'
+
+    Number of commands/scripts to be executed after system start (boot).
+    The rows will be processed consecutively.
+
+\config{USERCMD\_BOOT\_x}{USERCMD\_BOOT\_x}{USERCMDBOOTx}
+
+        Default Setting: \var{USERCMD\_BOOT\_x}='echo user-defined boot-command here'
+
+    Command to be executed at system startup.
+
+    \wichtig{For each entry only one command may be entered. If more commands are placed
+    in a row, the have to be separated with a semicolon (See examples)}
+
+
+\config{USERCMD\_HALT\_N}{USERCMD\_HALT\_N}{USERCMDHALTN}
+
+        Default Setting: \var{USERCMD\_HALT\_N}='0'
+
+    Number of commands/scripts to be executed when shutting down the system (halt, shutdown, reboot).
+    The rows will be processed consecutively.
+
+\config{USERCMD\_HALT\_x}{USERCMD\_HALT\_x}{USERCMDHALTx}
+
+        Default Setting: \var{USERCMD\_HALT\_x}='echo user-defined halt-command here'
+
+    Command to be executed at system shutdown.
+
+    \wichtig{For each entry only one command may be entered. If more commands are placed
+    in a row, the have to be separated with a semicolon (See examples)}
+
+\config{USERCMD\_FILE\_N}{USERCMD\_FILE\_N}{USERCMDFILEN}
+
+        Default Setting: \var{USERCMD\_FILE\_N}='0'
+
+   Sometimes it may be necessary to include own files in fli4l's
+   opt.img (it is currently not possible to integrate files in rootfs.img)
+   without separate opt-package. For these cases a small number of files
+   may be included directly from \var{$<$config$>$/etc/usercmd}
+   into the fli4l image.
+
+   \var{USERCMD\_FILE\_N}='x' indicates the number of files to be integrated.
+
+\config{USERCMD\_FILE\_x\_SRC}{USERCMD\_FILE\_x\_SRC}{USERCMDFILExSRC}
+
+    Filename of the source file in \var{$<$config$>$/etc/usercmd}. Only files
+    residing in this directory will be integrated!
+
+\config{USERCMD\_FILE\_x\_DST}{USERCMD\_FILE\_x\_DST}{USERCMDFILExDST}
+
+    Fully qualified filename to set the destination of the file in
+    fil4l's image. A filename specified like this may i.e. on system boot
+    be executed by a\\
+    \var{USERCMD\_BOOT\_x}='/usr/bin/mystuff.sh'.
+
+\config{USERCMD\_FILE\_x\_MODE}{USERCMD\_FILE\_x\_MODE}{USERCMDFILExMODE}
+
+    File mode of the file in fli4l's image. Unix file modes stick to the
+    usual Unix conventions. For details see the developer documentation
+    'List of files to copy' (see also \ref{sec:opt_txt}) or check Wikipedia
+    \altlink{http://en.wikipedia.org/wiki/Filesystem_permissions\#Traditional_Unix_permissions}.
+
+\config{USERCMD\_FILE\_x\_FLAGS}{USERCMD\_FILE\_x\_FLAGS}{USERCMDFILExFLAGS}
+
+    Complies with flags= indication from the opt/<package>.txt file.
+    See also \ref{sec:Dateiformate}.
+
+    The following options exist to convert text file formats before inclusion in the image:
+    \newline\newline
+    \begin{tabular}{lp{6cm}}
+        \emph{utxt} & Conversion to Unix format\\
+        \emph{dtxt} & Conversion to DOS format\\
+        \emph{sh}   & Shell scripts: Conversion to Unix format, removal of unnecessary characters,
+        recommended for shell scripts
+    \end{tabular}
+
+\end{description}
+
+\subsection{Examples}
+
+\begin{verbatim}
+USERCMD_BOOT_x='fli4lctrl dial pppoe'
+\end{verbatim}
+Establishes a DSL Internet connection after booting.
+
+
+\begin{verbatim}
+
+USERCMD_BOOT_x='sleep 60; ip link set tr0 down; ip link set tr0 up'
+\end{verbatim}
+Sets a one-minute break after system startup, then switches the interface tr0 down
+and up again. Can be used to provide time for a Token Ring switch
+to allow for booting and then restart the network.
+
+\begin{verbatim}
+
+USERCMD_BOOT_N='1'
+USERCMD_BOOT_1='cp /data/log/imond.log /var/log/'
+USERCMD_HALT_N='2'
+USERCMD_HALT_1='cp /var/log/sys.log /data/log/sys`date +%Y%m%d`.log'
+USERCMD_HALT_2='fli4lctrl hangup pppoe ; sleep 2 ; cp /var/log/imond.log /data/log/'
+\end{verbatim}
+Restores a previously saved imond log file at the end of the boot process.
+At shutdown, the syslog is saved with the current date in the file name,
+the DSL Internet connection is disconnected and the imond log file is saved.
+
+\subsection{Support}
+Support is provided only in the context of the fli4l Newsgroups.
+
+\subsection{Comments}
+\begin{itemize}
+    \item Using the character \glqq{}'\grqq{} in command lines is not possible.
+    \item A command lines must not start with the character \glqq{}-\grqq{}.
+\end{itemize}
