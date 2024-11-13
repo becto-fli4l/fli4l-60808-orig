@@ -1,0 +1,60 @@
+From: Phil Elwell <phil@raspberrypi.org>
+Date: Wed, 9 Oct 2019 17:22:07 +0100
+Subject: bcm2711: Retain support for old dtbs
+
+The recent series switching to bcm2711 as the DT identifier broke Pis
+running with old DTBs. Add some bcm2838 compatible strings as a
+temporary measure, at least until the next full Raspbian image with
+bcm2711 DTBs.
+
+See: https://github.com/raspberrypi/linux/pull/3244
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.org>
+---
+ arch/arm/mach-bcm/board_bcm2835.c     | 2 ++
+ drivers/clk/bcm/clk-bcm2835.c         | 2 ++
+ drivers/pinctrl/bcm/pinctrl-bcm2835.c | 5 +++++
+ 3 files changed, 9 insertions(+)
+
+diff --git a/arch/arm/mach-bcm/board_bcm2835.c b/arch/arm/mach-bcm/board_bcm2835.c
+index e538e0f899a5..0ec49d857134 100644
+--- a/arch/arm/mach-bcm/board_bcm2835.c
++++ b/arch/arm/mach-bcm/board_bcm2835.c
+@@ -110,6 +110,8 @@ static const char * const bcm2835_compat[] = {
+ 	"brcm,bcm2836",
+ 	"brcm,bcm2837",
+ 	"brcm,bcm2711",
++	// Temporary, for backwards-compatibility with old DTBs
++	"brcm,bcm2838",
+ #endif
+ 	NULL
+ };
+diff --git a/drivers/clk/bcm/clk-bcm2835.c b/drivers/clk/bcm/clk-bcm2835.c
+index c3bd7ad9f5ea..35f0d394e0e9 100644
+--- a/drivers/clk/bcm/clk-bcm2835.c
++++ b/drivers/clk/bcm/clk-bcm2835.c
+@@ -2386,6 +2386,8 @@ static const struct cprman_plat_data cprman_bcm2711_plat_data = {
+ static const struct of_device_id bcm2835_clk_of_match[] = {
+ 	{ .compatible = "brcm,bcm2835-cprman", .data = &cprman_bcm2835_plat_data },
+ 	{ .compatible = "brcm,bcm2711-cprman", .data = &cprman_bcm2711_plat_data },
++	// Temporary, for backwards-compatibility with old DTBs
++	{ .compatible = "brcm,bcm2838-cprman", .data = &cprman_bcm2711_plat_data },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, bcm2835_clk_of_match);
+diff --git a/drivers/pinctrl/bcm/pinctrl-bcm2835.c b/drivers/pinctrl/bcm/pinctrl-bcm2835.c
+index 094251b77c72..7480c6297d57 100644
+--- a/drivers/pinctrl/bcm/pinctrl-bcm2835.c
++++ b/drivers/pinctrl/bcm/pinctrl-bcm2835.c
+@@ -1175,6 +1175,11 @@ static const struct of_device_id bcm2835_pinctrl_match[] = {
+ 		.compatible = "brcm,bcm7211-gpio",
+ 		.data = &bcm2711_plat_data,
+ 	},
++	// Temporary, for backwards-compatibility with old DTBs
++	{
++		.compatible = "brcm,bcm2838-gpio",
++		.data = &bcm2711_pinconf_ops,
++	},
+ 	{}
+ };
+ 

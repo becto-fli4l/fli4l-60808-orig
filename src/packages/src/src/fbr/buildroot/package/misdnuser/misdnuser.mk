@@ -1,0 +1,23 @@
+MISDNUSER_VERSION = v2.0.22
+MISDNUSER_SITE    = $(call github,ISDN4Linux,mISDNuser,$(MISDNUSER_VERSION))
+
+MISDNUSER_LICENSE = GPLv2+
+MISDNUSER_LICENSE_FILES = COPYING.LIB \
+                          LICENSE
+
+MISDNUSER_AUTORECONF = YES
+MISDNUSER_AUTORECONF_OPTS = -i
+
+MISDNUSER_CONF_OPTS += \
+	$(if $(BR2_PACKAGE_MISDNUSER_CAPI),--enable-capi,--disable-capi) \
+	$(if $(BR2_PACKAGE_MISDNUSER_SOFTDSP),--enable-softdsp,--disable-softdsp)
+MISDNUSER_DEPENDENCIES = \
+	$(if $(BR2_PACKAGE_MISDNUSER_CAPI),libcapi20) \
+	$(if $(BR2_PACKAGE_MISDNUSER_SOFTDSP),libspandsp)
+
+define MISDNUSER_CREATE_M4
+	mkdir -p $(@D)/m4
+endef
+MISDNUSER_POST_PATCH_HOOKS += MISDNUSER_CREATE_M4
+
+$(eval $(autotools-package))

@@ -1,0 +1,37 @@
+diff -purN olsrd-0.9.6.1.orig/lib/dyn_gw_plain/README_DYN_GW_PLAIN olsrd-0.9.6.1/lib/dyn_gw_plain/README_DYN_GW_PLAIN
+--- olsrd-0.9.6.1.orig/lib/dyn_gw_plain/README_DYN_GW_PLAIN	2017-02-10 11:20:11.000000000 +0100
++++ olsrd-0.9.6.1/lib/dyn_gw_plain/README_DYN_GW_PLAIN	2018-01-29 10:23:53.165905791 +0100
+@@ -1,12 +1,13 @@
+ DYNAMIC INTERNET GATEWAY PLAIN PLUGIN FOR olsr.org olsrd
+ by Andreas Tonnesen(andreto@olsr.org)
+ additions by Sven-Ola Tuecke
++modifications for using in FLI4L by U. Wachtel (freifunk@wachtelnet.de)
+ 
+ Automatically adds a default gateway HNA when the node has such a route.
+ Automatically removes a default gateway HNA when the node has no such route.
+ IPv4 only.
+ 
+-This plugin is without Ping/libthread. It is the plain dyn_gw!
++This plugin is without Ping/libthread. It is the plain dyn_gw modified for FLI4L!
+ 
+ HOW TO USE
+ 
+diff -purN olsrd-0.9.6.1.orig/lib/dyn_gw_plain/src/olsrd_dyn_gw_plain.c olsrd-0.9.6.1/lib/dyn_gw_plain/src/olsrd_dyn_gw_plain.c
+--- olsrd-0.9.6.1.orig/lib/dyn_gw_plain/src/olsrd_dyn_gw_plain.c	2017-02-10 11:20:11.000000000 +0100
++++ olsrd-0.9.6.1/lib/dyn_gw_plain/src/olsrd_dyn_gw_plain.c	2018-01-29 10:25:33.898351840 +0100
+@@ -75,6 +75,7 @@ my_init(void)
+ {
+   /* Print plugin info to stdout */
+   olsr_printf(0, "%s (%s)\n", PLUGIN_NAME, git_descriptor);
++  olsr_printf(0, "Special modifications for the fli4l router by Ulrich Wachtel\n");
+ }
+ 
+ /**
+@@ -171,6 +172,7 @@ check_gw(union olsr_ip_addr *net, union
+      */
+ 
+     if (                        //(iflags & RTF_GATEWAY) &&
++        (access("/var/run/pppoe.up",F_OK) == 0) &&
+          (iflags & RTF_UP) && (metric == 0) && (netmask == mask->v4.s_addr) && (dest_addr == net->v4.s_addr)) {
+       olsr_printf(DEBUGLEV, "INTERNET GATEWAY VIA %s detected in routing table.\n", iface);
+       retval = 1;

@@ -1,0 +1,57 @@
+From: Marc Kleine-Budde <mkl@pengutronix.de>
+Date: Wed, 16 Sep 2020 00:35:22 +0200
+Subject: can: rx-offload: can_rx_offload_add_manual(): add new initialization
+ function
+
+This patch adds a new initialization function:
+can_rx_offload_add_manual()
+
+It should be used to add support rx-offload to a driver, if the callback
+mechanism should not be used. Use e.g. can_rx_offload_queue_sorted() to queue
+skbs into rx-offload.
+
+Link: https://lore.kernel.org/r/20200915223527.1417033-33-mkl@pengutronix.de
+Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+(cherry picked from commit 728fc9ff73d3f25220f6b8a52aaf063ec51ef294)
+Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+---
+ drivers/net/can/dev/rx-offload.c | 11 +++++++++++
+ include/linux/can/rx-offload.h   |  3 +++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/drivers/net/can/dev/rx-offload.c b/drivers/net/can/dev/rx-offload.c
+index 7e75a87a8a6a..fa65e0a4b7a0 100644
+--- a/drivers/net/can/dev/rx-offload.c
++++ b/drivers/net/can/dev/rx-offload.c
+@@ -375,6 +375,17 @@ int can_rx_offload_add_fifo(struct net_device *dev, struct can_rx_offload *offlo
+ }
+ EXPORT_SYMBOL_GPL(can_rx_offload_add_fifo);
+ 
++int can_rx_offload_add_manual(struct net_device *dev,
++			      struct can_rx_offload *offload,
++			      unsigned int weight)
++{
++	if (offload->mailbox_read)
++		return -EINVAL;
++
++	return can_rx_offload_init_queue(dev, offload, weight);
++}
++EXPORT_SYMBOL_GPL(can_rx_offload_add_manual);
++
+ void can_rx_offload_enable(struct can_rx_offload *offload)
+ {
+ 	can_rx_offload_reset(offload);
+diff --git a/include/linux/can/rx-offload.h b/include/linux/can/rx-offload.h
+index 01219f2902bf..eac8f11413f0 100644
+--- a/include/linux/can/rx-offload.h
++++ b/include/linux/can/rx-offload.h
+@@ -35,6 +35,9 @@ int can_rx_offload_add_timestamp(struct net_device *dev,
+ int can_rx_offload_add_fifo(struct net_device *dev,
+ 			    struct can_rx_offload *offload,
+ 			    unsigned int weight);
++int can_rx_offload_add_manual(struct net_device *dev,
++			      struct can_rx_offload *offload,
++			      unsigned int weight);
+ int can_rx_offload_irq_offload_timestamp(struct can_rx_offload *offload,
+ 					 u64 reg);
+ int can_rx_offload_irq_offload_fifo(struct can_rx_offload *offload);

@@ -1,0 +1,70 @@
+diff -urN chrony-1.30.orig/reference.c chrony-1.30/reference.c
+--- chrony-1.30.orig/reference.c	2014-07-01 14:49:00.000000000 +0200
++++ chrony-1.30/reference.c	2014-11-15 22:58:00.054131506 +0100
+@@ -706,6 +706,54 @@
+ 
+ /* ================================================== */
+ 
++static void notify_apps(int offset)
++{
++  int pid, i;
++  char buffer[30];
++  char * script = "/etc/chrony.d/timewarp.sh"; 
++  char * argv[3] = {script, buffer, 0};
++
++  /* check whether there are scripts to execute */
++  if (access (script, X_OK))
++    return;
++    
++  /* chrony continues */
++  if ( (pid = fork()) < 0) {
++    syslog(LOG_ERR, "unable to fork, error %d\n", errno);
++    return;
++  }
++  else { 
++    if (pid)
++      return;
++  }
++
++  /* do not bother chrony with zombies, let init care about them */
++  if ( (pid = fork()) < 0) {
++    syslog(LOG_ERR, "unable to fork, error %d\n", errno);
++    exit (0);
++  }
++  else { 
++    if (pid)
++      exit (0);
++  }
++
++  /* close all open file descriptors and set /dev/null as stdin, stdout, 
++     stderr */
++  for (i=0; i<64; i++)
++    {
++      close (i);
++    }
++  open("/dev/null", O_RDWR);
++  dup(0);
++  dup(0);
++    
++  sprintf(buffer, "%d", offset);
++  
++  execve (script, argv, 0);
++  syslog(LOG_ERR, "unable to execute %s, error %d\n", script, errno);
++  exit(0);
++}
++
+ static void
+ special_mode_sync(int valid, double offset)
+ {
+@@ -725,8 +773,10 @@
+           "System's initial offset : %.6f seconds %s of true (%s)",
+           fabs(offset), offset >= 0 ? "fast" : "slow", step ? "step" : "slew");
+ 
+-      if (step)
++      if (step) {
+         LCL_ApplyStepOffset(offset);
++        notify_apps(-1 * (int)offset);
++      }
+       else
+         LCL_AccumulateOffset(offset, 0.0);
+ 

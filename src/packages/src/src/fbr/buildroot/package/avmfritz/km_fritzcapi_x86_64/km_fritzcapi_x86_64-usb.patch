@@ -1,0 +1,459 @@
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/defs.h km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/defs.h
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/defs.h	2018-08-24 18:36:44.287584001 +0200
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/defs.h	2018-08-24 19:51:58.610921633 +0200
+@@ -32,6 +32,13 @@
+ # define FALSE	(1==0)
+ #endif
+ 
++#if !defined(SA_SHIRQ)
++#define SA_SHIRQ IRQF_SHARED
++#endif
++#if !defined(SA_INTERRUPT)
++#define SA_INTERRUPT 0
++#endif
++
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ #if defined (__fcusb__)
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.c km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.c
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.c	2018-08-24 18:36:44.287584001 +0200
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.c	2018-08-28 19:55:00.569181002 +0200
+@@ -21,11 +21,16 @@
+  */
+ 
+ #include <asm/atomic.h>
++#include <linux/version.h>
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0))
+ #include <asm/uaccess.h>
++#else
++#include <linux/uaccess.h>
++#endif
+ #include <linux/spinlock.h>
+ #include <linux/wait.h>
+-#include <linux/version.h>
+ #include <linux/kernel.h>
++#include <linux/kthread.h>
+ #include <linux/skbuff.h>
+ #include <linux/netdevice.h>
+ #include <linux/sched.h>
+@@ -38,6 +43,9 @@
+ #include <linux/isdn/capicmd.h>
+ #include <stdarg.h>
+ #include <linux/usb.h>
++#include <linux/export.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
+ #include "tools.h"
+ #include "main.h"
+ #include "libdefs.h"
+@@ -61,8 +69,6 @@
+ #define	KMALLOC_LIMIT		128 * 1024
+ #endif
+ 
+-#define	PPRINTF_LEN		256
+-
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ card_p				capi_card		= NULL;
+@@ -83,7 +89,7 @@ static volatile unsigned long	rx_flag
+ static volatile unsigned long	resetting_ctrl		= 0;
+ int				card_config;
+ static struct work_struct	closing_work;
+-static void			closing_worker (void *);
++static void			closing_worker (struct work_struct *);
+ static volatile unsigned long	closing_worker_running	= 0;
+ static void		     (* close_func) (void *)	= NULL;
+ static void *			close_data		= NULL;
+@@ -92,8 +98,8 @@ static DECLARE_WAIT_QUEUE_HEAD(wait);
+ static DECLARE_WAIT_QUEUE_HEAD(capi_wait);
+ static DECLARE_WAIT_QUEUE_HEAD(tx_wait);
+ static DECLARE_WAIT_QUEUE_HEAD(rx_wait);
+-static DECLARE_MUTEX_LOCKED(hotplug);
+-static DECLARE_MUTEX_LOCKED(notify);
++static DECLARE_COMPLETION(hotplug); /* New DECLARE, <arnd.feldmueller@web.de> */
++static DECLARE_COMPLETION(notify);  /* New DECLARE, <arnd.feldmueller@web.de> */
+ 
+ #define	SCHED_WAKEUP_CAPI	{ atomic_set (&thread_capi_flag, 1); wake_up_interruptible (&capi_wait); }
+ #define	SCHED_WAKEUP		{ atomic_set (&got_kicked, 1); wake_up_interruptible (&wait); }
+@@ -189,10 +195,9 @@ static inline const char * name_of (int
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static void select_completion (struct urb * purb, struct pt_regs * ptr) {
++static void select_completion (struct urb * purb) {
+ 	struct usb_ctrlrequest	* req;
+ 
+-	UNUSED_ARG (ptr);
+ 	assert (NULL != purb);
+ 	req = (struct usb_ctrlrequest *) purb->context;
+ 	LOG(
+@@ -258,10 +263,9 @@ int select_config (
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static void reset_completion (struct urb * purb, struct pt_regs * ptr) {
++static void reset_completion (struct urb * purb) {
+ 	struct usb_ctrlrequest *	req;
+ 
+-	UNUSED_ARG (ptr);
+ 	assert (NULL != purb);
+ 	info (purb->status == 0);
+ 
+@@ -341,7 +345,7 @@ static void copy_version (struct capi_ct
+ 	}
+ 	lib_strncpy (ctrl->serial, tmp, CAPI_SERIAL_LEN);
+ 	lib_memcpy (&ctrl->profile, card->string[6], sizeof (capi_profile));
+-	strncpy (ctrl->manu, "AVM GmbH", CAPI_MANUFACTURER_LEN);
++	lib_strncpy (ctrl->manu, "AVM GmbH", CAPI_MANUFACTURER_LEN);
+ 	ctrl->version.majorversion = 2;
+ 	ctrl->version.minorversion = 0;
+ 	tmp = card->string[0];
+@@ -369,16 +373,6 @@ static void kill_version (card_p card) {
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static void pprintf (char * page, int * len, const char * fmt, ...) {
+-	va_list args;
+-
+-	va_start (args, fmt);
+-	*len += vsnprintf (page + *len, PPRINTF_LEN, fmt, args);
+-	va_end (args);
+-} /* pprintf */
+-
+-/*---------------------------------------------------------------------------*\
+-\*---------------------------------------------------------------------------*/
+ static int remove_appls (card_p card) {
+ 	appl_t *	appp;
+ 	int		n = 0;
+@@ -517,7 +511,7 @@ static int __kcapi load_ware (struct cap
+ 		return stack_init (ctx->dev);
+ 	}
+ 	ERROR("Firmware does not respond!\n");
+-	capi_ctr_reseted (ctrl);
++	capi_ctr_down (ctrl);
+ 	return -EBUSY;
+ #else
+ 	UNUSED_ARG (ctrl);
+@@ -565,37 +559,36 @@ static char * __kcapi proc_info (struct
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static int __kcapi ctr_info (
+-	char *			page, 
+-	char **			start, 
+-	off_t			ofs,
+-	int			count, 
+-	int *			eof, 
+-	struct capi_ctr *	ctrl
+-) {
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static int __kcapi ctr_info (struct seq_file *m, void *v)
++#else
++int __kcapi ctr_proc_show (struct seq_file *m, void *v)
++#endif
++{
++        struct capi_ctr *ctrl = m->private;
+ 	card_p			card;
+ 	char *			temp;
+ 	unsigned char		flag;
+-	int			len = 0;
+ 
+ 	assert (ctrl);
+ 	card = (card_p) ctrl->driverdata;
+ #if defined (__fxusb__)
+ 	assert (card->dc <= MAX_DEVICE_CODE);
+-	pprintf (page, &len, "%-16s %s (%s)\n", "name", SHORT_LOGO, name_of (card->dc));
++        seq_printf(m, "%-16s %s (%s)\n", "name", SHORT_LOGO, name_of (card->dc));
+ #else
+-	pprintf (page, &len, "%-16s %s\n", "name", SHORT_LOGO);
++        seq_printf(m, "%-16s %s\n", "name", SHORT_LOGO);
+ #endif
+-	pprintf (page, &len, "%-16s %d\n", "dev", card->dev->devnum);
++        seq_printf(m, "%-16s %d\n", "dev", card->dev->devnum);
+ 	temp = card->version ? card->string[1] : "A1";
+-	pprintf (page, &len, "%-16s %s\n", "type", temp);
++        seq_printf(m, "%-16s %s\n", "type", temp);
+ 	temp = card->version ? card->string[0] : "-";
+-	pprintf (page, &len, "%-16s %s\n", "ver_driver", temp);
+-	pprintf (page, &len, "%-16s %s\n", "ver_cardtype", SHORT_LOGO);
++        seq_printf(m, "%-16s %s\n", "ver_driver", temp);
++        seq_printf(m, "%-16s %s\n", "ver_cardtype", SHORT_LOGO);
+ 
+ 	flag = ((unsigned char *) (ctrl->profile.manu))[3];
+ 	if (flag) {
+-		pprintf (page, &len, "%-16s%s%s%s%s%s%s%s\n", "protocol",
++                seq_printf(m, "%-16s%s%s%s%s%s%s%s\n", "protocol",
+ 			(flag & 0x01) ? " DSS1" : "",
+ 			(flag & 0x02) ? " CT1" : "",
+ 			(flag & 0x04) ? " VN3" : "",
+@@ -607,21 +600,33 @@ static int __kcapi ctr_info (
+ 	}
+ 	flag = ((unsigned char *) (ctrl->profile.manu))[5];
+ 	if (flag) {
+-		pprintf (page, &len, "%-16s%s%s%s%s\n", "linetype",
++                seq_printf(m, "%-16s%s%s%s%s\n", "linetype",
+ 			(flag & 0x01) ? " point to point" : "",
+ 			(flag & 0x02) ? " point to multipoint" : "",
+ 			(flag & 0x08) ? " leased line without D-channel" : "",
+ 			(flag & 0x04) ? " leased line with D-channel" : ""
+ 		);
+ 	}
+-	if (len < ofs) {
+-		return 0;
+-	}
+-	*eof = 1;
+-	*start = page - ofs;
+-	return ((count < len - ofs) ? count : len - ofs);
++        return 0;
+ } /* ctr_info */
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static int ctr_proc_open(struct inode *inode, struct file *file)
++{
++       return single_open(file, ctr_info, PDE_DATA(inode));
++}
++
++const struct file_operations ctr_proc_fops = {
++       .owner          = THIS_MODULE,
++       .open           = ctr_proc_open,
++       .read           = seq_read,
++       .llseek         = seq_lseek,
++       .release        = single_release,
++};
++#else
++	EXPORT_SYMBOL(ctr_proc_show);
++#endif
++
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ static int kcapi_init (struct usb_device * dev) {
+@@ -643,8 +648,12 @@ static int kcapi_init (struct usb_device
+ 	ctrl->register_appl =	register_appl;
+ 	ctrl->release_appl =	release_appl;
+ 	ctrl->send_message =	send_msg;
+-	ctrl->procinfo =	proc_info;
+-	ctrl->ctr_read_proc =	ctr_info;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++	ctrl->procinfo		= proc_info;
++	ctrl->proc_fops     = &ctr_proc_fops;
++#else
++	ctrl->proc_show     = ctr_proc_show;
++#endif
+ 	if (0 != attach_capi_ctr (ctrl)) {
+ 		ERROR("Could not attach the controller.\n");
+ 		return -EBUSY;
+@@ -695,8 +704,8 @@ int __kcapi add_card (struct usb_device
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static void closing_worker (void * ctx) {
+-	card_p	card = (card_p) ctx;
++static void closing_worker (struct work_struct *work) {
++	card_p	card = capi_card;
+ 
+ 	DECLARE_WAIT_QUEUE_HEAD(close_wait);
+ 
+@@ -792,7 +801,7 @@ void start_closing_worker (void (* func)
+ 	close_func = func;
+ 	close_data = data;
+ 
+-	INIT_WORK (&closing_work, closing_worker, capi_card);
++	INIT_WORK (&closing_work, (work_func_t)closing_worker);
+ 	schedule_work (&closing_work);
+ 	LOG("Worker scheduled.\n");
+ } /* start_closing_worker */
+@@ -988,19 +997,17 @@ static void issue_hard_error (card_p pdc
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/ 
+-static void usb_write_completion (struct urb * purb, struct pt_regs * ptr) {
++static void usb_write_completion (struct urb * purb) {
+ 
+ 	UNUSED_ARG (purb);
+-	UNUSED_ARG (ptr);
+ 	tasklet_schedule (&tx_tasklet);
+ } /* usb_write_completion */
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/ 
+-static void usb_read_completion (struct urb * purb, struct pt_regs * ptr) {
++static void usb_read_completion (struct urb * purb) {
+ 
+ 	UNUSED_ARG (purb);
+-	UNUSED_ARG (ptr);
+ 	tasklet_schedule (&rx_tasklet);
+ } /* usb_read_completion */
+ 
+@@ -1178,7 +1185,6 @@ static __attr void __stack scheduler_con
+ static int scheduler (void * arg) {
+ 	
+ 	UNUSED_ARG (arg);
+-	daemonize (TARGET);
+ 	snprintf (current->comm, 16, "%s_s", TARGET);
+ 	LOG("Starting scheduler thread '%s'...\n", current->comm);
+ 	while (atomic_read (&thread_run_flag)) {
+@@ -1218,14 +1224,14 @@ static int scheduler (void * arg) {
+ 		}
+ 	}
+ 	LOG("Scheduler thread stopped.\n");
+-	up (&hotplug);
++	complete(&hotplug); /* Complete Thread Sync here <arnd.feldmueller@web.de> */
+ 	return 0;
+ } /* scheduler */
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ int make_thread (void) {
+-
++	struct task_struct *ts;
+ 	if (thread_pid != -1) {
+ 		LOG("Thread[%d] is already running!\n", thread_pid);
+ 		return thread_pid;
+@@ -1233,8 +1239,14 @@ int make_thread (void) {
+ 	atomic_set (&thread_run_flag, 1);
+ 	atomic_set (&thread_capi_flag, 0);
+ 	init_waitqueue_head (&capi_wait);
+-	thread_pid = kernel_thread (scheduler, NULL, 0);
+-	LOG("Scheduler thread[%d] started.\n", thread_pid);
++	ts = kthread_run (scheduler, NULL, "fcusb-sched");
++	if (IS_ERR(ts)) {
++		LOG("Scheduler thread not started: error %ld\n", PTR_ERR(ts));
++	}
++	else {
++		thread_pid = ts->pid;
++		LOG("Scheduler thread[%d] started.\n", thread_pid);
++	}
+ 	return thread_pid;
+ } /* make_thread */
+ 
+@@ -1244,7 +1256,7 @@ void kill_thread (void) {
+ 
+ 	if (thread_pid != -1) {
+ 		atomic_set (&thread_run_flag, 0);
+-		if (NULL == find_task_by_pid (thread_pid)) {
++		if (NULL == find_pid_ns(thread_pid, PIDTYPE_PID)) {
+ 			LOG("Thread[%d] has died before!\n", thread_pid);
+ 		} else {
+ 			if (!atomic_read (&thread_capi_flag)) {
+@@ -1253,7 +1265,7 @@ void kill_thread (void) {
+ 				SCHED_WAKEUP;
+ 			}
+ 			LOG("Scheduler thread signalled, waiting...\n");
+-			down (&hotplug);
++			wait_for_completion(&hotplug); /* Wait for complete Thread Sync <arnd.feldmueller@web.de> */
+ 			LOG("Scheduler thread[%d] terminated.\n", thread_pid);
+ 		}
+ 		thread_pid = -1;
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.h km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.h
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.h	2018-08-24 18:36:44.287584001 +0200
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/driver.h	2018-08-24 19:51:58.610921633 +0200
+@@ -23,7 +23,6 @@
+ #ifndef __have_driver_h__
+ #define __have_driver_h__
+ 
+-#include <linux/config.h>
+ #include <linux/skbuff.h>
+ #include <linux/capi.h>
+ #include <linux/isdn/capilli.h>
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/fcusb.mod.c km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/fcusb.mod.c
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/fcusb.mod.c	1970-01-01 01:00:00.000000000 +0100
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/fcusb.mod.c	2018-08-24 19:51:58.610921633 +0200
+@@ -0,0 +1,21 @@
++#include <linux/module.h>
++#include <linux/vermagic.h>
++#include <linux/compiler.h>
++
++MODULE_INFO(vermagic, VERMAGIC_STRING);
++
++struct module __this_module
++__attribute__((section(".gnu.linkonce.this_module"))) = {
++ .name = KBUILD_MODNAME,
++ .init = init_module,
++#ifdef CONFIG_MODULE_UNLOAD
++ .exit = cleanup_module,
++#endif
++ .arch = MODULE_ARCH_INIT,
++};
++
++static const char __module_depends[]
++__used
++__attribute__((section(".modinfo"))) =
++"depends=kernelcapi,usbcore";
++
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/main.c km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/main.c
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/main.c	2018-08-24 18:36:44.287584001 +0200
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/main.c	2018-08-24 19:51:58.610921633 +0200
+@@ -81,14 +81,7 @@ static struct usb_device_id usb_id_table
+ } ;
+ 
+ struct usb_driver usb_driver = {
+-#ifndef OLD_USB_DRIVER
+-	.driver = {
+-#endif
+-		.owner =	THIS_MODULE,
+-		.name =		TARGET,
+-#ifndef OLD_USB_DRIVER
+-	},
+-#endif
++	.name =		TARGET,
+ 	.id_table =	usb_id_table,
+ 	.probe =	usb_probe,
+ 	.disconnect =	usb_disconnect,
+@@ -268,11 +261,15 @@ static int usb_probe (
+ 		goto exit_norxurb;
+ 	}
+ 	init_closing_worker ();
+-	make_thread ();
++	if (make_thread () == -1) {
++		ERROR("Could not start scheduler thread.\n");
++	exit_nothread:
++		goto exit_nolib;
++	}
+ 	if (0 != add_card (dev)) {
+ 		kill_thread ();
+ 		free_library ();
+-		goto exit_nolib;
++		goto exit_nothread;
+ 	}
+ 	usb_set_intfdata (iface, pdc);
+ 	return 0;
+@@ -310,7 +307,6 @@ static int __init usb_init (void) {
+ 		lib_strcpy (REVISION, DRIVER_REV);
+ 	}
+         NOTE("%s, revision %s\n", DRIVER_LOGO, REVISION);
+-	NOTE("(%s built on %s at %s)\n", TARGET, __DATE__, __TIME__);
+ 
+ #ifdef __LP64__
+ 	NOTE("-- 64 bit CAPI driver --\n");
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/Makefile km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/Makefile
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/Makefile	2018-08-24 18:36:44.287584001 +0200
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/Makefile	2018-08-24 19:51:58.610921633 +0200
+@@ -47,5 +47,5 @@ endif
+ 
+ 
+ install:
+-		$(MAKE) -C $(KDIR) modules_add SUBDIRS=$(CURDIR)
++		$(MAKE) -C $(KDIR) modules_install SUBDIRS=$(CURDIR)
+ 
+diff -purN km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/tools.c km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/tools.c
+--- km_fritzcapi-2.6-43.x86_64-usb_org/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/tools.c	2018-08-24 18:36:44.287584001 +0200
++++ km_fritzcapi-2.6-43.x86_64-usb_fli4l/usr/src/kernel-modules/fritzcapi/fritz.usb2/src/tools.c	2018-08-24 19:51:58.614923583 +0200
+@@ -110,7 +110,7 @@ static unsigned		lib_heap_size	= 0;
+ #define	FENCE2_OK(h,m)	(*(unsigned *)(((char *) m)+(h)->size)==FENCE_TAG)
+ 
+ static unsigned		alloc_count	= 0;
+-static spinlock_t	track_lock	= SPIN_LOCK_UNLOCKED;
++static DEFINE_SPINLOCK(track_lock);
+ 
+ #if !defined (NDEBUG) && defined (LOG_TIMER)
+ static struct timeval	zero_time;
+@@ -529,7 +529,7 @@ int lock_init (lock_t * plock) {
+ 		ERROR("Could not allocate lock structure!!!\n");
+ 		return 0;
+ 	}
+-	tmp->lock = SPIN_LOCK_UNLOCKED;
++        spin_lock_init(&tmp->lock);
+ 	*plock = tmp;
+ 	return 1;
+ } /* lock_init */

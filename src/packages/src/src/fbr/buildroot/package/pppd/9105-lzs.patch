@@ -1,0 +1,343 @@
+diff -purN ppp-2.4.6.orig/pppd/ccp.c ppp-2.4.6/pppd/ccp.c
+--- ppp-2.4.6.orig/pppd/ccp.c	2014-01-02 05:42:08.000000000 +0100
++++ ppp-2.4.6/pppd/ccp.c	2015-01-14 00:11:08.669708538 +0100
+@@ -59,8 +59,10 @@ static const char rcsid[] = RCSID;
+  */
+ static int setbsdcomp __P((char **));
+ static int setdeflate __P((char **));
++static int setlzscomp __P((char **));
+ static char bsd_value[8];
+ static char deflate_value[8];
++static char lzs_value[8];
+ 
+ /*
+  * Option variables.
+@@ -99,6 +101,16 @@ static option_t ccp_option_list[] = {
+       "don't use draft deflate #", OPT_A2COPY,
+       &ccp_allowoptions[0].deflate_draft },
+ 
++    { "lzs", o_special, (void *)setlzscomp,
++      "Request Stack LZS compression",
++      OPT_PRIO | OPT_A2STRVAL | OPT_STATIC, lzs_value },
++    { "nolzs", o_bool, &ccp_wantoptions[0].lzs,
++      "don't allow Stack LZS compression", OPT_PRIOSUB | OPT_A2CLR,
++      &ccp_allowoptions[0].lzs },
++    { "-lzs", o_bool, &ccp_wantoptions[0].lzs,
++      "don't allow Stack LZS compression", OPT_ALIAS | OPT_PRIOSUB | OPT_A2CLR,
++      &ccp_allowoptions[0].lzs },
++
+     { "predictor1", o_bool, &ccp_wantoptions[0].predictor_1,
+       "request Predictor-1", OPT_PRIO | 1 },
+     { "nopredictor1", o_bool, &ccp_wantoptions[0].predictor_1,
+@@ -239,7 +251,7 @@ static fsm_callbacks ccp_callbacks = {
+ /*
+  * Do we want / did we get any compression?
+  */
+-#define ANY_COMPRESS(opt)	((opt).deflate || (opt).bsd_compress \
++#define ANY_COMPRESS(opt)	((opt).deflate || (opt).bsd_compress || (opt).lzs \
+ 				 || (opt).predictor_1 || (opt).predictor_2 \
+ 				 || (opt).mppe)
+ 
+@@ -344,6 +356,61 @@ setdeflate(argv)
+     return 1;
+ }
+ 
++static int
++setlzscomp(argv)
++    char **argv;
++{
++    int rnhist, anhist, rcmode = LZS_CMODE_SEQNO, acmode = LZS_CMODE_SEQNO;
++    char *str, *endp;
++
++    str = *argv;
++    anhist = rnhist = strtol(str, &endp, 0);
++    if (endp != str && *endp == ':') {
++	str = endp + 1;
++	acmode = rcmode = strtol(str, &endp, 0);
++    }
++    if (endp != str && *endp == ',') {
++	str = endp + 1;
++	anhist = strtol(str, &endp, 0);
++	if (endp != str && *endp == ':') {
++	    str = endp + 1;
++	    acmode = strtol(str, &endp, 0);
++	}
++    }
++    if (*endp != 0 || endp == str) {
++	option_error("invalid parameter '%s' for lzs option", *argv);
++	return 0;
++    }
++    if (rnhist < -1 || rnhist > 1 || anhist < -1 || anhist > 1) {
++	option_error("lzs history number must be between -1 .. 1");
++	return 0;
++    }
++    if (rcmode != LZS_CMODE_SEQNO || acmode != LZS_CMODE_SEQNO) {
++	option_error("lzs check mode must be %d", LZS_CMODE_SEQNO);
++	return 0;
++    }
++    if (rnhist < 0) {
++	ccp_wantoptions[0].lzs = 0;
++    }
++    else {
++	ccp_wantoptions[0].lzs = 1;
++	ccp_wantoptions[0].lzs_nhist = rnhist;
++	ccp_wantoptions[0].lzs_cmode = rcmode;
++    }
++    if (anhist < 0) {
++	ccp_allowoptions[0].lzs = 0;
++    }
++    else {
++	ccp_allowoptions[0].lzs = 1;
++	ccp_allowoptions[0].lzs_nhist = anhist;
++	ccp_allowoptions[0].lzs_cmode = acmode;
++    }
++    slprintf(lzs_value, sizeof(lzs_value),
++	     (rnhist == anhist && rcmode == acmode) ? "%d:%d" : "%d:%d,%d:%d",
++	     rnhist, rcmode, anhist, acmode);
++
++    return 1;
++}
+ /*
+  * ccp_init - initialize CCP.
+  */
+@@ -377,6 +444,13 @@ ccp_init(unit)
+     ccp_allowoptions[0].bsd_compress = 1;
+     ccp_allowoptions[0].bsd_bits = BSD_MAX_BITS;
+ 
++    ccp_wantoptions[0].lzs = 1;
++    ccp_wantoptions[0].lzs_nhist = 1;
++    ccp_wantoptions[0].lzs_cmode = LZS_CMODE_SEQNO;
++    ccp_allowoptions[0].lzs = 1;
++    ccp_allowoptions[0].lzs_nhist = 1;
++    ccp_allowoptions[0].lzs_cmode = LZS_CMODE_SEQNO;
++
+     ccp_allowoptions[0].predictor_1 = 1;
+ }
+ 
+@@ -606,6 +680,7 @@ ccp_resetci(f)
+ 	ao->predictor_1  = go->predictor_1  = 0;
+ 	ao->predictor_2  = go->predictor_2  = 0;
+ 	ao->deflate      = go->deflate      = 0;
++	ao->lzs          = go->lzs          = 0;
+     }
+ #endif /* MPPE */
+ 
+@@ -652,6 +727,15 @@ ccp_resetci(f)
+ 	if (!go->deflate_correct && !go->deflate_draft)
+ 	    go->deflate = 0;
+     }
++    if (go->lzs) {
++	opt_buf[0] = CI_LZS_COMPRESS;
++	opt_buf[1] = CILEN_LZS_COMPRESS;
++	opt_buf[2] = 0;
++	opt_buf[3] = 1; /* one history */
++	opt_buf[4] = LZS_CMODE_SEQNO;
++	if (ccp_test(f->unit, opt_buf, CILEN_LZS_COMPRESS, 0) <= 0)
++	    go->lzs = 0;
++    }
+     if (go->predictor_1) {
+ 	opt_buf[0] = CI_PREDICTOR_1;
+ 	opt_buf[1] = CILEN_PREDICTOR_1;
+@@ -677,6 +761,7 @@ ccp_cilen(f)
+ 
+     return (go->bsd_compress? CILEN_BSD_COMPRESS: 0)
+ 	+ (go->deflate? CILEN_DEFLATE: 0)
++	+ (go->lzs? CILEN_LZS_COMPRESS: 0)
+ 	+ (go->predictor_1? CILEN_PREDICTOR_1: 0)
+ 	+ (go->predictor_2? CILEN_PREDICTOR_2: 0)
+ 	+ (go->mppe? CILEN_MPPE: 0);
+@@ -775,6 +860,22 @@ ccp_addci(f, p, lenp)
+ 	    }
+ 	}
+     }
++    if (go->lzs) {
++	p[0] = CI_LZS_COMPRESS;
++	p[1] = CILEN_LZS_COMPRESS;
++	p[2] = LZS_HIST_BYTE1(go->lzs_nhist);
++	p[3] = LZS_HIST_BYTE2(go->lzs_nhist);
++	p[4] = go->lzs_cmode;
++	if (p != p0) {
++	    p += CILEN_LZS_COMPRESS;	/* not the first option */
++	} else {
++	    if (ccp_test(f->unit, p, CILEN_LZS_COMPRESS, 0) > 0) {
++		p += CILEN_LZS_COMPRESS;
++	    } else  {
++		go->lzs = 0;
++	    }
++	}
++    }
+     /* XXX Should Predictor 2 be preferable to Predictor 1? */
+     if (go->predictor_1) {
+ 	p[0] = CI_PREDICTOR_1;
+@@ -863,6 +964,18 @@ ccp_ackci(f, p, len)
+ 	if (p == p0 && len == 0)
+ 	    return 1;
+     }
++    if (go->lzs) {
++	if (len < CILEN_LZS_COMPRESS
++	    || p[0] != CI_LZS_COMPRESS || p[1] != CILEN_LZS_COMPRESS
++	    || LZS_HIST_WORD(p[2], p[3]) != go->lzs_nhist
++	    || p[4] != go->lzs_cmode)
++	    return 0;
++	p += CILEN_LZS_COMPRESS;
++	len -= CILEN_LZS_COMPRESS;
++	/* XXX Cope with first/fast ack */
++	if (p == p0 && len == 0)
++	    return 1;
++    }
+     if (go->predictor_1) {
+ 	if (len < CILEN_PREDICTOR_1
+ 	    || p[0] != CI_PREDICTOR_1 || p[1] != CILEN_PREDICTOR_1)
+@@ -969,6 +1082,24 @@ ccp_nakci(f, p, len, treat_as_reject)
+ 	len -= CILEN_BSD_COMPRESS;
+     }
+ 
++    if (go->lzs && len >= CILEN_LZS_COMPRESS
++	&& p[0] == CI_LZS_COMPRESS && p[1] == CILEN_LZS_COMPRESS) {
++	no.lzs = 1;
++	/*
++	 * Peer wants us to use a different number of histories
++	 * or a different check mode. We only support the former.
++	 */
++	u_short nhist = LZS_HIST_WORD(p[2], p[3]);
++	if (nhist < go->lzs_nhist) {
++	    try.lzs_nhist = nhist;
++	}
++	else {
++	    try.lzs = 0;
++	}
++	p += CILEN_LZS_COMPRESS;
++	len -= CILEN_LZS_COMPRESS;
++    }
++
+     /*
+      * Predictor-1 and 2 have no options, so they can't be Naked.
+      *
+@@ -1038,6 +1169,14 @@ ccp_rejci(f, p, len)
+ 	p += CILEN_BSD_COMPRESS;
+ 	len -= CILEN_BSD_COMPRESS;
+     }
++    if (go->lzs && len >= CILEN_LZS_COMPRESS
++	&& p[0] == CI_LZS_COMPRESS && p[1] == CILEN_LZS_COMPRESS) {
++	if (LZS_HIST_WORD(p[2], p[3]) != go->lzs_nhist || p[4] != go->lzs_cmode)
++	    return 0;
++	try.lzs = 0;
++	p += CILEN_LZS_COMPRESS;
++	len -= CILEN_LZS_COMPRESS;
++    }
+     if (go->predictor_1 && len >= CILEN_PREDICTOR_1
+ 	&& p[0] == CI_PREDICTOR_1 && p[1] == CILEN_PREDICTOR_1) {
+ 	try.predictor_1 = 0;
+@@ -1291,6 +1430,40 @@ ccp_reqci(f, p, lenp, dont_nak)
+ 		}
+ 		break;
+ 
++	    case CI_LZS_COMPRESS:
++		if (!ao->lzs || clen != CILEN_LZS_COMPRESS) {
++		    newret = CONFREJ;
++		    break;
++		}
++
++		ho->lzs = 1;
++		ho->lzs_nhist = LZS_HIST_WORD(p[2], p[3]);
++		ho->lzs_cmode = p[4];
++		if (ho->lzs_nhist > ao->lzs_nhist || ho->lzs_cmode != ao->lzs_cmode) {
++		    newret = CONFNAK;
++		    if (!dont_nak) {
++			p[2] = LZS_HIST_BYTE1(ao->lzs_nhist);
++			p[3] = LZS_HIST_BYTE2(ao->lzs_nhist);
++			p[4] = ao->lzs_cmode;
++			/* fall through to test this #bits below */
++		    } else
++			break;
++		}
++
++		/*
++		 * Check whether we can do LZS compression with the history
++		 * number they want.
++		 */
++		if (p == p0) {
++		    if (ccp_test(f->unit, p, CILEN_LZS_COMPRESS, 1) <= 0) {
++			newret = CONFREJ;
++			p[2] = LZS_HIST_BYTE1(ho->lzs_nhist);
++			p[3] = LZS_HIST_BYTE2(ho->lzs_nhist);
++			p[4] = ho->lzs_cmode;
++		    }
++		}
++		break;
++
+ 	    case CI_PREDICTOR_1:
+ 		if (!ao->predictor_1 || clen != CILEN_PREDICTOR_1) {
+ 		    newret = CONFREJ;
+@@ -1408,6 +1581,14 @@ method_name(opt, opt2)
+ 	    slprintf(result, sizeof(result), "BSD-Compress (%d)",
+ 		     opt->bsd_bits);
+ 	break;
++    case CI_LZS_COMPRESS:
++	if (opt2 != NULL && (opt2->lzs_nhist != opt->lzs_nhist || opt2->lzs_cmode != opt->lzs_cmode))
++	    slprintf(result, sizeof(result), "Stac LZS (%d:%d/%d:%d)",
++		     opt->lzs_nhist, opt->lzs_cmode, opt2->lzs_nhist, opt2->lzs_cmode);
++	else
++	    slprintf(result, sizeof(result), "Stac LZS (%d:%d)",
++		     opt->lzs_nhist, opt->lzs_cmode);
++	break;
+     case CI_PREDICTOR_1:
+ 	return "Predictor 1";
+     case CI_PREDICTOR_2:
+@@ -1570,6 +1751,13 @@ ccp_printpkt(p, plen, printer, arg)
+ 		    p += CILEN_BSD_COMPRESS;
+ 		}
+ 		break;
++	    case CI_LZS_COMPRESS:
++		if (optlen >= CILEN_LZS_COMPRESS) {
++		    printer(arg, "lzs %d:%d", LZS_HIST_WORD(p[2], p[3]),
++			    p[4]);
++		    p += CILEN_LZS_COMPRESS;
++		}
++		break;
+ 	    case CI_PREDICTOR_1:
+ 		if (optlen >= CILEN_PREDICTOR_1) {
+ 		    printer(arg, "predictor 1");
+diff -purN ppp-2.4.6.orig/pppd/ccp.h ppp-2.4.6/pppd/ccp.h
+--- ppp-2.4.6.orig/pppd/ccp.h	2014-01-02 05:42:08.000000000 +0100
++++ ppp-2.4.6/pppd/ccp.h	2015-01-14 00:11:08.669708538 +0100
+@@ -37,6 +37,9 @@ typedef struct ccp_options {
+     bool predictor_2;		/* do Predictor-2? */
+     bool deflate_correct;	/* use correct code for deflate? */
+     bool deflate_draft;		/* use draft RFC code for deflate? */
++    bool lzs;			/* do Stac/HiFn LZS? */
++    u_short lzs_nhist;
++    u_short lzs_cmode;
+     bool mppe;			/* do MPPE? */
+     u_short bsd_bits;		/* # bits/code for BSD Compress */
+     u_short deflate_size;	/* lg(window size) for Deflate */
+@@ -50,3 +53,29 @@ extern ccp_options ccp_allowoptions[];
+ extern ccp_options ccp_hisoptions[];
+ 
+ extern struct protent ccp_protent;
++
++#ifndef CI_LZS_COMPRESS
++
++/*
++ * Definitions for LZS.
++ */
++
++#define CI_LZS_COMPRESS		17
++#define CILEN_LZS_COMPRESS	5
++
++#define LZS_CMODE_NONE		0
++#define LZS_CMODE_LCB		1
++#define LZS_CMODE_CRC		2
++#define LZS_CMODE_SEQNO		3	/* MUST be implemented (default) */
++#define LZS_CMODE_EXT		4	/* Seems to be what Win0.95 uses */
++
++#define LZS_COMP_MAX_HISTS	32	/* For two-way MultiHistory */
++#define LZS_COMP_DEF_HISTS	1	/* Most likely to negotiate */
++#define LZS_DECOMP_MAX_HISTS	32	/* More is really nonsense */
++#define LZS_DECOMP_DEF_HISTS	8	/* If we get it, this may be optimal */
++
++#define LZS_HIST_BYTE1(word)   	(word>>8)	/* Just for better reading */
++#define LZS_HIST_BYTE2(word)	(word&0xff)	/* of this big endian stuff */
++#define LZS_HIST_WORD(b1,b2)	((b1<<8)|b2)	/* (network byte order rulez) */
++
++#endif

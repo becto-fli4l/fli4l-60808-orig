@@ -1,0 +1,80 @@
+From d09842c57dfda6a72cf133436480ef7df4331338 Mon Sep 17 00:00:00 2001
+From: Christoph Schulz <develop@kristov.de>
+Date: Sun, 11 Nov 2018 09:17:45 +0100
+Subject: [PATCH] ash: reset tokpushback before prompting while parsing heredoc
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The parser reads from an already freed memory location, thereby causing
+unpredictable results, in the following situation:
+
+- ENABLE_ASH_EXPAND_PRMT is enabled
+- heredoc is being parsed
+- command substitution is used within heredoc
+
+Examples where this bug crops up are (PS2 is set to "> "):
+
+$ cat <<EOF
+> `echo abc`
+> EOF
+-sh: O: not found
+
+$ cat <<EOF
+> $(echo abc)
+> EOF
+-sh: ���i�: not found
+
+The presumable reason is that setprompt_if() causes a nested expansion when
+ENABLE_ASH_EXPAND_PRMT is enabled, therefore leaving "wordtext" in an unusable
+state. However, when parseheredoc() is called, "tokpushback" is non-zero, which
+causes the next call to xxreadtoken() to return TWORD, causing the caller to
+use the invalid "wordtoken" instead of reading the next valid token.
+
+The call chain is:
+
+list()
+-> peektoken() [sets tokpushback to 1]
+-> parseheredoc()
+   -> setprompt_if()
+      -> pushstackmark()
+      -> expandstr()
+         -> readtoken1()
+            [sets lasttoken to TWORD, wordtoken points to expanded prompt]
+      -> popstackmark() [invalidates wordtoken, leaves lasttoken as is]
+   -> readtoken1()
+      -> ...parsebackq
+         -> list()
+            -> andor()
+               -> pipeline()
+                  -> readtoken()
+                     -> xxreadtoken()
+                        [tokpushback non-zero, reuse lasttoken and wordtext]
+
+Note that in almost all other contexts, each call to setprompt_if() is preceded
+by setting "tokpushback" to zero. One exception is "oldstyle" backquote parsing
+in readtoken1(), but there "tokpushback" is reset afterwards. The other
+exception is nlprompt(), but this function is only used within readtoken1()
+(but in contexts where no nested calls to xxreadtoken() occur) and xxreadtoken()
+(where "tokpushback" is guaranteed to be zero).
+
+Signed-off-by: Christoph Schulz <develop@kristov.de>
+---
+ shell/ash.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/shell/ash.c b/shell/ash.c
+index dc1a55a6b..beb84ebc8 100644
+--- a/shell/ash.c
++++ b/shell/ash.c
+@@ -12942,6 +12942,7 @@ parseheredoc(void)
+ 	heredoclist = NULL;
+ 
+ 	while (here) {
++		tokpushback = 0;
+ 		setprompt_if(needprompt, 2);
+ 		readtoken1(pgetc(), here->here->type == NHERE ? SQSYNTAX : DQSYNTAX,
+ 				here->eofmark, here->striptabs);
+-- 
+2.18.1
+

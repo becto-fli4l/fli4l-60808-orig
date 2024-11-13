@@ -1,0 +1,183 @@
+diff -purN dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRebind.cpp dibbler-1.0.1RC1/ClntMessages/ClntMsgRebind.cpp
+--- dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRebind.cpp	2015-06-29 17:28:02.587798244 +0200
++++ dibbler-1.0.1RC1/ClntMessages/ClntMsgRebind.cpp	2015-06-29 17:28:09.737283730 +0200
+@@ -75,6 +75,17 @@ TClntMsgRebind::TClntMsgRebind(TOptList
+     send();
+ }
+ 
++bool TClntMsgRebind::handleRebindError(int statusCode)
++{
++    if (statusCode == STATUSCODE_NOBINDING) {
++	ClntTransMgr().sendRequest(Options, Iface);
++	IsDone = true;
++	return true;
++    }
++
++    return false;
++}
++
+ void TClntMsgRebind::answer(SPtr<TClntMsg> Reply)
+ {
+     SPtr<TOpt> opt;
+@@ -90,18 +101,30 @@ void TClntMsgRebind::answer(SPtr<TClntMs
+     // separate RENEW for each IA, but we check all options anyway)
+     while ( opt = Reply->getOption() ) {
+         switch (opt->getOptType()) {
++	case OPTION_STATUS_CODE: {
++	    SPtr<TClntOptStatusCode> ptrOptStatusCode = (Ptr*) opt;
++	    int const statusCode = ptrOptStatusCode->getCode();
++	    if (statusCode != STATUSCODE_SUCCESS) {
++		if (handleRebindError(statusCode)) {
++		    return;
++		} else {
++		    opt->setParent(this);
++		    opt->doDuties();
++		}
++	    }
++	    break;
++	}
+         case OPTION_IA_NA: {
+             iaCnt++;
+             SPtr<TClntOptIA_NA> ptrOptIA = (Ptr*)opt;
+-            if (ptrOptIA->getStatusCode()!=STATUSCODE_SUCCESS) {
+-                if(ptrOptIA->getStatusCode() == STATUSCODE_NOBINDING){
+-                    ClntTransMgr().sendRequest(Options,Iface);
+-                    IsDone = true;
+-                    return;
+-                }else{
++	    int const statusCode = ptrOptIA->getStatusCode();
++	    if (statusCode != STATUSCODE_SUCCESS) {
++		if (handleRebindError(statusCode)) {
++		    return;
++		} else {
+ 		    SPtr<TClntOptStatusCode> status = (Ptr*) ptrOptIA->getOption(OPTION_STATUS_CODE);
+                     Log(Warning) << "Received IA (iaid=" << ptrOptIA->getIAID() << ") with status code " <<
+-                        StatusCodeToString(status->getCode()) << ": "
++                        StatusCodeToString(statusCode) << ": "
+                                  << status->getText() << LogEnd;
+                     break;
+                 }
+@@ -114,16 +137,14 @@ void TClntMsgRebind::answer(SPtr<TClntMs
+         case OPTION_IA_PD: {
+             iaCnt++;
+             SPtr<TClntOptIA_PD> pd = (Ptr*) opt;
+-            if (pd->getStatusCode() != STATUSCODE_SUCCESS) {
+-                if(pd->getStatusCode() == STATUSCODE_NOBINDING){
+-                    ClntTransMgr->sendRequest(Options,Iface);
+-                    IsDone = true;
+-                    return;
+-                }
+-                else{
++	    int const statusCode = pd->getStatusCode();
++	    if (statusCode != STATUSCODE_SUCCESS) {
++		if (handleRebindError(statusCode)) {
++		    return;
++		} else {
+                     SPtr<TClntOptStatusCode> status = (Ptr*) pd->getOption(OPTION_STATUS_CODE);
+                     Log(Warning) << "Received PD (iaid=" << pd->getIAID() << ") with status code " <<
+-                        StatusCodeToString(status->getCode()) << ": "
++                        StatusCodeToString(statusCode) << ": "
+                                  << status->getText() << LogEnd;
+                     break;
+                 }
+diff -purN dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRebind.h dibbler-1.0.1RC1/ClntMessages/ClntMsgRebind.h
+--- dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRebind.h	2013-10-27 19:33:06.000000000 +0100
++++ dibbler-1.0.1RC1/ClntMessages/ClntMsgRebind.h	2015-06-29 17:28:09.737283730 +0200
+@@ -35,6 +35,7 @@ class TClntMsgRebind : public TClntMsg
+ 		  SPtr<TOptAddr> optUnicast);
+     void releaseIA(int IAID);
+     void releasePD(int IAID);
++    bool handleRebindError(int statusCode);
+ 
+ 
+ };
+diff -purN dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRenew.cpp dibbler-1.0.1RC1/ClntMessages/ClntMsgRenew.cpp
+--- dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRenew.cpp	2014-10-18 21:16:13.000000000 +0200
++++ dibbler-1.0.1RC1/ClntMessages/ClntMsgRenew.cpp	2015-06-29 17:28:09.737283730 +0200
+@@ -97,6 +97,16 @@ TClntMsgRenew::TClntMsgRenew(List(TAddrI
+     send();
+ }
+ 
++bool TClntMsgRenew::handleRenewError(int statusCode)
++{
++    if (statusCode == STATUSCODE_NOBINDING) {
++	ClntTransMgr().sendRequest(Options, Iface);
++	IsDone = true;
++	return true;
++    }
++
++    return false;
++}
+ 
+ void TClntMsgRenew::answer(SPtr<TClntMsg> Reply)
+ {
+@@ -113,18 +123,30 @@ void TClntMsgRenew::answer(SPtr<TClntMsg
+     // separate RENEW for each IA, but we check all options anyway)
+     while ( opt = Reply->getOption() ) {
+         switch (opt->getOptType()) {
++	case OPTION_STATUS_CODE: {
++	    SPtr<TClntOptStatusCode> ptrOptStatusCode = (Ptr*) opt;
++	    int const statusCode = ptrOptStatusCode->getCode();
++	    if (statusCode != STATUSCODE_SUCCESS) {
++		if (handleRenewError(statusCode)) {
++		    return;
++		} else {
++		    opt->setParent(this);
++		    opt->doDuties();
++		}
++	    }
++	    break;
++	}
+ 	case OPTION_IA_NA: {
+ 	    iaCnt++;
+ 	    SPtr<TClntOptIA_NA> ptrOptIA = (Ptr*)opt;
+-	    if (ptrOptIA->getStatusCode()!=STATUSCODE_SUCCESS) {
+-		if(ptrOptIA->getStatusCode() == STATUSCODE_NOBINDING){
+-		    ClntTransMgr().sendRequest(Options, Iface);
+-		    IsDone = true;
++	    int const statusCode = ptrOptIA->getStatusCode();
++	    if (statusCode != STATUSCODE_SUCCESS) {
++		if (handleRenewError(statusCode)) {
+ 		    return;
+-		}else{
++		} else {
+ 		    SPtr<TClntOptStatusCode> status = (Ptr*) ptrOptIA->getOption(OPTION_STATUS_CODE);
+   		    Log(Warning) << "Received IA (iaid=" << ptrOptIA->getIAID() << ") with status code " << 
+-		        StatusCodeToString(status->getCode()) << ": " 
++		        StatusCodeToString(statusCode) << ": " 
+ 			         << status->getText() << LogEnd;
+ 	  	    break;
+ 		}
+@@ -137,16 +159,14 @@ void TClntMsgRenew::answer(SPtr<TClntMsg
+ 	case OPTION_IA_PD: {
+ 	    iaCnt++;
+ 	    SPtr<TClntOptIA_PD> pd = (Ptr*) opt;
+-	    if (pd->getStatusCode() != STATUSCODE_SUCCESS) {
+-		if(pd->getStatusCode() == STATUSCODE_NOBINDING){
+-		    ClntTransMgr().sendRequest(Options,Iface);
+-		    IsDone = true;
++	    int const statusCode = pd->getStatusCode();
++	    if (statusCode != STATUSCODE_SUCCESS) {
++		if (handleRenewError(statusCode)) {
+ 		    return;
+-		}
+-		else{
++		} else {
+ 	            SPtr<TClntOptStatusCode> status = (Ptr*) pd->getOption(OPTION_STATUS_CODE);
+ 		    Log(Warning) << "Received PD (iaid=" << pd->getIAID() << ") with status code " << 
+-		        StatusCodeToString(status->getCode()) << ": " 
++		        StatusCodeToString(statusCode) << ": " 
+ 			         << status->getText() << LogEnd;
+ 		    break;
+ 		}
+diff -purN dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRenew.h dibbler-1.0.1RC1/ClntMessages/ClntMsgRenew.h
+--- dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRenew.h	2013-10-27 19:33:06.000000000 +0100
++++ dibbler-1.0.1RC1/ClntMessages/ClntMsgRenew.h	2015-06-29 17:28:09.737283730 +0200
+@@ -29,6 +29,7 @@ class TClntMsgRenew : public TClntMsg
+     void releaseIA(long IAID);
+ 
+  private:
++    bool handleRenewError(int statusCode);
+ };
+ 
+ #endif 

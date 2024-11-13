@@ -1,0 +1,34 @@
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Tue, 14 Apr 2020 15:25:02 +0100
+Subject: ARM: dts: bcm2711: Restrict CMA to first 768MB
+
+The downstream 32-bit 2711 kernel configuration enables HIGHMEM for
+access to more physical RAM. The HIGHMEM zone starts at 0x30000000
+(768MB), and allowing the CMA zone to overlap that area causes a
+failure during CMA activation.
+
+Avoid the overlap by limiting CMA to the first 768MB. This is overly
+restrictive on a 64-bit kernel, but shouldn't cause any practical
+problems.
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.com>
+---
+ arch/arm/boot/dts/bcm2711-rpi.dtsi | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm/boot/dts/bcm2711-rpi.dtsi b/arch/arm/boot/dts/bcm2711-rpi.dtsi
+index 34f4823b01c9..5b383dd7ffdb 100644
+--- a/arch/arm/boot/dts/bcm2711-rpi.dtsi
++++ b/arch/arm/boot/dts/bcm2711-rpi.dtsi
+@@ -179,6 +179,11 @@
+ 	/delete-node/ audio;
+ };
+ 
++&cma {
++	/* Limit cma to the lower 768MB to allow room for HIGHMEM on 32-bit */
++	alloc-ranges = <0x0 0x00000000 0x30000000>;
++};
++
+ &scb {
+ 	ranges = <0x0 0x7c000000  0x0 0xfc000000  0x03800000>,
+ 		 <0x0 0x40000000  0x0 0xff800000  0x00800000>,

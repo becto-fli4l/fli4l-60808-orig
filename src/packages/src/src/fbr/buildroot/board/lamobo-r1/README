@@ -1,0 +1,51 @@
+General
+=======
+The Lamobo R1, also known as Banana Pi Router or BPi-R1, is a board based on
+the Allwinner A20 System-on-Chip (SoC). The dual-core CPU implements the Cortex
+A7 design which is based on the ARMv7 architecture.
+
+Hardware
+========
+The board comes equipped with
+- 1 GiB DDR3-RAM,
+- one Micro SD card slot accepting cards up to 64 GB,
+- one Serial ATA connector, accepting disks up to 2 TB,
+- one 5-port network switch based on a Broadcom 53125 chip,
+- one Realtek 8192cu wireless adapter,
+- two USB 2.0 ports, one type A port and one On-the-Go (OTG) port.
+
+More details can be found under http://wiki.lamobo.org/index.php/Lamobo_R1.
+
+This directory contains a hardware description (Device Tree) for the board
+called sun7i-a20-lamobo-r1.dts. This file is compiled into a Device Tree Blob
+(DTB) on kernel creation.
+
+Booting
+=======
+U-Boot is used for booting. First, the board code loads the SPL (Secondary
+Program Loader) into SRAM, which then initializes the DRAM, loads and starts
+the real U-Boot loader. The U-Boot loader then loads the Linux kernel, the
+initramfs, and the device tree blob into memory and starts the kernel.
+
+The memory layout is as follows (cf. include/configs/sunxi-common.h):
+
+0x40000000: start of DRAM
+0x40008000: start of unpacked Linux kernel; the kernel's load address and
+            entry point must be set to this address
+0x42000000: start of uImage containing the kernel
+0x43000000: start of device tree blob
+0x43100000: start of optional boot script
+0x43300000: start of optional RAM disk (initrd or initramfs)
+0x4A000000: start of U-Boot loader
+
+It follows that without patching U-Boot,
+- the kernel uImage may not exceed 16 MiB,
+- the unpacked kernel image may not exceed 32 MiB - 4 kiB,
+- the DTB may not exceed 1 MiB,
+- the initramfs may not exceed 109 MiB.
+
+The boot loader relocates the DTB and the initramfs to high memory such that
+they end near to 0x50000000 (i.e. near the 256 MiB limit). This is to leave
+room for the Linux kernel to be decompressed if necessary. The 256 MiB limit
+stems from the fact that 256 MiB RAM are the minimum found on the various
+Allwinner board configurations.

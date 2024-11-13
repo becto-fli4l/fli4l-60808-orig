@@ -1,0 +1,221 @@
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Wed, 26 Feb 2020 09:30:33 +0000
+Subject: ASoC: Fix snd_soc_get_pcm_runtime usage
+
+Commit [1] changed the snd_soc_get_pcm_runtime to take a dai_link
+pointer instead of a string. Patch up the downstream drivers to use
+the modified API.
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.com>
+
+[1] 4468189ff307 ("ASoC: soc-core: find rtd via dai_link pointer at snd_soc_get_pcm_runtime()")
+---
+ sound/soc/bcm/allo-boss-dac.c       |  2 +-
+ sound/soc/bcm/allo-piano-dac-plus.c | 24 ++++++++++++------------
+ sound/soc/bcm/digidac1-soundcard.c  |  6 +++---
+ sound/soc/bcm/iqaudio-codec.c       |  2 +-
+ sound/soc/bcm/iqaudio-dac.c         |  2 +-
+ sound/soc/bcm/rpi-cirrus.c          |  4 ++--
+ 6 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/sound/soc/bcm/allo-boss-dac.c b/sound/soc/bcm/allo-boss-dac.c
+index cd47413f870c..21c7490e72d2 100644
+--- a/sound/soc/bcm/allo-boss-dac.c
++++ b/sound/soc/bcm/allo-boss-dac.c
+@@ -240,7 +240,7 @@ static int snd_allo_boss_set_bias_level(struct snd_soc_card *card,
+ 	struct snd_soc_pcm_runtime *rtd;
+ 	struct snd_soc_dai *codec_dai;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	codec_dai = rtd->codec_dai;
+ 
+ 	if (dapm->dev != codec_dai->dev)
+diff --git a/sound/soc/bcm/allo-piano-dac-plus.c b/sound/soc/bcm/allo-piano-dac-plus.c
+index e910d4a4546d..a91a8f99b8b6 100644
+--- a/sound/soc/bcm/allo-piano-dac-plus.c
++++ b/sound/soc/bcm/allo-piano-dac-plus.c
+@@ -250,7 +250,7 @@ static int snd_allo_piano_dual_mode_put(struct snd_kcontrol *kcontrol,
+ 	struct soc_mixer_control *mc;
+ 	unsigned int left_val = 0, right_val = 0;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 
+ 	if (ucontrol->value.integer.value[0] > 0) {
+ 		glb_ptr->dual_mode = ucontrol->value.integer.value[0];
+@@ -334,7 +334,7 @@ static int snd_allo_piano_mode_put(struct snd_kcontrol *kcontrol,
+ 	struct soc_mixer_control *mc;
+ 	unsigned int left_val = 0, right_val = 0;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 
+ 	if ((glb_ptr->dual_mode == 1) &&
+ 			(ucontrol->value.integer.value[0] > 0)) {
+@@ -380,7 +380,7 @@ static int snd_allo_piano_lowpass_put(struct snd_kcontrol *kcontrol,
+ 	struct snd_soc_pcm_runtime *rtd;
+ 	struct glb_pool *glb_ptr = card->drvdata;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	return(snd_allo_piano_dsp_program(rtd,
+ 				glb_ptr->set_mode, glb_ptr->set_rate,
+ 				ucontrol->value.integer.value[0]));
+@@ -397,7 +397,7 @@ static int pcm512x_get_reg_sub(struct snd_kcontrol *kcontrol,
+ 	unsigned int left_val = 0;
+ 	unsigned int right_val = 0;
+ 	int ret;
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	ret = snd_soc_component_read(rtd->codec_dais[1]->component,
+ 			PCM512x_DIGITAL_VOLUME_3, &right_val);
+ 	if (ret < 0)
+@@ -433,7 +433,7 @@ static int pcm512x_set_reg_sub(struct snd_kcontrol *kcontrol,
+ 	unsigned int right_val = (ucontrol->value.integer.value[1] & mc->max);
+ 	int ret = 0;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	if (glb_ptr->dual_mode != 1) {
+ 		ret = snd_soc_component_write(rtd->codec_dais[1]->component,
+ 				PCM512x_DIGITAL_VOLUME_2, (~left_val));
+@@ -465,7 +465,7 @@ static int pcm512x_get_reg_sub_switch(struct snd_kcontrol *kcontrol,
+ 	int val = 0;
+ 	int ret;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	ret = snd_soc_component_read(rtd->codec_dais[1]->component, PCM512x_MUTE, &val);
+ 	if (ret < 0)
+ 		return ret;
+@@ -488,7 +488,7 @@ static int pcm512x_set_reg_sub_switch(struct snd_kcontrol *kcontrol,
+ 	unsigned int right_val = (ucontrol->value.integer.value[1]);
+ 	int ret = 0;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	if (glb_ptr->set_mode != 1) {
+ 		ret = snd_soc_component_write(rtd->codec_dais[1]->component, PCM512x_MUTE,
+ 				~((left_val & 0x01)<<4 | (right_val & 0x01)));
+@@ -510,7 +510,7 @@ static int pcm512x_get_reg_master(struct snd_kcontrol *kcontrol,
+ 	unsigned int left_val = 0, right_val = 0;
+ 	int ret;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 
+ 	ret = snd_soc_component_read(rtd->codec_dais[0]->component,
+ 			PCM512x_DIGITAL_VOLUME_2, &left_val);
+@@ -549,7 +549,7 @@ static int pcm512x_set_reg_master(struct snd_kcontrol *kcontrol,
+ 	unsigned int right_val = (ucontrol->value.integer.value[1] & mc->max);
+ 	int ret = 0;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 
+ 	if (digital_gain_0db_limit) {
+ 		ret = snd_soc_limit_volume(card, "Master Playback Volume",
+@@ -593,7 +593,7 @@ static int pcm512x_get_reg_master_switch(struct snd_kcontrol *kcontrol,
+ 	int val = 0;
+ 	int ret;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 
+ 	ret = snd_soc_component_read(rtd->codec_dais[0]->component, PCM512x_MUTE, &val);
+ 	if (ret < 0)
+@@ -623,7 +623,7 @@ static int pcm512x_set_reg_master_switch(struct snd_kcontrol *kcontrol,
+ 	unsigned int right_val = (ucontrol->value.integer.value[1]);
+ 	int ret = 0;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	if (glb_ptr->dual_mode == 1) {
+ 		ret = snd_soc_component_write(rtd->codec_dais[0]->component, PCM512x_MUTE,
+ 				~((left_val & 0x01)<<4));
+@@ -752,7 +752,7 @@ static int snd_allo_piano_set_bias_level(struct snd_soc_card *card,
+ 	struct snd_soc_pcm_runtime *rtd;
+ 	struct snd_soc_dai *codec_dai;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	codec_dai = rtd->codec_dai;
+ 
+ 	if (dapm->dev != codec_dai->dev)
+diff --git a/sound/soc/bcm/digidac1-soundcard.c b/sound/soc/bcm/digidac1-soundcard.c
+index 5046f88c496b..c2f848d25742 100644
+--- a/sound/soc/bcm/digidac1-soundcard.c
++++ b/sound/soc/bcm/digidac1-soundcard.c
+@@ -140,7 +140,7 @@ static int digidac1_soundcard_init(struct snd_soc_pcm_runtime *rtd)
+ 	struct snd_kcontrol *kctl;
+ 	int ret;
+ 
+-	wm8741_rtd = snd_soc_get_pcm_runtime(card, card->dai_link[1].name);
++	wm8741_rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[1]);
+ 	if (!wm8741_rtd) {
+ 		dev_warn(card->dev, "digidac1_soundcard_init: couldn't get wm8741 rtd\n");
+ 		return -EFAULT;
+@@ -179,7 +179,7 @@ static int digidac1_soundcard_startup(struct snd_pcm_substream *substream)
+ 	struct snd_soc_component *wm8741_component;
+ 
+ 	snd_soc_component_update_bits(component, WM8804_PWRDN, 0x3c, 0x00);
+-	wm8741_rtd = snd_soc_get_pcm_runtime(card, card->dai_link[1].name);
++	wm8741_rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[1]);
+ 	if (!wm8741_rtd) {
+ 		dev_warn(card->dev, "digidac1_soundcard_startup: couldn't get WM8741 rtd\n");
+ 		return -EFAULT;
+@@ -225,7 +225,7 @@ static int digidac1_soundcard_hw_params(struct snd_pcm_substream *substream,
+ 	int sampling_freq = 1;
+ 	int ret;
+ 
+-	wm8741_rtd = snd_soc_get_pcm_runtime(card, card->dai_link[1].name);
++	wm8741_rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[1]);
+ 	if (!wm8741_rtd) {
+ 		dev_warn(card->dev, "digidac1_soundcard_hw_params: couldn't get WM8741 rtd\n");
+ 		return -EFAULT;
+diff --git a/sound/soc/bcm/iqaudio-codec.c b/sound/soc/bcm/iqaudio-codec.c
+index 83f2dba1f5d6..f4582d612948 100644
+--- a/sound/soc/bcm/iqaudio-codec.c
++++ b/sound/soc/bcm/iqaudio-codec.c
+@@ -37,7 +37,7 @@ static int snd_rpi_iqaudio_pll_control(struct snd_soc_dapm_widget *w,
+ 	struct snd_soc_dapm_context *dapm = w->dapm;
+ 	struct snd_soc_card *card = dapm->card;
+ 	struct snd_soc_pcm_runtime *rtd =
+-		snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++		snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+ 
+ 	if (SND_SOC_DAPM_EVENT_OFF(event)) {
+diff --git a/sound/soc/bcm/iqaudio-dac.c b/sound/soc/bcm/iqaudio-dac.c
+index b98232038616..52fe6887195a 100644
+--- a/sound/soc/bcm/iqaudio-dac.c
++++ b/sound/soc/bcm/iqaudio-dac.c
+@@ -67,7 +67,7 @@ static int snd_rpi_iqaudio_set_bias_level(struct snd_soc_card *card,
+ 	struct snd_soc_pcm_runtime *rtd;
+ 	struct snd_soc_dai *codec_dai;
+ 
+-	rtd = snd_soc_get_pcm_runtime(card, card->dai_link[0].name);
++	rtd = snd_soc_get_pcm_runtime(card, &card->dai_link[0]);
+ 	codec_dai = rtd->codec_dai;
+ 
+ 	if (dapm->dev != codec_dai->dev)
+diff --git a/sound/soc/bcm/rpi-cirrus.c b/sound/soc/bcm/rpi-cirrus.c
+index a0a460f787d1..25330a487910 100644
+--- a/sound/soc/bcm/rpi-cirrus.c
++++ b/sound/soc/bcm/rpi-cirrus.c
+@@ -55,12 +55,12 @@ struct rpi_cirrus_priv {
+ /* helper functions */
+ static inline struct snd_soc_pcm_runtime *get_wm5102_runtime(
+ 	struct snd_soc_card *card) {
+-	return snd_soc_get_pcm_runtime(card, card->dai_link[DAI_WM5102].name);
++	return snd_soc_get_pcm_runtime(card, &card->dai_link[DAI_WM5102]);
+ }
+ 
+ static inline struct snd_soc_pcm_runtime *get_wm8804_runtime(
+ 	struct snd_soc_card *card) {
+-	return snd_soc_get_pcm_runtime(card, card->dai_link[DAI_WM8804].name);
++	return snd_soc_get_pcm_runtime(card, &card->dai_link[DAI_WM8804]);
+ }
+ 
+ 

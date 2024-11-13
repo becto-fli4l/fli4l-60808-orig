@@ -1,0 +1,23 @@
+diff -purN dibbler-1.0.1/ClntMessages/ClntMsgSolicit.cpp dibbler-1.0.1.new/ClntMessages/ClntMsgSolicit.cpp
+--- dibbler-1.0.1/ClntMessages/ClntMsgSolicit.cpp	2016-07-23 16:44:02.755912052 +0200
++++ dibbler-1.0.1.new/ClntMessages/ClntMsgSolicit.cpp	2016-07-23 16:42:09.156442351 +0200
+@@ -369,6 +369,19 @@ bool TClntMsgSolicit::shallRejectAnswer(
+         }
+     }
+ 
++    msg->firstOption();
++    while (opt_rcvd = msg->getOption()) {
++        // Let's ignore options other than STATUS_CODE
++        if (opt_rcvd->getOptType() != OPTION_STATUS_CODE)
++            continue;
++
++	SPtr<TClntOptStatusCode> st = (Ptr*)opt_rcvd;
++	if (st && st->getCode()!= STATUSCODE_SUCCESS) {
++	    Log(Notice) << "Message has status code!=SUCCESS: " << st->getCode()
++	    << "(" << st->getText() << "). Ignored." << LogEnd;
++	}
++    }
++
+     if (!pdcnt) {
+         // if all of ia_pd's in received answer were malformed, reject answer.
+         pdOk = false;

@@ -1,0 +1,73 @@
+Config.in.diff (kristov)
+* Adds configuration support for MPPE and MULTILINK.
+
+pppd.mk.diff (kristov)
+* Fetches the sources from Debian instead from samba.org.
+* Disables the use of PAM which is enabled by a Debian patch.
+
+9000-crypt.patch (kristov)
+* Links against libcrypt unconditionally, avoids checking for crypt.h on the
+  host.
+
+9001-makefile.patch (kristov)
+* Disable features in Makefile (they are passed through the command line).
+
+9002-override-LDFLAGS.patch (kristov)
+* Allows LDFLAGS read from the command line to be extended.
+
+9003-error-function.patch (kristov)
+* Replaces error() with fprintf()/syslog() when building pppoe-discovery as
+  the error() function from pppd/utils.c is not built/linked in.
+
+9100-eap.patch (kristov)
+* Fixes issues that may arise when combining EAP authentication with callbacks.
+
+9101-stats.patch (https://github.com/pld-linux/ppp/blob/master/ppp-ifpppstatsreq.patch)
+[cf. http://cgit.freedesktop.org/NetworkManager/NetworkManager/commit/?id=6b64e4db2f3c9cfc0e0e240cf0bc58f3b3e90c1f]
+* Updates the Linux glue to not use struct ifpppstatsreq which does not exist
+  anymore on newer kernels.
+
+9102-callback-client.patch (kristov)
+* Enables pppd to ask the peer for calling back. In addition to CBCP which
+  is supported by upstream pppd, this patch adds support for RFC 1570 style
+  callback negotiation which has been taken from ipppd. If the peer has
+  agreed to call back,  the /etc/ppp/callback-client script is called, making
+  it possible to react by starting another pppd instance waiting for the
+  callback.
+
+9103-callback-server.patch (pppcbcp project on SourceForge, corrections and
+extension by RFC 1570 style callback negotiation by kristov)
+* Enables pppd to be asked by the peer to call back. This patch supports
+  callback negotiation using CBCP as well as using LCP (RFC 1570). If calling
+  back the peer has been negotiated successfully, /etc/ppp/callback-server
+  is called, making it possible to react by starting another pppd instance
+  doing the callback.
+* Depends on 9102-callback-client.patch.
+
+9104-ifunit.patch (kristov)
+* If setting the PPP interface name explicitly via "ifname", Multilink PPP
+  does not work anymore because the code depends on the interface being called
+  "ppp<unit>". This patch removes that requirement by storing the PPP unit
+  in a separate environment/TDB variable called "IFUNIT". Additionally, use the
+  correct interface (e.g. for retrieval of PPP statistics) when attaching to a
+  multilink bundle.
+
+9105-lzs.patch (kristov)
+* Adds support for Stac/HiFn LZS compression. This needs a suitably patched
+  kernel.
+
+9106-multilink.patch (kristov)
+* Includes various Multilink PPP patches:
+  - Allow dial-on-demand multilink PPP to be used.
+  - Adds a hook which is called when a slave link is detached from a multilink
+    bundle.
+  - Sets the MTU of the PPP bundle interface to the peer's MRRU.
+    This is reasonable, as the higher bandwith possible by using Multilink PPP
+    cannot be used otherwise due to unnecessary IP fragmentation.
+  - Terminate the whole bundle if the master link goes down because no NCPs
+    could have been established. This is because such a bundle is useless and
+    cannot ever be "completed" by renegotiating NCPs as NCPs are negotiated
+    only once for multilink bundles, namely when the master link comes up.
+
+9107-pppoe-enable-compression.patch (kristov)
+* Enables kernel-mode PPPoE to use compression.

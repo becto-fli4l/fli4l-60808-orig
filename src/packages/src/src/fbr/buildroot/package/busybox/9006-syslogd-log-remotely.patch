@@ -1,0 +1,156 @@
+diff -purN busybox-1.25.0.orig/sysklogd/syslogd.c busybox-1.25.0/sysklogd/syslogd.c
+--- busybox-1.25.0.orig/sysklogd/syslogd.c	2016-08-17 22:38:20.211812423 +0200
++++ busybox-1.25.0/sysklogd/syslogd.c	2016-08-17 22:38:26.071963452 +0200
+@@ -201,6 +201,7 @@ struct shbuf_ds {
+ 
+ #if ENABLE_FEATURE_REMOTE_LOG
+ typedef struct {
++	int catchAll;
+ 	int remoteFD;
+ 	unsigned last_dns_resolve;
+ 	len_and_sockaddr *remoteAddr;
+@@ -525,6 +526,15 @@ static void parse_syslogdcfg(const char
+ 		cur_rule->file = xzalloc(sizeof(*cur_rule->file));
+ 		cur_rule->file->fd = -1;
+ 		cur_rule->file->path = xstrdup(tok[1]);
++#if ENABLE_FEATURE_REMOTE_LOG
++		if (cur_rule->file->path[0] == '@') {
++			remoteHost_t *rh = xzalloc(sizeof(*rh));
++			rh->remoteHostname = xstrdup(cur_rule->file->path + 1);
++			rh->remoteFD = -1;
++			rh->last_dns_resolve = monotonic_sec() - DNS_WAIT_SEC - 1;
++			llist_add_to(&G.remoteHosts, rh);
++		}
++#endif
+  found:
+ 		pp_rule = &cur_rule->next;
+ 	}
+@@ -677,6 +687,74 @@ static void kmsg_cleanup(void) {}
+ static void log_to_kmsg(int pri UNUSED_PARAM, const char *msg UNUSED_PARAM) {}
+ #endif /* FEATURE_KMSG_SYSLOG */
+ 
++#if ENABLE_FEATURE_REMOTE_LOG
++static int try_to_resolve_remote(remoteHost_t *rh)
++{
++	if (!rh->remoteAddr) {
++		unsigned now = monotonic_sec();
++
++		/* Don't resolve name too often - DNS timeouts can be big */
++		if ((now - rh->last_dns_resolve) < DNS_WAIT_SEC)
++			return -1;
++		rh->last_dns_resolve = now;
++		rh->remoteAddr = host2sockaddr(rh->remoteHostname, 514);
++		if (!rh->remoteAddr)
++			return -1;
++	}
++	return xsocket(rh->remoteAddr->u.sa.sa_family, SOCK_DGRAM, 0);
++}
++
++static bool log_remotely(int pri, char *msg, logFile_t *log_file)
++{
++	llist_t *item;
++
++	for (item = G.remoteHosts; item != NULL; item = item->link) {
++		remoteHost_t *rh = (remoteHost_t *)item->data;
++		if (strcmp(rh->remoteHostname, log_file->path+1) == 0 && !rh->catchAll) {
++			char *msgbuf;
++
++			/* We are not modifying log messages in any way before send */
++			/* Remote site cannot trust _us_ anyway and need to do validation again */
++			if (rh->remoteFD == -1) {
++				rh->remoteFD = try_to_resolve_remote(rh);
++				if (rh->remoteFD == -1)
++					return 0;
++			}
++
++			msgbuf = xmalloc(strlen(msg)+2+10);
++			sprintf(msgbuf, "<%d>%s\n", pri, msg);
++			/* Send message to remote logger.
++			 * On some errors, close and set remoteFD to -1
++			 * so that DNS resolution is retried.
++			 */
++			if (sendto(rh->remoteFD, msgbuf, strlen(msgbuf),
++					MSG_DONTWAIT | MSG_NOSIGNAL,
++					&(rh->remoteAddr->u.sa), rh->remoteAddr->len) == -1
++			) {
++				switch (errno) {
++				case ECONNRESET:
++				case ENOTCONN: /* paranoia */
++				case EPIPE:
++					close(rh->remoteFD);
++					rh->remoteFD = -1;
++					free(rh->remoteAddr);
++					rh->remoteAddr = NULL;
++				}
++
++				free(msgbuf);
++				return 0;
++			}
++			else {
++				free(msgbuf);
++				return 1;
++			}
++		}
++	}
++
++	return 0;
++}
++#endif
++
+ /* Print a message to the log file. */
+ static bool log_locally(time_t now, char *msg, logFile_t *log_file)
+ {
+@@ -853,6 +931,11 @@ static void timestamp_and_log(int pri, c
+ 		uint8_t prio_bit = 1 << LOG_PRI(pri);
+ 
+ 		for (rule = G.log_rules; rule; rule = rule->next) {
++#if ENABLE_FEATURE_REMOTE_LOG
++			if (rule->file->path[0] == '@')
++				match = log_remotely(pri, msg, rule->file) || match;
++			else
++#endif
+ 			if (rule->enabled_facility_priomap[facility] & prio_bit) {
+ 				match = log_locally(now, G.printbuf, rule->file) || match;
+ 			}
+@@ -966,24 +1049,6 @@ static NOINLINE int create_socket(void)
+ 	return sock_fd;
+ }
+ 
+-#if ENABLE_FEATURE_REMOTE_LOG
+-static int try_to_resolve_remote(remoteHost_t *rh)
+-{
+-	if (!rh->remoteAddr) {
+-		unsigned now = monotonic_sec();
+-
+-		/* Don't resolve name too often - DNS timeouts can be big */
+-		if ((now - rh->last_dns_resolve) < DNS_WAIT_SEC)
+-			return -1;
+-		rh->last_dns_resolve = now;
+-		rh->remoteAddr = host2sockaddr(rh->remoteHostname, 514);
+-		if (!rh->remoteAddr)
+-			return -1;
+-	}
+-	return xsocket(rh->remoteAddr->u.sa.sa_family, SOCK_DGRAM, 0);
+-}
+-#endif
+-
+ static void do_syslogd(void) NORETURN;
+ static void do_syslogd(void)
+ {
+@@ -1065,6 +1130,8 @@ static void do_syslogd(void)
+ 		/* Remote site cannot trust _us_ anyway and need to do validation again */
+ 		for (item = G.remoteHosts; item != NULL; item = item->link) {
+ 			remoteHost_t *rh = (remoteHost_t *)item->data;
++			if (!rh->catchAll)
++				continue;
+ 
+ 			if (rh->remoteFD == -1) {
+ 				rh->remoteFD = try_to_resolve_remote(rh);
+@@ -1124,6 +1191,7 @@ int syslogd_main(int argc UNUSED_PARAM,
+ #if ENABLE_FEATURE_REMOTE_LOG
+ 	while (remoteAddrList) {
+ 		remoteHost_t *rh = xzalloc(sizeof(*rh));
++		rh->catchAll = 1;
+ 		rh->remoteHostname = llist_pop(&remoteAddrList);
+ 		rh->remoteFD = -1;
+ 		rh->last_dns_resolve = monotonic_sec() - DNS_WAIT_SEC - 1;

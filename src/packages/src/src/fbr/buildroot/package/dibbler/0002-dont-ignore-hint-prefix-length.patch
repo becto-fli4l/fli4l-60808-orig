@@ -1,0 +1,191 @@
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp	2015-08-05 22:35:40.000000000 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp	2016-02-17 22:42:05.219033443 +0100
+@@ -488,6 +488,51 @@ SPtr<TSrvCfgPD> TSrvCfgMgr::getClassByPr
+     return SPtr<TSrvCfgPD>();
+ }
+ 
++/**
++ * get all classes matching a given prefix length
++ *
++ * @param iface the interface
++ * @param prefixlen the requested prefix length
++ *
++ * @return a list of matching classes (can be empty)
++ */
++List(TSrvCfgPD) TSrvCfgMgr::getClassesByPrefixLength(int iface, unsigned prefixlen)
++{
++    List(TSrvCfgPD) classes;
++
++    SPtr<TSrvCfgIface> ptrIface = this->getIfaceByID(iface);
++    if (!ptrIface) {
++        Log(Error) << "Trying to find class on unknown (" << iface <<") interface." << LogEnd;
++        return classes;
++    }
++
++    // first fetch all classes that match exactly
++    SPtr<TSrvCfgPD> ptrClass;
++    ptrIface->firstPD();
++    while (ptrClass = ptrIface->getPD()) {
++        if (ptrClass->getPD_Length() == prefixlen) {
++            classes.append(ptrClass);
++        }
++    }
++
++    // then fetch all classes that provide larger prefix lengths
++    ptrIface->firstPD();
++    while (ptrClass = ptrIface->getPD()) {
++        if (ptrClass->getPD_Length() > prefixlen) {
++            classes.append(ptrClass);
++        }
++    }
++
++    // at last, fetch all remaining classes
++    ptrIface->firstPD();
++    while (ptrClass = ptrIface->getPD()) {
++        if (ptrClass->getPD_Length() < prefixlen) {
++            classes.append(ptrClass);
++        }
++    }
++
++    return classes;
++}
+ 
+ //on basis of duid/address/iface assign addresss to client
+ SPtr<TIPv6Addr> TSrvCfgMgr::getRandomAddr(SPtr<TDUID> clntDuid,
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h	2014-10-18 21:13:47.000000000 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h	2016-02-17 22:42:05.229032698 +0100
+@@ -61,6 +61,7 @@ public:
+     long countAvailAddrs(SPtr<TDUID> clntDuid, SPtr<TIPv6Addr> clntAddr, int iface);
+     SPtr<TSrvCfgAddrClass> getClassByAddr(int iface, SPtr<TIPv6Addr> addr);
+     SPtr<TSrvCfgPD> getClassByPrefix(int iface, SPtr<TIPv6Addr> prefix);
++    List(TSrvCfgPD) getClassesByPrefixLength(int iface, unsigned prefixlen);
+     SPtr<TIPv6Addr> getRandomAddr(SPtr<TDUID> duid, SPtr<TIPv6Addr> clntAddr, int iface);
+     // bool isClntSupported(SPtr<TDUID> duid, SPtr<TIPv6Addr> clntAddr, int iface);
+     bool isClntSupported(/*SPtr<TDUID> duid, SPtr<TIPv6Addr> clntAddr, int iface,*/ SPtr<TSrvMsg> msg);
+diff -purN dibbler-1.0.1.orig/SrvOptions/SrvOptIA_PD.cpp dibbler-1.0.1/SrvOptions/SrvOptIA_PD.cpp
+--- dibbler-1.0.1.orig/SrvOptions/SrvOptIA_PD.cpp	2015-08-09 15:18:57.000000000 +0200
++++ dibbler-1.0.1/SrvOptions/SrvOptIA_PD.cpp	2016-02-17 22:43:08.024354660 +0100
+@@ -149,14 +149,14 @@ bool TSrvOptIA_PD::existingLease() {
+ // @param fake should the prefix be really assigned or not (used in SOLICIT processing)
+ //
+ // @return true, if something was assigned
+-bool TSrvOptIA_PD::assignPrefix(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> hint, bool fake) {
++bool TSrvOptIA_PD::assignPrefix(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> hint, unsigned hintlen, bool fake) {
+     SPtr<TIPv6Addr> prefix;
+     SPtr<TSrvOptIAPrefix> optPrefix;
+     SPtr<TSrvCfgPD> ptrPD;
+     List(TIPv6Addr) prefixLst;
+     SPtr<TIPv6Addr> cached;
+ 
+-    if (hint->getPlain()==string("::") ) {
++    if (hint->getPlain()==string("::") && hintlen == 0) {
+         cached = SrvAddrMgr().getCachedEntry(ClntDuid, IATYPE_PD);
+         if (cached)
+             hint = cached;
+@@ -164,7 +164,7 @@ bool TSrvOptIA_PD::assignPrefix(SPtr<TSr
+ 
+     // Get the list of prefixes
+     prefixLst.clear();
+-    prefixLst = getFreePrefixes(clientMsg, hint);
++    prefixLst = getFreePrefixes(clientMsg, hint, hintlen);
+     ostringstream buf;
+     prefixLst.first();
+     while (prefix = prefixLst.get()) {
+@@ -286,6 +286,7 @@ void TSrvOptIA_PD::solicitRequest(SPtr<T
+ 
+     // --- Is this PD without IAPREFIX options? ---
+     SPtr<TIPv6Addr> hint;
++    unsigned hintlen = 0;
+     if (!queryOpt->countPrefixes()) {
+         Log(Info) << "PD option (with IAPREFIX suboptions missing) received. " << LogEnd;
+         hint = new TIPv6Addr(); /* :: - any address */
+@@ -294,7 +295,8 @@ void TSrvOptIA_PD::solicitRequest(SPtr<T
+     } else {
+         SPtr<TSrvOptIAPrefix> hintPrefix = (Ptr*) queryOpt->getOption(OPTION_IAPREFIX);
+         hint  = hintPrefix->getPrefix();
+-        Log(Info) << "PD: PD option with " << hint->getPlain() << " as a hint received." << LogEnd;
++        hintlen = hintPrefix->getPrefixLength();
++        Log(Info) << "PD: PD option with " << hint->getPlain() << "/" << hintlen << " as a hint received." << LogEnd;
+         this->Prefered  = hintPrefix->getPref();
+         this->Valid     = hintPrefix->getValid();
+     }
+@@ -325,7 +327,7 @@ void TSrvOptIA_PD::solicitRequest(SPtr<T
+     // --- LEASE ASSIGN STEP 6: Cached address? ---
+     // --- LEASE ASSIGN STEP 7: client's hint ---
+     // --- LEASE ASSIGN STEP 8: get new random address --
+-    assignPrefix(clientMsg, hint, fake);
++    assignPrefix(clientMsg, hint, hintlen, fake);
+ }
+ 
+ /**
+@@ -509,7 +511,7 @@ bool TSrvOptIA_PD::assignFixedLease(SPtr
+  *
+  * @return - list of prefixes
+  */
+-List(TIPv6Addr) TSrvOptIA_PD::getFreePrefixes(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> cli_hint) {
++List(TIPv6Addr) TSrvOptIA_PD::getFreePrefixes(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> cli_hint, unsigned hintlen) {
+ 
+     SPtr<TSrvCfgIface> ptrIface;
+     SPtr<TIPv6Addr>    prefix;
+@@ -546,8 +548,10 @@ List(TIPv6Addr) TSrvOptIA_PD::getFreePre
+     // is it anyaddress (::)?
+     SPtr<TIPv6Addr> anyaddr = new TIPv6Addr();
+     if (*anyaddr==*cli_hint) {
+-        Log(Debug) << "PD: Client requested unspecified (" << *cli_hint
+-                   << ") prefix. Hint ignored." << LogEnd;
++        if (hintlen == 0) {
++            Log(Debug) << "PD: Client requested unspecified (" << *cli_hint
++                       << ") prefix. Hint ignored." << LogEnd;
++        }
+         validHint = false;
+     }
+ 
+@@ -572,6 +576,30 @@ List(TIPv6Addr) TSrvOptIA_PD::getFreePre
+         remoteID = par->getRemoteID();
+     }
+ 
++    if (!validHint && hintlen > 0) {
++        // client specified only prefix length, find the most appropriate pool
++        List(TSrvCfgPD) classes = SrvCfgMgr().getClassesByPrefixLength(this->Iface, hintlen);
++        classes.first();
++        while (ptrPD = classes.get()) {
++            if (ptrPD->clntSupported(ClntDuid, ClntAddr, clientMsg)) {
++                do {
++                    prefix = ptrPD->getRandomPrefix();
++                } while (!SrvAddrMgr().prefixIsFree(prefix));
++                if (prefix) {
++                    lst.append(prefix);
++
++                    this->PDLength = ptrPD->getPD_Length();
++                    this->Prefered = ptrPD->getPrefered(this->Prefered);
++                    this->Valid    = ptrPD->getValid(this->Valid);
++                    T1_       = ptrPD->getT1(T1_);
++                    T2_       = ptrPD->getT2(T2_);
++                    return lst;
++                }
++            }
++        }
++        return List(TIPv6Addr)();
++    }
++
+     if ( validHint ) {
+         // hint is valid, try to use it
+         ptrPD = SrvCfgMgr().getClassByPrefix(this->Iface, cli_hint);
+diff -purN dibbler-1.0.1.orig/SrvOptions/SrvOptIA_PD.h dibbler-1.0.1/SrvOptions/SrvOptIA_PD.h
+--- dibbler-1.0.1.orig/SrvOptions/SrvOptIA_PD.h	2013-10-27 19:33:06.000000000 +0100
++++ dibbler-1.0.1/SrvOptions/SrvOptIA_PD.h	2016-02-17 22:42:05.229032698 +0100
+@@ -49,10 +49,10 @@ class TSrvOptIA_PD : public TOptIA_PD
+     int Iface;
+ 
+     bool existingLease();
+-    bool assignPrefix(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> hint, bool fake);
++    bool assignPrefix(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> hint, unsigned hintlen, bool fake);
+     bool assignFixedLease(SPtr<TSrvOptIA_PD> request);
+ 
+-    List(TIPv6Addr) getFreePrefixes(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> hint);
++    List(TIPv6Addr) getFreePrefixes(SPtr<TSrvMsg> clientMsg, SPtr<TIPv6Addr> hint, unsigned hintlen);
+ 
+     uint32_t Prefered;
+     uint32_t Valid;

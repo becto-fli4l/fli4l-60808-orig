@@ -1,0 +1,38 @@
+diff -purN dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.cpp dibbler-1.0.1/SrvTransMgr/SrvTransMgr.cpp
+--- dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.cpp	2015-02-28 21:42:12.000000000 +0100
++++ dibbler-1.0.1/SrvTransMgr/SrvTransMgr.cpp	2016-02-17 22:44:28.568354289 +0100
+@@ -198,12 +198,21 @@ bool TSrvTransMgr::openSocket(SPtr<TSrvC
+       ifindex = confIface->getID();
+     }
+     SPtr<TIfaceIface> iface = SrvIfaceMgr().getIfaceByID(ifindex);
+-    SPtr<TIPv6Addr> unicast = confIface->getUnicast();
+     if (!iface) {
+         Log(Crit) << "Unable to find interface with ifindex=" << ifindex << LogEnd;
+         return false;
+     }
+ 
++    return this->openSocket(confIface, iface, port);
++}
++
++/*
++ * opens proper (multicast or unicast) socket on interface (second part)
++ */
++bool TSrvTransMgr::openSocket(SPtr<TSrvCfgIface> confIface, SPtr<TIfaceIface> iface, int port) {
++
++    SPtr<TIPv6Addr> unicast = confIface->getUnicast();
++
+     if (confIface->isRelay()) {
+         Log(Info) << "Relay init: Creating socket on the underlaying interface: "
+ 		  << iface->getFullName() << "." << LogEnd;
+diff -purN dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.h dibbler-1.0.1/SrvTransMgr/SrvTransMgr.h
+--- dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.h	2015-02-28 21:42:41.000000000 +0100
++++ dibbler-1.0.1/SrvTransMgr/SrvTransMgr.h	2016-02-17 22:44:28.568354289 +0100
+@@ -94,6 +94,8 @@ class TSrvTransMgr
+     static TSrvTransMgr * Instance;
+ 
+     int port_;
++
++    bool openSocket(SPtr<TSrvCfgIface> confIface, SPtr<TIfaceIface> iface, int port);
+ };
+ 
+ 

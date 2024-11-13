@@ -1,0 +1,99 @@
+/*****************************************************************************
+ *  @file grammar/expr_parser.rules
+ *  Parser rules for expressions.
+ *
+ *  Copyright (c) 2015-2016 The fli4l team
+ *
+ *  This file is part of fli4l.
+ *
+ *  fli4l is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  fli4l is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with fli4l.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ *  Last Update: $Id$
+ *****************************************************************************
+ */
+
+expression:
+  ID                              {
+    $$ = expression_create(
+        expr_variable_to_expr(expr_variable_create_by_name(scope, $1->name)),
+        TRUE
+    );
+    identifier_destroy($1);
+}
+| QSTRING                         {
+    $$ = expression_create(
+        expr_literal_to_expr(expr_literal_create_string(scope, $1->value)),
+        $1->valid
+    );
+    qstr_destroy($1);
+}
+| NUMBER                          {
+    $$ = expression_create(
+        expr_literal_to_expr(expr_literal_create_integer(scope, $1->value)),
+        $1->valid
+    );
+    number_destroy($1);
+}
+| LBRACKET expression RBRACKET    {
+    $$ = expression_create($2->expr, $2->valid);
+    expression_destroy($2, FALSE);
+}
+| NOT expression                  {
+    $$ = expression_create(
+        expr_logical_not_to_expr(expr_logical_not_create(scope, $2->expr)),
+        $2->valid
+    );
+    expression_destroy($2, FALSE);
+}
+| expression EQUAL expression     {
+    $$ = expression_create(
+        expr_equal_to_expr(expr_equal_create(scope, $1->expr, $3->expr)),
+        $1->valid && $3->valid
+    );
+    expression_destroy($1, FALSE);
+    expression_destroy($3, FALSE);
+}
+| expression MATCH expression     {
+    $$ = expression_create(
+        expr_match_to_expr(expr_match_create(scope, $1->expr, $3->expr)),
+        $1->valid && $3->valid
+    );
+    expression_destroy($1, FALSE);
+    expression_destroy($3, FALSE);
+}
+| expression UNEQUAL expression   {
+    $$ = expression_create(
+        expr_unequal_to_expr(expr_unequal_create(scope, $1->expr, $3->expr)),
+        $1->valid && $3->valid
+    );
+    expression_destroy($1, FALSE);
+    expression_destroy($3, FALSE);
+}
+| expression AND expression       {
+    $$ = expression_create(
+        expr_logical_and_to_expr(expr_logical_and_create(scope, $1->expr, $3->expr)),
+        $1->valid && $3->valid
+    );
+    expression_destroy($1, FALSE);
+    expression_destroy($3, FALSE);
+}
+| expression OR expression        {
+    $$ = expression_create(
+        expr_logical_or_to_expr(expr_logical_or_create(scope, $1->expr, $3->expr)),
+        $1->valid && $3->valid
+    );
+    expression_destroy($1, FALSE);
+    expression_destroy($3, FALSE);
+}
+;

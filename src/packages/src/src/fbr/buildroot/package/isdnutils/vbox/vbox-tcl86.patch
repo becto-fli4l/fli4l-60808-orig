@@ -1,0 +1,307 @@
+diff -urN isdnutils-3.25/vbox/src/libvbox.c isdnutils-3.25-vbox/vbox/src/libvbox.c
+--- isdnutils-3.25/vbox/src/libvbox.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/libvbox.c	2014-08-09 14:23:12.865668607 +0200
+@@ -300,7 +300,7 @@
+ /** <return>				Number of files found.									**/
+ /*************************************************************************/
+ 
+-int get_nr_messages(char *path, int countnew)
++int get_nr_messages(char const *path, int countnew)
+ {
+ 	struct dirent *entry;
+ 	struct stat		status;
+@@ -441,7 +441,7 @@
+ /** max				Max length of destination.										**/
+ /*************************************************************************/
+ 
+-void xstrncpy(char *dest, char *source, int max)
++void xstrncpy(char *dest, char const *source, int max)
+ {
+ 	strncpy(dest, source, max);
+ 	
+@@ -456,7 +456,7 @@
+ /** max				Max length of destination.										**/
+ /*************************************************************************/
+ 
+-void xstrncat(char *dest, char *source, int max)
++void xstrncat(char *dest, char const *source, int max)
+ {
+ 	if ((max - strlen(dest)) > 0) strncat(dest, source, max - strlen(dest));
+ 
+@@ -483,7 +483,7 @@
+ /** <return>	Converted string value on success; default on error.		**/
+ /*************************************************************************/
+ 
+-long xstrtol(char *str, long use)
++long xstrtol(char const *str, long use)
+ {
+ 	char *stop;
+ 	long	line;
+@@ -504,7 +504,7 @@
+ /** <return>	 Converted string value on success; default on error.		**/
+ /*************************************************************************/
+ 
+-unsigned long xstrtoul(char *str, unsigned long use)
++unsigned long xstrtoul(char const *str, unsigned long use)
+ {
+ 	char          *stop;
+ 	unsigned long  line;
+diff -urN isdnutils-3.25/vbox/src/libvbox.h isdnutils-3.25-vbox/vbox/src/libvbox.h
+--- isdnutils-3.25/vbox/src/libvbox.h	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/libvbox.h	2014-08-09 14:22:57.045677451 +0200
+@@ -133,7 +133,7 @@
+ 
+ extern int header_put(int, vaheader_t *);
+ extern int header_get(int, vaheader_t *);
+-extern int get_nr_messages(char *, int);
++extern int get_nr_messages(char const *, int);
+ extern int get_message_ptime(int, int);
+ 
+ /**************************************************************************/
+@@ -169,10 +169,10 @@
+ 
+ /** Prototypes ***********************************************************/
+ 
+-extern void          xstrncpy(char *, char *, int);
+-extern void          xstrncat(char *, char *, int);
++extern void          xstrncpy(char *, char const *, int);
++extern void          xstrncat(char *, char const *, int);
+ extern void          xpause(unsigned long);
+-extern long          xstrtol(char *, long);
+-extern unsigned long xstrtoul(char *, unsigned long);
++extern long          xstrtol(char const *, long);
++extern unsigned long xstrtoul(char const *, unsigned long);
+ 
+ #endif /* _VBOX_LIBVBOX_H */
+diff -urN isdnutils-3.25/vbox/src/lists.c isdnutils-3.25-vbox/vbox/src/lists.c
+--- isdnutils-3.25/vbox/src/lists.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/lists.c	2014-08-09 14:12:41.246024512 +0200
+@@ -45,7 +45,7 @@
+ /** breaklist_add(): Adds one entry to the breaklist.                    **/
+ /**************************************************************************/
+ 
+-int breaklist_add(char *line)
++int breaklist_add(char const *line)
+ {
+ 	int i;
+ 
+@@ -69,7 +69,7 @@
+ /** breaklist_rem(): Removes entry from the breaklist (all matches).     **/
+ /**************************************************************************/
+ 
+-void breaklist_rem(char *line)
++void breaklist_rem(char const *line)
+ {
+ 	int i;
+ 
+@@ -94,7 +94,7 @@
+ /** breaklist_search(): Searchs entry in the breaklist.                  **/
+ /**************************************************************************/
+ 
+-int breaklist_search(char *line)
++int breaklist_search(char const *line)
+ {
+ 	int i;
+ 
+diff -urN isdnutils-3.25/vbox/src/lists.h isdnutils-3.25-vbox/vbox/src/lists.h
+--- isdnutils-3.25/vbox/src/lists.h	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/lists.h	2014-08-09 14:12:50.656019144 +0200
+@@ -16,8 +16,8 @@
+ extern char *breaklist_nr(int);
+ extern void  breaklist_init(void);
+ extern void  breaklist_exit(void);
+-extern void  breaklist_rem(char *);
+-extern int   breaklist_add(char *);
+-extern int   breaklist_search(char *);
++extern void  breaklist_rem(char const *);
++extern int   breaklist_add(char const *);
++extern int   breaklist_search(char const *);
+ 
+ #endif /* _VBOX_LISTS_H */
+diff -urN isdnutils-3.25/vbox/src/script.c isdnutils-3.25-vbox/vbox/src/script.c
+--- isdnutils-3.25/vbox/src/script.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/script.c	2014-08-09 14:10:01.496115410 +0200
+@@ -35,15 +35,15 @@
+ 
+ /** Tcl functions *********************************************************/
+ 
+-int vbox_breaklist(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_init_touchtones(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_put_message(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_get_message(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_wait(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_pause(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_get_nr_new_messages(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_get_nr_all_messages(ClientData, Tcl_Interp *, int, char *[]);
+-int vbox_message_info(ClientData, Tcl_Interp *, int, char *[]);
++int vbox_breaklist(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_init_touchtones(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_put_message(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_get_message(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_wait(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_pause(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_get_nr_new_messages(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_get_nr_all_messages(ClientData, Tcl_Interp *, int, CONST84 char *[]);
++int vbox_message_info(ClientData, Tcl_Interp *, int, CONST84 char *[]);
+ 
+ static struct vbox_tcl_function vbox_tcl_functions[] =
+ {
+@@ -103,7 +103,7 @@
+ 
+ 					if (Tcl_EvalFile(interpreter, script) != TCL_OK)
+ 					{
+-						log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, interpreter->errorLine);
++						log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, Tcl_GetErrorLine(interpreter));
+ 					}
+ 					else
+ 					{
+@@ -114,7 +114,7 @@
+ 				}
+ 					else log(L_FATAL, "Can't answer call!\n");
+ 				}
+-				else log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, interpreter->errorLine);
++				else log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, Tcl_GetErrorLine(interpreter));
+ 			}
+ 			else log(L_FATAL, "Can't create all new tcl commands.\n");
+ 
+@@ -170,7 +170,7 @@
+ 	    sleep(wait);
+ 	    log(L_INFO, "vboxputty: Running tcl script \"%s\"...\n", script);
+ 	    if (Tcl_EvalFile(interpreter, script) != TCL_OK) {
+-	      log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, interpreter->errorLine);
++	      log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, Tcl_GetErrorLine(interpreter));
+ 	    }
+ 	    else {
+ 	      log(L_DEBUG, "vboxputty: Back from tcl script...\n");
+@@ -182,7 +182,7 @@
+ 	    result = 99;
+ 	  }
+ 	}
+-	else log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, interpreter->errorLine);
++	else log(L_ERROR, "In \"%s\": %s (line %d).\n", script, interpreter->result, Tcl_GetErrorLine(interpreter));
+       }
+       else log(L_FATAL, "Can't create all new tcl commands.\n");
+       if ((rcdelete = Tcl_InterpDeleted(interpreter)) == 0) {
+@@ -297,12 +297,12 @@
+ /** vbox_message_info(): Returns message header fields.                 **/
+ /*************************************************************************/
+ 
+-int vbox_message_info(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_message_info(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	vaheader_t  header;
+ 	int         fd;
+-	char       *name;
+-	char       *need;
++	CONST84 char *name;
++	CONST84 char *need;
+ 	int         field;
+ 
+ 	strcpy(ip->result, "");
+@@ -364,7 +364,7 @@
+ /** vbox_breaklist(): DTMF sequence support.									   **/
+ /*************************************************************************/
+ 
+-int vbox_breaklist(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_breaklist(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	int   i;
+ 	char *line;
+@@ -424,7 +424,7 @@
+ /** vbox_put_message():	Plays a voice message.									**/
+ /*************************************************************************/
+ 
+-int vbox_put_message(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_put_message(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	int result;
+ 
+@@ -469,7 +469,7 @@
+ /** vbox_get_message():	Records a voice message.								**/
+ /*************************************************************************/
+ 
+-int vbox_get_message(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_get_message(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	int result;
+ 
+@@ -518,7 +518,7 @@
+ /** vbox_wait(): Waits for DTMF input.											   **/
+ /*************************************************************************/
+ 
+-int vbox_wait(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_wait(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	int result;
+ 
+@@ -567,7 +567,7 @@
+ /** vbox_pause():	Sleeps some milliseconds.										**/
+ /*************************************************************************/
+ 
+-int vbox_pause(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_pause(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	long p;
+ 
+@@ -595,7 +595,7 @@
+ /** vbox_init_touchtones(): Initialize touchtone sequence.				   **/
+ /*************************************************************************/
+ 
+-int vbox_init_touchtones(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_init_touchtones(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	*touchtones = '\0';
+ 
+@@ -608,7 +608,7 @@
+ /** vbox_get_nr_new_messages(): Returns the number of new messages.     **/
+ /*************************************************************************/
+ 
+-int vbox_get_nr_new_messages(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_get_nr_new_messages(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	int n;
+ 
+@@ -636,7 +636,7 @@
+ /** vbox_get_nr_all_messages(): Returns the number of messages.         **/
+ /*************************************************************************/
+ 
+-int vbox_get_nr_all_messages(ClientData cd, Tcl_Interp *ip, int argc, char *argv[])
++int vbox_get_nr_all_messages(ClientData cd, Tcl_Interp *ip, int argc, CONST84 char *argv[])
+ {
+ 	int n;
+ 
+diff -urN isdnutils-3.25/vbox/src/voice.c isdnutils-3.25-vbox/vbox/src/voice.c
+--- isdnutils-3.25/vbox/src/voice.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/voice.c	2014-08-09 14:14:28.135963870 +0200
+@@ -132,7 +132,7 @@
+  ** voice_put_message(): Plays voice message.									**
+  *************************************************************************/
+ 
+-int voice_put_message(char *message)
++int voice_put_message(char const *message)
+ {
+ 	vaheader_t header;
+ 	long int   compression;
+@@ -392,7 +392,7 @@
+ /** If save is not true the recorded data are not written.					**/
+ /*************************************************************************/
+ 
+-int voice_get_message(char *name, char *timestr, int save)
++int voice_get_message(char const *name, char const *timestr, int save)
+ {
+ 	vaheader_t	header;
+ 	char			line_i[MODEM_BUFFER_LEN + 1];
+diff -urN isdnutils-3.25/vbox/src/voice.h isdnutils-3.25-vbox/vbox/src/voice.h
+--- isdnutils-3.25/vbox/src/voice.h	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25-vbox/vbox/src/voice.h	2014-08-09 14:14:36.835958946 +0200
+@@ -72,8 +72,8 @@
+ 
+ extern void voice_init_section(void);
+ extern void voice_user_section(char *);
+-extern int	voice_put_message(char *);
+-extern int	voice_get_message(char *, char *, int);
++extern int	voice_put_message(char const *);
++extern int	voice_get_message(char const *, char const *, int);
+ 
+ 
+ 

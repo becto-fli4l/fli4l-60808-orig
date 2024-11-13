@@ -1,0 +1,192 @@
+diff -purN pppd-2.4.7.orig/pppd/auth.c pppd-2.4.7/pppd/auth.c
+--- pppd-2.4.7.orig/pppd/auth.c	2018-01-30 23:20:39.999279088 +0100
++++ pppd-2.4.7/pppd/auth.c	2018-01-30 23:20:52.336085085 +0100
+@@ -193,6 +193,8 @@ int (*allowed_address_hook) __P((u_int32
+ #ifdef HAVE_MULTILINK
+ /* Hook for plugin to hear when an interface joins a multilink bundle */
+ void (*multilink_join_hook) __P((void)) = NULL;
++/* Hook for plugin to hear when an interface exits a multilink bundle */
++void (*multilink_exit_hook) __P((void)) = NULL;
+ #endif
+ 
+ /* A notifier for when the peer has authenticated itself,
+@@ -646,8 +648,11 @@ link_terminated(unit)
+ 	remove_fd(fd_ppp);
+ 	clean_check();
+ 	the_channel->disestablish_ppp(devfd);
+-	if (doing_multilink)
++	if (doing_multilink) {
+ 	    mp_exit_bundle();
++	    if (multilink_exit_hook)
++		(*multilink_exit_hook)();
++	}
+ 	fd_ppp = -1;
+     }
+     if (!hungup)
+@@ -669,7 +674,7 @@ link_terminated(unit)
+ 	(*the_channel->cleanup)();
+ 
+     if (doing_multilink && multilink_master) {
+-	if (!bundle_terminating) {
++	if (!bundle_terminating && !demand && num_np_open > 0) {
+ 	    new_phase(PHASE_MASTER);
+ 	    if (master_detach && !detached)
+ 		detach();
+@@ -892,11 +897,14 @@ start_networks(unit)
+ 
+ #ifdef HAVE_MULTILINK
+     if (multilink) {
+-	if (mp_join_bundle()) {
+-	    if (multilink_join_hook)
+-		(*multilink_join_hook)();
++	int attached = mp_join_bundle();
++	if (doing_multilink && multilink_join_hook)
++	    (*multilink_join_hook)();
++	if (attached) {
+ 	    if (updetach && !nodetach)
+ 		detach();
++	    /* disables dumping LCP echo requests/responses when debug == 1 */
++	    unsuccess = 0;
+ 	    return;
+ 	}
+     }
+diff -purN pppd-2.4.7.orig/pppd/multilink.c pppd-2.4.7/pppd/multilink.c
+--- pppd-2.4.7.orig/pppd/multilink.c	2018-01-30 23:20:39.999279088 +0100
++++ pppd-2.4.7/pppd/multilink.c	2018-01-30 23:20:52.337085069 +0100
+@@ -178,17 +178,7 @@ mp_join_bundle()
+ 		novm("bundle links key");
+ 	slprintf(blinks_id, l + 7, "BUNDLE_LINKS=%s", bundle_id + 7);
+ 
+-	/*
+-	 * For demand mode, we only need to configure the bundle
+-	 * and attach the link.
+-	 */
+-	mtu = MIN(ho->mrru, ao->mru);
+-	if (demand) {
+-		cfg_bundle(go->mrru, ho->mrru, go->neg_ssnhf, ho->neg_ssnhf);
+-		netif_set_mtu(0, mtu);
+-		script_setenv("BUNDLE", bundle_id + 7, 1);
+-		return 0;
+-	}
++	mtu = ho->mrru;
+ 
+ 	/*
+ 	 * Check if the bundle ID is already in the database.
+@@ -233,13 +223,23 @@ mp_join_bundle()
+ 	}
+ 
+ 	/* we have to make a new bundle */
+-	make_new_bundle(go->mrru, ho->mrru, go->neg_ssnhf, ho->neg_ssnhf);
+-	set_ifunit(1);
++	if (!demand) {
++		make_new_bundle(go->mrru, ho->mrru, go->neg_ssnhf, ho->neg_ssnhf);
++		set_ifunit(1);
++	}
++	else {
++		cfg_bundle(go->mrru, ho->mrru, go->neg_ssnhf, ho->neg_ssnhf);
++	}
+ 	netif_set_mtu(0, mtu);
+ 	script_setenv("BUNDLE", bundle_id + 7, 1);
+ 	make_bundle_links(0);
+ 	unlock_db();
+-	info("New bundle %s created", ifname);
++	if (!demand) {
++		info("New bundle %s created", ifname);
++	}
++	else {
++		info("Using bundle %s as multilink master", ifname);
++	}
+ 	multilink_master = 1;
+ 	return 0;
+ }
+@@ -282,6 +282,9 @@ void mp_bundle_terminated()
+ 	key.dptr = blinks_id;
+ 	key.dsize = strlen(blinks_id);
+ 	tdb_delete(pppdb, key);
++	free(blinks_id);
++	script_unsetenv("BUNDLE");
++	free(bundle_id);
+ 	unlock_db();
+ 
+ 	new_phase(PHASE_DEAD);
+diff -purN pppd-2.4.7.orig/pppd/pppd.h pppd-2.4.7/pppd/pppd.h
+--- pppd-2.4.7.orig/pppd/pppd.h	2018-01-30 23:20:18.385618979 +0100
++++ pppd-2.4.7/pppd/pppd.h	2018-01-30 23:20:52.337085069 +0100
+@@ -760,6 +760,7 @@ extern void (*ipv6_down_hook) __P((void)
+ extern int (*chap_check_hook) __P((void));
+ extern int (*chap_passwd_hook) __P((char *user, char *passwd));
+ extern void (*multilink_join_hook) __P((void));
++extern void (*multilink_exit_hook) __P((void));
+ 
+ /* Let a plugin snoop sent and received packets.  Useful for L2TP */
+ extern void (*snoop_recv_hook) __P((unsigned char *p, int len));
+diff -purN pppd-2.4.7.orig/pppd/sys-linux.c pppd-2.4.7/pppd/sys-linux.c
+--- pppd-2.4.7.orig/pppd/sys-linux.c	2018-01-30 23:19:16.816587243 +0100
++++ pppd-2.4.7/pppd/sys-linux.c	2018-01-30 23:20:52.337085069 +0100
+@@ -185,6 +185,7 @@ static int sock6_fd = -1;
+  * which is attached to the ppp unit and is used for controlling it.
+  */
+ int ppp_dev_fd = -1;		/* fd for /dev/ppp (new style driver) */
++int ppp_loop_fd = -1;		/* fd for loop device when using multilink */
+ 
+ static int chindex;		/* channel index (new style driver) */
+ 
+@@ -498,8 +499,13 @@ int generic_establish_ppp (int fd)
+ 		goto err_close;
+ 	}
+ 
+-	if (looped)
++	if (looped) {
+ 	    modify_flags(ppp_dev_fd, SC_LOOP_TRAFFIC, 0);
++	    if (multilink) {
++		ppp_loop_fd = ppp_dev_fd;
++		ppp_dev_fd = -1;
++	    }
++	}
+ 
+ 	if (!multilink) {
+ 	    add_fd(ppp_dev_fd);
+@@ -605,6 +611,10 @@ void generic_disestablish_ppp(int dev_fd
+ 	close(ppp_fd);
+ 	ppp_fd = -1;
+ 	if (demand) {
++	    if (multilink && ppp_loop_fd != -1) {
++		ppp_dev_fd = ppp_loop_fd;
++		ppp_loop_fd = -1;
++	    }
+ 	    modify_flags(ppp_dev_fd, 0, SC_LOOP_TRAFFIC);
+ 	    looped = 1;
+ 	} else if (!doing_multilink && ppp_dev_fd >= 0) {
+@@ -677,9 +687,16 @@ void cfg_bundle(int mrru, int mtru, int
+ 	if (!new_style_driver)
+ 		return;
+ 
++	if (demand && multilink) {
++	    ppp_dev_fd = ppp_loop_fd;
++	    ppp_loop_fd = -1;
++	}
++
+ 	/* set the mrru, mtu and flags */
+ 	if (ioctl(ppp_dev_fd, PPPIOCSMRRU, &mrru) < 0)
+ 		error("Couldn't set MRRU: %m");
++	else
++		dbglog("MRRU set to %d", mrru);
+ 
+ 	modify_flags(ppp_dev_fd, SC_MP_SHORTSEQ|SC_MP_XSHORTSEQ|SC_MULTILINK,
+ 		     ((rssn? SC_MP_SHORTSEQ: 0) | (tssn? SC_MP_XSHORTSEQ: 0)
+@@ -747,9 +764,15 @@ int bundle_attach(int ifnum)
+ void destroy_bundle(void)
+ {
+ 	if (ppp_dev_fd >= 0) {
++	    if (!demand) {
+ 		close(ppp_dev_fd);
+ 		remove_fd(ppp_dev_fd);
+ 		ppp_dev_fd = -1;
++	    }
++	    else {
++		modify_flags(ppp_dev_fd, SC_MP_SHORTSEQ|SC_MP_XSHORTSEQ|SC_MULTILINK,
++			     0);
++	    }
+ 	}
+ }
+ 

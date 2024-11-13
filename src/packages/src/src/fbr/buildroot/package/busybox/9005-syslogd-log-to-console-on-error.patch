@@ -1,0 +1,82 @@
+diff -purN busybox-1.25.0.orig/sysklogd/syslogd.c busybox-1.25.0/sysklogd/syslogd.c
+--- busybox-1.25.0.orig/sysklogd/syslogd.c	2016-08-17 22:37:57.101216808 +0200
++++ busybox-1.25.0/sysklogd/syslogd.c	2016-08-17 22:38:02.791363453 +0200
+@@ -678,7 +678,7 @@ static void log_to_kmsg(int pri UNUSED_P
+ #endif /* FEATURE_KMSG_SYSLOG */
+ 
+ /* Print a message to the log file. */
+-static void log_locally(time_t now, char *msg, logFile_t *log_file)
++static bool log_locally(time_t now, char *msg, logFile_t *log_file)
+ {
+ #ifdef SYSLOGD_WRLOCK
+ 	struct flock fl;
+@@ -720,14 +720,8 @@ static void log_locally(time_t now, char
+ 						0666);
+ 		}
+ 			if (log_file->fd < 0) {
+-				/* cannot open logfile? - print to /dev/console then */
+-				int fd = device_open(DEV_CONSOLE, O_WRONLY | O_NOCTTY | O_NONBLOCK);
+-				if (fd < 0)
+-					fd = 2; /* then stderr, dammit */
+-				full_write(fd, msg, len);
+-				if (fd != 2)
+-					close(fd);
+-				return;
++			/* cannot open logfile? - return failure */
++			return 0;
+ 			}
+ #if ENABLE_FEATURE_ROTATE_LOGFILE
+ 			{
+@@ -796,6 +790,8 @@ static void log_locally(time_t now, char
+ 	fl.l_type = F_UNLCK;
+ 	fcntl(log_file->fd, F_SETLKW, &fl);
+ #endif
++
++	return 1;
+ }
+ 
+ static void parse_fac_prio_20(int pri, char *res20)
+@@ -820,6 +816,7 @@ static void timestamp_and_log(int pri, c
+ {
+ 	char *timestamp;
+ 	time_t now;
++	bool match = 0;
+ 
+ 	/* Jan 18 00:11:22 msg... */
+ 	/* 01234567890123456 */
+@@ -851,15 +848,13 @@ static void timestamp_and_log(int pri, c
+ 	/* Log message locally (to file or shared mem) */
+ #if ENABLE_FEATURE_SYSLOGD_CFG
+ 	{
+-		bool match = 0;
+ 		logRule_t *rule;
+ 		uint8_t facility = LOG_FAC(pri);
+ 		uint8_t prio_bit = 1 << LOG_PRI(pri);
+ 
+ 		for (rule = G.log_rules; rule; rule = rule->next) {
+ 			if (rule->enabled_facility_priomap[facility] & prio_bit) {
+-				log_locally(now, G.printbuf, rule->file);
+-				match = 1;
++				match = log_locally(now, G.printbuf, rule->file) || match;
+ 			}
+ 		}
+ 		if (match)
+@@ -873,7 +868,17 @@ static void timestamp_and_log(int pri, c
+ 			return;
+ 		}
+ #endif
+-		log_locally(now, G.printbuf, &G.logFile);
++		match = log_locally(now, G.printbuf, &G.logFile) || match;
++	}
++	
++	if (!match) {
++		/* cannot open logfile? - print to /dev/console then */
++		int fd = device_open(DEV_CONSOLE, O_WRONLY | O_NOCTTY | O_NONBLOCK);
++		if (fd < 0)
++			fd = 2; /* then stderr, dammit */
++		full_write(fd, msg, len);
++		if (fd != 2)
++			close(fd);
+ 	}
+ }
+ 

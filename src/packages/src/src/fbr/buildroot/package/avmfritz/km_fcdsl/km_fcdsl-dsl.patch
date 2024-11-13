@@ -1,0 +1,570 @@
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.c km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.c
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.c	2019-03-13 19:10:55.331416887 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.c	2019-03-13 19:28:31.550138419 +0100
+@@ -23,15 +23,19 @@
+ #include <asm/io.h>
+ #include <asm/irq.h>
+ #include <asm/atomic.h>
+-#include <asm/uaccess.h>
+-#include <asm/system.h>
+ #include <linux/version.h>
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0))
++#include <asm/uaccess.h>
++#else
++#include <linux/uaccess.h>
++#endif
+ #include <linux/ioport.h>
+ #include <linux/sched.h>
+ #include <linux/interrupt.h>
+ #include <linux/netdevice.h>
+ #include <linux/skbuff.h>
+ #include <linux/kernel.h>
++#include <linux/kthread.h>
+ #include <linux/spinlock.h>
+ #include <linux/pci.h>
+ #include <linux/delay.h>
+@@ -52,6 +56,9 @@
+ #include "defs.h"
+ #include "regs.h"
+ #include "driver.h"
++#include <linux/module.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
+ 
+ #if !defined (NDEBUG) && defined (LOG_LINK)
+ #include "dbgif.h"
+@@ -102,7 +109,7 @@ static bundle_t			ctrl_context[2];
+ static struct capi_ctr		capi_ctrl[2];
+ static int			capi_ctrl_ix		= 0;
+ static per_ctrl_t		ctrl_params[2];
+-static spinlock_t		stack_lock		= SPIN_LOCK_UNLOCKED;
++static DEFINE_SPINLOCK(stack_lock);
+ static atomic_t			rx_flag			= ATOMIC_INIT (0);
+ static atomic_t			tx_flag			= ATOMIC_INIT (0);
+ static atomic_t			thread_flag		= ATOMIC_INIT (0);
+@@ -111,7 +118,7 @@ static int			thread_pid		= -1;
+ 
+ static DECLARE_WAIT_QUEUE_HEAD(wait);
+ static DECLARE_WAIT_QUEUE_HEAD(capi_wait);
+-static DECLARE_MUTEX_LOCKED(hotplug);
++static DECLARE_COMPLETION(hotplug);
+ 
+ #define SCHED_WAKEUP_CAPI       { atomic_set (&thread_capi_flag, 1); wake_up_interruptible (&capi_wait); }
+ #define SCHED_WAKEUP            { atomic_set (&got_kicked, 1); wake_up_interruptible (&wait); }
+@@ -122,7 +129,7 @@ static void			tx_task (unsigned long dat
+ static void			rx_task (unsigned long data);
+ static void			tx_handler (card_p cp);
+ static void			rx_handler (card_p cp);
+-static irqreturn_t		irq_handler (int, void *, struct pt_regs *);
++static irqreturn_t irq_handler (int irq, void * args);
+ static void			enable_thread (void);
+ static void			disable_thread (void);
+ static int			make_thread (void);
+@@ -200,7 +207,7 @@ static int alloc_resources (struct pci_d
+ 		cp->rx_dmabuf = NULL;
+ 		goto dma_rx_exit;
+ 	}
+-	res = request_irq (cp->irq, &irq_handler, SA_INTERRUPT | SA_SHIRQ, TARGET, cp);
++	res = request_irq (cp->irq, &irq_handler, IRQF_SHARED, TARGET, cp);
+ 	if (res) {
+ 		LOG("Could not install irq handler.\n");
+ 		goto dma_tx_exit;
+@@ -213,7 +220,7 @@ static int alloc_resources (struct pci_d
+ 	LOG("DMA buffers: tx %08x (bus %08x)\n", cp->tx_dmabuf, cp->tx_dmabuf_b);
+ 	make_thread ();
+ 	/* That's it */
+-	return PCI_OK;
++	return thread_pid == -1 ? PCI_NO_RESOURCE : PCI_OK;
+ } /* alloc_resources */
+ 
+ /*---------------------------------------------------------------------------*\
+@@ -538,16 +545,6 @@ static void kill_version (struct capi_ct
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static void pprintf (char * page, int * len, const char * fmt, ...) {
+-	va_list args;
+-
+-	va_start (args, fmt);
+-	*len += vsnprintf (page + *len, PPRINTF_LEN, fmt, args);
+-	va_end (args);
+-} /* pprintf */
+-
+-/*---------------------------------------------------------------------------*\
+-\*---------------------------------------------------------------------------*/
+ static int start (card_p card) {
+ 
+ 	card->count = 0;
+@@ -897,14 +894,19 @@ static void __kcapi reset_ctrl (struct c
+ #endif
+ 	reset_card (cp); 
+ 	if (ctrl_context[0].ctrl != NULL) {
+-		capi_ctr_reseted (capi_controller[0]);
++	    capi_ctr_down (capi_controller[0]);
+ 	}
+-	capi_ctr_reseted (capi_controller[1]);
++	capi_ctr_down (capi_controller[1]);
+ } /* reset_ctrl */
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static char * __kcapi proc_info (struct capi_ctr * ctrl) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static char * __kcapi proc_info (struct capi_ctr * ctrl) 
++#else
++static char * __kcapi proc_show (struct capi_ctr * ctrl)
++#endif
++{
+ 	card_p		cp;
+ 	per_ctrl_p	C;
+ 	static char	text[80];
+@@ -935,40 +937,39 @@ static char * __kcapi proc_info (struct
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static int __kcapi ctr_info (
+-	char *			page, 
+-	char **			start, 
+-	off_t			ofs,
+-	int			count, 
+-	int *			eof,
+-	struct capi_ctr *	ctrl
+-) {
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static int __kcapi ctr_info (struct seq_file *m, void *v) 
++#else
++int __kcapi ctr_proc_show (struct seq_file *m, void *v)
++#endif
++{
++   struct capi_ctr *ctrl = m->private;
+ 	card_p			cp;
+ 	per_ctrl_p		C;
+ 	char *			temp;
+ 	unsigned char		flag;
+-	int			len = 0;
+ 
+ 	assert (ctrl != NULL);
+ 	assert (ctrl->driverdata != NULL);
+ 	cp = GET_CARD (ctrl);
+ 	C  = GET_CTRL (ctrl);
+-	pprintf (page, &len, "%-16s %s\n", "name", SHORT_LOGO);
+-	pprintf (page, &len, "%-16s %d\n", "irq", cp->irq);
+-	pprintf (page, &len, "%-16s %08x\n", "iobase", cp->io_base);
+-	pprintf (page, &len, "%-16s %08x\n", "membase", cp->mem_base);
++	seq_printf(m, "%-16s %s\n", "name", SHORT_LOGO);
++	seq_printf(m, "%-16s %d\n", "irq", cp->irq);
++	seq_printf(m, "%-16s 0x%p\n", "iobase", cp->io_base);
++	seq_printf(m, "%-16s 0x%p\n", "membase", cp->mem_base);
+ 
+ 	if (cp->running) {
+ 		temp = C->version ? C->string[1] : "A1";
+-		pprintf (page, &len, "%-16s %s\n", "type", temp);
++	    seq_printf(m, "%-16s %s\n", "type", temp);
+ 
+ 		temp = C->version ? C->string[0] : "-";
+-		pprintf (page, &len, "%-16s %s\n", "ver_driver", temp);
+-		pprintf (page, &len, "%-16s %s\n", "ver_cardtype", SHORT_LOGO);
++	    seq_printf(m, "%-16s %s\n", "ver_driver", temp);
++	    seq_printf(m, "%-16s %s\n", "ver_cardtype", SHORT_LOGO);
+ 
+ 		flag = ((unsigned char *) (ctrl->profile.manu))[3];
+ 		if (flag) {
+-			pprintf(page, &len, "%-16s%s%s%s%s%s%s%s\n", "protocol",
++		    seq_printf(m, "%-16s%s%s%s%s%s%s%s\n", "protocol",
+ 				(flag & 0x01) ? " DSS1" : "",
+ 				(flag & 0x02) ? " CT1" : "",
+ 				(flag & 0x04) ? " VN3" : "",
+@@ -980,7 +981,7 @@ static int __kcapi ctr_info (
+ 		}
+ 		flag = ((unsigned char *) (ctrl->profile.manu))[5];
+ 		if (flag) {
+-			pprintf(page, &len, "%-16s%s%s%s%s\n", "linetype",
++		    seq_printf(m, "%-16s%s%s%s%s\n", "linetype",
+ 				(flag & 0x01) ? " point to point" : "",
+ 				(flag & 0x02) ? " point to multipoint" : "",
+ 				(flag & 0x08) ? " leased line without D-channel" : "",
+@@ -989,14 +990,26 @@ static int __kcapi ctr_info (
+ 		}
+ 	}
+ 
+-	if (len < ofs) {
+-		return 0;
+-	}
+-	*eof = 1;
+-	*start = page - ofs;
+-	return ((count < len - ofs) ? count : len - ofs);
++   return 0;
+ } /* ctr_info */
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static int ctr_proc_open(struct inode *inode, struct file *file)
++{
++       return single_open(file, ctr_info, PDE_DATA(inode));
++}
++
++const struct file_operations ctr_proc_fops = {
++       .owner          = THIS_MODULE,
++       .open           = ctr_proc_open,
++       .read           = seq_read,
++       .llseek         = seq_lseek,
++       .release        = single_release,
++};
++#else
++	EXPORT_SYMBOL(ctr_proc_show);
++#endif
++
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ static void init_ctrl (void) {
+@@ -1025,8 +1038,12 @@ static int setup_ctrl (card_p cp, int ix
+ 	cptr->register_appl	= register_appl;
+ 	cptr->release_appl	= release_appl;
+ 	cptr->send_message	= send_msg;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
+ 	cptr->procinfo		= proc_info;
+-	cptr->ctr_read_proc	= ctr_info;
++	cptr->proc_fops     = &ctr_proc_fops;
++#else
++	cptr->proc_show     = ctr_proc_show;
++#endif
+ 	snprintf (cptr->name, 32, "%s-%08lx-%02u", TARGET, cp->addr_mmio, cp->irq);
+ 
+ 	if (0 != (res = attach_capi_ctr (cptr))) {
+@@ -1326,7 +1343,6 @@ static __attr void __stack scheduler_con
+ static int sched_thread (void * arg) {
+ 
+ 	UNUSED_ARG (arg);
+-	daemonize (TARGET);
+ 	snprintf (current->comm, 16, "%s_s", TARGET);
+ 	LOG("Starting scheduler thread '%s'...\n", current->comm);
+ 	while (atomic_read (&thread_flag)) {
+@@ -1367,14 +1383,14 @@ static int sched_thread (void * arg) {
+ 		}
+ 	}
+ 	LOG("Scheduler thread stopped.\n");
+-	up (&hotplug);
++	complete(&hotplug);
+ 	return 0;
+ } /* sched_thread */
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ static int make_thread (void) {
+-
++	struct task_struct *ts;
+ 	if (-1 != thread_pid) {
+ 		LOG("Thread[%d] already running.\n", thread_pid);
+ 		return thread_pid;
+@@ -1382,8 +1398,14 @@ static int make_thread (void) {
+ 	atomic_set (&thread_flag, 1);
+ 	atomic_set (&thread_capi_flag, 0);
+ 	init_waitqueue_head (&capi_wait);
+-	thread_pid = kernel_thread (sched_thread, NULL, 0);
+-	LOG("Thread[%d] started.\n", thread_pid);
++	ts = kthread_run (sched_thread, NULL, SHORT_LOGO "-sched");
++	if (IS_ERR(ts)) {
++		LOG("Thread not started: error %ld\n", PTR_ERR(ts));
++	}
++	else {
++		thread_pid = ts->pid;
++		LOG("Thread[%d] started.\n", thread_pid);
++	}
+ 	return thread_pid;
+ } /* make_thread */
+ 
+@@ -1392,7 +1414,7 @@ static int make_thread (void) {
+ static void kill_thread (void) {
+ 
+ 	atomic_set (&thread_flag, 0);
+-	if (NULL == find_task_by_pid (thread_pid)) {
++	if (NULL == find_pid_ns(thread_pid, PIDTYPE_PID)) {
+ 		LOG("Thread[%d] has died before!\n", thread_pid);
+ 	} else {
+ 		if (!atomic_read (&thread_capi_flag)) {
+@@ -1401,7 +1423,7 @@ static void kill_thread (void) {
+ 			SCHED_WAKEUP;
+ 		}
+ 		LOG("Thread signalled, waiting for termination...\n");
+-		down (&hotplug);
++		wait_for_completion(&hotplug);
+ 		LOG("Thread[%d] terminated.\n", thread_pid);
+ 	}
+ 	thread_pid = -1;
+@@ -1549,7 +1571,7 @@ static void rx_task (unsigned long data)
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static irqreturn_t irq_handler (int irq, void * args, struct pt_regs * regs) {
++static irqreturn_t irq_handler (int irq, void * args) {
+ 	unsigned long	flags;
+ 	int		tx_flag	= 0;
+ 	int		rx_flag	= 0;
+@@ -1557,7 +1579,6 @@ static irqreturn_t irq_handler (int irq,
+ 	card_p		cp;
+ 	
+ 	UNUSED_ARG (irq);
+-	UNUSED_ARG (regs);
+ 	if (capi_card != (card_p) args) {
+ 		return IRQ_NONE;
+ 	}
+@@ -1797,10 +1818,10 @@ void __stack init (unsigned len, void (_
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-int driver_init (void) {
++int avm_init (void) {
+ 
+ 	return (NULL != (capi_lib = link_library (&capi_card)));
+-} /* driver_init */
++} /* avm_init */
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.h km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.h
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.h	2019-03-13 19:10:55.331416887 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/driver.h	2019-03-13 19:28:31.550138419 +0100
+@@ -23,7 +23,6 @@
+ #ifndef __have_driver_h__
+ #define __have_driver_h__
+ 
+-#include <linux/config.h>
+ #include <linux/pci.h>
+ #include <linux/list.h>
+ #include <linux/skbuff.h>
+@@ -139,7 +138,7 @@ extern void init (unsigned, void (__attr
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-extern int driver_init (void);
++extern int avm_init (void);
+ extern void driver_exit (void);
+ 
+ #endif
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/lib.c km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/lib.c
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/lib.c	2019-03-13 19:10:55.331416887 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/lib.c	2019-03-16 16:54:47.876524612 +0100
+@@ -529,10 +529,10 @@ void __attr os_timer_poll (void) {
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ #if defined (DRIVER_TYPE_DSL)
+-static __attr int os_gettimeofday (struct timeval * tv) {
++static __attr int os_gettimeofday (ktime_t * tv) {
+ 
+ 	if (NULL != tv) {
+-		do_gettimeofday (tv);
++		tv = ktime_get();
+ 	}
+ 	return 0;
+ } /* os_gettimeofday */
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/libdefs.h km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/libdefs.h
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/libdefs.h	2019-03-13 19:10:55.331416887 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/libdefs.h	2019-03-16 16:55:04.808524283 +0100
+@@ -105,7 +105,7 @@ typedef struct __lib {
+ 	int (__attr * timer_stop) (unsigned);
+ 	void (__attr * timer_poll) (void);
+ #if defined (DRIVER_TYPE_DSL)
+-	int (__attr * get_time) (struct timeval *);
++	int (__attr * get_time) (ktime_t *);
+ #endif
+ 
+ #if defined (DRIVER_TYPE_DSL_TM) || defined (DRIVER_TYPE_DSL_USB)
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/main.c km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/main.c
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/main.c	2019-03-13 19:10:55.331416887 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/main.c	2019-03-13 19:28:31.550138419 +0100
+@@ -21,10 +21,13 @@
+  */
+ 
+ #include <stdarg.h>
++#include <linux/version.h>
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0))
+ #include <asm/uaccess.h>
++#else
++#include <linux/uaccess.h>
++#endif
+ #include <linux/pci.h>
+-#include <linux/config.h>
+-#include <linux/version.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/moduleparam.h>
+@@ -102,7 +105,7 @@ void dec_use_count (void) {
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static int __devinit fcdsl_probe (
++static int fcdsl_probe (
+ 	struct pci_dev *		dev,
+ 	const struct pci_device_id *	id
+ ) {
+@@ -115,7 +118,7 @@ static int __devinit fcdsl_probe (
+ 		return -ENODEV;
+ 	}
+ 	NOTE( "Loading...\n");
+-	if (!driver_init ()) {
++	if (!avm_init ()) {
+ 		ERROR("Error: Driver library not available.\n");
+ 		ERROR("Not loaded.\n");
+ 		return -ENOSYS;
+@@ -134,7 +137,7 @@ static int __devinit fcdsl_probe (
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static void __devexit fcdsl_remove (struct pci_dev * dev) {
++static void fcdsl_remove (struct pci_dev * dev) {
+ 	card_t *	card;
+ 
+ 	card = (card_t *) pci_get_drvdata (dev);
+@@ -158,7 +161,7 @@ static struct pci_driver	fcdsl_driver =
+ 	.name		= TARGET,
+ 	.id_table	= fcdsl_id_table,
+ 	.probe		= fcdsl_probe,
+-	.remove		= __devexit_p(fcdsl_remove),
++	.remove		= fcdsl_remove,
+ } ;
+ 
+ /*---------------------------------------------------------------------------*\
+@@ -186,7 +189,6 @@ static int __init fcdsl_init (void) {
+ 		lib_strncpy (REVISION, DRIVER_REV, sizeof (REVISION));
+ 	}
+ 	NOTE("%s, revision %s\n", DRIVER_LOGO, REVISION);
+-        NOTE("%s built on %s at %s)\n", TARGET, __DATE__, __TIME__);
+ 
+ 	/*-------------------------------------------------------------------*\
+ 	 * 64 bit CAPI is not supported yet.
+@@ -196,7 +198,7 @@ static int __init fcdsl_init (void) {
+ 		return -ENOSYS;
+ 	}
+ 
+-	if (0 == (err = pci_module_init (&fcdsl_driver))) {
++	if (0 == (err = pci_register_driver (&fcdsl_driver))) {
+ 		LOG("PCI driver registered.\n");
+ 		register_capi_driver (&fcdsl_capi_driver);
+ 		LOG("CAPI driver registered.\n");
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/Makefile km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/Makefile
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/Makefile	2019-03-13 19:10:55.331416887 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/Makefile	2019-03-13 19:28:31.550138419 +0100
+@@ -47,5 +47,5 @@ endif
+ 
+ 
+ install:
+-		$(MAKE) -C $(KDIR) modules_add SUBDIRS=$(CURDIR)
++		$(MAKE) -C $(KDIR) modules_install SUBDIRS=$(CURDIR)
+ 
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.c km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.c
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.c	2019-03-13 19:10:55.343416736 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.c	2019-03-16 16:52:51.748526868 +0100
+@@ -110,10 +110,10 @@ static unsigned		lib_heap_size	= 0;
+ #define	FENCE2_OK(h,m)	(*(unsigned *)(((char *) m)+(h)->size)==FENCE_TAG)
+ 
+ static unsigned		alloc_count	= 0;
+-static spinlock_t	track_lock	= SPIN_LOCK_UNLOCKED;
++static DEFINE_SPINLOCK(track_lock);
+ 
+ #if !defined (NDEBUG) && defined (LOG_TIMER)
+-static struct timeval	zero_time;
++static ktime_t	zero_time;
+ #endif
+ #endif
+ 
+@@ -394,8 +394,8 @@ void setup_timer (dbg_timer * t, long ds
+ \*---------------------------------------------------------------------------*/
+ int check_timer (dbg_timer * t) {
+ 	int		res = 1;
+-	struct timeval	now;
+-	struct timeval	delta;
++	ktime_t	now;
++	ktime_t	delta;
+ 	
+ 	assert (t != NULL);
+ 	do_gettimeofday (&now);
+@@ -418,10 +418,10 @@ int check_timer (dbg_timer * t) {
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-int check_timer_cb (dbg_timer * t, void (* callback) (dbg_timer *, struct timeval *)) {
++int check_timer_cb (dbg_timer * t, void (* callback) (dbg_timer *, ktime_t *)) {
+ 	int		res = 1;
+-	struct timeval	now;
+-	struct timeval	delta;
++	ktime_t	now;
++	ktime_t	delta;
+ 	
+ 	assert (t != NULL);
+ 	do_gettimeofday (&now);
+@@ -442,7 +442,7 @@ int check_timer_cb (dbg_timer * t, void
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ void touch_timer (dbg_timer * t) {
+-	struct timeval	temp, delta;
++	ktime_t	temp, delta;
+ 	
+ 	assert (t != NULL);
+ 	do_gettimeofday (&temp);
+@@ -453,7 +453,7 @@ void touch_timer (dbg_timer * t) {
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ void start_watch (dbg_timer * w) {
+-	struct timeval	temp, delta;
++	ktime_t	temp, delta;
+ 	
+ 	assert (w != NULL);
+ 	do_gettimeofday (&temp);
+@@ -464,7 +464,7 @@ void start_watch (dbg_timer * w) {
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ void stop_watch (dbg_timer * w) {
+-	struct timeval	temp, delta;
++	ktime_t	temp, delta;
+ 	
+ 	assert (w != NULL);
+ 	do_gettimeofday (&temp);
+@@ -529,7 +529,7 @@ int lock_init (lock_t * plock) {
+ 		ERROR("Could not allocate lock structure!!!\n");
+ 		return 0;
+ 	}
+-	tmp->lock = SPIN_LOCK_UNLOCKED;
++	     spin_lock_init(&tmp->lock);
+ 	*plock = tmp;
+ 	return 1;
+ } /* lock_init */
+diff -purN km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.h km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.h
+--- km_fcdsl-2.6-37.i586/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.h	2019-03-13 19:10:55.343416736 +0100
++++ km_fcdsl-2.6-37.i586-fli4l-dsl/usr/src/kernel-modules/fcdsl/src/src.fcdsl/tools.h	2019-03-16 16:55:15.764524070 +0100
+@@ -71,16 +71,6 @@ extern void vlprintf (const char *, cons
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-#ifndef atomic_xchg
+-static inline unsigned long atomic_xchg (
+-	volatile atomic_t *	v, 
+-	unsigned		value
+-) {
+-	return __xchg (value, &v->counter, sizeof (unsigned));
+-} /* atomic_xchg */
+-#endif
+-/*---------------------------------------------------------------------------*\
+-\*---------------------------------------------------------------------------*/
+ #ifndef NDEBUG
+ extern unsigned hallocated (void);
+ extern int hvalid (void *);
+@@ -146,8 +136,8 @@ extern void memdump (const void *, unsig
+ typedef struct {
+ 
+ 	const char *	name;
+-	struct timeval	t;
+-	struct timeval	d;
++	ktime_t	t;
++	ktime_t	d;
+ } dbg_timer;
+ 
+ #define	PRINT_TIMER(x)		log ( \
+@@ -174,7 +164,7 @@ extern void timers_stop (void);
+ \*---------------------------------------------------------------------------*/
+ extern void setup_timer (dbg_timer *, long, long);
+ extern int check_timer (dbg_timer *);
+-extern int check_timer_cb (dbg_timer *, void (*) (dbg_timer *, struct timeval *));
++extern int check_timer_cb (dbg_timer *, void (*) (dbg_timer *, ktime_t *));
+ extern void touch_timer (dbg_timer *);
+ 
+ extern void start_watch (dbg_timer *);

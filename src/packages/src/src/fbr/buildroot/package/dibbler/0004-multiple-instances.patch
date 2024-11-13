@@ -1,0 +1,310 @@
+diff -purN dibbler-1.0.1.orig/Misc/Portable.h dibbler-1.0.1/Misc/Portable.h
+--- dibbler-1.0.1.orig/Misc/Portable.h	2015-08-09 18:34:06.000000000 +0200
++++ dibbler-1.0.1/Misc/Portable.h	2016-06-20 09:31:24.328036847 +0200
+@@ -150,17 +150,17 @@ struct link_state_notify_t
+ #define DEFAULT_CLNTCONF_FILE "/etc/dibbler/client.conf"
+ #define DEFAULT_CLNTPID_FILE  "/var/lib/dibbler/client.pid"
+ #define DEFAULT_CLNTLOG_FILE  "/var/log/dibbler/dibbler-client.log"
++#define DEFAULT_SRVCONF_FILE  "/etc/dibbler/server.conf"
++#define DEFAULT_SRVPID_FILE   "/var/lib/dibbler/server.pid"
++#define DEFAULT_SRVLOG_FILE   "/var/log/dibbler/dibbler-server.log"
++#define DEFAULT_RELCONF_FILE  "/etc/dibbler/relay.conf"
++#define DEFAULT_RELPID_FILE   "/var/lib/dibbler/relay.pid"
++#define DEFAULT_RELLOG_FILE   "/var/log/dibbler/dibbler-relay.log"
+ 
+ #define DEFAULT_SCRIPT     ""
+-#define SRVCONF_FILE       "/etc/dibbler/server.conf"
+-#define RELCONF_FILE       "/etc/dibbler/relay.conf"
+ #define RESOLVCONF_FILE    "/etc/resolv.conf"
+ #define NTPCONF_FILE       "/etc/ntp.conf"
+ #define RADVD_FILE         "/etc/dibbler/radvd.conf"
+-#define SRVPID_FILE        "/var/lib/dibbler/server.pid"
+-#define RELPID_FILE        "/var/lib/dibbler/relay.pid"
+-#define SRVLOG_FILE        "/var/log/dibbler/dibbler-server.log"
+-#define RELLOG_FILE        "/var/log/dibbler/dibbler-relay.log"
+ #define CLNT_AAASPI_FILE   "/var/lib/dibbler/AAA/AAA-SPI"
+ #define SRV_KEYMAP_FILE    "/var/lib/dibbler/AAA/keys-mapping"
+ #define NULLFILE           "/dev/null"
+diff -purN dibbler-1.0.1.orig/Misc/Portable.h.in dibbler-1.0.1/Misc/Portable.h.in
+--- dibbler-1.0.1.orig/Misc/Portable.h.in	2015-08-09 18:31:26.000000000 +0200
++++ dibbler-1.0.1/Misc/Portable.h.in	2016-06-20 09:31:30.178127847 +0200
+@@ -150,17 +150,17 @@ struct link_state_notify_t
+ #define DEFAULT_CLNTCONF_FILE "/etc/dibbler/client.conf"
+ #define DEFAULT_CLNTPID_FILE  "/var/lib/dibbler/client.pid"
+ #define DEFAULT_CLNTLOG_FILE  "/var/log/dibbler/dibbler-client.log"
++#define DEFAULT_SRVCONF_FILE  "/etc/dibbler/server.conf"
++#define DEFAULT_SRVPID_FILE   "/var/lib/dibbler/server.pid"
++#define DEFAULT_SRVLOG_FILE   "/var/log/dibbler/dibbler-server.log"
++#define DEFAULT_RELCONF_FILE  "/etc/dibbler/relay.conf"
++#define DEFAULT_RELPID_FILE   "/var/lib/dibbler/relay.pid"
++#define DEFAULT_RELLOG_FILE   "/var/log/dibbler/dibbler-relay.log"
+ 
+ #define DEFAULT_SCRIPT     ""
+-#define SRVCONF_FILE       "/etc/dibbler/server.conf"
+-#define RELCONF_FILE       "/etc/dibbler/relay.conf"
+ #define RESOLVCONF_FILE    "/etc/resolv.conf"
+ #define NTPCONF_FILE       "/etc/ntp.conf"
+ #define RADVD_FILE         "/etc/dibbler/radvd.conf"
+-#define SRVPID_FILE        "/var/lib/dibbler/server.pid"
+-#define RELPID_FILE        "/var/lib/dibbler/relay.pid"
+-#define SRVLOG_FILE        "/var/log/dibbler/dibbler-server.log"
+-#define RELLOG_FILE        "/var/log/dibbler/dibbler-relay.log"
+ #define CLNT_AAASPI_FILE   "/var/lib/dibbler/AAA/AAA-SPI"
+ #define SRV_KEYMAP_FILE    "/var/lib/dibbler/AAA/keys-mapping"
+ #define NULLFILE           "/dev/null"
+diff -purN dibbler-1.0.1.orig/Port-linux/dibbler-relay.cpp dibbler-1.0.1/Port-linux/dibbler-relay.cpp
+--- dibbler-1.0.1.orig/Port-linux/dibbler-relay.cpp	2015-02-28 19:11:38.000000000 +0100
++++ dibbler-1.0.1/Port-linux/dibbler-relay.cpp	2016-06-20 09:31:24.328036847 +0200
+@@ -21,6 +21,9 @@ TDHCPRelay * ptr = 0;
+ 
+ /// the default working directory
+ std::string WORKDIR(DEFAULT_WORKDIR);
++std::string RELCONF_FILE(DEFAULT_RELCONF_FILE);
++std::string RELLOG_FILE(DEFAULT_RELLOG_FILE);
++std::string RELPID_FILE(DEFAULT_RELPID_FILE);
+ 
+ void signal_handler(int n) {
+     Log(Crit) << "Signal received. Shutting down." << LogEnd;
+@@ -53,16 +56,16 @@ int status() {
+ }
+ 
+ int run() {
+-    if (!init(RELPID_FILE, WORKDIR.c_str())) {
+-	die(RELPID_FILE);
++    if (!init(RELPID_FILE.c_str(), WORKDIR.c_str())) {
++	die(RELPID_FILE.c_str());
+ 	return -1;
+     }
+ 
+-    TDHCPRelay relay(RELCONF_FILE);
++    TDHCPRelay relay(RELCONF_FILE.c_str());
+     
+     ptr = &relay;
+     if (ptr->isDone()) {
+-	die(RELPID_FILE);
++	die(RELPID_FILE.c_str());
+ 	return -1;
+     }
+     
+@@ -72,7 +75,7 @@ int run() {
+     
+     ptr->run();
+     
+-    die(RELPID_FILE);
++    die(RELPID_FILE.c_str());
+     return 0;
+ }
+ 
+@@ -86,35 +89,57 @@ int help() {
+ 	 << " install   - Not available in Linux/Unix systems." << endl
+ 	 << " uninstall - Not available in Linux/Unix systems." << endl
+ 	 << " run       - run in the console" << endl
+-	 << " help      - displays usage info." << endl;
++	 << " help      - displays usage info." << endl
++         << endl
++         << " OPTION = -w <directory>" << endl
++         << " -w <directory> - specify the relay's working directory." << endl;
+     return 0;
+ }
+ 
+ int main(int argc, char * argv[])
+ {
+-    char command[256];
+-    int result=-1;
++    int result = -1;
+ 
+-    logStart("(RELAY, Linux port)", "Relay", RELLOG_FILE);
+-
+-    // parse command line parameters
+-    if (argc>1) {
+-	int len = strlen(argv[1])+1;
+-	if (len > 255)
+-	    len = 255;
+-	strncpy(command, argv[1], len);
+-    } else {
+-	memset(command,0,256);
++    // If at least one parameter (command) is not specified, then...
++    if (argc < 2) {
++        help();
++        return EXIT_FAILURE;
++    }
++
++    // The first parameter is command
++    const char* command = argv[1];
++
++    // Let's parse additional commands if specified
++    if (argc > 2) {
++        int c;
++
++        // Let's go through any additional command line options.
++        while ((c = getopt(argc-1, argv + 1, "w:")) != -1) {
++            switch (c)
++            {
++            case 'w':
++                WORKDIR = string(optarg);
++                RELPID_FILE = string(optarg) + "/relay.pid";
++                RELCONF_FILE = string(optarg) + "/relay.conf";
++                RELLOG_FILE = string(optarg) + "/relay.log";
++                break;
++            default:
++                help();
++                return result ? EXIT_FAILURE: EXIT_SUCCESS;
++            }
++        }
+     }
+ 
++    logStart("(RELAY, Linux port)", "Relay", RELLOG_FILE.c_str());
++
+     if (!strncasecmp(command,"start",5) ) {
+-	result = start(RELPID_FILE, WORKDIR.c_str());
++	result = start(RELPID_FILE.c_str(), WORKDIR.c_str());
+     } else
+     if (!strncasecmp(command,"run",3) ) {
+ 	result = run();
+     } else
+     if (!strncasecmp(command,"stop",4)) {
+-	result = stop(RELPID_FILE);
++	result = stop(RELPID_FILE.c_str());
+     } else
+     if (!strncasecmp(command,"status",6)) {
+ 	result = status();
+diff -purN dibbler-1.0.1.orig/Port-linux/dibbler-server.cpp dibbler-1.0.1/Port-linux/dibbler-server.cpp
+--- dibbler-1.0.1.orig/Port-linux/dibbler-server.cpp	2015-07-30 00:07:38.000000000 +0200
++++ dibbler-1.0.1/Port-linux/dibbler-server.cpp	2016-06-20 09:31:24.328036847 +0200
+@@ -23,6 +23,9 @@ TDHCPServer * ptr = 0;
+ 
+ /// the default working directory
+ std::string WORKDIR(DEFAULT_WORKDIR);
++std::string SRVCONF_FILE(DEFAULT_SRVCONF_FILE);
++std::string SRVLOG_FILE(DEFAULT_SRVLOG_FILE);
++std::string SRVPID_FILE(DEFAULT_SRVPID_FILE);
+ 
+ void signal_handler(int n) {
+     Log(Crit) << "Signal received. Shutting down." << LogEnd;
+@@ -56,16 +59,16 @@ int status() {
+ }
+ 
+ int run() {
+-    if (!init(SRVPID_FILE, WORKDIR.c_str())) {
+-	die(SRVPID_FILE);
++    if (!init(SRVPID_FILE.c_str(), WORKDIR.c_str())) {
++	die(SRVPID_FILE.c_str());
+ 	return -1;
+     }
+ 
+-    TDHCPServer srv(SRVCONF_FILE);
++    TDHCPServer srv(SRVCONF_FILE.c_str());
+     
+     ptr = &srv;
+     if (ptr->isDone()) {
+-	die(SRVPID_FILE);
++	die(SRVPID_FILE.c_str());
+ 	return -1;
+     }
+     
+@@ -75,7 +78,7 @@ int run() {
+     
+     ptr->run();
+ 
+-    die(SRVPID_FILE);
++    die(SRVPID_FILE.c_str());
+     return 0;
+ }
+ 
+@@ -90,35 +93,57 @@ int help() {
+ 	 << " install   - Not available in Linux/Unix systems." << endl
+ 	 << " uninstall - Not available in Linux/Unix systems." << endl
+ 	 << " run       - run in the console" << endl
+-	 << " help      - displays usage info." << endl;
++	 << " help      - displays usage info." << endl
++         << endl
++         << " OPTION = -w <directory>" << endl
++         << " -w <directory> - specify the server's working directory." << endl;
+     return 0;
+ }
+ 
+ int main(int argc, char * argv[])
+ {
+-    char command[256];
+-    int result=-1;
++    int result = -1;
+ 
+-    logStart("(SERVER, Linux port)", "Server", SRVLOG_FILE);
+-
+-    // parse command line parameters
+-    if (argc>1) {
+-	int len = strlen(argv[1])+1;
+-	if (len>255)
+-	    len = 255;
+-	strncpy(command,argv[1],len);
+-    } else {
+-	memset(command,0,256);
++    // If at least one parameter (command) is not specified, then...
++    if (argc < 2) {
++        help();
++        return EXIT_FAILURE;
++    }
++
++    // The first parameter is command
++    const char* command = argv[1];
++
++    // Let's parse additional commands if specified
++    if (argc > 2) {
++        int c;
++
++        // Let's go through any additional command line options.
++        while ((c = getopt(argc-1, argv + 1, "w:")) != -1) {
++            switch (c)
++            {
++            case 'w':
++                WORKDIR = string(optarg);
++                SRVPID_FILE = string(optarg) + "/server.pid";
++                SRVCONF_FILE = string(optarg) + "/server.conf";
++                SRVLOG_FILE = string(optarg) + "/server.log";
++                break;
++            default:
++                help();
++                return result ? EXIT_FAILURE: EXIT_SUCCESS;
++            }
++        }
+     }
+ 
++    logStart("(SERVER, Linux port)", "Server", SRVLOG_FILE.c_str());
++
+     if (!strncasecmp(command,"start",5) ) {
+-	result = start(SRVPID_FILE, WORKDIR.c_str());
++	result = start(SRVPID_FILE.c_str(), WORKDIR.c_str());
+     } else
+     if (!strncasecmp(command,"run",3) ) {
+ 	result = run();
+     } else
+     if (!strncasecmp(command,"stop",4)) {
+-	result = stop(SRVPID_FILE);
++	result = stop(SRVPID_FILE.c_str());
+     } else
+     if (!strncasecmp(command,"status",6)) {
+ 	result = status();
+diff -purN dibbler-1.0.1.orig/RelCfgMgr/RelCfgMgr.cpp dibbler-1.0.1/RelCfgMgr/RelCfgMgr.cpp
+--- dibbler-1.0.1.orig/RelCfgMgr/RelCfgMgr.cpp	2015-07-30 23:40:48.000000000 +0200
++++ dibbler-1.0.1/RelCfgMgr/RelCfgMgr.cpp	2016-06-20 09:39:40.075724553 +0200
+@@ -25,6 +25,8 @@ int TRelCfgMgr::NextRelayID = RELAY_MIN_
+ 
+ TRelCfgMgr * TRelCfgMgr::Instance = 0;
+ 
++extern std::string RELCONF_FILE;
++
+ TRelCfgMgr::TRelCfgMgr(const std::string& cfgFile, const std::string& xmlFile)
+     :TCfgMgr(), XmlFile(xmlFile), ClientLinkLayerAddress_(false)
+ {
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp	2016-06-20 09:32:13.418800254 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp	2016-06-20 09:37:32.243746699 +0200
+@@ -36,6 +36,8 @@ using namespace std;
+ TSrvCfgMgr * TSrvCfgMgr::Instance = 0;
+ int TSrvCfgMgr::NextRelayID = RELAY_MIN_IFINDEX;
+ 
++extern std::string SRVCONF_FILE;
++
+ TSrvCfgMgr::TSrvCfgMgr(const std::string& cfgFile, const std::string& xmlFile)
+     :TCfgMgr(), XmlFile(xmlFile), Reconfigure_(false), PerformanceMode_(false),
+      DropUnicast_(false)

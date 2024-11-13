@@ -1,0 +1,42 @@
+9001-mISDNcapid-honour-localstatedir-when-setting-MISDN_C.patch (kristov)
+* Makes misdnuser honour --localstatedir when setting MISDN_CAPI_SOCKET_DIR.
+
+9005-mISDNcapid-fix-HDLC-framing-by-implementing-AHDLC-en.patch (kristov)
+* Normally, HDLC frames are passed directly through the PTY master/slave
+  connection, using the N_SYNC_PPP or N_HDLC line discipline for the tty.
+  However, this does not guarantee that frames are never merged, as merging can
+  happen in the Linux tty layer even before the line discipline is invoked. The
+  author of the PPPoE user-mode client for Linux, David F. Skoll, wrote:
+
+   There is an option to pppd and pppoe which enables synchronous PPP. In this
+   case, no byte-stuffing is performed. However, correct operation in this mode
+   relies on pppoe reading exactly one frame at a time from standard input.
+   (There are no frame boundary markers, so pppoe assumes that it gets a
+   complete frame for each read system call.) While this seems to work on fast
+   machines, it is not recommended, because delays in scheduling in pppoe can
+   cause serious problems.
+   (http://www.linuxshowcase.org/2000/2000papers/papers/skoll/skoll_html/)
+
+  The same problem can arise in the context of mISDNcapid because this daemon
+  also uses terminals for data sending and receiving. The only solution that is
+  guaranteed to work is to use asynchronous HDLC (AHDLC) which inserts explicit
+  frame boundaries.
+
+  This commit optionally enables mISDNcapid to assume that HDLC B3 data is
+  encoded using AHDLC, i.e. that the application uses the N_PPP line discipline.
+  It defines a new flag CAPIFLAG_AHDLC which, if enabled, causes mISDNcapid to
+  decode B3 data received from the application before sending the data over the
+  ISDN line, and, conversely, to encode B3 data received from the ISDN end
+  before sending the data to the application. This way, an application like the
+  capiplugin for pppd can simply set this new flag and force pppd to use AHDLC,
+  guaranteeing correct framing regardless of any timing issues that may arise.
+
+  Another option, namely to implement that encoding/decoding in the application
+  itself (e.g. in capiplugin) has been tested and rejected due to bad
+  performance, because in this case capiplugin was forced to give up hijacking
+  mode and to send B3 data via the usual CAPI mechanisms (CAPI_DATA_B3_REQ)
+  which slowed down the communication considerably and caused pppd/capiplugin to
+  consume much more CPU time.
+
+9006-mISDNcapid-remove-irritating-timeout-warning.patch (kristov)
+* Removes a timeout warning that fills up the log file without being helpful.

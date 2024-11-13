@@ -1,0 +1,151 @@
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp	2016-02-17 22:44:39.397547526 +0100
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp	2016-02-17 22:45:27.283980009 +0100
+@@ -209,10 +209,17 @@ bool TSrvCfgMgr::matchParsedSystemInterf
+             ifaceIface = SrvIfaceMgr().getIfaceByID(cfgIface->getID());
+         }
+         if (!ifaceIface) {
+-            Log(Crit) << "Interface " << cfgIface->getFullName()
+-                      << " is not present in the system or does not support IPv6."
+-                      << LogEnd;
+-            return false;
++            if (!this->inactiveMode()) {
++                Log(Crit) << "Interface " << cfgIface->getFullName()
++                          << " is not present in the system or does not support IPv6."
++                          << LogEnd;
++                return false;
++            } else {
++                Log(Notice) << "Interface " << cfgIface->getFullName()
++                            << " does not exist yet, skipping it for now." << LogEnd;
++                this->addIface(cfgIface);
++                this->makeInactiveIface(cfgIface, true); // move it to InactiveLst
++            }
+         }
+ 
+         // Complete name and ID (one of them usually misses depending on
+@@ -228,7 +235,7 @@ bool TSrvCfgMgr::matchParsedSystemInterf
+                 Log(Notice) << "Interface " << ifaceIface->getFullName()
+                             << " is not operational yet (does not have link scope address), skipping it for now." << LogEnd;
+                 this->addIface(cfgIface);
+-                this->makeInactiveIface(cfgIface->getID(), true); // move it to InactiveLst
++                this->makeInactiveIface(cfgIface, true); // move it to InactiveLst
+                 continue;
+             }
+ 
+@@ -249,7 +256,7 @@ bool TSrvCfgMgr::matchParsedSystemInterf
+                 Log(Notice) << "Interface " << ifaceIface->getFullName()
+                             << " is not operational yet (link-scope address is not ready), skipping it for now." << LogEnd;
+                 addIface(cfgIface);
+-                makeInactiveIface(cfgIface->getID(), true); // move it to InactiveLst
++                makeInactiveIface(cfgIface, true); // move it to InactiveLst
+                 continue;
+             }
+ 
+@@ -280,21 +287,21 @@ void TSrvCfgMgr::addIface(SPtr<TSrvCfgIf
+  * @param ifindex Index of the moving interface
+  * @param inactive true for makeing inactive, false for makeing active
+  */
+-void TSrvCfgMgr::makeInactiveIface(int ifindex, bool inactive) {
++void TSrvCfgMgr::makeInactiveIface(SPtr<TSrvCfgIface> iface, bool inactive) {
+     SPtr<TSrvCfgIface> x;
+ 
+     if (inactive)
+     {
+         SrvCfgIfaceLst.first();
+         while (x= SrvCfgIfaceLst.get()) {
+-            if (x->getID() == ifindex) {
++            if ((Ptr*) x == (Ptr*) iface) {
+                 Log(Info) << "Switching " << x->getFullName() << " to inactive-mode." << LogEnd;
+                 SrvCfgIfaceLst.del();
+                 InactiveLst.append(x);
+                 return;
+             }
+         }
+-        Log(Error) << "Unable to switch interface ifindex=" << ifindex << " to inactive-mode: interface not found." << LogEnd;
++        Log(Error) << "Unable to switch interface " << iface->getFullName() << " to inactive-mode: interface not found." << LogEnd;
+         // something is wrong, VERY wrong
+     }
+ 
+@@ -302,7 +309,7 @@ void TSrvCfgMgr::makeInactiveIface(int i
+     {
+         InactiveLst.first();
+         while (x= InactiveLst.get()) {
+-            if (x->getID() == ifindex) {
++            if ((Ptr*) x == (Ptr*) iface) {
+                 Log(Info) << "Switching " << x->getFullName() << " to normal mode." << LogEnd;
+                 InactiveLst.del();
+                 InactiveLst.first();
+@@ -311,7 +318,7 @@ void TSrvCfgMgr::makeInactiveIface(int i
+             }
+         }
+ 
+-        Log(Error) << "Unable to switch interface ifindex=" << ifindex << " from inactive-mode to normal operation: interface not found." << LogEnd;
++        Log(Error) << "Unable to switch interface " << iface->getFullName() << " from inactive-mode to normal operation: interface not found." << LogEnd;
+     }
+ }
+ 
+@@ -348,10 +355,18 @@ SPtr<TSrvCfgIface> TSrvCfgMgr::checkInac
+     SPtr<TIfaceIface> iface;
+     InactiveLst.first();
+     while (x = InactiveLst.get()) {
+-        iface = SrvIfaceMgr().getIfaceByID(x->getID());
++        if (x->getID()==-1) {
++            // ID==-1 means that user referenced to interface by name
++            iface = SrvIfaceMgr().getIfaceByName(x->getName());
++        } else {
++            iface = SrvIfaceMgr().getIfaceByID(x->getID());
++        }
++
+         if (!iface) {
++#if 0 /* ignore non-existing interfaces */
+             Log(Error) << "TSrvCfgMgr::checkInactiveIfaces(): " <<
+                 "Unable to find interface with ifindex=" << x->getID() << LogEnd;
++#endif
+             continue;
+         }
+         iface->firstLLAddress();
+@@ -367,7 +382,7 @@ SPtr<TSrvCfgIface> TSrvCfgMgr::checkInac
+             }
+ 
+ 
+-            makeInactiveIface(x->getID(), false); // move it to InactiveLst
++            makeInactiveIface(x, false); // move it to InactiveLst
+             return x;
+         }
+     }
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h	2016-02-17 22:44:10.769680267 +0100
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h	2016-02-17 22:45:27.283980009 +0100
+@@ -45,7 +45,7 @@ public:
+     SPtr<TSrvCfgIface> getIfaceByName(const std::string& name);
+     long countIface();
+     void addIface(SPtr<TSrvCfgIface> iface);
+-    void makeInactiveIface(int ifindex, bool inactive);
++    void makeInactiveIface(SPtr<TSrvCfgIface> iface, bool inactive);
+     int inactiveIfacesCnt();
+     SPtr<TSrvCfgIface> checkInactiveIfaces();
+ 
+diff -purN dibbler-1.0.1.orig/SrvIfaceMgr/SrvIfaceMgr.cpp dibbler-1.0.1/SrvIfaceMgr/SrvIfaceMgr.cpp
+--- dibbler-1.0.1.orig/SrvIfaceMgr/SrvIfaceMgr.cpp	2015-07-30 22:50:12.000000000 +0200
++++ dibbler-1.0.1/SrvIfaceMgr/SrvIfaceMgr.cpp	2016-02-17 22:45:27.283980009 +0100
+@@ -630,6 +630,20 @@ void TSrvIfaceMgr::redetectIfaces() {
+             Log(Notice) << "Flags on interface " << iface->getFullName() << " has changed (old="
+                         << hex <<iface->getFlags() << ", new=" << ptr->flags << ")." << dec << LogEnd;
+             iface->updateState(ptr);
++        } else if (!iface) {
++            Log(Notice) << "Detected iface " << ptr->name << "/" << ptr->id
++                        << ", MAC=" << this->printMac(ptr->mac, ptr->maclen) << "." << LogEnd;
++
++            SPtr<TIfaceIface> iface(new TIfaceIface(ptr->name,ptr->id,
++                                                    ptr->flags,
++                                                    ptr->mac,
++                                                    ptr->maclen,
++                                                    ptr->linkaddr,
++                                                    ptr->linkaddrcount,
++                                                    ptr->globaladdr,
++                                                    ptr->globaladdrcount,
++                                                    ptr->hardwareType));
++            this->IfaceLst.append((Ptr*) iface);
+         }
+         ptr = ptr->next;
+     }

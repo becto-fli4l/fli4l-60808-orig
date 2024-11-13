@@ -1,0 +1,93 @@
+From: Stefan Wahren <wahrenst@gmx.net>
+Date: Fri, 27 Dec 2019 11:40:56 +0100
+Subject: ARM: bcm: Backport BCM2711 support from upstream
+
+Make the BCM2711 a different machine, but keep it in board_bcm2835.
+
+Signed-off-by: Stefan Wahren <wahrenst@gmx.net>
+---
+ arch/arm/mach-bcm/Kconfig         |  4 ++--
+ arch/arm/mach-bcm/board_bcm2835.c | 17 +++++++++++++++--
+ arch/arm64/Kconfig.platforms      |  5 +++--
+ 3 files changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm/mach-bcm/Kconfig b/arch/arm/mach-bcm/Kconfig
+index 0bcd74aa2c47..f7a614aea129 100644
+--- a/arch/arm/mach-bcm/Kconfig
++++ b/arch/arm/mach-bcm/Kconfig
+@@ -161,7 +161,7 @@ config ARCH_BCM2835
+ 	select GPIOLIB
+ 	select ARM_AMBA
+ 	select ARM_ERRATA_411920 if ARCH_MULTI_V6
+-	select ARM_GIC
++	select ARM_GIC if ARCH_MULTI_V7
+ 	select ARM_TIMER_SP804
+ 	select HAVE_ARM_ARCH_TIMER if ARCH_MULTI_V7
+ 	select TIMER_OF
+@@ -175,7 +175,7 @@ config ARCH_BCM2835
+ 	select ZONE_DMA if ARM_LPAE
+ 	select MFD_CORE
+ 	help
+-	  This enables support for the Broadcom BCM2835 and BCM2836 SoCs.
++	  This enables support for the Broadcom BCM2711 and BCM283x SoCs.
+ 	  This SoC is used in the Raspberry Pi and Roku 2 devices.
+ 
+ config ARCH_BCM_53573
+diff --git a/arch/arm/mach-bcm/board_bcm2835.c b/arch/arm/mach-bcm/board_bcm2835.c
+index 0ec49d857134..b7491ddb6841 100644
+--- a/arch/arm/mach-bcm/board_bcm2835.c
++++ b/arch/arm/mach-bcm/board_bcm2835.c
+@@ -109,6 +109,19 @@ static const char * const bcm2835_compat[] = {
+ #ifdef CONFIG_ARCH_MULTI_V7
+ 	"brcm,bcm2836",
+ 	"brcm,bcm2837",
++#endif
++	NULL
++};
++
++DT_MACHINE_START(BCM2835, "BCM2835")
++	.map_io = bcm2835_map_io,
++	.init_machine = bcm2835_init,
++	.dt_compat = bcm2835_compat,
++	.smp = smp_ops(bcm2836_smp_ops),
++MACHINE_END
++
++static const char * const bcm2711_compat[] = {
++#ifdef CONFIG_ARCH_MULTI_V7
+ 	"brcm,bcm2711",
+ 	// Temporary, for backwards-compatibility with old DTBs
+ 	"brcm,bcm2838",
+@@ -116,12 +129,12 @@ static const char * const bcm2835_compat[] = {
+ 	NULL
+ };
+ 
+-DT_MACHINE_START(BCM2835, "BCM2835")
++DT_MACHINE_START(BCM2711, "BCM2711")
+ #if defined(CONFIG_ZONE_DMA) && defined(CONFIG_ARM_LPAE)
+ 	.dma_zone_size	= SZ_1G,
+ #endif
+ 	.map_io = bcm2835_map_io,
+ 	.init_machine = bcm2835_init,
+-	.dt_compat = bcm2835_compat,
++	.dt_compat = bcm2711_compat,
+ 	.smp = smp_ops(bcm2836_smp_ops),
+ MACHINE_END
+diff --git a/arch/arm64/Kconfig.platforms b/arch/arm64/Kconfig.platforms
+index 90202e5608d1..5494cc42aeae 100644
+--- a/arch/arm64/Kconfig.platforms
++++ b/arch/arm64/Kconfig.platforms
+@@ -37,11 +37,12 @@ config ARCH_BCM2835
+ 	select PINCTRL
+ 	select PINCTRL_BCM2835
+ 	select ARM_AMBA
++	select ARM_GIC
+ 	select ARM_TIMER_SP804
+ 	select HAVE_ARM_ARCH_TIMER
+ 	help
+-	  This enables support for the Broadcom BCM2837 SoC.
+-	  This SoC is used in the Raspberry Pi 3 device.
++	  This enables support for the Broadcom BCM2837 and BCM2711 SoC.
++	  These SoCs are used in the Raspberry Pi 3 and 4 devices.
+ 
+ config ARCH_BCM_IPROC
+ 	bool "Broadcom iProc SoC Family"

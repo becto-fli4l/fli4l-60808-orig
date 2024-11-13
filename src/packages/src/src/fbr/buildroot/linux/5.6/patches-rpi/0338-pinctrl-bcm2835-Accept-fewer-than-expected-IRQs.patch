@@ -1,0 +1,31 @@
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Tue, 25 Feb 2020 17:38:20 +0000
+Subject: pinctrl: bcm2835: Accept fewer than expected IRQs
+
+The downstream .dts files only request two GPIO IRQs. Truncate the
+array of parent IRQs when irq_of_parse_and_map returns 0.
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.com>
+---
+ drivers/pinctrl/bcm/pinctrl-bcm2835.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/pinctrl/bcm/pinctrl-bcm2835.c b/drivers/pinctrl/bcm/pinctrl-bcm2835.c
+index 3e7521126468..d27fda546a80 100644
+--- a/drivers/pinctrl/bcm/pinctrl-bcm2835.c
++++ b/drivers/pinctrl/bcm/pinctrl-bcm2835.c
+@@ -1169,8 +1169,13 @@ static int bcm2835_pinctrl_probe(struct platform_device *pdev)
+ 	 * bank that was firing the IRQ and look up the per-group
+ 	 * and bank data.
+ 	 */
+-	for (i = 0; i < BCM2835_NUM_IRQS; i++)
++	for (i = 0; i < BCM2835_NUM_IRQS; i++) {
+ 		girq->parents[i] = irq_of_parse_and_map(np, i);
++		if (!girq->parents[i]) {
++			girq->num_parents = i;
++			break;
++		}
++	}
+ 	girq->default_type = IRQ_TYPE_NONE;
+ 	girq->handler = handle_level_irq;
+ 

@@ -1,0 +1,51 @@
+diff -purN isdnutils-3.25.orig/capifax/c20msg.c isdnutils-3.25/capifax/c20msg.c
+--- isdnutils-3.25.orig/capifax/c20msg.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25/capifax/c20msg.c	2017-02-09 23:34:27.667970968 +0100
+@@ -26,6 +26,13 @@
+  *
+  */
+ char *Decode_Info (unsigned int Info) {
++	if ((Info & 0xff00) == 0x3400) {
++		/* mISDN does not set bit 7, which is correct as this bit does not
++		 * belong to the ETS 300 102-1/Q.931 cause value, cf. section 4.5.12
++		 * (ETS 300 102-1) or Table I.2 (Q.931)
++		 */
++		Info |= 0x80;
++	}
+ 	switch (Info) {
+ 		/* informative values (corresponding message was processed) */
+ 		case 0x0001:
+diff -purN isdnutils-3.25.orig/capifax/capifax.c isdnutils-3.25/capifax/capifax.c
+--- isdnutils-3.25.orig/capifax/capifax.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25/capifax/capifax.c	2017-02-09 23:34:18.380028589 +0100
+@@ -109,6 +109,13 @@ void MainStateChange(ConnectionID Connec
+ 		Slot = INVALID_CONNECTION_ID;
+ 		reason_b3 = r3;
+ 		reason = r;
++		if ((reason & 0xff00) == 0x3400) {
++			/* mISDN does not set bit 7, which is correct as this bit does not
++			 * belong to the ETS 300 102-1/Q.931 cause value, cf. section 4.5.12
++			 * (ETS 300 102-1) or Table I.2 (Q.931)
++			 */
++			reason |= 0x80;
++		}
+ 		if (!verbose)
+ 			return;
+ 		printf("Disconnected.\n");
+diff -purN isdnutils-3.25.orig/capifax/capifaxrcvd.c isdnutils-3.25/capifax/capifaxrcvd.c
+--- isdnutils-3.25.orig/capifax/capifaxrcvd.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25/capifax/capifaxrcvd.c	2017-02-09 23:34:32.123943320 +0100
+@@ -113,6 +113,13 @@ static void MainStateChange(ConnectionID
+ 		Slot = INVALID_CONNECTION_ID;
+ 		reason = r;
+ 		reason_b3 = r3;
++		if ((reason & 0xff00) == 0x3400) {
++			/* mISDN does not set bit 7, which is correct as this bit does not
++			 * belong to the ETS 300 102-1/Q.931 cause value, cf. section 4.5.12
++			 * (ETS 300 102-1) or Table I.2 (Q.931)
++			 */
++			reason |= 0x80;
++		}
+ #if 0
+ 		printf("Disconnected.\n");
+ 		printf("  Reason            : %04x %s\n", r, Decode_Info(r));

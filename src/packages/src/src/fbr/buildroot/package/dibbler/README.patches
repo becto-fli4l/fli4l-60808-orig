@@ -1,0 +1,99 @@
+0001-disable-changes.patch (kristov)
+* FFL-465: Disables prefix and resolv.conf manipulations on interfaces as these
+  manipulations are performed by our notify script.
+
+0002-dont-ignore-hint-prefix-length.patch (kristov)
+* FFL-469: If a DHCPv6 client requests a prefix, it may send an unspecified
+  prefix (::) and a non-zero prefix length. According to RFC 3633, section 10,
+  the DHCPv6 server should then choose a prefix of the length passed by the
+  client (if at all possible). This patch adds this functionality to dibbler.
+
+0003-dynif-00-dont-return-zero-in-select.patch (kristov)
+* FFL-469: Prevents dibbler-server from crashing when no interface is usable
+  at program start.
+
+0003-dynif-01-use-getifacebyid.patch (kristov)
+* FFL-469: Don't try to mimick getIfaceByID() as the latter may include
+  additional functionality in the future. This will allow wildcard interfaces
+  later.
+
+0003-dynif-02-split-opensocket.patch (kristov)
+* FFL-469: Split openSocket() into two parts where the second one already
+  knows the physical interface. This will allow wildcard interfaces later.
+
+0003-dynif-03-allow-nonexisting-interfaces-in-inactive-mode.patch (kristov)
+* FFL-469: Extends dibbler-server's inactive-mode by accepting non-existing
+  interfaces at program start. When such an interface arrives later while the
+  server is running, it is detected and configured for DHCPv6.
+
+0003-dynif-04-implement-wildcard-interfaces.patch (kristov)
+* FFL-469: Adds support for wildcard interfaces for dibbler-server where an
+  initially unknown set of interfaces share a common prefix. If an interface
+  matching that prefix appears while the server is running, it is detected and
+  configured for DHCPv6.
+
+0004-multiple-instances.patch (kristov)
+* FFL-469: Allows dibbler-client, dibbler-server, and dibbler-relay to be
+  started multiple times. The option -i <id> can be used to choose different
+  directories for storing dibbler files (PID files, configuration files,
+  log files etc.).
+
+0005-setcounters.patch (kristov)
+* FFL-469: Fixes counting of assigned addresses/prefixes at program start by
+  also taking inactive interfaces into account. Otherwise, the counters remain
+  zero for such interfaces. If later the interface becomes active and then an
+  older client releases its lease, the counter may wrap:
+
+  Sep 23 21:18:41 swing daemon.debug Dibbler-circ17[12082]: PD: Prefix usage for class 0 decreased to 18446744073709551615.
+
+0006-syslog.patch (kristov)
+* FFL-469: Fixes logging by preventing the pointer to the syslog prefix from
+  becoming invalid.
+
+0007-fix-addrpd-loading.patch (kristov)
+* FFL-469: Fixes loading of PD addresses by correcting the handling of the
+  'unicast' attribute.
+
+0008-fix-socket-init-race.patch (kristov)
+* FFL-1419: If an interface does not have a link-local address when
+  dibbler-server starts, the socket is closed again, and dibbler-server will
+  retry to open the socket later again.
+
+0009-enable-rebind-reply-handling.patch (kristov)
+* FFL-980: Enables handling of REPLY messages for a REBIND. The code has been
+  deactivated in upstream commit 81d8e2d66ef97c480b5af9ac77788e3e42a7361f
+  without any documented reason. This changeset re-activates the code and
+  adjusts it to current dibbler interfaces. In the long term, ClntMsgRenew::
+  answer() and ClntMsgRebind::answer() should be merged as large parts of
+  these methods' logic are identical.
+
+0010-add-top-level-status-handling-in-renew-and-rebind.patch (kristov)
+* FFL-980: If a renew or rebind operation does not succeed, the DHCPv6 server
+  may return the error in a status code option associated with the DHCPv6
+  message rather than with some TA/NA/PD option. Currently, dibbler only
+  evaluates the status code in the TA/NA/PD options. This changeset makes
+  dibbler aware of a top-level status code option which is handled analogously
+  to the status code options possibly buried in the TA/NA/PD options.
+
+0011-fix-option-name-prefix.patch (kristov)
+* FFL-980: dibbler passes DHCPv6 addresses, prefixes, and options to the notify
+  script by using the environment. However, it does not use the CLNT/SRV prefix
+  for addresses and prefixes (and some special options like NEXT_HOP). This is
+  a big problem for addresses and prefixes, because the addresses/prefixes from
+  the RENEW/REBIND and the corresponding REPLY will be merged, resulting in
+  *two* almost identical prefixes when RENEWing a single prefix. (They may
+  differ in the preferred and valid lifetimes.) In order to avoid merging,
+  variables describing addresses and prefixes are consistently prefixed by
+  CLNT on the client and SRV on the server, such that e.g. the first prefix
+  received by the client from the server is described by SRV_PREFIX1 and
+  SRV_PREFIX1LEN, respectively.
+
+0012-solicit-status-code.patch (kristov)
+* FFL-980: Contrary to the DHCPv6 standard that deals with IPv6 prefix
+  delegation (RFC 3633), the AVM FRITZ!Box sometimes (always?) signalizes the
+  failure of providing a requested IPv6 prefix by putting a top-level status
+  code option (code 13) into the REPLY message. According to RFC 3633, the
+  correct way of doing this is to put this status code option into the IA_PD
+  option (code 25) that has been originally included in the client's SOLICIT
+  message. In order to be better prepared for such error conditions, a dibbler
+  patch has been included to log the status code option in such cases.

@@ -1,0 +1,46 @@
+--- capifaxrcvd.c-orig	Wed Apr 24 23:52:59 2002
++++ capifaxrcvd.c	Sat Apr 27 23:15:46 2002
+@@ -106,18 +106,24 @@
+ 	faxNCPI_t *faxNCPI;
+ 
+ 	assert (Connection != INVALID_CONNECTION_ID);
+-	if (State == Disconnected) {
++	if (State == Disconnected && Slot == Connection) {
+ 		unsigned short r3 = GetB3Reason(Connection);
+ 		unsigned short r = GetReason(Connection);
+ 
+ 		Slot = INVALID_CONNECTION_ID;
+ 		reason = r;
+ 		reason_b3 = r3;
++
++		syslog(LOG_INFO, "Disconnected (%s, %s)\n",
++		       Decode_Info(r), Decode_Info(r3));
++
++
+ #if 0
+ 		printf("Disconnected.\n");
+ 		printf("  Reason            : %04x %s\n", r, Decode_Info(r));
+ 		printf("  Reason-B3         : %04x %s\n", r3, Decode_Info(r3));
+ #endif
++
+ 		if ((faxNCPI = GetFaxNCPI(Connection))) {
+ 			strcpy(rid, faxNCPI->id);
+ 			rres = faxNCPI->resolution;
+@@ -246,8 +252,14 @@
+ 			sprintf(RcvName, "%s %s", notifyCmd, newname);
+ 			system(RcvName);
+ 		}
+-	} else
+-		remove(RcvName);
++	} else {
++		char msg[1024+128];
++		sprintf(msg, "Received a FAX partly - aborted abnormally somehow? Filename: %s\n", RcvName);
++		syslog(LOG_INFO, msg);
++		chmod(RcvName, 0640);
++		/* XXX DONT... remove(RcvName); */
++	}
++		
+ 	return ret;
+ }
+ 
+

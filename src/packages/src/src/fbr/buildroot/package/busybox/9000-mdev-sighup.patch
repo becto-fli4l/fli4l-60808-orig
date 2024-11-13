@@ -1,0 +1,101 @@
+diff -purN busybox-1.26.2.orig/util-linux/mdev.c busybox-1.26.2/util-linux/mdev.c
+--- busybox-1.26.2.orig/util-linux/mdev.c	2016-09-27 18:53:50.000000000 +0200
++++ busybox-1.26.2/util-linux/mdev.c	2017-08-30 14:07:37.826692883 +0200
+@@ -282,6 +282,7 @@ struct globals {
+ 	parser_t *parser;
+ 	struct rule **rule_vec;
+ 	unsigned rule_idx;
++	sig_atomic_t reread_config;
+ #endif
+ 	struct rule cur_rule;
+ 	char timestr[sizeof("HH:MM:SS.123456")];
+@@ -309,24 +310,51 @@ static void make_default_cur_rule(void)
+ 	G.cur_rule.mode = 0660;
+ }
+ 
+-static void clean_up_cur_rule(void)
++static void clean_up_rule(struct rule *rule)
+ {
+ 	struct envmatch *e;
+ 
+-	free(G.cur_rule.envvar);
+-	free(G.cur_rule.ren_mov);
+-	if (G.cur_rule.regex_compiled)
+-		regfree(&G.cur_rule.match);
+-	IF_FEATURE_MDEV_EXEC(free(G.cur_rule.r_cmd);)
+-	e = G.cur_rule.envmatch;
++	free(rule->envvar);
++	free(rule->ren_mov);
++	if (rule->regex_compiled)
++		regfree(&rule->match);
++	IF_FEATURE_MDEV_EXEC(free(rule->r_cmd);)
++	e = rule->envmatch;
+ 	while (e) {
+ 		free(e->envname);
+ 		regfree(&e->match);
+ 		e = e->next;
+ 	}
++}
++
++static void clean_up_cur_rule(void)
++{
++	clean_up_rule(&G.cur_rule);
++	make_default_cur_rule();
++}
++
++#if ENABLE_FEATURE_MDEV_CONF
++static void clean_up_all_rules(void)
++{
++	if (G.rule_vec) {
++		struct rule **r = G.rule_vec;
++		while (*r) {
++			clean_up_rule(*r);
++			free(*r++);
++		}
++		free(G.rule_vec);
++		G.rule_vec = xzalloc((1 << 4) * sizeof(*G.rule_vec));
++	}
++	G.rule_idx = 0;
+ 	make_default_cur_rule();
+ }
+ 
++static void sighup_handler(int sig UNUSED_PARAM)
++{
++	G.reread_config = 1;
++}
++#endif
++
+ static char *parse_envmatch_pfx(char *val)
+ {
+ 	struct envmatch **nextp = &G.cur_rule.envmatch;
+@@ -448,6 +476,20 @@ static const struct rule *next_rule(void
+ {
+ 	struct rule *rule;
+ 
++#if ENABLE_FEATURE_MDEV_CONF
++	/* Reread configuration if necessary */
++	if (G.reread_config) {
++		if (G.rule_vec)
++			clean_up_all_rules();
++		if (G.parser) {
++			config_close(G.parser);
++			G.parser = NULL;
++		}
++		G.filename = "/etc/mdev.conf";
++		G.reread_config = 0;
++	}
++#endif
++
+ 	/* Open conf file if we didn't do it yet */
+ 	if (!G.parser && G.filename) {
+ 		dbg3("config_open('%s')", G.filename);
+@@ -1046,7 +1088,8 @@ int mdev_main(int argc UNUSED_PARAM, cha
+ 	INIT_G();
+ 
+ #if ENABLE_FEATURE_MDEV_CONF
+-	G.filename = "/etc/mdev.conf";
++	G.reread_config = 1;
++	signal(SIGHUP, sighup_handler);
+ #endif
+ 
+ 	/* We can be called as hotplug helper */

@@ -1,0 +1,35 @@
+--- iwleeprom/iwleeprom.h	2014-10-17 21:19:53.902516338 +0200
++++ iwleeprom.patched/iwleeprom.h	2014-10-18 10:39:22.000000000 +0200
+@@ -36,11 +36,19 @@
+ #define cpu2be16(x) x
+ #define le2cpu16(x) __bswap_16(x)
+ #define be2cpu16(x) x
++#define cpu2le32(x) __bswap_32(x)
++#define cpu2be32(x) x
++#define le2cpu32(x) __bswap_32(x)
++#define be2cpu32(x) x
+ #elif BYTE_ORDER == LITTLE_ENDIAN
+ #define cpu2le16(x) x
+ #define cpu2be16(x) __bswap_16(x)
+ #define le2cpu16(x) x
+ #define be2cpu16(x) __bswap_16(x)
++#define cpu2le32(x) x
++#define cpu2be32(x) __bswap_32(x)
++#define le2cpu32(x) x
++#define be2cpu32(x) __bswap_32(x)
+ #else
+ #error Unsupported BYTE_ORDER!
+ #endif
+--- iwleeprom/iwleeprom.c	2014-10-17 21:19:53.898516338 +0200
++++ iwleeprom.patched/iwleeprom.c	2014-10-18 10:08:31.000000000 +0200
+@@ -354,8 +354,8 @@
+ 	fclose(f);
+ 
+ 	for (i=0x10; !offset && i<0x28;i+=4) {
+-		addr = ((unsigned int*)data)[i/4];
+-		if ((addr & 0xF) == 4)
++		addr = le2cpu32(((unsigned int*)data)[i/4]);
++		if (addr != 0)
+ 			offset = addr & 0xFFFFFFF0;
+ 	}
+ }

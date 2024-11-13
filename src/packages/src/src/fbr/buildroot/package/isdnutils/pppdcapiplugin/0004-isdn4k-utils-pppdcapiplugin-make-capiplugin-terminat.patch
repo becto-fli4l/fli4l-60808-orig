@@ -1,0 +1,403 @@
+From 7d81305b1d309dc0a80f8917416164dfc1ac7b84 Mon Sep 17 00:00:00 2001
+From: Christoph Schulz <develop@kristov.de>
+Date: Sun, 12 Feb 2017 14:55:49 +0100
+Subject: [PATCH] isdn4k-utils: pppdcapiplugin: make capiplugin terminate
+ gracefully on signal receipt
+
+Currently, if during connection setup/cleanup pppd receives a signal, pppd is
+not able to react because capiplugin does not relinquish control. This is
+especially important when waiting for an incoming call, as this may last an
+indefinite amount of time. This commit allows capiplugin to return control to
+pppd as soon as a signal is received. This is detected by using a sigreceived
+notifier.
+
+Furthermore, connection handling has been moved to channel connect() instead of
+being done in capi_new_phase_hook() when PHASE_SERIALCONN is reached. This has
+the advantage that capiplugin can give feedback to pppd about whether the
+connection could be established. Without it, when a signal terminates the
+connection attempt started by capi_new_phase_hook(), pppd will still call the
+tty channel connect() function to establish a connection which will fail because
+the CAPI tty has already gone, resulting in a hard die() instead of graceful
+termination.
+---
+ pppdcapiplugin/capiplugin.c | 166 ++++++++++++++++++++++++++++++++------------
+ 1 file changed, 121 insertions(+), 45 deletions(-)
+
+diff --git a/pppdcapiplugin/capiplugin.c b/pppdcapiplugin/capiplugin.c
+index a663a0f..76918d2 100644
+--- a/pppdcapiplugin/capiplugin.c
++++ b/pppdcapiplugin/capiplugin.c
+@@ -60,6 +60,12 @@ char pppd_version[] = VERSION;
+ /* -------------------------------------------------------------------- */
+ 
+ static int exiting = 0;
++static int signal_received = 0;
++
++/* -------------------------------------------------------------------- */
++
++int (*old_channel_connect)(void);
++struct channel capiplugin_channel;
+ 
+ /* -------------------------------------------------------------------- */
+ 
+@@ -1770,7 +1776,7 @@ static capi_connection *setupconnection(char *num, int awaitingreject)
+ /* -------- connect leased line --------------------------------------- */
+ /* -------------------------------------------------------------------- */
+ 
+-static void makeleasedline(void)
++static int makeleasedline(void)
+ {
+ 	capi_connection *cp;
+ 	int retry = 0;
+@@ -1782,7 +1788,9 @@ static void makeleasedline(void)
+ 		do {
+ 		   handlemessages();
+ 		   if (status != EXIT_OK)
+-		      die(status);
++		      return status;
++		   else if (signal_received)
++		      return EXIT_CONNECT_FAILED;
+ 		} while (time(0) < t);
+ 	     }
+ 
+@@ -1791,12 +1799,16 @@ static void makeleasedline(void)
+ 	     t = time(0)+opt_dialtimeout;
+ 	     do {
+ 		handlemessages();
+-		if (status != EXIT_OK) {
++		if (signal_received) {
++		   info("capiplugin: signal received, disconnecting ...");
++		   dodisconnect(cp);
++		   return EXIT_CONNECT_FAILED;
++		} else if (status != EXIT_OK) {
+ 		   if (conn_find(cp)) {
+ 		      info("capiplugin: pppd status %d, disconnecting ...", status);
+ 		      dodisconnect(cp);
+ 		   } else {
+-		      die(status);
++		      return status;
+ 		   }
+ 		}
+ 	     } while (time(0) < t && conn_inprogress(cp));
+@@ -1805,7 +1817,7 @@ static void makeleasedline(void)
+ 		goto connected;
+ 
+ 	     if (status != EXIT_OK)
+-		die(status);
++		return status;
+ 
+         } while ((++retry < opt_dialmax) || (opt_dialmax == 0));
+ 
+@@ -1815,22 +1827,28 @@ connected:
+ 	   do {
+ 	      handlemessages();
+ 	      if (status != EXIT_OK)
+-		 die(status);
++		 return status;
++	      else if (signal_received)
++		 break;
+ 	   } while (time(0) < t);
+ 	}
+ 
+ 	if (status != EXIT_OK)
+-		die(status);
++		return status;
+ 
+-        if (!conn_isconnected(cp))
+-	   fatal("capiplugin: couldn't make connection");
++        if (!conn_isconnected(cp)) {
++	   error("capiplugin: couldn't make connection");
++	   return EXIT_CONNECT_FAILED;
++	} else {
++	   return EXIT_OK;
++	}
+ }
+ 
+ /* -------------------------------------------------------------------- */
+ /* -------- connect a dialup connection ------------------------------- */
+ /* -------------------------------------------------------------------- */
+ 
+-static void makeconnection(STRINGLIST *numbers)
++static int makeconnection(STRINGLIST *numbers)
+ {
+ 	capi_connection *cp = 0;
+ 	time_t t;
+@@ -1845,7 +1863,9 @@ again:
+ 		      do {
+ 			 handlemessages();
+ 			 if (status != EXIT_OK)
+-			    die(status);
++			    return status;
++			 else if (signal_received)
++			    return EXIT_CONNECT_FAILED;
+ 		      } while (time(0) < t);
+ 		   }
+ 
+@@ -1854,16 +1874,20 @@ again:
+ 		   t = time(0)+opt_dialtimeout;
+ 		   do {
+ 		      handlemessages();
+-		      if (status != EXIT_OK) {
++		      if (signal_received) {
++			 info("capiplugin: signal received, disconnecting ...");
++			 dodisconnect(cp);
++			 return EXIT_CONNECT_FAILED;
++		      } else if (status != EXIT_OK) {
+ 			 if (conn_find(cp)) {
+ 			    info("capiplugin: pppd status %d, disconnecting ...", status);
+ 			    dodisconnect(cp);
+ 			 } else if (try_next_controller()) {
+ 			    if (nextcontroller())
+ 			       goto again;
+-			    die(status);
++			    return status;
+ 			 } else {
+-			    die(status);
++			    return status;
+ 			 }
+ 		      }
+ 		   } while (time(0) < t && conn_inprogress(cp));
+@@ -1872,7 +1896,7 @@ again:
+ 		      goto connected;
+ 
+ 		   if (status != EXIT_OK)
+-		      die(status);
++		      return status;
+ 	   }
+         } while ((++retry < opt_dialmax) || (opt_dialmax == 0));
+ 
+@@ -1882,20 +1906,26 @@ connected:
+ 	   do {
+ 	      handlemessages();
+ 	      if (status != EXIT_OK)
+-		 die(status);
++		 return status;
++	      else if (signal_received)
++		 break;
+ 	   } while (time(0) < t);
+ 	}
+ 
+-        if (!conn_isconnected(cp))
+-	   fatal("capiplugin: couldn't make connection after %d retries",
+-			retry);
++        if (!conn_isconnected(cp)) {
++		error("capiplugin: couldn't make connection after %d retries",
++		      retry);
++		return EXIT_CONNECT_FAILED;
++	} else {
++		return EXIT_OK;
++	}
+ }
+ 
+ /* -------------------------------------------------------------------- */
+ /* -------- dial and wait for callback -------------------------------- */
+ /* -------------------------------------------------------------------- */
+ 
+-static void makeconnection_with_callback(void)
++static int makeconnection_with_callback(void)
+ {
+ 	capi_connection *cp;
+ 	STRINGLIST *p;
+@@ -1912,7 +1942,9 @@ again:
+ 		   do {
+ 		      handlemessages();
+ 		      if (status != EXIT_OK)
+-			 die(status);
++			 return status;
++		      else if (signal_received)
++			 return EXIT_CONNECT_FAILED;
+ 		   } while (time(0) < t);
+ 		}
+ 
+@@ -1923,12 +1955,18 @@ again:
+ 		do {
+ 		      handlemessages();
+ 		      if (status != EXIT_OK)
+-			 die(status);
++			 return status;
++		      else if (signal_received) {
++			 info("capiplugin: signal received, disconnecting ...");
++			 dodisconnect(cp);
++			 return EXIT_CONNECT_FAILED;
++		      }
+ 	        } while (time(0) < t && conn_inprogress(cp));
+ 
+ 		if (conn_isconnected(cp)) {
+ 			dodisconnect(cp);
+-			fatal("capiplugin: callback failed - other party answers the call (no reject)");
++			error("capiplugin: callback failed - other party answers the call (no reject)");
++			return EXIT_CONNECT_FAILED;
+ 		} else if (try_next_controller()) {
+ 		    if (nextcontroller())
+ 		       goto again;
+@@ -1946,27 +1984,32 @@ again:
+ 			t = time(0)+opt_cbwait;
+ 			do {
+ 				handlemessages();
+-				if (status != EXIT_OK) {
++				if (status != EXIT_OK || signal_received) {
+ 				   for (i = 0; i < DIM(contrparams); i++) {
+ 				       if (contrparams[i].controller == 0)
+ 					  continue;
+ 				       (void) capiconn_listen(ctx, contrparams[i].controller, 0, 0);
+ 				   }
+-				   die(status);
++				   if (signal_received) {
++				      return EXIT_CONNECT_FAILED;
++				   } else {
++				      return status;
++				   }
+ 				}
+ 			} while (!conn_incoming_connected() && time(0) < t);
+ 
+                         if (conn_incoming_connected()) {
+ 				add_fd(capi20_fileno(applid));
+ 				setup_timeout();
+-				return;
++				return EXIT_OK;
+ 			}
+ 			info("capiplugin: callback failed (no call)");
+ 		}
+ 	   }
+         } while ((++retry < opt_dialmax) || (opt_dialmax == 0));
+ 
+-	fatal("capiplugin: callback failed (no call)");
++	error("capiplugin: callback failed (no call)");
++	return EXIT_CONNECT_FAILED;
+ }
+ 
+ /* -------------------------------------------------------------------- */
+@@ -1982,6 +2025,8 @@ static void makecallback(void)
+ 	      handlemessages();
+ 	      if (status != EXIT_OK)
+ 		 die(status);
++	      else if (signal_received)
++		 return;
+ 	} while (time(0) < t);
+ 
+ 	if (callbacknumbers) 
+@@ -1993,7 +2038,7 @@ static void makecallback(void)
+ /* -------- wait for an incoming call --------------------------------- */
+ /* -------------------------------------------------------------------- */
+ 
+-static void waitforcall(void)
++static int waitforcall(void)
+ {
+ 	int try = 0;
+ 	int i;
+@@ -2007,13 +2052,17 @@ static void waitforcall(void)
+ 
+ 	do {
+ 		handlemessages();
+-		if (status != EXIT_OK) {
++		if (status != EXIT_OK || signal_received) {
+ 		   for (i = 0; i < DIM(contrparams); i++) {
+ 		      if (contrparams[i].controller == 0)
+ 			 continue;
+ 		      (void)capiconn_listen(ctx, contrparams[i].controller, 0, 0);
+ 		   }
+-		   die(status);
++		   if (signal_received) {
++		      return EXIT_CONNECT_FAILED;
++		   } else {
++		      return status;
++		   }
+ 		}
+ 		if (conn_incoming_inprogress()) try=1;
+ 		if (try && !conn_incoming_inprogress()) {
+@@ -2034,11 +2083,14 @@ static void waitforcall(void)
+ 	   do {
+ 	      handlemessages();
+ 	      if (status != EXIT_OK)
+-		 die(status);
++		 return status;
++	      else if (signal_received)
++		 return EXIT_CONNECT_FAILED;
+ 	   } while (time(0) < t);
+ 	}
+ 	add_fd(capi20_fileno(applid));
+ 	setup_timeout();
++	return EXIT_OK;
+ }
+ 
+ /* -------------------------------------------------------------------- */
+@@ -2121,21 +2173,7 @@ static int capi_new_phase_hook(int phase)
+ 		case PHASE_SERIALCONN:
+ 			status = EXIT_OK;
+ 		        wakeupnow = 0;
+-	                if (conn_isconnected(0))
+-			   break;
+ 			plugin_check_options();
+-			init_capiconn();
+-			if (opt_number) {
+-			     if (coso == COSO_REMOTE) {
+-				     makeconnection_with_callback();
+-			     } else {
+-				     makeconnection(numbers);
+-			     }
+-			} else if (opt_channels) {
+-			     makeleasedline();
+-			} else {
+-			     waitforcall();
+-			}
+ 			break;
+ 	}
+ 	return 0;
+@@ -2167,8 +2205,44 @@ static void exit_notify_func(void *p, int phase)
+         exiting = 1;
+ 	plugin_exit();
+ }
++
++static void sigreceived_func(void *p, int phase)
++{
++	signal_received = 1;
++}
+ #endif
+ 
++static int connect_capi(void)
++{
++	int result;
++	init_capiconn();
++	if (opt_number) {
++		if (coso == COSO_REMOTE) {
++			result = makeconnection_with_callback();
++		} else {
++			result = makeconnection(numbers);
++		}
++	} else if (opt_channels) {
++		result = makeleasedline();
++	} else {
++		result = waitforcall();
++	}
++
++	if (result == EXIT_OK) {
++		return old_channel_connect();
++	} else {
++		return -1;
++	}
++}
++
++static void install_channel(void)
++{
++	memcpy(&capiplugin_channel, the_channel, sizeof(capiplugin_channel));
++	old_channel_connect = capiplugin_channel.connect;
++	capiplugin_channel.connect = connect_capi;
++	the_channel = &capiplugin_channel;
++}
++
+ void plugin_init(void)
+ {
+ 	int serrno;
+@@ -2203,7 +2277,9 @@ void plugin_init(void)
+ #if PPPVER >= PPPVersion(2,4,0,0)
+         add_notifier(&phasechange, phase_notify_func, 0);
+         add_notifier(&exitnotify, exit_notify_func, 0);
++        add_notifier(&sigreceived, sigreceived_func, 0);
+ #else
+         new_phase_hook = capi_new_phase_hook;
+ #endif
++	install_channel();
+ }
+-- 
+2.10.2
+

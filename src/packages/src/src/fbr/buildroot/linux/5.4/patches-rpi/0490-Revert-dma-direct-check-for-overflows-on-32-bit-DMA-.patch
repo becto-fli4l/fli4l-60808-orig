@@ -1,0 +1,44 @@
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Thu, 12 Mar 2020 14:06:04 +0000
+Subject: Revert "dma-direct: check for overflows on 32 bit DMA addresses"
+
+This reverts commit e44850bd4205a8cf17f23c44668c0f8d28ad40b1.
+---
+ include/linux/dma-direct.h | 12 ++----------
+ 1 file changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/include/linux/dma-direct.h b/include/linux/dma-direct.h
+index 6a18a97b76a8..adf993a3bd58 100644
+--- a/include/linux/dma-direct.h
++++ b/include/linux/dma-direct.h
+@@ -3,11 +3,8 @@
+ #define _LINUX_DMA_DIRECT_H 1
+ 
+ #include <linux/dma-mapping.h>
+-#include <linux/memblock.h> /* for min_low_pfn */
+ #include <linux/mem_encrypt.h>
+ 
+-static inline dma_addr_t phys_to_dma(struct device *dev, phys_addr_t paddr);
+-
+ #ifdef CONFIG_ARCH_HAS_PHYS_TO_DMA
+ #include <asm/dma-direct.h>
+ #else
+@@ -27,16 +24,11 @@ static inline phys_addr_t __dma_to_phys(struct device *dev, dma_addr_t dev_addr)
+ 
+ static inline bool dma_capable(struct device *dev, dma_addr_t addr, size_t size)
+ {
+-	dma_addr_t end = addr + size - 1;
+-
+ 	if (!dev->dma_mask)
+ 		return false;
+ 
+-	if (!IS_ENABLED(CONFIG_ARCH_DMA_ADDR_T_64BIT) &&
+-	    min(addr, end) < phys_to_dma(dev, PFN_PHYS(min_low_pfn)))
+-		return false;
+-
+-	return end <= min_not_zero(*dev->dma_mask, dev->bus_dma_mask);
++	return addr + size - 1 <=
++		min_not_zero(*dev->dma_mask, dev->bus_dma_mask);
+ }
+ #endif /* !CONFIG_ARCH_HAS_PHYS_TO_DMA */
+ 

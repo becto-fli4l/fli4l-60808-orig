@@ -1,0 +1,160 @@
+From: Dave Stevenson <dave.stevenson@raspberrypi.com>
+Date: Tue, 23 Jun 2020 15:41:42 +0100
+Subject: dt/dtoverlays: Fix up base DT and overlays for updated Unicam driver
+
+The upstreamed Unicam driver uses a dt property to denote how many
+lanes are supported by the receiver peripheral, independent of
+the number of lanes that the sensor wants to use. It also doesn't
+check the remote endpoint config for the number of lanes as that
+isn't the accepted way of doing things.
+
+Update the base DT for the brcm,num-data-lanes property, and the
+overlays to define the desired number of lanes at both ends of
+the link.
+
+Signed-off-by: Dave Stevenson <dave.stevenson@raspberrypi.com>
+---
+ arch/arm/boot/dts/bcm2711-rpi-cm4.dts           |  3 ++-
+ arch/arm/boot/dts/bcm283x-rpi-csi0-2lane.dtsi   |  6 +-----
+ arch/arm/boot/dts/bcm283x-rpi-csi1-2lane.dtsi   |  6 +-----
+ arch/arm/boot/dts/bcm283x-rpi-csi1-4lane.dtsi   |  6 +-----
+ arch/arm/boot/dts/overlays/adv7282m-overlay.dts |  1 +
+ arch/arm/boot/dts/overlays/imx477-overlay.dts   |  1 +
+ arch/arm/boot/dts/overlays/irs1125-overlay.dts  |  2 ++
+ arch/arm/boot/dts/overlays/ov5647-overlay.dts   |  1 +
+ arch/arm/boot/dts/overlays/tc358743-overlay.dts | 16 +++++++++++++++-
+ 9 files changed, 25 insertions(+), 17 deletions(-)
+
+diff --git a/arch/arm/boot/dts/bcm2711-rpi-cm4.dts b/arch/arm/boot/dts/bcm2711-rpi-cm4.dts
+index 2ea54b92fbca..c42fa2aa5ef2 100644
+--- a/arch/arm/boot/dts/bcm2711-rpi-cm4.dts
++++ b/arch/arm/boot/dts/bcm2711-rpi-cm4.dts
+@@ -203,7 +203,8 @@
+ };
+ 
+ #include "bcm2711-rpi.dtsi"
+-#include "bcm283x-rpi-csi1-2lane.dtsi"
++#include "bcm283x-rpi-csi0-2lane.dtsi"
++#include "bcm283x-rpi-csi1-4lane.dtsi"
+ #include "bcm283x-rpi-i2c0mux_0_44.dtsi"
+ 
+ /delete-node/ &emmc2;
+diff --git a/arch/arm/boot/dts/bcm283x-rpi-csi0-2lane.dtsi b/arch/arm/boot/dts/bcm283x-rpi-csi0-2lane.dtsi
+index 952a28eaf616..6e4ce8622b47 100644
+--- a/arch/arm/boot/dts/bcm283x-rpi-csi0-2lane.dtsi
++++ b/arch/arm/boot/dts/bcm283x-rpi-csi0-2lane.dtsi
+@@ -1,8 +1,4 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ &csi0 {
+-	port {
+-		endpoint {
+-			data-lanes = <1 2>;
+-		};
+-	};
++	brcm,num-data-lanes = <2>;
+ };
+diff --git a/arch/arm/boot/dts/bcm283x-rpi-csi1-2lane.dtsi b/arch/arm/boot/dts/bcm283x-rpi-csi1-2lane.dtsi
+index 451fb4bb4ab8..6938f4daacdc 100644
+--- a/arch/arm/boot/dts/bcm283x-rpi-csi1-2lane.dtsi
++++ b/arch/arm/boot/dts/bcm283x-rpi-csi1-2lane.dtsi
+@@ -1,8 +1,4 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ &csi1 {
+-	port {
+-		endpoint {
+-			data-lanes = <1 2>;
+-		};
+-	};
++	brcm,num-data-lanes = <2>;
+ };
+diff --git a/arch/arm/boot/dts/bcm283x-rpi-csi1-4lane.dtsi b/arch/arm/boot/dts/bcm283x-rpi-csi1-4lane.dtsi
+index 9279d4b0bfae..b37037437bee 100644
+--- a/arch/arm/boot/dts/bcm283x-rpi-csi1-4lane.dtsi
++++ b/arch/arm/boot/dts/bcm283x-rpi-csi1-4lane.dtsi
+@@ -1,8 +1,4 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ &csi1 {
+-	port {
+-		endpoint {
+-			data-lanes = <1 2 3 4>;
+-		};
+-	};
++	brcm,num-data-lanes = <4>;
+ };
+diff --git a/arch/arm/boot/dts/overlays/adv7282m-overlay.dts b/arch/arm/boot/dts/overlays/adv7282m-overlay.dts
+index 238acd2bee72..5d85dfd0595c 100644
+--- a/arch/arm/boot/dts/overlays/adv7282m-overlay.dts
++++ b/arch/arm/boot/dts/overlays/adv7282m-overlay.dts
+@@ -40,6 +40,7 @@
+ 			port {
+ 				csi1_ep: endpoint {
+ 					remote-endpoint = <&adv728x_0>;
++					data-lanes = <1>;
+ 				};
+ 			};
+ 		};
+diff --git a/arch/arm/boot/dts/overlays/imx477-overlay.dts b/arch/arm/boot/dts/overlays/imx477-overlay.dts
+index 1dd6f92b4dfe..bd187713939e 100644
+--- a/arch/arm/boot/dts/overlays/imx477-overlay.dts
++++ b/arch/arm/boot/dts/overlays/imx477-overlay.dts
+@@ -49,6 +49,7 @@
+ 			port {
+ 				csi1_ep: endpoint {
+ 					remote-endpoint = <&imx477_0>;
++					data-lanes = <1 2>;
+ 				};
+ 			};
+ 		};
+diff --git a/arch/arm/boot/dts/overlays/irs1125-overlay.dts b/arch/arm/boot/dts/overlays/irs1125-overlay.dts
+index 7e9431f64dc3..e926e18e71fc 100644
+--- a/arch/arm/boot/dts/overlays/irs1125-overlay.dts
++++ b/arch/arm/boot/dts/overlays/irs1125-overlay.dts
+@@ -43,6 +43,8 @@
+ 			port {
+ 				csi1_ep: endpoint {
+ 					remote-endpoint = <&irs1125_0>;
++					data-lanes = <1 2>;
++					clock-noncontinuous;
+ 				};
+ 			};
+ 		};
+diff --git a/arch/arm/boot/dts/overlays/ov5647-overlay.dts b/arch/arm/boot/dts/overlays/ov5647-overlay.dts
+index 3dc817fa48a8..5eba3cb9fb91 100644
+--- a/arch/arm/boot/dts/overlays/ov5647-overlay.dts
++++ b/arch/arm/boot/dts/overlays/ov5647-overlay.dts
+@@ -43,6 +43,7 @@
+ 			port {
+ 				csi1_ep: endpoint {
+ 					remote-endpoint = <&ov5647_0>;
++					data-lanes = <1 2>;
+ 				};
+ 			};
+ 		};
+diff --git a/arch/arm/boot/dts/overlays/tc358743-overlay.dts b/arch/arm/boot/dts/overlays/tc358743-overlay.dts
+index 2ea99cd9e1a1..a1f8af36d2e7 100644
+--- a/arch/arm/boot/dts/overlays/tc358743-overlay.dts
++++ b/arch/arm/boot/dts/overlays/tc358743-overlay.dts
+@@ -86,8 +86,22 @@
+ 		};
+ 	};
+ 
++	fragment@7 {
++		target = <&csi1_ep>;
++		__overlay__ {
++			data-lanes = <1 2>;
++		};
++	};
++
++	fragment@8 {
++		target = <&csi1_ep>;
++		__dormant__ {
++			data-lanes = <1 2 3 4>;
++		};
++	};
++
+ 	__overrides__ {
+-		4lane = <0>, "-2+3";
++		4lane = <0>, "-2+3-7+8";
+ 		link-frequency = <&tc358743>,"link-frequencies#0";
+ 	};
+ };

@@ -1,0 +1,25 @@
+diff -purN dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.cpp dibbler-1.0.1/SrvTransMgr/SrvTransMgr.cpp
+--- dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.cpp	2016-06-20 08:29:56.992793916 +0200
++++ dibbler-1.0.1/SrvTransMgr/SrvTransMgr.cpp	2016-06-20 08:56:21.686097104 +0200
+@@ -265,6 +265,10 @@ bool TSrvTransMgr::openSocket(SPtr<TSrvC
+ #if 1
+     if (!iface->countLLAddress()) {
+         Log(Crit) << "There is no link-local address on " << iface->getFullName() << " defined." << LogEnd;
++        iface->firstSocket();
++        while (SPtr<TIfaceSocket> socket = iface->getSocket()) {
++            iface->delSocket(socket->getFD());
++        }
+         return false;
+     }
+     memcpy(srvAddr, iface->firstLLAddress(), 16);
+@@ -278,6 +282,10 @@ bool TSrvTransMgr::openSocket(SPtr<TSrvC
+                     << " interface." << LogEnd;
+         if (!iface->addSocket(llAddr, port, true, false)) {
+             Log(Crit) << "Failed to create link-local socket on " << iface->getFullName() << " interface." << LogEnd;
++            iface->firstSocket();
++            while (SPtr<TIfaceSocket> socket = iface->getSocket()) {
++                iface->delSocket(socket->getFD());
++            }
+             return false;
+         }
+     }

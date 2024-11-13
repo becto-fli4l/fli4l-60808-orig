@@ -1,0 +1,198 @@
+diff -urN lptkeys.orig/main.c lptkeys/main.c
+--- lptkeys.orig/main.c	2012-07-25 15:45:41.000000000 +0200
++++ lptkeys/main.c	2012-07-25 15:42:31.000000000 +0200
+@@ -1,5 +1,4 @@
+ //#include <sys/io.h>
+-#include <asm/io.h>
+ 
+ #include <stdlib.h>
+ #include <stdio.h>
+@@ -10,14 +9,72 @@
+ #include <errno.h>
+ #include <signal.h>
+ #include <getopt.h>
++#include <sys/ioctl.h>
++#include <linux/parport.h>
++#include <linux/ppdev.h>
+ 
+-#define PROGVERS "0.0.3"
++#define PROGVERS "0.0.5"
+ 
+ int got_signal=0;
+-static unsigned short Port=0x378;
++static int port = 0;
+ int out_format=0;
+ unsigned short Mask=0x1F;
+ 
++int fd = -1; /* not open */
++
++void port_open_fail(char *name)
++{
++  char *s;
++
++  if (errno == ENOENT) {
++    fprintf(stderr, "lptkeys: you may need to modprobe the ppdev kernel module\n");
++  }
++  asprintf(&s, "lptkeys: unable to open %s (%d)", name, errno);
++  perror(s);
++  free(s);
++}
++
++void port_open(int port)
++{
++  char *name;
++  int s;
++
++  asprintf(&name, "/dev/parport%d", port);
++  fd = open(name, O_RDWR);
++  if (fd < 0) port_open_fail(name);
++  free(name);
++  if (fd < 0) exit(1);
++  s = ioctl(fd, PPCLAIM);
++  if (s < 0) { perror("ioctl PPCLAIM"); exit(1); }
++}
++
++void port_close()
++{
++  int s;
++  s = ioctl(fd, PPRELEASE);
++  if (s < 0) { perror("ioctl PPRELEASE"); }
++  close(fd);
++  fd = -1;
++}
++
++void port_write(int port, int mode, unsigned char byte)
++{
++  int s;
++
++  s = ioctl(fd, mode, &byte);
++  if (s < 0) { perror("ioctl port_write"); }
++}
++
++unsigned char port_read(int port, int mode)
++{
++  unsigned char byte;
++  int s;
++
++  s = ioctl(fd, mode, &byte);
++  if (s < 0) { perror("ioctl port_read"); }
++  return byte;
++}
++
+ /*
+  * 13.06.2001 - Axel Ehnert axel@ehnert.net
+  *
+@@ -40,10 +97,10 @@
+ {
+   unsigned char bits=0;
+ 
+-  bits=inb(Port+1);
+-  bits=~(bits^0x80) & 0xf8;
+-//             ^       ^
+-//  BUSY is inverted   mask 3 low bits
++  bits=port_read(port, PPRSTATUS);
++  bits=~(bits^PARPORT_STATUS_BUSY) & ~0x07;
++//             ^                       ^
++//  BUSY is inverted                   mask 3 low bits
+ 
+ // Shift bits to right
+ 
+@@ -61,13 +118,13 @@
+   int i;
+   if ( out_format == 0 ) {
+     printf ("%d%d%d%d%d\n",
+-                   *taste & 0x01, 
+-                   *taste >> 1 & 0x01, 
+-                   *taste >> 2 & 0x01, 
+-                   *taste >> 3 & 0x01, 
+-                   *taste >> 4 & 0x01 
++                   *taste & 0x01,
++                   *taste >> 1 & 0x01,
++                   *taste >> 2 & 0x01,
++                   *taste >> 3 & 0x01,
++                   *taste >> 4 & 0x01
+            );
+-  } 
++  }
+   else {
+     printf ("%d\n", (*taste & 0x10)/16 * 5 +
+                     (*taste & 0x08)/8 * 4 +
+@@ -84,7 +141,7 @@
+ 
+ void usage ()
+ {
+-  printf ("\nUsage: lptkeys [-5] [-c] [-f] [-h] [-v] [-n] [-m 0x..] [-p 0x378|0x278|0x3bc]\n"
++  printf ("\nUsage: lptkeys [-5] [-c] [-f] [-h] [-v] [-n] [-m 0x..] [-p <num>]\n"
+ "                -5 set +5V on pin 17 (SELECT PRINTER)\n"
+ "                   without this switch: don't touch pin 17\n"
+ "                -c shows an example circuit\n"
+@@ -94,7 +151,7 @@
+ "                   the bitmask accords to the default output\n"
+ "                   format\n"
+ "                -v shows version and exits\n"
+-"                -p use given IO port\n"
++"                -p use given parport\n"
+ "                -n output key as number rather then binary\n\n");
+ }
+ 
+@@ -150,7 +207,7 @@
+   int set5v=0;
+   char c;
+   char *s, *e;
+- 
++
+   while ((c=getopt (argc, argv, "5cfhm:np:v"))!=EOF) {
+     switch (c) {
+     case 'c':
+@@ -185,36 +242,23 @@
+              (Mask & 0x01) * 16;
+       break;
+     case 'p':
+-      s=optarg;
+-      if ((Port=strtol(s, &e, 0))==0 || *e!='\0') {
+-        fprintf (stderr, "lptkeys: bad port '%s'\n", s);
+-        exit (-1);
+-      }
+-      if (Port!=0x278 && Port!=0x378 && Port!=0x3bc) {
+-        fprintf (stderr, "lptkeys: Port may only be 0x378 (lpt1)\n"
+-                         "0x278 (lpt2)\n"
+-                         "0x3bc (lpt3)!\n");
+-        exit (-1);
+-      }
++      port = atoi(optarg);
+       break;
+     default:
+       exit(2);
+     }
+   }
+ 
++  port_open(port);
++
+   // now install our own signal handler
+   signal(SIGHUP,  handler);
+   signal(SIGINT,  handler);
+   signal(SIGQUIT, handler);
+   signal(SIGTERM, handler);
+ 
+-  if (ioperm(Port, 3, 1)!=0) {
+-    fprintf (stderr, "lptkeys: ioperm(0x%x) failed: %s", Port, strerror(errno));
+-    return -1;
+-  }
+-
+   if (set5v==1) {
+-    outb (0x00, Port+2);
++    port_write(port, PPWCONTROL, 0x00);
+   }
+ 
+   if (force==0) {
+@@ -231,9 +275,5 @@
+     handle_key (&taste);
+   }
+ 
+-  if (ioperm(Port, 3, 0)!=0) {
+-    fprintf (stderr, "lptkeys: ioperm(0x%x) failed: %s", Port, strerror(errno));
+-    return -1;
+-  }
+-
++  port_close();
+ }

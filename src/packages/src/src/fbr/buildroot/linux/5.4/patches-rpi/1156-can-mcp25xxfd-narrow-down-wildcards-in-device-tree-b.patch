@@ -1,0 +1,103 @@
+From: Thomas Kopp <thomas.kopp@microchip.com>
+Date: Wed, 30 Sep 2020 11:14:22 +0200
+Subject: can: mcp25xxfd: narrow down wildcards in device tree bindings to
+ "microchip,mcp251xfd"
+
+The wildcard should be narrowed down to prevent existing and future devices
+that are not compatible from matching. It is very unlikely that incompatible
+devices will be released that do not match the wildcard.
+
+Discussion Reference: https://lore.kernel.org/r/CAMuHMdVkwGjr6dJuMyhQNqFoJqbh6Ec5V2b5LenCshwpM2SDsQ@mail.gmail.com
+
+Reported-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Signed-off-by: Thomas Kopp <thomas.kopp@microchip.com>
+Link: https://lore.kernel.org/r/20200930091423.755-1-thomas.kopp@microchip.com
+Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+(cherry picked from commit dba1572c23601025b99e418066c82105eca950bc)
+Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+---
+ drivers/net/can/spi/mcp25xxfd/mcp25xxfd-core.c | 18 +++++++++---------
+ drivers/net/can/spi/mcp25xxfd/mcp25xxfd.h      |  4 ++--
+ 2 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/net/can/spi/mcp25xxfd/mcp25xxfd-core.c b/drivers/net/can/spi/mcp25xxfd/mcp25xxfd-core.c
+index 7fb654edfc9f..409367e894b2 100644
+--- a/drivers/net/can/spi/mcp25xxfd/mcp25xxfd-core.c
++++ b/drivers/net/can/spi/mcp25xxfd/mcp25xxfd-core.c
+@@ -41,10 +41,10 @@ static const struct mcp25xxfd_devtype_data mcp25xxfd_devtype_data_mcp2518fd = {
+ };
+ 
+ /* Autodetect model, start with CRC enabled. */
+-static const struct mcp25xxfd_devtype_data mcp25xxfd_devtype_data_mcp25xxfd = {
++static const struct mcp25xxfd_devtype_data mcp25xxfd_devtype_data_mcp251xfd = {
+ 	.quirks = MCP25XXFD_QUIRK_CRC_REG | MCP25XXFD_QUIRK_CRC_RX |
+ 		MCP25XXFD_QUIRK_CRC_TX | MCP25XXFD_QUIRK_ECC,
+-	.model = MCP25XXFD_MODEL_MCP25XXFD,
++	.model = MCP25XXFD_MODEL_MCP251XFD,
+ };
+ 
+ static const struct can_bittiming_const mcp25xxfd_bittiming_const = {
+@@ -78,8 +78,8 @@ static const char *__mcp25xxfd_get_model_str(enum mcp25xxfd_model model)
+ 		return "MCP2517FD"; break;
+ 	case MCP25XXFD_MODEL_MCP2518FD:
+ 		return "MCP2518FD"; break;
+-	case MCP25XXFD_MODEL_MCP25XXFD:
+-		return "MCP25xxFD"; break;
++	case MCP25XXFD_MODEL_MCP251XFD:
++		return "MCP251xFD"; break;
+ 	}
+ 
+ 	return "<unknown>";
+@@ -2494,7 +2494,7 @@ static int mcp25xxfd_register_chip_detect(struct mcp25xxfd_priv *priv)
+ 	else
+ 		devtype_data = &mcp25xxfd_devtype_data_mcp2517fd;
+ 
+-	if (!mcp25xxfd_is_25XX(priv) &&
++	if (!mcp25xxfd_is_251X(priv) &&
+ 	    priv->devtype_data.model != devtype_data->model) {
+ 		netdev_info(ndev,
+ 			    "Detected %s, but firmware specifies a %s. Fixing up.",
+@@ -2703,8 +2703,8 @@ static const struct of_device_id mcp25xxfd_of_match[] = {
+ 		.compatible = "microchip,mcp2518fd",
+ 		.data = &mcp25xxfd_devtype_data_mcp2518fd,
+ 	}, {
+-		.compatible = "microchip,mcp25xxfd",
+-		.data = &mcp25xxfd_devtype_data_mcp25xxfd,
++		.compatible = "microchip,mcp251xfd",
++		.data = &mcp25xxfd_devtype_data_mcp251xfd,
+ 	}, {
+ 		/* sentinel */
+ 	},
+@@ -2719,8 +2719,8 @@ static const struct spi_device_id mcp25xxfd_id_table[] = {
+ 		.name = "mcp2518fd",
+ 		.driver_data = (kernel_ulong_t)&mcp25xxfd_devtype_data_mcp2518fd,
+ 	}, {
+-		.name = "mcp25xxfd",
+-		.driver_data = (kernel_ulong_t)&mcp25xxfd_devtype_data_mcp25xxfd,
++		.name = "mcp251xfd",
++		.driver_data = (kernel_ulong_t)&mcp25xxfd_devtype_data_mcp251xfd,
+ 	}, {
+ 		/* sentinel */
+ 	},
+diff --git a/drivers/net/can/spi/mcp25xxfd/mcp25xxfd.h b/drivers/net/can/spi/mcp25xxfd/mcp25xxfd.h
+index 3bc799204cb0..b1b5d7fd33ea 100644
+--- a/drivers/net/can/spi/mcp25xxfd/mcp25xxfd.h
++++ b/drivers/net/can/spi/mcp25xxfd/mcp25xxfd.h
+@@ -553,7 +553,7 @@ struct mcp25xxfd_regs_status {
+ enum mcp25xxfd_model {
+ 	MCP25XXFD_MODEL_MCP2517FD = 0x2517,
+ 	MCP25XXFD_MODEL_MCP2518FD = 0x2518,
+-	MCP25XXFD_MODEL_MCP25XXFD = 0xffff,	/* autodetect model */
++	MCP25XXFD_MODEL_MCP251XFD = 0xffff,	/* autodetect model */
+ };
+ 
+ struct mcp25xxfd_devtype_data {
+@@ -607,7 +607,7 @@ mcp25xxfd_is_##_model(const struct mcp25xxfd_priv *priv) \
+ 
+ MCP25XXFD_IS(2517);
+ MCP25XXFD_IS(2518);
+-MCP25XXFD_IS(25XX);
++MCP25XXFD_IS(251X);
+ 
+ static inline u8 mcp25xxfd_first_byte_set(u32 mask)
+ {

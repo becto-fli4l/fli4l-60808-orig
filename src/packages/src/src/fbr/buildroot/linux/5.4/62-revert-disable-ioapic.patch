@@ -1,0 +1,32 @@
+diff -purN linux-5.3.orig/arch/x86/kernel/reboot.c linux-5.3/arch/x86/kernel/reboot.c
+--- linux-5.3.orig/arch/x86/kernel/reboot.c	2019-09-15 23:19:32.000000000 +0200
++++ linux-5.3/arch/x86/kernel/reboot.c	2019-09-17 10:08:04.113920453 +0200
+@@ -675,6 +675,15 @@ static void native_machine_emergency_res
+ void native_machine_shutdown(void)
+ {
+ 	/* Stop the cpus and apics */
++
++#ifdef CONFIG_SMP
++	/*
++	 * Disable the local irq to not receive the per-cpu timer interrupt
++	 * which may trigger scheduler's load balance.
++	 */
++	local_irq_disable();
++#endif
++
+ #ifdef CONFIG_X86_IO_APIC
+ 	/*
+ 	 * Disabling IO APIC before local APIC is a workaround for
+@@ -692,11 +701,8 @@ void native_machine_shutdown(void)
+ 
+ #ifdef CONFIG_SMP
+ 	/*
+-	 * Stop all of the others. Also disable the local irq to
+-	 * not receive the per-cpu timer interrupt which may trigger
+-	 * scheduler's load balance.
++	 * Stop all of the others.
+ 	 */
+-	local_irq_disable();
+ 	stop_other_cpus();
+ #endif
+ 

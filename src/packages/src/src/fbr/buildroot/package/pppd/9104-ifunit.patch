@@ -1,0 +1,111 @@
+diff -purN pppd-2.4.7.orig/pppd/auth.c pppd-2.4.7/pppd/auth.c
+--- pppd-2.4.7.orig/pppd/auth.c	2018-01-30 23:20:18.383619010 +0100
++++ pppd-2.4.7/pppd/auth.c	2018-01-30 23:20:24.441523745 +0100
+@@ -652,8 +652,10 @@ link_terminated(unit)
+     }
+     if (!hungup)
+ 	lcp_lowerdown(0);
+-    if (!doing_multilink && !demand)
++    if (!doing_multilink && !demand) {
+ 	script_unsetenv("IFNAME");
++	script_unsetenv("IFUNIT");
++    }
+ 
+     /*
+      * Run disconnector script, if requested.
+diff -purN pppd-2.4.7.orig/pppd/main.c pppd-2.4.7/pppd/main.c
+--- pppd-2.4.7.orig/pppd/main.c	2018-01-30 23:14:51.776756130 +0100
++++ pppd-2.4.7/pppd/main.c	2018-01-30 23:20:24.441523745 +0100
+@@ -733,12 +733,15 @@ void
+ set_ifunit(iskey)
+     int iskey;
+ {
++    char ifunitstr[MAXIFNAMELEN];
+     if (req_ifname[0] != '\0')
+ 	slprintf(ifname, sizeof(ifname), "%s", req_ifname);
+     else
+ 	slprintf(ifname, sizeof(ifname), "%s%d", PPP_DRV_NAME, ifunit);
++    sprintf(ifunitstr, "%d", ifunit);
+     info("Using interface %s", ifname);
+     script_setenv("IFNAME", ifname, iskey);
++    script_setenv("IFUNIT", ifunitstr, iskey);
+     if (iskey) {
+ 	create_pidfile(getpid());	/* write pid to file */
+ 	create_linkpidfile(getpid());
+diff -purN pppd-2.4.7.orig/pppd/multilink.c pppd-2.4.7/pppd/multilink.c
+--- pppd-2.4.7.orig/pppd/multilink.c	2014-08-09 14:31:39.000000000 +0200
++++ pppd-2.4.7/pppd/multilink.c	2018-01-30 23:20:24.442523729 +0100
+@@ -56,6 +56,7 @@ static void iterate_bundle_links __P((vo
+ 
+ static int get_default_epdisc __P((struct epdisc *));
+ static int parse_num __P((char *str, const char *key, int *valp));
++static int parse_string __P((char *str, const char *key, char *bufp, int buflen));
+ static int owns_unit __P((TDB_DATA pid, int unit));
+ 
+ #define set_ip_epdisc(ep, addr) do {	\
+@@ -204,12 +205,15 @@ mp_join_bundle()
+ 			/* make sure the string is null-terminated */
+ 			rec.dptr[rec.dsize-1] = 0;
+ 			/* parse the interface number */
+-			parse_num(rec.dptr, "IFNAME=ppp", &unit);
++			parse_num(rec.dptr, "IFUNIT=", &unit);
+ 			/* check the pid value */
+ 			if (!parse_num(rec.dptr, "PPPD_PID=", &pppd_pid)
+ 			    || !process_exists(pppd_pid)
+ 			    || !owns_unit(pid, unit))
+ 				unit = -1;
++			else
++				parse_string(rec.dptr, "IFNAME=",
++					     req_ifname, sizeof(req_ifname));
+ 			free(rec.dptr);
+ 		}
+ 		free(pid.dptr);
+@@ -269,6 +273,7 @@ void mp_bundle_terminated()
+ 	if (!demand) {
+ 		remove_pidfiles();
+ 		script_unsetenv("IFNAME");
++		script_unsetenv("IFUNIT");
+ 	}
+ 
+ 	lock_db();
+@@ -408,6 +413,31 @@ parse_num(str, key, valp)
+ 	return 0;
+ }
+ 
++static int
++parse_string(str, key, bufp, buflen)
++     char *str;
++     const char *key;
++     char *bufp;
++     int buflen;
++{
++	char *p, *endp;
++	int i;
++
++	p = strstr(str, key);
++	if (p != 0) {
++		int len;
++		p += strlen(key);
++		endp = strchr(p, ';');
++		len = endp ? endp - p + 1 : buflen;
++		if (len > buflen)
++			len = buflen;
++		strncpy(bufp, p, len);
++		bufp[len - 1] = '\0';
++		return 1;
++	}
++	return 0;
++}
++
+ /*
+  * Check whether the pppd identified by `key' still owns ppp unit `unit'.
+  */
+@@ -420,7 +450,7 @@ owns_unit(key, unit)
+ 	TDB_DATA kd, vd;
+ 	int ret = 0;
+ 
+-	slprintf(ifkey, sizeof(ifkey), "IFNAME=ppp%d", unit);
++	slprintf(ifkey, sizeof(ifkey), "IFUNIT=%d", unit);
+ 	kd.dptr = ifkey;
+ 	kd.dsize = strlen(ifkey);
+ 	vd = tdb_fetch(pppdb, kd);

@@ -1,0 +1,161 @@
+diff -urN dpf.orig/src/dpflib/dpf.h dpf/src/dpflib/dpf.h
+--- dpf.orig/src/dpflib/dpf.h	2011-01-29 17:50:47.000000000 +0100
++++ dpf/src/dpflib/dpf.h	2012-10-31 15:49:52.555901044 +0100
+@@ -70,7 +70,7 @@
+ const char *dev_errstr(int err);
+ 
+ // Private stuff:
+-usb_dev_handle *dpf_usb_open(void);
++usb_dev_handle *dpf_usb_open(int index);
+ int sgdev_open(const char *portname, int *fd);
+ 
+ ////////////////////////////////////////////////////////////////////////////
+diff -urN dpf.orig/src/dpflib/dpflib.c dpf/src/dpflib/dpflib.c
+--- dpf.orig/src/dpflib/dpflib.c	2011-01-30 15:39:15.000000000 +0100
++++ dpf/src/dpflib/dpflib.c	2012-10-31 15:52:50.078395822 +0100
+@@ -122,27 +122,38 @@
+ {
+ 	int error;
+ 	DPFContext *dpf;
++	int i;
+ 	usb_dev_handle *u;
+ 
+ 	int fd;
+ 
+-	if (dev == NULL) {
+-		u = dpf_usb_open();
++	if (!dev) {
++		fprintf(stderr, "Please specify a string like 'usb0' or a sg device\n");
++		return DEVERR_OPEN;
++	}
++
++	if (strncmp(dev, "usb", 3) == 0) {
++		i = dev[3] - '0';
++		u = dpf_usb_open(i);
+ 		if (!u) return DEVERR_OPEN;
++		i = MODE_USB;
+ 	} else {
++		fprintf(stderr, "Opening generic SCSI device '%s'\n", dev);
+ 		if (sgdev_open(dev, &fd) < 0) return DEVERR_OPEN;
++		i = MODE_SG;
+ 	}
+ 
+ 	dpf = (DPFHANDLE) malloc(sizeof(DPFContext));
+ 	if (!dpf) return DEVERR_MALLOC;
+ 
+-	if (dev == NULL) {
++	dpf->mode = i;
++
++	if (dpf->mode == MODE_USB) {
+ 		dpf->dev.udev = u;
+-		dpf->mode = MODE_USB;
+ 	} else {
+ 		dpf->dev.fd = fd;
+-		dpf->mode = MODE_SG;
+ 	}
++
+ 	error = query_res(dpf);
+ 	dpf->bpp = 2;
+ 	*h = dpf;
+@@ -156,6 +167,7 @@
+ 			close(h->dev.fd);
+ 			break;
+ 		case MODE_USB:
++			usb_release_interface(h->dev.udev, 0);
+ 			usb_close(h->dev.udev);
+ 			break;
+ 	}
+diff -urN dpf.orig/src/dpflib/rawusb.c dpf/src/dpflib/rawusb.c
+--- dpf.orig/src/dpflib/rawusb.c	2011-01-22 18:55:13.000000000 +0100
++++ dpf/src/dpflib/rawusb.c	2012-10-31 15:51:13.971509588 +0100
+@@ -48,7 +48,7 @@
+ 	while (dev->desc) {
+ 		if ((d->descriptor.idVendor == dev->vid) &&
+ 		    (d->descriptor.idProduct == dev->pid)) { 
+-				printf("Found %s\n", dev->desc);
++				fprintf(stderr, "Found %s\n", dev->desc);
+ 				return 1;
+ 		}
+ 		dev++;
+@@ -56,32 +56,31 @@
+ 	return 0;
+ }
+ 
+-static struct usb_device *find_dev(void)
++static struct usb_device *find_dev(int index)
+ {
+     struct usb_bus *b;
+     struct usb_device *d;
++    int enumeration = 0;
+ 
+     b = usb_get_busses();
+ 
+-    while(1) {
+-        if (b == NULL) break;
+-
+-        d = b->devices;
+-        while(1) {
+-            if (!d) break;
+-
+-			if (check_known_device(d))
+-				return d;
++	while (b) {
++		d = b->devices;
++		while (d) {
++			if (check_known_device(d)) {
++				if (enumeration == index) return d;
++				else enumeration++;
++			}
+ 
+ #ifdef DEBUG
+-            printf("%04x %04x\n",
+-                   d->descriptor.idVendor,
+-                   d->descriptor.idProduct);
++			printf("%04x %04x\n",
++				   d->descriptor.idVendor,
++				   d->descriptor.idProduct);
+ #endif
+-            d = d->next;
+-        }
+-        b = b->next;
+-    }
++			d = d->next;
++		}
++		b = b->next;
++	}
+     return NULL;
+ }
+ 
+@@ -147,17 +146,17 @@
+ 	return ret;
+ }
+ 
+-usb_dev_handle *dpf_usb_open(void)
++usb_dev_handle *dpf_usb_open(int index)
+ {
+-    struct usb_device *d;
++	struct usb_device *d;
+ 	usb_dev_handle *usb_dev;
+ 
+-    usb_init();
+-    usb_find_busses();
+-    usb_find_devices();
++	usb_init();
++	usb_find_busses();
++	usb_find_devices();
+ 
+-    d = find_dev();
+-    if (!d) {
++	d = find_dev(index);
++	if (!d) {
+ 		handle_error("No matching USB device found!");
+ 		return NULL;
+ 	}
+@@ -167,6 +166,7 @@
+ 		handle_error("Failed to open usb device!");
+ 		return NULL;
+ 	}
++	usb_claim_interface(usb_dev, 0);
+ 	return usb_dev;
+ }
+ 

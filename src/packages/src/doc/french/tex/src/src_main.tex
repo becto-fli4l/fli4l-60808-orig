@@ -1,0 +1,649 @@
+% Do not remove the next line
+% Synchronized to r51513
+marklabel{buildroot}{
+\section{SRC - Le Buildroot fli4l}
+}
+
+Ce chapitre est intéressant, uniquement pour les développeurs qui veulent
+compiler des programmes binaires ou le Kernel Linux pour fli4l. Si vous
+utilisez fli4l seulement comme routeur et si vous ne voulez pas donner au
+routeur fli4l des opt-packages (ou paquetage optionnel) ou créer vos propre
+programmes binaires, vous pouvez ignorer complètement ce chapitre.
+
+En général, un système Linux est nécessaire pour la création de progiciels pour
+fli4l. La création sur d'autres systèmes d'exploitation (Microsoft Windows,
+OS X, FreeBSD etc.) ne sera \emph{pas} support.
+
+Les exigences du système Linux pour le développement de fli4l sont les suivantes~:
+\begin{itemize}
+\item GNU gcc et g++ dans la version 2.95 ou suppérieur
+\item GNU gcc-multilib (en fonction de votre système)
+\item GNU binutils (y compris Binder ainsi que d'autres programmes sont nécessaires)
+\item GNU make dans la Version 3.81 ou suppérieur
+\item GNU bash
+\item libncurses5-dev pour \texttt{fbr-make *-menuconfig} (en fonction de votre système)
+\item Les programmes sed, awk, which, flex, bison et patch
+\item Les programmes makeinfo (paquet texinfo) et msgfmt (paquet gettext)
+\item Les programmes tar, cpio, gzip, bzip2 et unzip
+\item Les programmes wget, rsync, svn et git
+\item Les programmes perl et python
+\end{itemize}
+
+Dans la documentation ci-dessous les caractères en \textbf{gras} indiquent
+une commande, le caractère \enter représente la touche Entrée de votre
+clavier et ferme la commande.
+
+\subsection{Vue d'ensemble des répertoires sources}
+
+Dans le répertoire \texttt{src}, vous trouverez les sous-répertoires suivants~:
+
+\begin{longtable}{|l|p{10cm}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Répertoire}} &
+    \multicolumn{1}{|l|}{\textbf{Contenu}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+\texttt{fbr} &
+    Ce répertoire contient le système de construction personnalisable qui
+    est basé sur le buildroot uClibc (avec actuellement la version 0.9.33.2).
+    Le FBR signifie "fli4l Buildroot". Il est ainsi possible de recompiler tous
+    les programmes fli4l (le Kernel, les bibliothèques et les applications). \\
+\hline
+\texttt{fli4l} &
+    Ce répertoire contient les sources spécifiques à fli4l, triées par paquets.
+    Toutes les sources incluses dans les sous-répertoires ont été écrites
+    spécifiquement pour l'utilisation de fli4l ou du moins fortement
+    personnalisées. \\
+\hline
+\texttt{cross} &
+    Ce répertoire contient les scripts nécessaires pour la compilation croisée,
+    ils permettent de créer et de compiler le mkfli4l avec les différentes
+    plates-formes. \\
+\hline
+\end{longtable}
+
+\subsection{Compiler un programme pour fli4l}
+
+Dans le répertoire "fbr" vous avez le script \texttt{fbr-make} qui contrôle
+la compilation de tous les programmes du paquet base du routeur fli4l. Ce script
+se charge de télécharger et de compiler tous les fichiers binaires requis pour
+fli4l. En règle générale, les fichiers script définient sont placés dans le
+répertoire \texttt{\~{}/.fbr} s'il n'existe pas encore, il sera créé.
+(Ce répertoire peut être modifié à l'aide de la variable d'environnement
+\texttt{FBR\_BASEDIR}, voir ci-dessous.)
+
+\emph{Précision~:} la quantité d'espace nécessaire pour le processus de compilation
+est (actuellement environ de 900~Mio pour les archives téléchargées et à peu
+près de 30~Gio avec les résultats intermédiaires en réalisant une compilation).
+Assurez-vous que dans le répertoire \texttt{\~{}/.fbr} vous avez suffisamment
+d'espace~! (Sinon, vous pouvez également utiliser l'option \var{FBR\_TIDY}, voir
+ci-dessous).
+
+La structure du répertoire \texttt{\~{}/.fbr} est la suivante~:
+
+\begin{longtable}{|l|p{10cm}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Répertoire}} &
+    \multicolumn{1}{|l|}{\textbf{Contenu}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+\texttt{fbr-<branch>-<arch>} &
+    Dans ce répertoire, le buildroot uClibc sera décompacté. \texttt{<branch>}
+    est la branche de développement (par exemple \texttt{trunk}), à partir du
+    quelle le FBR provient. A l'origine le FBR est un paquet \texttt{src} décompacté,
+    qui était utilisé pour \texttt{personnalisé le fbr}. \texttt{<arch>} est
+    l'architecture de processeur (par exemple \texttt{x86} ou \texttt{x86\_64}).
+    En plus de ce répertoire. \\
+\hline
+\texttt{dl}                            &
+    Les archives téléchargées sont stockées ici. \\
+\hline
+\texttt{own}                       &
+    Les paquets FBR peuvent être stockées ici, ils seront également compilés. \\
+\hline
+\end{longtable}
+
+Ci-dessous le répertoire Buildroot
+\texttt{\~{}/.fbr/fbr-<branch>-<arch>/buildroot} les répertoires suivants
+sont intéressants~:
+
+\begin{longtable}{|l|p{10cm}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Répertoire}} &
+    \multicolumn{1}{|l|}{\textbf{Contenu}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+\texttt{output/sandbox} &
+    Dans ce répertoire il y aura un sous-répertoire pour chaque paquet FBR,
+    celui-ci contiendra les fichiers du paquet FBR après le processus de compilation.
+    Dans le répertoire \texttt{output/sandbox/<paquet>/target} seront placé les
+    fichiers qui sont prévus pour le routeur fli4l. Dans le répertoire
+    \texttt{output/sandbox/<paquet>/staging} seront placé les fichiers qui sont
+    nécessaires pour convertir \emph{d'autre} paquet FBR qui ont besoin du
+    paquet FBR principale. \\
+\hline
+\texttt{output/target} &
+    Dans ce répertoire, \emph{tous} les programmes stockés seront complilés pour
+    le routeur fli4l. Cette liste reflète la structure des répertoires sur le
+    routeur fli4l. Avec l'aide de la commande \texttt{chroot} vous pouvez changer
+    ce répertoire et tester les programmes compilés \footnote{cette fonction est
+    soumis à certaines conditions, se référer au paragraphe \jump{sec:src:test}
+    {"tester un programme compilé"}.} \\
+\hline
+\end{longtable}
+
+\subsubsection{Paramètres généraux}
+
+Pour l'utilisation de la commande \texttt{fbr-make} vous pouvez affecter
+plusieurs variables d'environnement~:
+
+\begin{longtable}{|l|p{10cm}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Variable}} &
+    \multicolumn{1}{|l|}{\textbf{Description}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+\texttt{FBR} &
+    Indique explicitement le chemin d'accès au FBR. L'utilisation du chemin par
+    défaut est \texttt{\~{}/.fbr/fbr-<branch>-<arch>} (voir ci-dessus). \\
+\hline
+\texttt{FBR\_BASEDIR} &
+    Indique explicitement le chemin d'accès au FBR. Par défaut, le chemin \texttt{\~{}/.fbr}
+	est utilisé (voir ci-dessus). Cette variable est ignorée si la variable d'environnement
+	\texttt{FBR} est définie. \\
+\hline
+\texttt{FBR\_DLDIR} &
+    Indique le répertoire qui contient les archives sources. L'utilisation du
+    chemin par défaut est \texttt{\$\{FBR\}/../dl} (par exemple \texttt{\~{}/.fbr/dl}). \\
+\hline
+\texttt{FBR\_BRANCH} &
+    Spécifie explicitement le nom de la branche sous laquelle les paquets sont construits
+	en dessous de \texttt{\~{}/.fbr} (voir plus haut). Cette variable est ignorée si
+	la variable d'environnement \texttt{FBR} est définie. \\
+\hline
+\texttt{FBR\_CATEGORY} &
+    Spécifie explicitement le nom de la catégorie sous laquelle les paquets sont construits
+	en dessous de \texttt{\~{}/.fbr} (voir plus haut). Cette variable est ignorée si
+	la variable d'environnement \texttt{FBR} est définie. \\
+\hline
+\texttt{FBR\_OWNDIR} &
+    Indique le répertoire qui contient les paquets spécifiques. L'utilisation du
+    chemin par défaut est \texttt{\$\{FBR\}/../own} (par exemple \texttt{\~{}/.fbr/own}). \\
+\hline
+\texttt{FBR\_TIDY} &
+    Si cette variable contient la valeur "y", les résultats intermédiaires qui
+    apparaissent pendant la compilation des paquets FBR seront effacés directement
+    après l'installation du répertoire \texttt{output/target}. Cela permet
+    d'économiser beaucoup d'espace, en faite cette valeur est toujours recommandé,
+    si vous ne vous sentez pas l'envie de vérifier les répertoires \texttt{output/build/...}
+    après la construction des paquetages. Si cette variable contient la valeur "k",
+	c'est seulement les résultats intermédiaires dans les différents répertoires du Kernel
+	de Linux qui seront effacés, cela permet d'économiser relativement beaucoup d'espace
+	sans perdre les fonctionnalités. Tous les autres dépacement (ou si la variable est
+	manquante) sont effectuées et tous les résultats intermédiaires seront conservés. \\
+\hline
+\texttt{FBR\_ARCH} &
+    Cette variable spécifie l'architecture du processeur pour lequel le FBR
+    (ou les paquets FBR individuels) doit être construit. Si elle est absente
+    le \texttt{x86} sera utilisé pour la construction. Voir ci-dessous les
+    architectures supportées. \\
+\hline
+\end{longtable}
+
+Le FBR prend actuellement en charge les architectures suivantes~:
+
+\begin{longtable}{|l|p{10cm}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Architecture}} &
+    \multicolumn{1}{|l|}{\textbf{Description}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+\texttt{x86} &
+    Intel Architecture x86 (32-Bit), aussi connu sous le nom IA-32. \\
+\hline
+\texttt{x86\_64} &
+    AMD Architecture x86-64 (64-Bit), appelé aussi Intel 64 ou EM64T. \\
+\hline
+\end{longtable}
+
+\subsubsection{Compiler tous les paquets FBR}
+
+Lorsque vous exécutez la commande \texttt{fbr-make} avec l'argument \texttt{world},
+pour que toutes les archives sources soit téléchargés et compilées, l'ordinateur
+devra être utilisé pendant plusieurs heures et ceci en fonction de l'ordinateur
+et le type de connexion Internet.\footnote{Le téléchargement des archives source
+sera bien entendu effectuée qu'une seule fois, tant que vous ne mettez pas à
+jour le FBR, si vous le mettez à jour vous aurez besoin de nouvelles versions de
+paquets avec d'autres archives source.}
+
+\subsubsection{Compiler avec Toolchain}
+
+Lorsque vous exécutez la commande \texttt{fbr-make} avec l'argument \texttt{toolchain},
+tous les paquets FBR sont téléchargés et convertis, ils sont nécessaires pour
+construire les fichiers binaires réels pour fli4l (c-à-d construire Binder,
+la bibliothèque uClibc etc.). Normalement, cette commande n'est pas nécessaire
+car tous les paquets FBR dépendante du toolchain, les programmes toolchain
+téléchargés et sont de toute façon compilés.
+
+\subsubsection{Compiler un unique paquet FBR}
+
+Si vous voulez compiler seulement un certain paquet FBR (pour auto-développé un
+programme OPT), vous pouvez indiquer le nom du paquet FBR ou le nom de plusieurs
+paquets FBR avec la commande \texttt{fbr-make}, (vous pouvez indiquer
+\texttt{fbr-make openvpn} pour télécharger et compiler le programme openVPN).
+Toutes les fichiers nécessaires qui dépende du programme seront également
+téléchargés et compilés.
+
+\subsubsection{Recompiler un unique paquet FBR }
+
+Si vous voulez recompiler un certain paquet FBR (pour une raison quelconque),
+vous devez d'abord supprimer les informations du processus de compilation dans
+le FBR avant de recommancer. Vous pouvez utiliser la commande \texttt{fbr-make <paquet>-clean}
+(par ex. \texttt{fbr-make openvpn-clean}). Les informations de tous les paquets
+FBR qui dépendent du paquet FBR spécifié seront également réinitialisées, de sorte
+qu'ils pourront également être recompilés la prochaine fois avec \texttt{fbr-make world}.
+
+\subsubsection{Recompiler tous les paquets FBR}
+
+Si vous souhaitez recompiler complétement le FBR (par exemple parce que vous
+voulez l'utiliser un programme de référence pour développer votre nouveau système
+haut de gamme ;-). Vous pouvez tous supprimer en utilisant la commande
+\texttt{fbr-make clean} après avoir été invité à confirmé la commande, tous
+les artefacts qui ont été générés au cours de la dernière construction FBR seront
+supprimés.\footnote{Tout les répertoires \texttt{\~{}/.fbr/fbr-<branch>-<arch>/buildroot/output}
+seront supprimés.} Cela est également utile pour libérer de l'espace disque.
+
+\marklabel{sec:src:test}{\subsection{Tester d'un programme compilé}}
+
+Si un programme a été compilé avec \texttt{fbr-make}, il peut également être
+testé sur l'ordinateur de développement. Un tel test ne fonctionne que lorsque
+l'architecture du processeur de l'ordinateur de développement et l'architecture
+du processeur pour fli4l pour lequelle les programmes ont être compilés,
+correspondent. (Par exemple, il n'est pas possible d'exécuter les programmes
+fli4l \texttt{x86\_64} sur un système d'exploitation \texttt{x86}). Si la
+condition est remplie, vous pouvez faire un teste,
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\{\}]
+\textbf{chroot ~/.fbr/fbr-<branch>-<arch>/buildroot/output/target /bin/sh}\enter
+\end{Verbatim}
+\end{example}
+
+\noindent allez dans le répertoire cible fli4l et essayez directement avec le/les
+programme(s) compilé(s). S'il vous plaît faites attention, vous avez besoin pour
+utiliser \texttt{chroot} des droits administrateur et en fonction de vos
+préférences et de la configuration du système vous devez utiliser le service
+\texttt{sudo} ou \texttt{su} c'est une exigence~! Vous devez aussi, avoir
+compilé dans le paquet FBR \texttt{busybox} (via \texttt{fbr-make busybox}) de
+sorte de pouvoir disposer d'un environnement shell dans le répertoire \texttt{chroot}.
+Voici un petit exemple~:
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\{\}]
+$ \textbf{sudo chroot ~/.fbr/fbr-trunk-x86/buildroot/output/target /bin/sh}\enter
+Passwort:\textbf{(Ihr Passwort)}\enter
+
+
+BusyBox v1.22.1 (fli4l) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+# \textbf{ls}\enter
+THIS_IS_NOT_YOUR_ROOT_FILESYSTEM  mnt
+bin                               opt
+dev                               proc
+etc                               root
+home                              run
+img                               sbin
+include                           share
+lib                               sys
+lib32                             tmp
+libexec                           usr
+man                               var
+media                             windows
+# \textbf{bc --version}\enter
+bc 1.06
+Copyright 1991-1994, 1997, 1998, 2000 Free Software Foundation, Inc.
+# \textbf{echo "42 - 23" | bc}\enter
+19
+#
+\end{Verbatim}
+\end{example}
+
+\marklabel{sec:debugging}{\subsection{Déboguer un programme compilé}}
+
+Si vous avez un problème sur un programme fli4l, en d'autres termes~: s'il se
+bloque, vous avez la possibilité d'analyser l'état du programme plus tard, juste
+avant l'accident (aussi nommé "débogage post-mortem"). Pour cela il est d'abord
+nécessaire de configurer le paquet \texttt{base} et d'activer \var{DEBUG\_ENABLE\_CORE='yes'}.
+Lors du crash un vidage de la mémoire est généré dans \texttt{/var/log/dumps/core.<PID>},
+le "PID" est le numéro de processus accidenté, on peut analyser de la manière
+suivante l'état du programme sur un ordinateur Linux avec un FBR complètement
+compilé. Dans l'exemple suivant, le programme à analyser est \texttt{/usr/sbin/collectd},
+avec le SIGBUS accepté. Le vidage de la mémoire est placé dans le fichier
+\texttt{/tmp/core.collectd}.
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\%!]
+fli4l@eisler:~$ \textbf%.fbr/fbr-trunk-86/buildroot/output/host/usr/bin/i586-linux-gdb!\enter
+GNU gdb (GDB) 7.5.1
+Copyright (C) 2012 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"
+and "show warranty" for details.
+This GDB was configured as "--host=x86_64-unknown-linux-gnu --target=i586-buildr
+oot-linux-uclibc".
+For bug reporting instructions, please see:
+<http://www.gnu.org/software/gdb/bugs/>.
+(gdb) \textbf%set sysroot /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target!\enter
+(gdb) \textbf%set debug-file-directory /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/de!
+\textbf%t/debug!\enter
+(gdb) \textbf%file /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target/usr/sbin/collec!
+\textbf%llectd!\enter
+Reading symbols from /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target/usr/
+sbin/collectd...Reading symbols from /project/fli4l/.fbr/fbr-trunk-86/buildroot/outp
+ut/debug/.build-id/8b/28ab573be4a2302e1117964edede2e54ebbdbf.debug...done.
+done.
+(gdb) \textbf%core /tmp/core.collectd!\enter
+[New LWP 2250]
+[New LWP 2252]
+[New LWP 2259]
+[New LWP 2257]
+[New LWP 2255]
+[New LWP 2232]
+[New LWP 2235]
+[New LWP 2238]
+[New LWP 2242]
+[New LWP 2244]
+[New LWP 2245]
+[New LWP 2231]
+[New LWP 2243]
+[New LWP 2251]
+[New LWP 2248]
+[New LWP 2239]
+[New LWP 2229]
+[New LWP 2249]
+[New LWP 2230]
+[New LWP 2247]
+[New LWP 2233]
+[New LWP 2256]
+[New LWP 2236]
+[New LWP 2246]
+[New LWP 2240]
+[New LWP 2241]
+[New LWP 2237]
+[New LWP 2234]
+[New LWP 2253]
+[New LWP 2254]
+[New LWP 2258]
+[New LWP 2260]
+Failed to read a valid object file image from memory.
+Core was generated by `collectd -f'.
+Program terminated with signal 7, Bus error.
+#0  0xb7705f5d in memcpy ()
+   from /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target/lib/libc.so.0
+(gdb) \textbf%backtrace!\enter
+#0  0xb7705f5d in memcpy ()
+   from /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target/lib/libc.so.0
+#1  0xb768a251 in rrd_write (rrd_file=rrd_file@entry=0x808e930, buf=0x808e268,
+    count=count@entry=112) at rrd_open.c:716
+#2  0xb76834f3 in rrd_create_fn (
+    file_name=file_name@entry=0x808d2f8 "/data/rrdtool/db/vm-fli4l-1/cpu-0/cpu-i
+nterrupt.rrd.async", rrd=rrd@entry=0xacff2f4c) at rrd_create.c:727
+#3  0xb7683d7b in rrd_create_r (
+    filename=filename@entry=0x808d2f8 "/data/rrdtool/db/vm-fli4l-1/cpu-0/cpu-int
+errupt.rrd.async", pdp_step=pdp_step@entry=10, last_up=last_up@entry=1386052459,
+    argc=argc@entry=16, argv=argv@entry=0x808cf18) at rrd_create.c:580
+#4  0xb76b77fd in srrd_create (
+    filename=0xacff33f0 "/data/rrdtool/db/vm-fli4l-1/cpu-0/cpu-interrupt.rrd.asy
+nc",
+    pdp_step=10, last_up=1386052459, argc=16, argv=0x808cf18) at utils_rrdcreate
+.c:377
+#5  0xb76b78cb in srrd_create_thread (targs=targs@entry=0x808bab8)
+    at utils_rrdcreate.c:559
+#6  0xb76b7a8f in srrd_create_thread (targs=0x808bab8) at utils_rrdcreate.c:491
+#7  0xb7763430 in ?? ()
+   from /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target/lib/libpthread.so.
+0
+#8  0xb775e672 in clone ()
+   from /project/fli4l/.fbr/fbr-trunk-86/buildroot/output/target/lib/libpthread.so.
+0
+(gdb) \textbf%frame 1!\enter
+#1  0xb768a251 in rrd_write (rrd_file=rrd_file@entry=0x808e930, buf=0x808e268,
+    count=count@entry=112) at rrd_open.c:716
+716         memcpy(rrd_simple_file->file_start + rrd_file->pos, buf, count);
+(gdb) \textbf%print (char*) buf!\enter
+$1 = 0x808e268 "RRD"
+(gdb) \textbf%print rrd_simple_file->file_start!\enter
+value has been optimized out
+(gdb) \textbf%list!\enter
+711         if((rrd_file->pos + count) > old_size)
+712         {
+713             rrd_set_error("attempting to write beyond end of file");
+714             return -1;
+715         }
+716         memcpy(rrd_simple_file->file_start + rrd_file->pos, buf, count);
+717         rrd_file->pos += count;
+718         return count;       /* mimmic write() semantics */
+719     #else
+720         ssize_t   _sz = write(rrd_simple_file->fd, buf, count);
+(gdb) \textbf%list 700!\enter
+695      * rrd_file->pos of rrd_simple_file->fd.
+696      * Returns the number of bytes written or <0 on error.  */
+697
+698     ssize_t rrd_write(
+699         rrd_file_t *rrd_file,
+700         const void *buf,
+701         size_t count)
+702     {
+703         rrd_simple_file_t *rrd_simple_file = (rrd_simple_file_t *)rrd_file->
+pvt;
+704     #ifdef HAVE_MMAP
+(gdb) \textbf%print *(rrd_simple_file_t *)rrd_file->pvt!\enter
+$2 = {fd = 9, file_start = 0xa67d0000 <Address 0xa67d0000 out of bounds>,
+  mm_prot = 3, mm_flags = 1}
+\end{Verbatim}
+\end{example}
+
+Vous pouvez voir ci-dessus, il faut un peu "fouiller" que dans le répertoire
+d'objet \texttt{rrd\_simple\_file\_t} le pointeur est invalide ("Address ... out
+of bounds") dans cette suite de débogage, il est clair que l'échec de \texttt{posix\_fallocate}
+est la cause de l'interruption du programme.
+
+Ce qui est important ici, c'est que \emph{tous} les chemins indiquer sont
+pleinement qualifié (\texttt{/project/...}) et qu'il n'y a aucun "raccourcis"
+utilisé (par exemple \texttt{\~{}/...}). Si cela n'est pas respecté, il
+peut arriver que les informations de débogage \texttt{gdb} ne trouve pas
+l'application et/ou n'utilise pas les bibliothèques. Les informations de débogage
+ne sont pas directement incluses dans le programme testé, mais stocké dans le
+répertoire \texttt{\~{}/.fbr/fbr-<branch>-<arch>/buildroot/output/debug/} sur fichier séparé.
+
+\subsection{Information sur le FBR}
+
+\subsubsection{Accéder à l'aide}
+
+Que peut faire \texttt{fbr-make} pour vous, vous pouvez peut-être utiliser
+la commande \texttt{fbr-make help}.
+
+\subsubsection{Affichage des informations sur le programme}
+
+Vous pouvez voir tous les paquets FBR disponibles et leurs versions, en
+utilisant la commande \texttt{fbr-make show-versions}~:
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\{\}]
+$ \textbf{fbr-make show-versions}\enter
+Configured packages
+
+acpid 2.0.20
+actctrl 3.25+dfsg1
+add-days undefined
+[...]
+\end{Verbatim}
+\end{example}
+
+\subsubsection{Affichage des associations de bibliothèques}
+
+Avec la commande \texttt{fbr-make links-against <soname>} et en indiquant le nom
+de la bibliothèque à la place de \texttt{soname}, vous pourrez voir tous les
+fichiers dans le répertoire \texttt{\~{}/.fbr/fbr-<branch>-<arch>/buildroot/output/target}
+qui sont associés à cette bibliothèque. Par exemple pour identifier tous les
+programmes et bibliothèques qui utilisent \texttt{libm} (bibliothèque de fonction
+mathématique), vous indiquez la commande \texttt{fbr-make links-against libm.so.0}
+car le nom de la bibliothèque \texttt{libm.so.0} est libm-bibliothèque.
+Un autre exemple~:
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\{\}]
+$ \textbf{fbr-make links-against librrd_th.so.4}\enter
+Executing plugin links-against
+Files linking against librrd_th.so.4
+collectd usr/lib/collectd/rrdcached.so
+collectd usr/lib/collectd/rrdtool.so
+rrdtool usr/bin/rrdcached
+\end{Verbatim}
+\end{example}
+
+Dans la première colonne le nom du paquet est indiqué et dans la seconde le chemin
+(relatif) du fichier qui est associé à la bibliothèque.
+
+Pour trouver le nom d'une bibliothèque, vous pouvez utiliser
+\texttt{readelf}, comme ceci~:
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\{\}]
+$ \textbf{readelf -d ~/.fbr/fbr-trunk-x86/buildroot/output/target/lib/libm-0.9.33.2.so |}\enter
+> \textbf{grep SONAME}\enter
+ 0x0000000e (SONAME)                     Library soname: [libm.so.0]
+\end{Verbatim}
+\end{example}
+
+\subsubsection{Affichage des changements de version}
+
+(Uniquement) intéressant pour les développeurs de l'équipe fli4l avec un accès
+en écriture au répertoire fli4l-SVN-Repository, utilisez la commande
+\texttt{fbr-make version-changes}. Vous pourrez voir la liste de tous les paquets
+dont la version FBR a été modifié localement, la version différente de la copie
+de travail et la version du référentiel. Ainsi, le développeur peut voir un
+aperçu des paquets FBR mis à jour, avant d'écrire les changements dans le repo.
+Voici une entrée possible~:
+
+\begin{example}
+\begin{Verbatim}[commandchars=\\\{\}]
+$ \textbf{fbr-make version-changes}\enter
+Executing plugin version-changes
+Package version changes
+KAMAILIO: 4.0.5 --> 4.1.1
+\end{Verbatim}
+\end{example}
+
+Ici vous pouvez voir immédiatement que le paquet FBR \texttt{kamailio} avait
+la version 4.0.5 et a été mise à jour avec la version 4.1.1.
+
+\subsection{Modification de la configuration du FBR}
+
+\subsubsection{Reconfiguration des FBRs}
+
+D'une part, à l'aide de la commande \texttt{fbr-make buildroot-menuconfig}, il
+est possible de choisir les paquets FBR à compiler. Ceci est utile si vous voulez
+compiler d'autres paquets FBR pour fli4l et qui ne sont pas activés par défaut,
+mais qui sont intégrés dans le buildroot uClibc, ou si vous souhaitez activer
+vos propres paquets FBR. D'autre part, des propriétés globales du FBRs peuvent
+être modifiées, telles que la version du compilateur GCC utilisée. Pour couronnée
+de succès la configuration du menu, la nouvelle configuration doit être sauvegardée
+dans le répertoire \texttt{src/fbr/buildroot/.config}.
+
+\achtung{S'il vous plaît noter, que des modifications dans la configuration du
+toolchain ne sont officiellement \emph{pas} prisent en charge, car les fichiers
+binaires auront une forte probabilité d'incompatibilités avec la distribution
+officielle de fli4l. Donc, si vous avez besoin de fichiers binaires pour votre
+propre OPT et que vous souhaitez publier cette OPT, vous ne devez pas modifier
+un paramètre de chaîne de compilation~!}
+
+\subsubsection{Reconfiguration de la bibliothèque uClibc}
+
+Si vous utilisez de commande \texttt{fbr-make uclibc-menuconfig} vous pouvez
+modifier la fonctionnalité de la bibliothèque uClibc. Pour couronnée de succès
+la configuration du menu, la nouvelle configuration doit être enregistrée dans
+le répertoire \texttt{fbr-make uclibc-menuconfig}.
+
+\achtung{Il faut prendre également en compte comme dans le dernier paragraphe~:
+une modifications sera hautement probable qu'elle ne soit pas compatible avec la
+distribution officielle de fli4l et ne sera donc pas pris en charge~!}
+
+\subsubsection{Reconfiguration de Busybox}
+
+A l'aide de la commande \texttt{fbr-make busybox-menuconfig}, vous pouvez régler
+le fonctionnement de Busybox. Pour couronnée de succès la configuration du menu,
+la nouvelle configuration doit être enregistrée dans le répertoire
+\texttt{src/fbr/buildroot/package/busybox/busybox-<Version>.config}.
+
+\achtung{Ici aussi, un changement n'est probablement pas compatible avec la
+distribution officielle de fli4l et n'est donc pas pris en charge~! Tout au plus
+le fait de compléter le Busybox autour de nouvelles applets est sans problèmes,
+tant que vous utilisez le Busybox ainsi modifié seulement sur votre routeur fli4l,
+(il ne permet pas l'utilisation d'un tel Busybox modifié, pour vos propres OPTs).}
+
+\subsubsection{Reconfiguration du paquet Kernel-Linux}
+
+A l'aide de la commande \texttt{fbr-make linux-menuconfig} ou
+\texttt{fbr-make linux-<version>-menuconfig} la configuration de tous les paquets
+Kernel ou d'un paquet Kernel spécifique est permis. Pour couronnée de succès
+la configuration du menu, la nouvelle configuration doit être enregistrée dans
+le répertoire \texttt{src/fbr/buildroot/linux/linux-<version>/dot-config-<arch>}.
+Ceci est valable seulement pour un Kernel standard. Pour une variante du paquet
+Kernel, au lieu que le fichier soit indiqué \texttt{diff}, il sera indiqué
+\texttt{src/fbr/buildroot/linux/linux-<version>/linux-<version>\_<variante>/dot-config-<arch>.diff}.
+
+\achtung{Il faut prendre également en compte comme dans le dernier paragraphe~:
+un changement n'est probablement pas compatible avec la distribution officielle
+de fli4l et n'est donc pas pris en charge~! Tout au plus le fait de compléter le
+Kernel Linux autour de nouveaux modules c'est sans problèmes (il ne permet pas
+l'utilisation d'un tel Kernel modifié, pour vos propres OPTs).}
+
+\subsection{Mise à jour des FBRs}
+
+Pour chacune des commandes décrites ci-dessus, un examen des FBRs est effectué
+pour une évolution de la mise à jour. En cas de divergence entre les sources,
+après avoir utilé le \texttt{fbr-make} pour (décompacter le paquet \texttt{src}
+ou pour la copie de travail SVN) et le FBR dans \texttt{\~{}/.fbr/fbr-<branch>-<arch>/buildroot},
+les différentes sources trouvées seront mise à jour. Les nouveaux paquets FBR
+ainsi que les anciens seront intégrés, les paquets FBR existants seront effacés.
+Les configurations sont comparées~: les paquets FBR dont la configuration a été
+récemment modifiée ainsi que tous les paquets FBR qui en découle seront construits.
+Cela garantit que le FBR sur votre ordinateur est toujours conforme pour le
+développement de fli4l (excepté vos propres paquets FBR qui sont dans \texttt{\~{}/.fbr/own/}).
+\textbf{Cela signifie aussi que des modifications de la partie officielle et de
+la configuration du Buildroot seront perdues lors de la prochaine de la mise à jour~!}
+C'est pourquoi, une reconfiguration des FBRs (voir ci-dessus) n'est pasrecommandé,
+du moins pas si à la place des paquets \texttt{src} vous travaillez avec une copie
+de travail \texttt{src}. (Lors de la mise à jour d'une copie de travail SVN,
+vos changements de configuration locaux et les modifications apportées dans le
+SVN-Repository sont fusionnées, si bien que le problème de la perte de la
+configuration ne se produira pas ici). En revanche, vous pouvez reconfigurer
+vos propres paquets FBR facilement, sans provoquer une mise à jour avec la perte
+de données.
+
+\subsection{Intégrer vos propres programmes dans le FBR}
+
+La compilation des paquets FBR individuels est contrôlé par un petit fichier
+make. Si vous voulez développer vos propres paquets FBR, et si vous utilisez
+le fichier make une description de la configuration est dans \texttt{\~{}/.fbr/own/<paquet>/}.
+Pour comprendre comment ceux-ci sont construits et comment écrire son propre fichier
+Make, une documentation décrit en détail le uClibc-Buildroots dans
+\altlink{http://buildroot.uclibc.org/downloads/manual/manual.html\#adding-packages}.

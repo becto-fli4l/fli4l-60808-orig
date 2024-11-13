@@ -1,0 +1,40 @@
+diff -urN dibbler-1.0.0.orig/Misc/Logger.cpp dibbler-1.0.0/Misc/Logger.cpp
+--- dibbler-1.0.0.orig/Misc/Logger.cpp	2013-10-27 19:33:06.000000000 +0100
++++ dibbler-1.0.0/Misc/Logger.cpp	2014-11-08 20:45:26.004195005 +0100
+@@ -12,6 +12,7 @@
+ #include <iomanip>
+ #include <fstream>
+ #include <string>
++#include <cstring>
+ #include <sstream>
+ #include <time.h>
+ #include "Logger.h"
+@@ -37,7 +38,8 @@
+     int curLogEntry = 8;	// Log level of currently constructed message
+     bool color = false;
+ #ifdef LINUX
+-    string syslogname="DibblerInit";	// logname for syslog
++    const int MAXSYSLOGLEN = 64;
++    char syslogname[MAXSYSLOGLEN]="DibblerInit";	// logname for syslog
+     int curSyslogEntry = LOG_NOTICE;	// curLogEntry for syslog
+ #endif
+ 
+@@ -182,7 +184,7 @@
+ 		break;
+ 	    case LOGMODE_SYSLOG:
+ #ifdef LINUX
+-		openlog(syslogname.c_str(), LOG_PID, LOG_DAEMON);
++		openlog(syslogname, LOG_PID, LOG_DAEMON);
+ #endif
+ 		break;
+ 	    case LOGMODE_EVENTLOG:
+@@ -262,7 +264,8 @@
+     void setLogName(string x) {
+ 	logger::logname = x;
+ #ifdef LINUX
+-	logger::syslogname = std::string("Dibbler").append(logger::logname);
++	strncpy(logger::syslogname, std::string("Dibbler").append(logger::logname).c_str(), MAXSYSLOGLEN);
++	logger::syslogname[MAXSYSLOGLEN - 1] = '\0';
+ #endif
+     }
+ 

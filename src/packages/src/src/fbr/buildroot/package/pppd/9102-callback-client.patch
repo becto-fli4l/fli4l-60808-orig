@@ -1,0 +1,809 @@
+diff -purN pppd-2.4.7.orig/pppd/auth.c pppd-2.4.7/pppd/auth.c
+--- pppd-2.4.7.orig/pppd/auth.c	2018-01-30 23:14:51.795755831 +0100
++++ pppd-2.4.7/pppd/auth.c	2018-01-30 23:19:23.138487819 +0100
+@@ -825,16 +825,25 @@ network_phase(unit)
+ 	}
+     }
+ 
+-#ifdef CBCP_SUPPORT
+     /*
+      * If we negotiated callback, do it now.
+      */
+-    if (go->neg_cbcp) {
++    if (go->neg_callback) {
+ 	new_phase(PHASE_CALLBACK);
+-	(*cbcp_protent.open)(unit);
++#ifdef CBCP_SUPPORT
++	if (go->cbopt.neg_cbcp)
++	    (*cbcp_protent.open)(unit);
++	else {
++#endif
++	    persist = 0;
++	    status = EXIT_CALLBACK;
++	    lcp_close(0, "Call me back, please");
++	    callback_client_script();
++#ifdef CBCP_SUPPORT
++	}
++#endif
+ 	return;
+     }
+-#endif
+ 
+     /*
+      * Process extra options from the secrets file
+@@ -2361,3 +2370,26 @@ auth_script(script)
+ 
+     auth_script_pid = run_program(script, argv, 0, auth_script_done, NULL, 0);
+ }
++
++/*
++ * callback_client_script - execute a callback client script with arguments
++ * interface-name peer-name tty speed ipparam
++  */
++void
++callback_client_script()
++{
++    char strspeed[32];
++    char *argv[7];
++
++    slprintf(strspeed, sizeof(strspeed), "%d", baud_rate);
++
++    argv[0] = _PATH_CB_CLIENT;
++    argv[1] = ifname;
++    argv[2] = peer_authname;
++    argv[3] = devnam;
++    argv[4] = strspeed;
++    argv[5] = ipparam;
++    argv[6] = NULL;
++
++    run_program(argv[0], argv, 0, NULL, NULL, 0);
++}
+diff -purN pppd-2.4.7.orig/pppd/cbcp.c pppd-2.4.7/pppd/cbcp.c
+--- pppd-2.4.7.orig/pppd/cbcp.c	2014-08-09 14:31:39.000000000 +0200
++++ pppd-2.4.7/pppd/cbcp.c	2018-01-30 23:19:23.138487819 +0100
+@@ -44,25 +44,16 @@
+ #include "cbcp.h"
+ #include "fsm.h"
+ #include "lcp.h"
++#include "pathnames.h"
+ 
+ static const char rcsid[] = RCSID;
+ 
+ /*
+- * Options.
+- */
+-static int setcbcp __P((char **));
+-
+-static option_t cbcp_option_list[] = {
+-    { "callback", o_special, (void *)setcbcp,
+-      "Ask for callback", OPT_PRIO | OPT_A2STRVAL, &cbcp[0].us_number },
+-    { NULL }
+-};
+-
+-/*
+  * Protocol entry points.
+  */
+ static void cbcp_init      __P((int unit));
+ static void cbcp_open      __P((int unit));
++static void cbcp_timeout   __P((void *arg));
+ static void cbcp_lowerup   __P((int unit));
+ static void cbcp_input     __P((int unit, u_char *pkt, int len));
+ static void cbcp_protrej   __P((int unit));
+@@ -84,7 +75,7 @@ struct protent cbcp_protent = {
+     0,
+     "CBCP",
+     NULL,
+-    cbcp_option_list,
++    NULL,
+     NULL,
+     NULL,
+     NULL
+@@ -95,26 +86,11 @@ cbcp_state cbcp[NUM_PPP];
+ /* internal prototypes */
+ 
+ static void cbcp_recvreq __P((cbcp_state *us, u_char *pckt, int len));
+-static void cbcp_resp __P((cbcp_state *us));
++static void cbcp_sendresp __P((cbcp_state *us));
+ static void cbcp_up __P((cbcp_state *us));
+ static void cbcp_recvack __P((cbcp_state *us, u_char *pckt, int len));
+ static void cbcp_send __P((cbcp_state *us, int code, u_char *buf, int len));
+ 
+-/* option processing */
+-static int
+-setcbcp(argv)
+-    char **argv;
+-{
+-    lcp_wantoptions[0].neg_cbcp = 1;
+-    cbcp_protent.enabled_flag = 1;
+-    cbcp[0].us_number = strdup(*argv);
+-    if (cbcp[0].us_number == 0)
+-	novm("callback number");
+-    cbcp[0].us_type |= (1 << CB_CONF_USER);
+-    cbcp[0].us_type |= (1 << CB_CONF_ADMIN);
+-    return (1);
+-}
+-
+ /* init state */
+ static void
+ cbcp_init(iface)
+@@ -126,6 +102,7 @@ cbcp_init(iface)
+     memset(us, 0, sizeof(cbcp_state));
+     us->us_unit = iface;
+     us->us_type |= (1 << CB_CONF_NO);
++    us->us_delay = 5; /* Default to 5 seconds callback delay */
+ }
+ 
+ /* lower layer is up */
+@@ -146,7 +123,17 @@ static void
+ cbcp_open(unit)
+     int unit;
+ {
++    cbcp_state *us = &cbcp[unit];
+     dbglog("cbcp_open");
++    TIMEOUT(cbcp_timeout, us, CBCP_REQTIMEOUT);
++}
++
++static void
++cbcp_timeout(arg)
++    void *arg;
++{
++    cbcp_state *us = (cbcp_state *) arg;
++    lcp_close(us->us_unit, "CBCP: timeout reached while waiting for request");
+ }
+ 
+ /* process an incomming packet */
+@@ -166,7 +153,7 @@ cbcp_input(unit, inpacket, pktlen)
+ 
+     if (pktlen < CBCP_MINLEN) {
+ 	if (debug)
+-	    dbglog("CBCP packet is too small");
++	    dbglog("cbcp_input: packet is too small");
+ 	return;
+     }
+ 
+@@ -176,7 +163,7 @@ cbcp_input(unit, inpacket, pktlen)
+ 
+     if (len > pktlen || len < CBCP_MINLEN) {
+ 	if (debug)
+-	    dbglog("CBCP packet: invalid length %d", len);
++	    dbglog("cbcp_input: packet has invalid length %d", len);
+         return;
+     }
+ 
+@@ -190,12 +177,12 @@ cbcp_input(unit, inpacket, pktlen)
+ 
+     case CBCP_RESP:
+ 	if (debug)
+-	    dbglog("CBCP_RESP received");
++	    dbglog("cbcp_input: CBCP_RESP received");
+ 	break;
+ 
+     case CBCP_ACK:
+ 	if (debug && id != us->us_id)
+-	    dbglog("id doesn't match: expected %d recv %d",
++	    dbglog("cbcp_input: id doesn't match: expected %d, received %d",
+ 		   us->us_id, id);
+ 
+ 	cbcp_recvack(us, inp, len);
+@@ -272,7 +259,7 @@ cbcp_printpkt(p, plen, printer, arg)
+ 
+ 	    if (olen > 2) {
+ 	        GETCHAR(delay, p);
+-		printer(arg, " delay = %d", delay);
++		printer(arg, " delay=%d", delay);
+ 	    }
+ 
+ 	    if (olen > 3) {
+@@ -282,7 +269,8 @@ cbcp_printpkt(p, plen, printer, arg)
+ 		GETCHAR(addrt, p);
+ 		memcpy(str, p, olen - 4);
+ 		str[olen - 4] = 0;
+-		printer(arg, " number = %s", str);
++		p += olen - 4;
++		printer(arg, " number=%s", str);
+ 	    }
+ 	    printer(arg, ">");
+ 	}
+@@ -314,7 +302,7 @@ cbcp_recvreq(us, pckt, pcktlen)
+     address[0] = 0;
+ 
+     while (len >= 2) {
+-        dbglog("length: %d", len);
++        dbglog("cbcp_recvreq: remaining length: %d", len);
+ 
+ 	GETCHAR(type, pckt);
+ 	GETCHAR(opt_len, pckt);
+@@ -328,11 +316,11 @@ cbcp_recvreq(us, pckt, pcktlen)
+ 
+ 	switch(type) {
+ 	case CB_CONF_NO:
+-	    dbglog("no callback allowed");
++	    dbglog("cbcp_recvreq: no callback allowed");
+ 	    break;
+ 
+ 	case CB_CONF_USER:
+-	    dbglog("user callback allowed");
++	    dbglog("cbcp_recvreq: user callback allowed");
+ 	    if (opt_len > 4) {
+ 	        GETCHAR(addr_type, pckt);
+ 		memcpy(address, pckt, opt_len - 4);
+@@ -343,11 +331,16 @@ cbcp_recvreq(us, pckt, pcktlen)
+ 	    break;
+ 
+ 	case CB_CONF_ADMIN:
+-	    dbglog("user admin defined allowed");
++	    dbglog("cbcp_recvreq: admin callback allowed");
+ 	    break;
+ 
++#if 0 /* not defined in current CBCP specification */
+ 	case CB_CONF_LIST:
+ 	    break;
++#endif
++	default :
++	    dbglog("cbcp_recvreq: unknown callback type %d suggested", type);
++	    break;
+ 	}
+ 	len -= opt_len;
+     }
+@@ -357,11 +350,12 @@ cbcp_recvreq(us, pckt, pcktlen)
+ 	return;
+     }
+ 
+-    cbcp_resp(us);
++    UNTIMEOUT(cbcp_timeout, us);
++    cbcp_sendresp(us);
+ }
+ 
+ static void
+-cbcp_resp(us)
++cbcp_sendresp(us)
+     cbcp_state *us;
+ {
+     u_char cb_type;
+@@ -371,42 +365,44 @@ cbcp_resp(us)
+     int slen;
+ 
+     cb_type = us->us_allowed & us->us_type;
+-    dbglog("cbcp_resp cb_type=%d", cb_type);
++    dbglog("cbcp_sendresp: cb_type=%d", cb_type);
+ 
+-#if 0
+-    if (!cb_type)
+-        lcp_down(us->us_unit);
+-#endif
++    if (!cb_type) {
++	status = EXIT_NEGOTIATION_FAILED;
++	lcp_close(us->us_unit, "CBCP: received callback options incompatible"
++			       " with the ones we want");
++	return;
++    }
+ 
+     if (cb_type & ( 1 << CB_CONF_USER ) ) {
+-	dbglog("cbcp_resp CONF_USER");
+-	slen = strlen(us->us_number);
++	dbglog("cbcp_sendresp: CONF_USER");
++	slen = us->us_numlen;
+ 	if (slen > 250) {
+-	    warn("callback number truncated to 250 characters");
++	    warn("cbcp_sendresp: callback number truncated to 250 characters");
+ 	    slen = 250;
+ 	}
+ 	PUTCHAR(CB_CONF_USER, bufp);
+ 	len = 3 + 1 + slen + 1;
+ 	PUTCHAR(len , bufp);
+-	PUTCHAR(5, bufp); /* delay */
+-	PUTCHAR(1, bufp);
++	PUTCHAR(us->us_delay, bufp);
++	PUTCHAR(CBCP_ADDRTYPE_PHONENUM, bufp);
+ 	BCOPY(us->us_number, bufp, slen + 1);
+ 	cbcp_send(us, CBCP_RESP, buf, len);
+ 	return;
+     }
+ 
+     if (cb_type & ( 1 << CB_CONF_ADMIN ) ) {
+-	dbglog("cbcp_resp CONF_ADMIN");
++	dbglog("cbcp_sendresp: CONF_ADMIN");
+         PUTCHAR(CB_CONF_ADMIN, bufp);
+ 	len = 3;
+ 	PUTCHAR(len, bufp);
+-	PUTCHAR(5, bufp); /* delay */
++	PUTCHAR(us->us_delay, bufp);
+ 	cbcp_send(us, CBCP_RESP, buf, len);
+ 	return;
+     }
+ 
+     if (cb_type & ( 1 << CB_CONF_NO ) ) {
+-        dbglog("cbcp_resp CONF_NO");
++        dbglog("cbcp_sendresp: CONF_NO");
+ 	PUTCHAR(CB_CONF_NO, bufp);
+ 	len = 2;
+ 	PUTCHAR(len , bufp);
+@@ -465,7 +461,7 @@ cbcp_recvack(us, pckt, len)
+ 		memcpy(address, pckt, opt_len - 4);
+ 		address[opt_len - 4] = 0;
+ 		if (address[0])
+-		    dbglog("peer will call: %s", address);
++		    dbglog("cbcp_recvack: peer will call: %s", address);
+ 	    }
+ 	    if (type == CB_CONF_NO)
+ 		return;
+@@ -484,5 +480,6 @@ cbcp_up(us)
+ {
+     persist = 0;
+     status = EXIT_CALLBACK;
+-    lcp_close(0, "Call me back, please");
++    lcp_close(us->us_unit, "Call me back, please");
++    callback_client_script();
+ }
+diff -purN pppd-2.4.7.orig/pppd/cbcp.h pppd-2.4.7/pppd/cbcp.h
+--- pppd-2.4.7.orig/pppd/cbcp.h	2014-08-09 14:31:39.000000000 +0200
++++ pppd-2.4.7/pppd/cbcp.h	2018-01-30 23:19:23.138487819 +0100
+@@ -3,10 +3,12 @@
+ 
+ typedef struct cbcp_state {
+     int    us_unit;	/* Interface unit number */
+-    u_char us_id;		/* Current id */
++    u_char us_id;	/* Current id */
+     u_char us_allowed;
+     int    us_type;
+-    char   *us_number;    /* Telefone Number */
++    char   *us_number;	/* Telephone Number */
++    int    us_numlen;	/* Length of telephone Number */
++    int    us_delay;	/* Callback delay */
+ } cbcp_state;
+ 
+ extern cbcp_state cbcp[];
+@@ -22,5 +24,17 @@ extern struct protent cbcp_protent;
+ #define CB_CONF_NO     1
+ #define CB_CONF_USER   2
+ #define CB_CONF_ADMIN  3
++/*
++ * not defined in current CBCP specification from 2013-10-25
++ * (see http://msdn.microsoft.com/en-us/library/ff632671.aspx)
++ */ 
++#if 0 
+ #define CB_CONF_LIST   4
+ #endif
++
++#define CBCP_ADDRTYPE_PHONENUM	0x01
++
++#define CBCP_REQTIMEOUT	15	/* time in seconds to wait for a CBCP request
++				   before giving up */
++
++#endif
+diff -purN pppd-2.4.7.orig/pppd/lcp.c pppd-2.4.7/pppd/lcp.c
+--- pppd-2.4.7.orig/pppd/lcp.c	2018-01-30 23:14:51.672757766 +0100
++++ pppd-2.4.7/pppd/lcp.c	2018-01-30 23:19:23.139487803 +0100
+@@ -54,6 +54,9 @@
+ #include "fsm.h"
+ #include "lcp.h"
+ #include "chap-new.h"
++#ifdef CBCP_SUPPORT
++#include "cbcp.h"
++#endif
+ #include "magic.h"
+ 
+ static const char rcsid[] = RCSID;
+@@ -79,6 +82,7 @@ bool	noendpoint = 0;		/* don't send/acce
+ 
+ static int noopt __P((char **));
+ 
++static int setcallback __P((char **));
+ #ifdef HAVE_MULTILINK
+ static int setendpoint __P((char **));
+ static void printendpoint __P((option_t *, void (*)(void *, char *, ...),
+@@ -186,6 +190,35 @@ static option_t lcp_option_list[] = {
+     { "noendpoint", o_bool, &noendpoint,
+       "Don't send or accept multilink endpoint discriminator", 1 },
+ 
++    { "callback", o_special, (void *)setcallback,
++      "Ask for callback", OPT_PRIO | OPT_A2STRVAL,
++      &lcp_wantoptions[0].cbopt.message },
++
++#ifdef CBCP_SUPPORT
++    { "callback-cbcp", o_bool, &lcp_wantoptions[0].cbopt.neg_cbcp,
++      "Enable CBCP callback negotiation",
++      OPT_PRIOSUB | OPT_A2COPY | 1, &cbcp_protent.enabled_flag },
++    { "no-callback-cbcp", o_bool, &lcp_wantoptions[0].cbopt.neg_cbcp,
++      "Disable CBCP callback negotiation",
++      OPT_PRIOSUB | OPT_A2COPY | 0, &cbcp_protent.enabled_flag },
++    { "-callback-cbcp", o_bool, &lcp_wantoptions[0].cbopt.neg_cbcp,
++      "Disable CBCP callback negotiation",
++      OPT_PRIOSUB | OPT_A2COPY | OPT_ALIAS | 0, &cbcp_protent.enabled_flag },
++    { "callback-delay", o_int, &cbcp[0].us_delay,
++      "Callback delay for CBCP", OPT_PRIOSUB | OPT_ULIMIT, NULL, 255 },
++#endif
++
++    { "callback-rfc1570", o_bool, &lcp_wantoptions[0].cbopt.neg_rfc,
++      "Enable RFC 1570 style callback negotiation", OPT_PRIOSUB | 1 },
++    { "no-callback-rfc1570", o_bool, &lcp_wantoptions[0].cbopt.neg_rfc,
++      "Disable RFC 1570 style callback negotiation", OPT_PRIOSUB | 0 },
++    { "-callback-rfc1570", o_bool, &lcp_wantoptions[0].cbopt.neg_rfc,
++      "Disable RFC 1570 style callback negotiation",
++      OPT_PRIOSUB | OPT_ALIAS | 0 },
++    { "callback-type", o_int, &lcp_wantoptions[0].cbopt.type,
++      "Callback type for RFC 1570 style callbacks",
++      OPT_PRIOSUB | OPT_ULIMIT | CB_AUTH, NULL, CB_NAME },
++
+     {NULL}
+ };
+ 
+@@ -291,7 +324,7 @@ int lcp_loopbackfail = DEFLOOPBACKFAIL;
+ #define CILEN_CHAP	5	/* CILEN_VOID + 2 + 1 */
+ #define CILEN_LONG	6	/* CILEN_VOID + 4 */
+ #define CILEN_LQR	8	/* CILEN_VOID + 2 + 4 */
+-#define CILEN_CBCP	3
++#define CILEN_CB	3
+ 
+ #define CODENAME(x)	((x) == CONFACK ? "ACK" : \
+ 			 (x) == CONFNAK ? "NAK" : "REJ")
+@@ -332,6 +365,31 @@ printendpoint(opt, printer, arg)
+ }
+ #endif /* HAVE_MULTILINK */
+ 
++static int
++setcallback(argv)
++    char **argv;
++{
++    lcp_wantoptions[0].neg_callback = 1;
++    free(lcp_wantoptions[0].cbopt.message);
++    lcp_wantoptions[0].cbopt.message = strdup(*argv);
++    if (lcp_wantoptions[0].cbopt.message == 0)
++	novm("callback number");
++    lcp_wantoptions[0].cbopt.mlen =
++	strlen(lcp_wantoptions[0].cbopt.message);
++
++#ifdef CBCP_SUPPORT
++    if (lcp_wantoptions[0].cbopt.neg_cbcp)
++	cbcp_protent.enabled_flag = 1;
++
++    cbcp[0].us_number = (char *) lcp_wantoptions[0].cbopt.message;
++    cbcp[0].us_numlen = lcp_wantoptions[0].cbopt.mlen;
++    if (cbcp[0].us_number[0])
++	cbcp[0].us_type |= (1 << CB_CONF_USER);
++    cbcp[0].us_type |= (1 << CB_CONF_ADMIN);
++#endif
++    return 1;
++}
++
+ /*
+  * lcp_init - Initialize LCP.
+  */
+@@ -356,6 +414,13 @@ lcp_init(unit)
+     wo->neg_magicnumber = 1;
+     wo->neg_pcompression = 1;
+     wo->neg_accompression = 1;
++    wo->cbopt.neg_rfc  = 1;
++#if 0 /* actually redundant, as CB_AUTH == 0 */
++    wo->cbopt.type = CB_AUTH;
++#endif
++#ifdef CBCP_SUPPORT
++    wo->cbopt.neg_cbcp = 1;
++#endif
+ 
+     BZERO(ao, sizeof(*ao));
+     ao->neg_mru = 1;
+@@ -681,7 +746,8 @@ lcp_cilen(f)
+ #define LENCISHORT(neg)	((neg) ? CILEN_SHORT : 0)
+ #define LENCILONG(neg)	((neg) ? CILEN_LONG : 0)
+ #define LENCILQR(neg)	((neg) ? CILEN_LQR: 0)
+-#define LENCICBCP(neg)	((neg) ? CILEN_CBCP: 0)
++#define LENCICB(neg, type, mlen)	((neg) ? CILEN_CB + \
++	    ((type) != CB_CBCP && (type) != CB_AUTH ? mlen : 0) : 0)
+     /*
+      * NB: we only ask for one of CHAP, UPAP, or EAP, even if we will
+      * accept more than one.  We prefer EAP first, then CHAP, then
+@@ -693,7 +759,8 @@ lcp_cilen(f)
+ 	    LENCICHAP(!go->neg_eap && go->neg_chap) +
+ 	    LENCISHORT(!go->neg_eap && !go->neg_chap && go->neg_upap) +
+ 	    LENCILQR(go->neg_lqr) +
+-	    LENCICBCP(go->neg_cbcp) +
++	    LENCICB(go->neg_callback, (go->cbopt.neg_cbcp ? CB_CBCP :
++		    go->cbopt.type), go->cbopt.mlen) +
+ 	    LENCILONG(go->neg_magicnumber) +
+ 	    LENCIVOID(go->neg_pcompression) +
+ 	    LENCIVOID(go->neg_accompression) +
+@@ -746,6 +813,16 @@ lcp_addci(f, ucp, lenp)
+ 	PUTSHORT(PPP_LQR, ucp); \
+ 	PUTLONG(val, ucp); \
+     }
++#define ADDCICB(opt, neg, type, val, len) \
++    if(neg) { \
++	int i; \
++	int cblen = LENCICB(neg, type, len); \
++	PUTCHAR(opt, ucp); \
++	PUTCHAR(cblen, ucp); \
++	PUTCHAR(type, ucp); \
++	for (i = 0; i < cblen - CILEN_CB; ++i) \
++	    PUTCHAR(val[i], ucp); \
++    }
+ #define ADDCICHAR(opt, neg, val) \
+     if (neg) { \
+ 	PUTCHAR(opt, ucp); \
+@@ -770,7 +847,8 @@ lcp_addci(f, ucp, lenp)
+     ADDCISHORT(CI_AUTHTYPE, !go->neg_eap && !go->neg_chap && go->neg_upap,
+ 	       PPP_PAP);
+     ADDCILQR(CI_QUALITY, go->neg_lqr, go->lqr_period);
+-    ADDCICHAR(CI_CALLBACK, go->neg_cbcp, CBCP_OPT);
++    ADDCICB(CI_CALLBACK, go->neg_callback, (go->cbopt.neg_cbcp ? CB_CBCP :
++	    go->cbopt.type), go->cbopt.message, go->cbopt.mlen);
+     ADDCILONG(CI_MAGICNUMBER, go->neg_magicnumber, go->magicnumber);
+     ADDCIVOID(CI_PCOMPRESSION, go->neg_pcompression);
+     ADDCIVOID(CI_ACCOMPRESSION, go->neg_accompression);
+@@ -891,6 +969,25 @@ lcp_ackci(f, p, len)
+ 	if (cilong != val) \
+ 	  goto bad; \
+     }
++#define ACKCICB(opt, neg, type, val, vlen) \
++    if(neg) { \
++	int i; \
++	int cblen = LENCICB(neg, type, vlen); \
++	if((len -= cblen) < 0) \
++	    goto bad; \
++	GETCHAR(citype, p); \
++	GETCHAR(cilen, p); \
++	GETCHAR(cichar, p); \
++	if(cilen != cblen || \
++	    citype != opt || \
++	    cichar != type) \
++	    goto bad; \
++	for (i = 0; i < cblen - CILEN_CB; ++i) { \
++	    GETCHAR(cichar, p); \
++	    if(cichar != val[i]) \
++		goto bad; \
++	} \
++    }
+ #define ACKCIENDP(opt, neg, class, val, vlen) \
+     if (neg) { \
+ 	int i; \
+@@ -919,7 +1016,8 @@ lcp_ackci(f, p, len)
+     ACKCISHORT(CI_AUTHTYPE, !go->neg_eap && !go->neg_chap && go->neg_upap,
+ 	       PPP_PAP);
+     ACKCILQR(CI_QUALITY, go->neg_lqr, go->lqr_period);
+-    ACKCICHAR(CI_CALLBACK, go->neg_cbcp, CBCP_OPT);
++    ACKCICB(CI_CALLBACK, go->neg_callback, (go->cbopt.neg_cbcp ? CB_CBCP :
++	    go->cbopt.type), go->cbopt.message, go->cbopt.mlen);
+     ACKCILONG(CI_MAGICNUMBER, go->neg_magicnumber, go->magicnumber);
+     ACKCIVOID(CI_PCOMPRESSION, go->neg_pcompression);
+     ACKCIVOID(CI_ACCOMPRESSION, go->neg_accompression);
+@@ -1183,11 +1281,61 @@ lcp_nakci(f, p, len, treat_as_reject)
+ 	     );
+ 
+     /*
+-     * Only implementing CBCP...not the rest of the callback options
++     * If they've nak'd our callback request, see if we can fall
++     * back to a different method. If not, give up asking for callback.
+      */
+-    NAKCICHAR(CI_CALLBACK, neg_cbcp,
+-              try.neg_cbcp = 0;
+-              );
++    if(go->neg_callback && len >= CILEN_CB
++	    && p[0] == CI_CALLBACK && p[1] >= CILEN_CB && p[1] <= len) {
++	int i;
++	int cb_type;
++	cilen = p[1];
++	len -= cilen;
++	INCPTR(2, p);
++	GETCHAR(cb_type, p); 
++	for (i = 0; i < cilen - CILEN_CB; ++i) {
++	    GETCHAR(cichar, p);
++	}
++	no.neg_callback = 1;
++	/* See if the suggested callback type fits our wanted type */
++	switch (cb_type) {
++	case CB_AUTH:
++	    try.neg_callback = wo->cbopt.neg_rfc
++		&& (wo->cbopt.type == CB_AUTH
++		    || (wo->cbopt.type == CB_CBCP && wo->cbopt.mlen == 0));
++	    try.cbopt.neg_cbcp = 0;
++	    break;
++	case CB_PHONENO:
++	    try.neg_callback = wo->cbopt.neg_rfc
++		&& (wo->cbopt.type == CB_PHONENO
++		    || (wo->cbopt.type == CB_CBCP && wo->cbopt.mlen != 0));
++	    try.cbopt.neg_cbcp = 0;
++	    break;
++	case CB_CBCP:
++	    try.neg_callback = wo->cbopt.neg_cbcp;
++	    try.cbopt.neg_rfc = 0;
++	    break;
++	case CB_DIALSTRING:
++	case CB_LOCATIONID:
++	case CB_NAME:
++	    try.neg_callback = wo->cbopt.neg_rfc && wo->cbopt.mlen != 0
++		&& wo->cbopt.type == cb_type;
++	    try.cbopt.neg_cbcp = 0;
++	    break;
++	default:
++	    try.neg_callback = 0;
++	    break;
++	}
++	if (try.neg_callback) {
++	    try.cbopt.type = cb_type;
++	    if (cb_type != CB_AUTH && cb_type != CB_CBCP) {
++		try.cbopt.mlen = wo->cbopt.mlen;
++		try.cbopt.message = wo->cbopt.message;
++	    }
++	} else {
++	    info("Requested callback type %d does not match our configuration"
++		 " -> doing no callback", cb_type);
++	}
++    }
+ 
+     /*
+      * Check for a looped-back line.
+@@ -1293,6 +1441,10 @@ lcp_nakci(f, p, len, treat_as_reject)
+ 	    if (go->neg_lqr || no.neg_lqr || cilen != CILEN_LQR)
+ 		goto bad;
+ 	    break;
++	case CI_CALLBACK:
++	    if (go->neg_callback || no.neg_callback || cilen < CILEN_CB)
++		goto bad;
++	    break;
+ 	case CI_MRRU:
+ 	    if (go->neg_mrru || no.neg_mrru || cilen != CILEN_SHORT)
+ 		goto bad;
+@@ -1426,19 +1578,25 @@ lcp_rejci(f, p, len)
+ 	    goto bad; \
+ 	try.neg = 0; \
+     }
+-#define REJCICBCP(opt, neg, val) \
++#define REJCICB(opt, neg, type, val, vlen) { \
++    int cblen = LENCICB(go->neg, type, vlen); \
+     if (go->neg && \
+-	len >= CILEN_CBCP && \
+-	p[1] == CILEN_CBCP && \
++	len >= cblen && \
++	p[1] == cblen && \
+ 	p[0] == opt) { \
+-	len -= CILEN_CBCP; \
++	int i; \
++	len -= cblen; \
+ 	INCPTR(2, p); \
+ 	GETCHAR(cichar, p); \
+-	/* Check rejected value. */ \
+-	if (cichar != val) \
++	if (cichar != type) \
+ 	    goto bad; \
++	for (i = 0; i < cblen - CILEN_CB; ++i) { \
++	    GETCHAR(cichar, p); \
++	    if(cichar != val[i]) \
++		goto bad; \
++	} \
+ 	try.neg = 0; \
+-    }
++    }}
+ #define REJCIENDP(opt, neg, class, val, vlen) \
+     if (go->neg && \
+ 	len >= CILEN_CHAR + vlen && \
+@@ -1468,7 +1626,8 @@ lcp_rejci(f, p, len)
+ 	}
+     }
+     REJCILQR(CI_QUALITY, neg_lqr, go->lqr_period);
+-    REJCICBCP(CI_CALLBACK, neg_cbcp, CBCP_OPT);
++    REJCICB(CI_CALLBACK, neg_callback, (go->cbopt.neg_cbcp ? CB_CBCP :
++	    go->cbopt.type), go->cbopt.message, go->cbopt.mlen);
+     REJCILONG(CI_MAGICNUMBER, neg_magicnumber, go->magicnumber);
+     REJCIVOID(CI_PCOMPRESSION, neg_pcompression);
+     REJCIVOID(CI_ACCOMPRESSION, neg_accompression);
+@@ -2002,7 +2161,7 @@ lcp_printpkt(p, plen, printer, arg)
+     void *arg;
+ {
+     int code, id, len, olen, i;
+-    u_char *pstart, *optend;
++    u_char *pstart, *optend, cichar;
+     u_short cishort;
+     u_int32_t cilong;
+ 
+@@ -2107,13 +2266,36 @@ lcp_printpkt(p, plen, printer, arg)
+ 		if (olen >= CILEN_CHAR) {
+ 		    p += 2;
+ 		    printer(arg, "callback ");
+-		    GETCHAR(cishort, p);
+-		    switch (cishort) {
+-		    case CBCP_OPT:
++		    GETCHAR(cichar, p);
++		    switch (cichar) {
++		    case CB_AUTH:
++			printer(arg, "AUTH");
++			break;
++		    case CB_DIALSTRING:
++			printer(arg, "DIALSTRING");
++			break;
++		    case CB_LOCATIONID:
++			printer(arg, "LOCATIONID");
++			break;
++		    case CB_PHONENO:
++			printer(arg, "PHONENO");
++			break;
++		    case CB_NAME:
++			printer(arg, "NAME");
++			break;
++		    case CB_CBCP:
+ 			printer(arg, "CBCP");
+ 			break;
+ 		    default:
+-			printer(arg, "0x%x", cishort);
++			printer(arg, "0x%x", cichar);
++		    }
++		    if (olen > CILEN_CHAR) {
++			int i;
++			printer(arg, ",");
++			for (i = 0; i < olen - CILEN_CB; ++i) {
++			    GETCHAR(cichar, p);
++			    printer(arg, "%c", cichar);
++			}
+ 		    }
+ 		}
+ 		break;
+diff -purN pppd-2.4.7.orig/pppd/lcp.h pppd-2.4.7/pppd/lcp.h
+--- pppd-2.4.7.orig/pppd/lcp.h	2014-08-09 14:31:39.000000000 +0200
++++ pppd-2.4.7/pppd/lcp.h	2018-01-30 23:19:23.139487803 +0100
+@@ -79,8 +79,25 @@
+ #define IDENTIF		12	/* Identification */
+ #define TIMEREM		13	/* Time Remaining */
+ 
+-/* Value used as data for CI_CALLBACK option */
+-#define CBCP_OPT	6	/* Use callback control protocol */
++/*
++ * Type constants for the CI_CALLBACK field. Types 0..4 are RFC 1570
++ * callback codes that tell the peer how to interpret the callback
++ * message. Type 6 requests callback negotiation by CBCP.
++ */
++#define CB_AUTH		0	/* cb msg is not used */
++#define CB_DIALSTRING	1	/* cb msg is a system specific dial string */
++#define CB_LOCATIONID	2	/* cb msg is a location identifier */
++#define CB_PHONENO	3	/* cb msg is a E.164 (i.e. phone) number */
++#define CB_NAME		4	/* cb msg is a name */
++#define CB_CBCP		6	/* callback will be negotiated via cbcp */
++
++struct callback_opts {
++    bool neg_cbcp;		/* Enable CBCP callback negotiation */
++    bool neg_rfc;		/* Enable RFC 1570 callback negotiation */
++    int type;			/* callback type as defined above */
++    char *message;		/* callback message (phone number in most cases) */
++    int mlen;			/* length of callback message */
++};
+ 
+ /*
+  * The state of options is described by an lcp_options structure.
+@@ -98,7 +115,7 @@ typedef struct lcp_options {
+     bool neg_pcompression;	/* HDLC Protocol Field Compression? */
+     bool neg_accompression;	/* HDLC Address/Control Field Compression? */
+     bool neg_lqr;		/* Negotiate use of Link Quality Reports */
+-    bool neg_cbcp;		/* Negotiate use of CBCP */
++    bool neg_callback;		/* Negotiate use of Callback */
+     bool neg_mrru;		/* negotiate multilink MRRU */
+     bool neg_ssnhf;		/* negotiate short sequence numbers */
+     bool neg_endpoint;		/* negotiate endpoint discriminator */
+@@ -110,6 +127,7 @@ typedef struct lcp_options {
+     int  numloops;		/* Number of loops during magic number neg. */
+     u_int32_t lqr_period;	/* Reporting period for LQR 1/100ths second */
+     struct epdisc endpoint;	/* endpoint discriminator */
++    struct callback_opts cbopt;	/* Callback options */
+ } lcp_options;
+ 
+ extern fsm lcp_fsm[];
+diff -purN pppd-2.4.7.orig/pppd/pathnames.h pppd-2.4.7/pppd/pathnames.h
+--- pppd-2.4.7.orig/pppd/pathnames.h	2018-01-30 23:14:51.804755690 +0100
++++ pppd-2.4.7/pppd/pathnames.h	2018-01-30 23:19:23.139487803 +0100
+@@ -45,6 +45,8 @@
+ #define _PATH_IPXDOWN	 _ROOT_PATH "/etc/ppp/ipx-down"
+ #endif /* IPX_CHANGE */
+ 
++#define _PATH_CB_CLIENT	 _ROOT_PATH "/etc/ppp/callback-client"
++
+ #ifdef __STDC__
+ #define _PATH_PPPDB	_ROOT_PATH _PATH_VARRUN "pppd2.tdb"
+ #else /* __STDC__ */
+diff -purN pppd-2.4.7.orig/pppd/pppd.h pppd-2.4.7/pppd/pppd.h
+--- pppd-2.4.7.orig/pppd/pppd.h	2018-01-30 23:14:51.804755690 +0100
++++ pppd-2.4.7/pppd/pppd.h	2018-01-30 23:19:23.139487803 +0100
+@@ -590,6 +590,7 @@ int  auth_ip_addr __P((int, u_int32_t));
+ int  auth_number __P((void));	/* check if remote number is authorized */
+ int  bad_ip_adrs __P((u_int32_t));
+ 				/* check if IP address is unreasonable */
++void callback_client_script __P((char *)); /* runs callback client script */
+ 
+ /* Procedures exported from demand.c */
+ void demand_conf __P((void));	/* config interface(s) for demand-dial */

@@ -1,0 +1,40 @@
+diff -purN isdnutils-3.25.orig/pppdcapiplugin/capiplugin.c isdnutils-3.25/pppdcapiplugin/capiplugin.c
+--- isdnutils-3.25.orig/pppdcapiplugin/capiplugin.c	2017-02-05 16:44:15.113492957 +0100
++++ isdnutils-3.25/pppdcapiplugin/capiplugin.c	2017-02-10 00:25:38.452813270 +0100
+@@ -57,6 +57,13 @@ char pppd_version[] = VERSION;
+ #define _script_setenv(a,b) script_setenv(a,b)
+ #endif
+ 
++#ifndef CAPIFLAG_HIGHJACKING
++#define CAPIFLAG_HIGHJACKING 0x1
++#endif
++#ifndef CAPIFLAG_AHDLC
++#define CAPIFLAG_AHDLC 0x2
++#endif
++
+ /* -------------------------------------------------------------------- */
+ 
+ static int exiting = 0;
+@@ -2176,6 +2183,7 @@ void plugin_init(void)
+ {
+ 	int serrno;
+ 	int err;
++	unsigned flags = CAPIFLAG_HIGHJACKING;
+ 
+ 	info("capiplugin: %s", revision);
+ 	info("capiconn: %s", capiconn_version());
+@@ -2189,7 +2197,13 @@ void plugin_init(void)
+ 				strerror(serrno), errno);
+ 		return;
+         }
+-	if (capi20ext_set_flags(applid, 1) < 0) {
++
++	/* enable AHDLC if "sync" is not used (only works with mISDN!) */
++	if (!sync_serial) {
++		flags |= CAPIFLAG_AHDLC;
++	}
++
++	if (capi20ext_set_flags(applid, flags) < 0) {
+ 		serrno = errno;
+ 		(void)capi20_release(applid);
+ 		fatal("capiplugin: failed to set highjacking mode - %s (%d)",

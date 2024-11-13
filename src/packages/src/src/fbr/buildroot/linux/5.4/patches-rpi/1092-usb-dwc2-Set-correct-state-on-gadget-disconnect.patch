@@ -1,0 +1,32 @@
+From: Adrian Carpenter <adrian.carpenter@me.com>
+Date: Wed, 14 Aug 2019 15:33:36 +0100
+Subject: usb/dwc2: Set correct state on gadget disconnect
+
+When operating as a USB device, when the device is disconnected the suspend interrupt is called rather than the disconnect interrupt, this results in the state remaining as "configured".  This change changes the state to "not attached" instead when the suspend interrupt is called.
+---
+ drivers/usb/dwc2/core_intr.c | 11 ++++-------
+ 1 file changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/usb/dwc2/core_intr.c b/drivers/usb/dwc2/core_intr.c
+index 44d74584c727..081d3493fbea 100644
+--- a/drivers/usb/dwc2/core_intr.c
++++ b/drivers/usb/dwc2/core_intr.c
+@@ -546,14 +546,11 @@ static void dwc2_handle_usb_suspend_intr(struct dwc2_hsotg *hsotg)
+ 						__func__);
+ 			}
+ skip_power_saving:
+-			/*
+-			 * Change to L2 (suspend) state before releasing
+-			 * spinlock
+-			 */
+-			hsotg->lx_state = DWC2_L2;
++			/* Raspberry Pi seems to call the suspend interrupt on gadget disconnect, so instead of setting state to suspend set to not attached */
+ 
+-			/* Call gadget suspend callback */
+-			call_gadget(hsotg, suspend);
++			hsotg->lx_state = DWC2_L3;
++
++			usb_gadget_set_state(&hsotg->gadget, USB_STATE_NOTATTACHED);
+ 		}
+ 	} else {
+ 		if (hsotg->op_state == OTG_STATE_A_PERIPHERAL) {

@@ -1,0 +1,100 @@
+diff -purN uClibc-ng-1.0.28.orig/extra/Configs/Config.i386 uClibc-ng-1.0.28/extra/Configs/Config.i386
+--- uClibc-ng-1.0.28.orig/extra/Configs/Config.i386	2018-01-21 12:56:35.000000000 +0100
++++ uClibc-ng-1.0.28/extra/Configs/Config.i386	2018-01-31 22:06:39.433729689 +0100
+@@ -31,9 +31,45 @@ config CONFIG_486
+ 	bool "486"
+ 
+ config CONFIG_586
+-	bool "586"
++	bool "Pentium/586/K5/5x86/6x86/6x86MX"
++
++config CONFIG_586MMX
++	bool "Pentium-MMX"
+ 
+ config CONFIG_686
+-	bool "686"
++	bool "Pentium-Pro"
++
++config CONFIG_PENTIUMII
++	bool "Celeron/Pentium-II"
++
++config CONFIG_PENTIUMIII
++	bool "Pentium-III/Celeron(Coppermine)/Pentium-III Xeon"
++
++config CONFIG_PENTIUM4
++	bool "Pentium-4/Celeron(P4-based)/Xeon"
++
++config CONFIG_K6
++	bool "K6/K6-II/K6-III"
++
++config CONFIG_K7
++	bool "Athlon/Duron/K7"
++
++config CONFIG_ELAN
++	bool "Elan"
++
++config CONFIG_CRUSOE
++	bool "Crusoe"
++
++config CONFIG_WINCHIPC6
++	bool "Winchip-C6"
++
++config CONFIG_WINCHIP2
++	bool "Winchip-2/Winchip-2A/Winchip-3"
++
++config CONFIG_CYRIXIII
++	bool "CyrixIII/VIA-C3"
++
++config CONFIG_NEHEMIAH
++	bool "VIA C3-2 (Nehemiah)"
+ 
+ endchoice
+diff -purN uClibc-ng-1.0.28.orig/extra/Configs/Config.in uClibc-ng-1.0.28/extra/Configs/Config.in
+--- uClibc-ng-1.0.28.orig/extra/Configs/Config.in	2018-01-21 12:56:35.000000000 +0100
++++ uClibc-ng-1.0.28/extra/Configs/Config.in	2018-01-31 22:07:52.205590131 +0100
+@@ -256,8 +256,8 @@ config TARGET_SUBARCH
+ 	default "sh4" if CONFIG_SH4A
+ 	default "" if CONFIG_386
+ 	default "i486" if CONFIG_486
+-	default "i586" if CONFIG_586
+-	default "i686" if CONFIG_686
++	default "i586" if CONFIG_586 || CONFIG_586MMX
++	default "i686" if TARGET_ARCH = "i386"
+ 	default ""
+ 
+ source "extra/Configs/Config.in.arch"
+diff -purN uClibc-ng-1.0.28.orig/Rules.mak uClibc-ng-1.0.28/Rules.mak
+--- uClibc-ng-1.0.28.orig/Rules.mak	2018-01-21 12:56:35.000000000 +0100
++++ uClibc-ng-1.0.28/Rules.mak	2018-01-31 22:06:39.434729673 +0100
+@@ -341,7 +341,7 @@ ifeq ($(TARGET_ARCH),i386)
+ $(eval $(call check-gcc-var,-fomit-frame-pointer))
+ 	OPTIMIZATION += $(CFLAG_-fomit-frame-pointer)
+ 
+-ifeq ($(CONFIG_386)$(CONFIG_486)$(CONFIG_586),y)
++ifeq ($(CONFIG_386)$(CONFIG_486)$(CONFIG_586)$(CONFIG_586MMX),y)
+ 	# TODO: Change this to a gcc version check.  This bug
+ 	# should be fixed with at least gcc-4.3.
+ 	# Non-SSE capable processor.
+@@ -386,6 +386,22 @@ $(eval $(call check-ld-var,--sort-sectio
+ 
+ 	CPU_LDFLAGS-y+=-m32
+ 	CPU_CFLAGS-y+=-m32
++	CPU_CFLAGS-$(CONFIG_386)+=-march=i386
++	CPU_CFLAGS-$(CONFIG_486)+=-march=i486
++	CPU_CFLAGS-$(CONFIG_ELAN)+=-march=i486
++	CPU_CFLAGS-$(CONFIG_586)+=-march=i586
++	CPU_CFLAGS-$(CONFIG_586MMX)+=$(call check_gcc,-march=pentium-mmx,-march=i586)
++	CPU_CFLAGS-$(CONFIG_686)+=-march=i686
++	CPU_CFLAGS-$(CONFIG_PENTIUMII)+=$(call check_gcc,-march=pentium2,-march=i686)
++	CPU_CFLAGS-$(CONFIG_PENTIUMIII)+=$(call check_gcc,-march=pentium3,-march=i686)
++	CPU_CFLAGS-$(CONFIG_PENTIUM4)+=$(call check_gcc,-march=pentium4,-march=i686)
++	CPU_CFLAGS-$(CONFIG_K6)+=$(call check_gcc,-march=k6,-march=i586)
++	CPU_CFLAGS-$(CONFIG_K7)+=$(call check_gcc,-march=athlon,-march=i686)
++	CPU_CFLAGS-$(CONFIG_CRUSOE)+=-march=i686
++	CPU_CFLAGS-$(CONFIG_WINCHIPC6)+=$(call check_gcc,-march=winchip-c6,-march=i586)
++	CPU_CFLAGS-$(CONFIG_WINCHIP2)+=$(call check_gcc,-march=winchip2,-march=i586)
++	CPU_CFLAGS-$(CONFIG_CYRIXIII)+=$(call check_gcc,-march=c3,-march=i486)
++	CPU_CFLAGS-$(CONFIG_NEHEMIAH)+=$(call check_gcc,-march=c3-2,-march=i686)
+ endif
+ 
+ ifeq ($(TARGET_ARCH),sparc)

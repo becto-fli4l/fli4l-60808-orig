@@ -1,0 +1,30 @@
+diff -purN busybox-1.25.0.orig/sysklogd/syslogd.c busybox-1.25.0/sysklogd/syslogd.c
+--- busybox-1.25.0.orig/sysklogd/syslogd.c	2016-08-17 22:41:05.756078797 +0200
++++ busybox-1.25.0/sysklogd/syslogd.c	2016-08-17 22:41:12.166243993 +0200
+@@ -794,8 +794,6 @@ static bool log_locally(time_t now, char
+ 		 * _at most_ once a second for each file, and happens
+ 		 * only when each file is actually written.
+ 		 */
+-		if (!now)
+-			now = time(NULL);
+ 		if (log_file->last_log_time != now) {
+ 			log_file->last_log_time = now;
+ 			close(log_file->fd);
+@@ -917,16 +915,15 @@ static void timestamp_and_log(int pri, c
+ 	char *timestamp;
+ 	time_t now;
+ 	bool match = 0;
++	time(&now);
+ 
+ 	/* Jan 18 00:11:22 msg... */
+ 	/* 01234567890123456 */
+ 	if (len < 16 || msg[3] != ' ' || msg[6] != ' '
+ 	 || msg[9] != ':' || msg[12] != ':' || msg[15] != ' '
+ 	) {
+-		time(&now);
+ 		timestamp = ctime(&now) + 4; /* skip day of week */
+ 	} else {
+-		now = 0;
+ 		timestamp = msg;
+ 		msg += 16;
+ 	}

@@ -1,0 +1,116 @@
+From: Maxime Ripard <maxime@cerno.tech>
+Date: Wed, 10 Jun 2020 16:28:56 +0200
+Subject: clk: rpi: Adjust DT binding to match upstream
+
+Signed-off-by: Maxime Ripard <maxime@cerno.tech>
+---
+ arch/arm/boot/dts/bcm2709-rpi.dtsi |  7 +++++++
+ arch/arm/boot/dts/bcm270x.dtsi     |  6 ------
+ arch/arm/boot/dts/bcm2711-rpi.dtsi | 12 ++++++------
+ arch/arm/boot/dts/bcm2836-rpi.dtsi |  7 +++++++
+ drivers/clk/bcm/clk-raspberrypi.c  | 12 +++++++++++-
+ 5 files changed, 31 insertions(+), 13 deletions(-)
+
+diff --git a/arch/arm/boot/dts/bcm2709-rpi.dtsi b/arch/arm/boot/dts/bcm2709-rpi.dtsi
+index babfa41cd9f7..624e2bdc8733 100644
+--- a/arch/arm/boot/dts/bcm2709-rpi.dtsi
++++ b/arch/arm/boot/dts/bcm2709-rpi.dtsi
+@@ -3,3 +3,10 @@
+ &vchiq {
+ 	compatible = "brcm,bcm2836-vchiq", "brcm,bcm2835-vchiq";
+ };
++
++&firmware {
++	firmware_clocks: clocks {
++		compatible = "raspberrypi,firmware-clocks";
++		#clock-cells = <1>;
++	};
++};
+diff --git a/arch/arm/boot/dts/bcm270x.dtsi b/arch/arm/boot/dts/bcm270x.dtsi
+index d2f5ea1f31f8..bf90fd585364 100644
+--- a/arch/arm/boot/dts/bcm270x.dtsi
++++ b/arch/arm/boot/dts/bcm270x.dtsi
+@@ -7,12 +7,6 @@
+ 		/delete-property/ stdout-path;
+ 	};
+ 
+-	firmware_clocks: firmware-clocks {
+-		compatible = "raspberrypi,firmware-clocks";
+-		raspberrypi,firmware = <&firmware>;
+-		#clock-cells = <1>;
+-	};
+-
+ 	soc: soc {
+ 
+ 		watchdog: watchdog@7e100000 {
+diff --git a/arch/arm/boot/dts/bcm2711-rpi.dtsi b/arch/arm/boot/dts/bcm2711-rpi.dtsi
+index adaec1664f39..26a9c2d1f169 100644
+--- a/arch/arm/boot/dts/bcm2711-rpi.dtsi
++++ b/arch/arm/boot/dts/bcm2711-rpi.dtsi
+@@ -172,12 +172,6 @@
+ 		clock-frequency = <108000000>;
+ 		clock-output-names = "108MHz-clock";
+ 	};
+-
+-	firmware_clocks: firmware-clocks {
+-		compatible = "raspberrypi,firmware-clocks";
+-		raspberrypi,firmware = <&firmware>;
+-		#clock-cells = <1>;
+-	};
+ };
+ 
+ &soc {
+@@ -306,3 +300,9 @@
+ 	clocks = <&firmware_clocks 4>;
+ };
+ 
++&firmware {
++	firmware_clocks: clocks {
++		compatible = "raspberrypi,firmware-clocks";
++		#clock-cells = <1>;
++	};
++};
+diff --git a/arch/arm/boot/dts/bcm2836-rpi.dtsi b/arch/arm/boot/dts/bcm2836-rpi.dtsi
+index c4c858b984c6..52b47038ca82 100644
+--- a/arch/arm/boot/dts/bcm2836-rpi.dtsi
++++ b/arch/arm/boot/dts/bcm2836-rpi.dtsi
+@@ -4,3 +4,10 @@
+ &vchiq {
+ 	compatible = "brcm,bcm2836-vchiq", "brcm,bcm2835-vchiq";
+ };
++
++&firmware {
++	firmware_clocks: clocks {
++		compatible = "raspberrypi,firmware-clocks";
++		#clock-cells = <1>;
++	};
++};
+diff --git a/drivers/clk/bcm/clk-raspberrypi.c b/drivers/clk/bcm/clk-raspberrypi.c
+index eb1844148af9..c4929416b6d5 100644
+--- a/drivers/clk/bcm/clk-raspberrypi.c
++++ b/drivers/clk/bcm/clk-raspberrypi.c
+@@ -383,13 +383,23 @@ static int raspberrypi_clk_probe(struct platform_device *pdev)
+ 	struct raspberrypi_clk *rpi;
+ 	int ret;
+ 
+-	firmware_node = of_parse_phandle(dev->of_node, "raspberrypi,firmware", 0);
++	/*
++	 * We can be probed either through the an old-fashioned
++	 * platform device registration or through a DT node that is a
++	 * child of the firmware node. Handle both cases.
++	 */
++	if (dev->of_node)
++		firmware_node = of_get_parent(dev->of_node);
++	else
++		firmware_node = of_find_compatible_node(NULL, NULL,
++							"raspberrypi,bcm2835-firmware");
+ 	if (!firmware_node) {
+ 		dev_err(dev, "Missing firmware node\n");
+ 		return -ENOENT;
+ 	}
+ 
+ 	firmware = rpi_firmware_get(firmware_node);
++	of_node_put(firmware_node);
+ 	if (!firmware)
+ 		return -EPROBE_DEFER;
+ 

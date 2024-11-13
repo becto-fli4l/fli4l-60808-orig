@@ -1,0 +1,52 @@
+From: Marc Kleine-Budde <mkl@pengutronix.de>
+Date: Thu, 15 Oct 2020 21:16:37 +0200
+Subject: can: mcp251xfd: mcp251xfd_regmap_crc_read(): increase severity of CRC
+ read error messages
+
+During debugging it turned out that some people have setups where the SPI
+communication is more prone to CRC errors.
+
+Increase the severity of both the transfer retry and transfer failure message
+to give users feedback without the need to recompile the driver with debug
+enabled.
+
+Cc: Manivannan Sadhasivam <manivannan.sadhasivam@linaro.org>
+Cc: Thomas Kopp <thomas.kopp@microchip.com>
+Link: http://lore.kernel.org/r/20201019190524.1285319-15-mkl@pengutronix.de
+Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+(cherry picked from commit b4728920aefaf6cd10e3d9330805f7d2354c342f)
+Signed-off-by: Marc Kleine-Budde <mkl@pengutronix.de>
+---
+ drivers/net/can/spi/mcp251xfd/mcp251xfd-regmap.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/can/spi/mcp251xfd/mcp251xfd-regmap.c b/drivers/net/can/spi/mcp251xfd/mcp251xfd-regmap.c
+index ba25902dd78c..c9ffc5ea2b25 100644
+--- a/drivers/net/can/spi/mcp251xfd/mcp251xfd-regmap.c
++++ b/drivers/net/can/spi/mcp251xfd/mcp251xfd-regmap.c
+@@ -330,17 +330,17 @@ mcp251xfd_regmap_crc_read(void *context,
+ 			goto out;
+ 		}
+ 
+-		netdev_dbg(priv->ndev,
+-			   "CRC read error at address 0x%04x (length=%zd, data=%*ph, CRC=0x%04x) retrying.\n",
+-			   reg, val_len, (int)val_len, buf_rx->data,
+-			   get_unaligned_be16(buf_rx->data + val_len));
+-	}
+-
+-	if (err) {
+ 		netdev_info(priv->ndev,
+-			    "CRC read error at address 0x%04x (length=%zd, data=%*ph, CRC=0x%04x).\n",
++			    "CRC read error at address 0x%04x (length=%zd, data=%*ph, CRC=0x%04x) retrying.\n",
+ 			    reg, val_len, (int)val_len, buf_rx->data,
+ 			    get_unaligned_be16(buf_rx->data + val_len));
++	}
++
++	if (err) {
++		netdev_err(priv->ndev,
++			   "CRC read error at address 0x%04x (length=%zd, data=%*ph, CRC=0x%04x).\n",
++			   reg, val_len, (int)val_len, buf_rx->data,
++			   get_unaligned_be16(buf_rx->data + val_len));
+ 
+ 		return err;
+ 	}

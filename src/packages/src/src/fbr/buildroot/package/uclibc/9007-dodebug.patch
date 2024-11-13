@@ -1,0 +1,37 @@
+diff -purN uClibc-ng-1.0.28.orig/Rules.mak uClibc-ng-1.0.28/Rules.mak
+--- uClibc-ng-1.0.28.orig/Rules.mak	2018-01-31 22:09:07.198415747 +0100
++++ uClibc-ng-1.0.28/Rules.mak	2018-01-31 22:28:46.717057011 +0100
+@@ -653,14 +653,14 @@ LDFLAGS_NOSTRIP += $(CFLAG_-Wl--hash-sty
+ endif
+ endif
+ 
+-ifeq ($(DODEBUG),y)
+-CFLAGS += -O0 -g3 -DDEBUG
+-else
+ CFLAGS += $(OPTIMIZATION)
+ CFLAGS += $(OPTIMIZATION-$(GCC_MAJOR_VER))
+ CFLAGS += $(OPTIMIZATION-$(GCC_MAJOR_VER).$(GCC_MINOR_VER))
+ $(eval $(call check-ld-var,-O2))
+ LDFLAGS_NOSTRIP += $(CFLAG_-Wl-O2)
++
++ifeq ($(DODEBUG),y)
++CFLAGS += -g3
+ endif
+ 
+ LDFLAGS:=$(LDFLAGS_NOSTRIP) -Wl,-z,defs
+@@ -761,14 +761,8 @@ ASFLAGS += $(ASFLAG_--noexecstack)
+ 
+ LIBGCC_CFLAGS ?= $(CFLAGS) $(CPU_CFLAGS-y)
+ $(eval $(call cache-output-var,LIBGCC_A,$(CC) $(LIBGCC_CFLAGS) -print-libgcc-file-name))
+-$(eval $(call cache-output-var,LIBGCC_EH,$(CC) $(LIBGCC_CFLAGS) -print-file-name=libgcc_eh.a))
+-# with -O0 we (e.g. lockf) might end up with references to
+-# _Unwind_Resume, so pull in gcc_eh in this case..
+-# with a --disable-shared toolchain, libgcc_eh.a and libgcc.a are combined
+-# in libgcc.a, so check if the printed file exist, before adding to the commandline
+-LIBGCC_EH_FILE := $(shell if [ -f $(LIBGCC_EH) ]; then echo $(LIBGCC_EH); fi)
+ LIBGCC_DIR := $(dir $(LIBGCC_A))
+-LIBGCC := $(LIBGCC_A) $(if $(DODEBUG),$(LIBGCC_EH_FILE))
++LIBGCC := $(LIBGCC_A)
+ 
+ # moved from libpthread/linuxthreads
+ ifeq ($(UCLIBC_CTOR_DTOR),y)

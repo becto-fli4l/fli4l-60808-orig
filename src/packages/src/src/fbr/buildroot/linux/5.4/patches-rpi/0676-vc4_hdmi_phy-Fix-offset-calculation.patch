@@ -1,0 +1,31 @@
+From: popcornmix <popcornmix@gmail.com>
+Date: Thu, 2 Apr 2020 16:46:31 +0100
+Subject: vc4_hdmi_phy: Fix offset calculation
+
+The original firmware code worked with float and did
+   offset = ((vco_freq / fref * 2) * (1 << 22));
+   offset >>= 2;
+
+In this code it's all integer so doing the integer divide before the shift loses lots of precision
+
+This fixes the issue of 1080p59.94 mode having 59.64 fps
+
+Signed-off-by: popcornmix <popcornmix@gmail.com>
+---
+ drivers/gpu/drm/vc4/vc4_hdmi_phy.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/vc4/vc4_hdmi_phy.c b/drivers/gpu/drm/vc4/vc4_hdmi_phy.c
+index a436fabbc128..732d8a0e5a1c 100644
+--- a/drivers/gpu/drm/vc4/vc4_hdmi_phy.c
++++ b/drivers/gpu/drm/vc4/vc4_hdmi_phy.c
+@@ -192,8 +192,8 @@ static u32 phy_get_rm_offset(unsigned long long vco_freq)
+ 
+ 	/* RM offset is stored as 9.22 format */
+ 	offset = vco_freq * 2;
+-	do_div(offset, fref);
+ 	offset = offset << 22;
++	do_div(offset, fref);
+ 	offset >>= 2;
+ 
+ 	return offset;

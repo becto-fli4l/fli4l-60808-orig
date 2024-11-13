@@ -1,0 +1,69 @@
+diff -purN isdnutils-3.25.orig/capifax/capi.c isdnutils-3.25/capifax/capi.c
+--- isdnutils-3.25.orig/capifax/capi.c	2012-07-06 08:27:19.000000000 +0200
++++ isdnutils-3.25/capifax/capi.c	2017-02-09 23:40:18.352786951 +0100
+@@ -215,13 +215,16 @@ static void Handle_Confirmation(void) {
+ 					fprintf(stderr, "Handle_Confirmation: invalid NCCI in DISCONNECT_B3_CONF.\n");
+ 				break;
+ 			case CAPI_LISTEN:
+-				fprintf(stderr, "Handle_Confirmation: Info != 0 in LISTEN_CONF.\n");
++				fprintf(stderr, "Handle_Confirmation: Info != 0 in LISTEN_CONF (0x%X): %s.\n",
++					CMSG->Info, Decode_Info(CMSG->Info));
+ 				break;
+ 			case CAPI_INFO:
+-				fprintf(stderr, "Handle_Confirmation: Info != 0 in INFO_CONF.\n");
++				fprintf(stderr, "Handle_Confirmation: Info != 0 in INFO_CONF (0x%X): %s.\n",
++					CMSG->Info, Decode_Info(CMSG->Info));
+ 				break;
+ 			case CAPI_ALERT:
+-				fprintf(stderr, "Handle_Confirmation: Info != 0 in ALERT_CONF.\n");
++				fprintf(stderr, "Handle_Confirmation: Info != 0 in ALERT_CONF (0x%X): %s.\n",
++					CMSG->Info, Decode_Info(CMSG->Info));
+ 				break;
+ 		}
+ 	} else {
+@@ -273,7 +276,17 @@ void Handle_CAPI_Msg(void) {
+ 
+ 	tv.tv_sec = 1;
+ 	tv.tv_usec = 0;
+-	CAPI20_WaitforMessage(Appl_Id, &tv); /* This does a select() */
++	Info = CAPI20_WaitforMessage(Appl_Id, &tv); /* This does a select() */
++	if (Info == 0x1104) {
++		/* messagequeue is empty */
++		return;
++	}
++	else if (Info != 0) {
++		fprintf(stderr, "Handle_CAPI_Msg: CAPI_GET_CMSG returns Info != 0 (0x%X): %s.\n",
++			Info, Decode_Info(Info));
++		return;
++	}
++
+ 	switch (Info = CAPI_GET_CMSG(CMSG, Appl_Id)) {
+ 		case 0x0000:
+ 			/* a message has been read */
+@@ -290,11 +303,9 @@ void Handle_CAPI_Msg(void) {
+ 					return;
+ 			}
+ 			break;
+-		case 0x1104:
+-			/* messagequeue is empty */
+-			return;
+ 		default:
+-			fprintf(stderr, "Handle_CAPI_Msg: CAPI_GET_CMSG returns Info != 0.\n");
++			fprintf(stderr, "Handle_CAPI_Msg: CAPI_GET_CMSG returns Info != 0 (0x%X): %s.\n",
++				Info, Decode_Info(Info));
+ 			return;
+ 	}
+ }
+diff -purN isdnutils-3.25.orig/capifax/capifaxrcvd.c isdnutils-3.25/capifax/capifaxrcvd.c
+--- isdnutils-3.25.orig/capifax/capifaxrcvd.c	2017-02-09 23:40:27.451730073 +0100
++++ isdnutils-3.25/capifax/capifaxrcvd.c	2017-02-09 23:40:18.352786951 +0100
+@@ -317,7 +317,9 @@ int main(int argc, char **argv) {
+ 			openlog("capifaxrcvd", LOG_PID, LOG_DAEMON);
+ 			close(0);
+ 			close(1);
++#if 0 /* kristov: don't close stderr as it is used for printing various error messages */
+ 			close(2);
++#endif
+ 			while (1)
+ 				ReceiveFax();
+ 			if ((Slot != INVALID_CONNECTION_ID) &&

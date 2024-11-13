@@ -1,0 +1,602 @@
+This patch is developed to include if the year information 
+is valid, or if the year must be guessed with the old algorithm.
+It includes this information in the "clocktime" and "refclock_process"
+functions. Every refclock has been changed to use these new functions, 
+so that their year information is not valid. This way it works exactly 
+the same way it worked before this patch is applied, but we have the 
+API change for any reference clock to provide the year information properly.
+
+diff -urP ntp-dev-4.2.0b-20050816/include/ntp_refclock.h ntp-dev-4.2.0b-20050816-clocktime-year/include/ntp_refclock.h
+--- ntp-dev-4.2.0b-20050816/include/ntp_refclock.h	2005-07-20 13:15:19.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/include/ntp_refclock.h	2005-08-24 12:01:14.000000000 +0200
+@@ -262,7 +262,7 @@
+ extern	void	refclock_timer	P((struct peer *));
+ extern	void	refclock_transmit P((struct peer *));
+ extern	int	refclock_ioctl	P((int, u_int));
+-extern 	int	refclock_process P((struct refclockproc *));
++extern 	int	refclock_process P((struct refclockproc *, int));
+ extern 	void	refclock_process_offset P((struct refclockproc *, l_fp, l_fp, double));
+ extern	void	refclock_report	P((struct peer *, int));
+ extern	int	refclock_gtlin	P((struct recvbuf *, char *, int, l_fp *));
+diff -urP ntp-dev-4.2.0b-20050816/include/ntp_stdlib.h ntp-dev-4.2.0b-20050816-clocktime-year/include/ntp_stdlib.h
+--- ntp-dev-4.2.0b-20050816/include/ntp_stdlib.h	2005-08-02 13:01:26.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/include/ntp_stdlib.h	2005-08-24 12:01:14.000000000 +0200
+@@ -50,7 +50,7 @@
+ extern	u_long	calleapwhen	P((u_long));
+ extern	u_long	calyearstart	P((u_long));
+ extern	const char *clockname	P((int));
+-extern	int	clocktime	P((int, int, int, int, int, u_long, u_long *, u_int32 *));
++extern	int	clocktime	P((int, int, int, int, int, int, int, u_long, u_long *, u_int32 *));
+ #if defined SYS_WINNT && defined DEBUG
+ # define emalloc(_c) debug_emalloc(_c, __FILE__, __LINE__)
+ extern	void *	debug_emalloc		P((u_int, char *, int));
+diff -urP ntp-dev-4.2.0b-20050816/libntp/clocktime.c ntp-dev-4.2.0b-20050816-clocktime-year/libntp/clocktime.c
+--- ntp-dev-4.2.0b-20050816/libntp/clocktime.c	2004-02-25 06:55:50.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/libntp/clocktime.c	2005-08-24 18:17:07.000000000 +0200
+@@ -5,6 +5,7 @@
+ #include "ntp_fp.h"
+ #include "ntp_unixtime.h"
+ #include "ntp_stdlib.h"
++#include "ntp_calendar.h"
+ 
+ /*
+  * Hacks to avoid excercising the multiplier.  I have no pride.
+@@ -19,8 +20,9 @@
+ #define	TWODAYS		(2*24*60*60)
+ 
+ /*
+- * We demand that the time be within CLOSETIME seconds of the receive
+- * time stamp.  This is about 4 hours, which hopefully should be
++ * If the year provided is not valid we demand that the time be 
++ * within CLOSETIME seconds of the receive time stamp. 
++ * This is about 4 hours, which hopefully should be
+  * wide enough to collect most data, while close enough to keep things
+  * from getting confused.
+  */
+@@ -29,10 +31,12 @@
+ 
+ int
+ clocktime(
++	int year,
+ 	int yday,
+ 	int hour,
+ 	int minute,
+ 	int second,
++	int validyear,
+ 	int tzoff,
+ 	u_long rec_ui,
+ 	u_long *yearstart,
+@@ -52,6 +56,23 @@
+ 	tmp = MULBY60(tmp) + (long)second;
+ 
+ 	/*
++	 * If the year is valid we can calculate it directly
++	 */
++	if (validyear) {
++		struct calendar jt;
++		jt.year     = year;
++		jt.yearday  = 1;
++		jt.monthday = 1;
++		jt.month    = 1;
++		jt.hour = jt.minute = jt.second = 0;
++		yst = caltontp(&jt);
++		date = (u_long)(tmp + (long)yst);
++		*ts_ui = date;
++		*yearstart = yst;
++		return 1;
++	}
++
++	/*
+ 	 * Initialize yearstart, if necessary.
+ 	 */
+ 	yst = *yearstart;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/ntp_refclock.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/ntp_refclock.c
+--- ntp-dev-4.2.0b-20050816/ntpd/ntp_refclock.c	2005-06-29 13:01:34.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/ntp_refclock.c	2005-08-24 12:06:02.000000000 +0200
+@@ -473,7 +473,9 @@
+  */
+ int
+ refclock_process(
+-	struct refclockproc *pp		/* refclock structure pointer */
++	struct refclockproc *pp,	/* refclock structure pointer */
++	int validyear                   /* true if the reference clock
++	                                   has accurate year information */
+ 	)
+ {
+ 	l_fp offset, ltemp;
+@@ -483,11 +485,10 @@
+ 	 * seconds and milliseconds/microseconds of the timecode. Use
+ 	 * clocktime() for the aggregate seconds and the msec/usec for
+ 	 * the fraction, when present. Note that this code relies on the
+-	 * filesystem time for the years and does not use the years of
+-	 * the timecode.
++	 * filesystem time for the years if the provided year is not valid.
+ 	 */
+-	if (!clocktime(pp->day, pp->hour, pp->minute, pp->second, GMT,
+-		pp->lastrec.l_ui, &pp->yearstart, &offset.l_ui))
++	if (!clocktime(pp->year, pp->day, pp->hour, pp->minute, pp->second, 
++		validyear, GMT,	pp->lastrec.l_ui, &pp->yearstart, &offset.l_ui))
+ 		return (0);
+ 
+ 	offset.l_uf = 0;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_acts.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_acts.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_acts.c	2005-05-06 13:01:20.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_acts.c	2005-08-24 12:00:57.000000000 +0200
+@@ -613,7 +613,7 @@
+ 	 */
+ 	peer->refid = pp->refid;
+ 	pp->lastrec = up->tstamp;
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 			}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_arbiter.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_arbiter.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_arbiter.c	2005-05-17 13:01:20.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_arbiter.c	2005-08-24 12:00:57.000000000 +0200
+@@ -395,7 +395,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp))
++	if (!refclock_process(pp, 0))
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 	else if (peer->disp > MAXDISTANCE)
+ 		refclock_receive(peer);
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_arc.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_arc.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_arc.c	2004-02-25 06:56:00.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_arc.c	2005-08-24 12:00:57.000000000 +0200
+@@ -1423,7 +1423,7 @@
+ 	}
+ #endif
+ 
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		pp->lencode = 0;
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_as2201.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_as2201.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_as2201.c	2004-02-25 06:56:00.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_as2201.c	2005-08-24 12:00:57.000000000 +0200
+@@ -319,7 +319,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_bancomm.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_bancomm.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_bancomm.c	2004-02-25 06:56:00.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_bancomm.c	2005-08-24 12:00:57.000000000 +0200
+@@ -313,7 +313,7 @@
+ 	 * Note that this code does not yet know how to do the years and
+ 	 * relies on the clock-calendar chip for sanity.
+ 	 */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_chronolog.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_chronolog.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_chronolog.c	2004-02-25 06:56:00.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_chronolog.c	2005-08-24 12:00:57.000000000 +0200
+@@ -288,7 +288,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_chu.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_chu.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_chu.c	2004-04-08 13:01:23.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_chu.c	2005-08-24 12:00:57.000000000 +0200
+@@ -1351,7 +1351,7 @@
+ 	 * around if signals are too weak or the clock time is invalid.
+ 	 */
+ 	if (up->status & INSYNC && dtemp > METRIC) {
+-		if (!clocktime(pp->day, pp->hour, pp->minute, 0, GMT,
++		if (!clocktime(pp->year, pp->day, pp->hour, pp->minute, 0, 0, GMT,
+ 		    up->tstamp[0].l_ui, &pp->yearstart, &offset.l_ui)) {
+ 			up->errflg = CEVNT_BADTIME;
+ 		} else {
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_datum.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_datum.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_datum.c	2004-02-25 06:56:00.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_datum.c	2005-08-24 12:00:57.000000000 +0200
+@@ -703,10 +703,12 @@
+ 	*/
+ 
+ 	for (tzoff=0; tzoff<24; tzoff++) {
+-		if (clocktime( datum_pts->day,
++		if (clocktime( datum_pts->year,
++		               datum_pts->day,
+ 			       datum_pts->hour,
+ 			       datum_pts->minute,
+ 			       datum_pts->second,
++		               0,
+ 			       (tzoff + datum_pts->tzoff) % 24,
+ 			       datum_pts->lastrec.l_ui,
+ 			       &datum_pts->yearstart,
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_dumbclock.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_dumbclock.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_dumbclock.c	2004-02-25 06:56:00.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_dumbclock.c	2005-08-24 12:00:57.000000000 +0200
+@@ -331,7 +331,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_fg.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_fg.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_fg.c	2004-02-25 06:56:01.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_fg.c	2005-08-24 12:00:57.000000000 +0200
+@@ -335,7 +335,7 @@
+          * timecode timestamp.
+          */
+ 
+-        if (!refclock_process(pp))
++        if (!refclock_process(pp, 0))
+                 refclock_report(peer, CEVNT_BADTIME);
+         pp->lastref = pp->lastrec;
+ 	refclock_receive(peer);
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_gpsvme.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_gpsvme.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_gpsvme.c	2004-02-25 06:56:01.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_gpsvme.c	2005-08-24 12:00:57.000000000 +0200
+@@ -202,7 +202,7 @@
+     pp->lencode = strlen(pp->a_lastcode);
+ 
+     /* compute the timecode timestamp	*/
+-    if (!refclock_process(pp)) {
++    if (!refclock_process(pp, 0)) {
+ 	refclock_report(peer, CEVNT_BADTIME);
+ 	return;
+     }
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_heath.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_heath.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_heath.c	2005-05-06 13:01:20.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_heath.c	2005-08-24 12:00:57.000000000 +0200
+@@ -357,7 +357,7 @@
+ 		pp->nsec = (dsec - '0') * 100000000;
+ 		pp->leap = LEAP_NOWARNING;
+ 	}
+-	if (!refclock_process(pp))
++	if (!refclock_process(pp, 0))
+ 		refclock_report(peer, CEVNT_BADTIME);
+ }
+ 
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_hopfpci.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_hopfpci.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_hopfpci.c	2004-02-25 06:56:01.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_hopfpci.c	2005-08-24 12:00:57.000000000 +0200
+@@ -250,7 +250,7 @@
+ 		}
+ 	}
+ 
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_hopfser.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_hopfser.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_hopfser.c	2004-02-25 06:56:01.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_hopfser.c	2005-08-24 12:00:57.000000000 +0200
+@@ -330,7 +330,7 @@
+ 	}
+ 
+ 
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_hpgps.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_hpgps.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_hpgps.c	2004-02-25 06:56:01.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_hpgps.c	2005-08-24 12:00:57.000000000 +0200
+@@ -550,7 +550,7 @@
+ 	 * time, which may cause a paranoid protocol module to chuck out
+ 	 * the data.
+ 	 */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_irig.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_irig.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_irig.c	2004-03-30 13:01:16.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_irig.c	2005-08-24 12:00:57.000000000 +0200
+@@ -891,11 +891,11 @@
+ 			up->wp++;
+ 			up->wp %= WIGGLE;
+ 			up->wuggle = pp->lastrec;
+-			refclock_process(pp);
++			refclock_process(pp, 0);
+ #else /* IRIG_SUCKS */
+ 			pp->lastref = pp->lastrec;
+ 			up->wuggle = pp->lastrec;
+-			refclock_process(pp);
++			refclock_process(pp, 0);
+ #endif /* IRIG_SUCKS */
+ 		}
+ 		up->errflg = 0;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_jjy.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_jjy.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_jjy.c	2005-01-09 12:01:12.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_jjy.c	2005-08-24 12:00:57.000000000 +0200
+@@ -499,7 +499,7 @@
+ 	          up->year, up->month, up->day, up->hour, up->minute, up->second, up->msecond/100 ) ;
+ 	record_clock_stats ( &peer->srcadr, sLogText ) ;
+ 
+-	if ( ! refclock_process ( pp ) ) {
++	if ( ! refclock_process ( pp, 0 ) ) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return ;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_leitch.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_leitch.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_leitch.c	2004-02-25 06:56:01.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_leitch.c	2005-08-24 12:00:57.000000000 +0200
+@@ -440,8 +440,8 @@
+ 	    case STATE_TIME1:
+ 		if (!leitch_get_time(rbufp,leitch,1)) {
+ 		}
+-		if (!clocktime(leitch->yearday,leitch->hour,leitch->minute,
+-			       leitch->second, 1, rbufp->recv_time.l_ui,
++		if (!clocktime(leitch->year, leitch->yearday,leitch->hour,leitch->minute,
++			       leitch->second, 0, 1, rbufp->recv_time.l_ui,
+ 			       &leitch->yearstart, &leitch->reftime1.l_ui)) {
+ 			leitch->state = STATE_IDLE;
+ 			break;
+@@ -458,8 +458,8 @@
+ 	    case STATE_TIME2:
+ 		if (!leitch_get_time(rbufp,leitch,2)) {
+ 		}
+-		if (!clocktime(leitch->yearday,leitch->hour,leitch->minute,
+-			       leitch->second, 1, rbufp->recv_time.l_ui,
++		if (!clocktime(leitch->year, leitch->yearday,leitch->hour,leitch->minute,
++			       leitch->second, 0, 1, rbufp->recv_time.l_ui,
+ 			       &leitch->yearstart, &leitch->reftime2.l_ui)) {
+ 			leitch->state = STATE_IDLE;
+ 			break;
+@@ -475,8 +475,8 @@
+ 	    case STATE_TIME3:
+ 		if (!leitch_get_time(rbufp,leitch,3)) {
+ 		}
+-		if (!clocktime(leitch->yearday,leitch->hour,leitch->minute,
+-			       leitch->second, GMT, rbufp->recv_time.l_ui,
++		if (!clocktime(leitch->year, leitch->yearday,leitch->hour,leitch->minute,
++			       leitch->second, 0, GMT, rbufp->recv_time.l_ui,
+ 			       &leitch->yearstart, &leitch->reftime3.l_ui)) {
+ 			leitch->state = STATE_IDLE;
+ 			break;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_msfees.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_msfees.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_msfees.c	2004-11-21 12:01:14.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_msfees.c	2005-08-24 12:00:57.000000000 +0200
+@@ -862,8 +862,8 @@
+ 	n_sample = ees->nsamples;
+ 
+ 	/* Now, compute the reference time value: text -> tmp.l_ui */
+-	if (!clocktime(ees->day, ees->hour, ees->minute, ees->second,
+-		       ees->tz, rbufp->recv_time.l_ui, &ees->yearstart,
++	if (!clocktime(0, ees->day, ees->hour, ees->minute, ees->second,
++		       0, ees->tz, rbufp->recv_time.l_ui, &ees->yearstart,
+ 		       &tmp.l_ui)) {
+ 		ees->baddata++;
+ 		ees->reason = CODEREASON + 13;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_mx4200.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_mx4200.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_mx4200.c	2004-12-12 12:01:22.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_mx4200.c	2005-08-24 12:00:57.000000000 +0200
+@@ -865,7 +865,7 @@
+ 		/*
+ 		 * Add the new sample to a median filter.
+ 		 */
+-		if (!refclock_process(pp)) {
++		if (!refclock_process(pp, 0)) {
+ 			mx4200_debug(peer,"mx4200_receive: offset: %.6f\n",
+ 			    pp->offset);
+ 			refclock_report(peer, CEVNT_BADTIME);
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_neoclock4x.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_neoclock4x.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_neoclock4x.c	2004-02-25 06:56:02.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_neoclock4x.c	2005-08-24 12:00:57.000000000 +0200
+@@ -594,7 +594,7 @@
+   up->utc_second = pp->second;
+   up->utc_msec   = pp->nsec/1000;
+ 
+-  if(!refclock_process(pp))
++  if(!refclock_process(pp, 0))
+     {
+       NLOG(NLOG_CLOCKEVENT)
+ 	msyslog(LOG_WARNING, "NeoClock4X(%d): refclock_process failed!", up->unit);
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_nmea.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_nmea.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_nmea.c	2004-12-12 12:01:22.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_nmea.c	2005-08-24 12:00:57.000000000 +0200
+@@ -662,7 +662,7 @@
+ 	 * the data.
+ 	 */
+ 
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_oncore.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_oncore.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_oncore.c	2004-12-12 12:01:22.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_oncore.c	2005-08-24 12:00:57.000000000 +0200
+@@ -1648,7 +1648,7 @@
+ 
+ 	/* and some things I dont understand (magic ntp things) */
+ 
+-	if (!refclock_process(instance->pp)) {
++	if (!refclock_process(instance->pp, 0)) {
+ 		refclock_report(instance->peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_palisade.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_palisade.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_palisade.c	2004-02-25 06:56:02.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_palisade.c	2005-08-24 12:00:57.000000000 +0200
+@@ -581,7 +581,7 @@
+ #ifdef PALISADE
+     	pp->lasttime = current_time;
+ #endif
+-	if (!refclock_process(pp
++	if (!refclock_process(pp, 0
+ #ifdef PALISADE
+ 		, PALISADE_SAMPLES, PALISADE_SAMPLES * 3 / 5
+ #endif
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_pcf.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_pcf.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_pcf.c	2004-02-25 06:56:02.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_pcf.c	2005-08-24 12:00:57.000000000 +0200
+@@ -207,7 +207,7 @@
+ 			pp->minute, pp->second);
+ #endif
+ 
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_pst.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_pst.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_pst.c	2005-05-17 13:01:20.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_pst.c	2005-08-24 12:00:57.000000000 +0200
+@@ -267,7 +267,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp))
++	if (!refclock_process(pp, 0))
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 	else if (peer->disp > MAXDISTANCE)
+ 		refclock_receive(peer);
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_ripencc.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_ripencc.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_ripencc.c	2004-12-12 12:01:22.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_ripencc.c	2005-08-24 12:00:57.000000000 +0200
+@@ -1012,7 +1012,7 @@
+ 				 * Process the new sample in the median filter and determine the
+ 				 * reference clock offset and dispersion. 
+  				 */
+-				if (!refclock_process(pp)) {
++				if (!refclock_process(pp, 0)) {
+ 					msyslog(LOG_INFO, "%s(): !refclock_process",__FUNCTION__);
+ 					refclock_report(peer, CEVNT_BADTIME);
+ 					break;
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_shm.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_shm.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_shm.c	2004-07-20 13:01:07.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_shm.c	2005-08-24 12:00:57.000000000 +0200
+@@ -295,7 +295,7 @@
+ 		*/
+ 		return;
+ 	}
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_tpro.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_tpro.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_tpro.c	2004-02-25 06:56:03.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_tpro.c	2005-08-24 12:00:57.000000000 +0200
+@@ -194,7 +194,7 @@
+ 		pp->leap = LEAP_NOTINSYNC;
+ 	else
+ 		pp->leap = LEAP_NOWARNING;
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_trak.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_trak.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_trak.c	2004-02-25 06:56:03.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_trak.c	2005-08-24 12:00:57.000000000 +0200
+@@ -321,7 +321,7 @@
+ #endif /* PPS */
+ 	/* record the last ppsclock event time stamp */
+ 	pp->lastrec = up->tstamp;
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+         }
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_true.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_true.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_true.c	2004-02-25 06:56:03.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_true.c	2005-08-24 12:00:57.000000000 +0200
+@@ -497,8 +497,8 @@
+ 			 * find out what time it really is. Include
+ 			 * the count from the PCL720
+ 			 */
+-			if (!clocktime(pp->day, pp->hour, pp->minute, 
+-				       pp->second, GMT, pp->lastrec.l_ui, 
++			if (!clocktime(pp->year, pp->day, pp->hour, pp->minute, 
++				       pp->second, 0, GMT, pp->lastrec.l_ui, 
+ 				       &pp->yearstart, &off.l_ui)) {
+ 				refclock_report(peer, CEVNT_BADTIME);
+ 				return;
+@@ -538,7 +538,7 @@
+ 		    return;
+ 
+ 		true_doevent(peer, e_Poll);
+-		if (!refclock_process(pp)) {
++		if (!refclock_process(pp, 0)) {
+ 			refclock_report(peer, CEVNT_BADTIME);
+ 			return;
+ 		}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_tt560.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_tt560.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_tt560.c	2004-02-25 06:56:03.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_tt560.c	2005-08-24 12:00:57.000000000 +0200
+@@ -223,7 +223,7 @@
+ 		pp->leap = LEAP_NOTINSYNC;
+ 	else
+ 		pp->leap = LEAP_NOWARNING;
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+ 	}
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_ulink.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_ulink.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_ulink.c	2004-04-03 13:01:19.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_ulink.c	2005-08-24 12:00:57.000000000 +0200
+@@ -541,7 +541,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 	}
+ 
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_wwvb.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_wwvb.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_wwvb.c	2005-05-17 13:01:20.000000000 +0200
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_wwvb.c	2005-08-24 12:00:57.000000000 +0200
+@@ -370,7 +370,7 @@
+ 	 * Process the new sample in the median filter and determine the
+ 	 * timecode timestamp.
+ 	 */
+-	if (!refclock_process(pp))
++	if (!refclock_process(pp, 0))
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 	if (peer->disp > MAXDISTANCE)
+ 		refclock_receive(peer);
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_wwv.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_wwv.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_wwv.c	2004-12-28 12:01:19.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_wwv.c	2005-08-24 12:00:57.000000000 +0200
+@@ -2172,8 +2172,8 @@
+ 		    1].digit * 10;
+ 		pp->year += 2000;
+ 		L_CLR(&offset);
+-		if (!clocktime(pp->day, pp->hour, pp->minute,
+-		    pp->second, GMT, up->timestamp.l_ui,
++		if (!clocktime(pp->year, pp->day, pp->hour, pp->minute,
++		    pp->second, 0, GMT, up->timestamp.l_ui,
+ 		    &pp->yearstart, &offset.l_ui)) {
+ 			up->errflg = CEVNT_BADTIME;
+ 		} else {
+diff -urP ntp-dev-4.2.0b-20050816/ntpd/refclock_zyfer.c ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_zyfer.c
+--- ntp-dev-4.2.0b-20050816/ntpd/refclock_zyfer.c	2004-02-25 06:56:04.000000000 +0100
++++ ntp-dev-4.2.0b-20050816-clocktime-year/ntpd/refclock_zyfer.c	2005-08-24 12:00:57.000000000 +0200
+@@ -298,7 +298,7 @@
+ 	/* record the last ppsclock event time stamp */
+ 	pp->lastrec = up->tstamp;
+ #endif /* PPS */
+-	if (!refclock_process(pp)) {
++	if (!refclock_process(pp, 0)) {
+ 		refclock_report(peer, CEVNT_BADTIME);
+ 		return;
+         }

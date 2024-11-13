@@ -1,0 +1,47 @@
+9001-x86-options.patch (kristov)
+* Enables more x86-specific platform tuning with uClibc-ng.
+
+9003-reproducible-build.patch (kristov)
+* Defines GETCONF_DIR to /dev/null to prevent a reference to the build
+  directory.
+
+9004-add-dwarf2-cfi-unwinding-info-to-syscalls.patch
+9005-add-dwarf2-cfi-unwinding-info-to-clone.patch
+9006-pad-signal-return-code.patch
+(Timo Teräs, see the following URLs:
+ http://lists.uclibc.org/pipermail/uclibc/2011-November/046002.html
+ http://lists.uclibc.org/pipermail/uclibc/2011-November/046001.html
+ http://lists.uclibc.org/pipermail/uclibc/2011-November/046003.html)
+* FFL-970: Fix stack unwinding when called from within a signal handler.
+  This happens e.g. if a thread is being cancelled by using
+  pthread_cancel() and the thread is currently executing an
+  async-cancel-safe function.
+
+9007-dodebug.patch (kristov)
+* FFL-1847: If DODEBUG=y, optimize as usual, but include debug symbols via -g3
+  option. This fixes stack unwinding (again) when terminating a thread via
+  pthread_cancel() (see FFL-970 patches above). In particular, don't link with
+  libgcc_eh.a manually because that does not work correctly. In order to improve
+  usability of uClibc in production environments, do not define DEBUG anymore.
+
+9008-more-protocol-families-in-socket.h.patch (kristov)
+* FFL-2089: Added more protocol families (especially PF_VSOCK/AF_VSOCK) such
+  that iproute2 4.15.0 can be compiled.
+
+9009-fix-stack-alignment-in-__pthread_enable_asynccancel.patch (glibc)
+* FFL-2075: Fixes a stack alignment issue with __pthread_enable_asynccancel:
+  The Linux x86-64 ABI requires that stack frames are aligned to 16-byte
+  boundaries. This patch changes __pthread_enable_asynccancel such this
+  alignment is enforced before calling into C code (__pthread_unwind) which
+  assumes that the alignment has been established by the caller.
+* The patch is an adaption of commit a724d1b9bfa0f6ee9146b365e43ea6e245d0cf0c
+  of the glibc.
+
+9010-fix-decimal-point-in-hexadecimal-numbers.patch (kristov)
+* FFL-2200: Fixes formatted output of hexadecimal floating-point values that
+  require right-padding with zeros due to an explicit precision by adding the
+  necessary decimal point.
+  Before patch:
+    printf("%.2A", 12) --> "0XC00P+0"
+  After patch:
+    printf("%.2A", 12) --> "0XC.00P+0"

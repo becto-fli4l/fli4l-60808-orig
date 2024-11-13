@@ -1,0 +1,57 @@
+diff -urN src.orig/ld64/src/MachOReaderRelocatable.hpp src/ld64/src/MachOReaderRelocatable.hpp
+--- src.orig/ld64/src/MachOReaderRelocatable.hpp	2008-04-30 00:47:43.000000000 +0200
++++ src/ld64/src/MachOReaderRelocatable.hpp	2012-09-03 00:35:37.129471453 +0200
+@@ -60,6 +60,26 @@
+ namespace relocatable {
+ 
+ 
++class BaseAtom : public ObjectFile::Atom
++{
++public:
++												BaseAtom() : fStabsStartIndex(0), fStabsCount(0) {}
++
++	virtual void								setSize(uint64_t size)	= 0;
++	virtual void								addReference(ObjectFile::Reference* ref) = 0;
++	virtual void								sortReferences() = 0;
++	virtual void								addLineInfo(const ObjectFile::LineInfo& info) = 0;
++	virtual uint64_t							getObjectAddress() const = 0;
++	virtual uint32_t							getOrdinal() const { return fOrdinal; }
++	virtual void								setOrdinal(uint32_t value) { fOrdinal = value; }
++	virtual const void*							getSectionRecord() const = 0;
++	virtual bool								isAlias() const { return false; }
++
++	uint32_t									fStabsStartIndex;
++	uint32_t									fStabsCount;
++	uint32_t									fOrdinal;
++};
++
+ 
+ class ReferenceSorter
+ {
+@@ -267,26 +287,6 @@
+ 
+ LinkEditSegment LinkEditSegment::fgSingleton;
+ 
+-class BaseAtom : public ObjectFile::Atom
+-{
+-public:
+-												BaseAtom() : fStabsStartIndex(0), fStabsCount(0) {}
+-
+-	virtual void								setSize(uint64_t size)	= 0;
+-	virtual void								addReference(ObjectFile::Reference* ref) = 0;
+-	virtual void								sortReferences() = 0;
+-	virtual void								addLineInfo(const ObjectFile::LineInfo& info) = 0;
+-	virtual uint64_t							getObjectAddress() const = 0;
+-	virtual uint32_t							getOrdinal() const { return fOrdinal; }
+-	virtual void								setOrdinal(uint32_t value) { fOrdinal = value; }
+-	virtual const void*							getSectionRecord() const = 0;
+-	virtual bool								isAlias() const { return false; }
+-
+-	uint32_t									fStabsStartIndex;
+-	uint32_t									fStabsCount;
+-	uint32_t									fOrdinal;
+-};
+-
+ class BaseAtomSorter
+ {
+ public:

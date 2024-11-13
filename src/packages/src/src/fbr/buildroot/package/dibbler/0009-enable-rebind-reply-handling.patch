@@ -1,0 +1,59 @@
+diff -purN dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRebind.cpp dibbler-1.0.1RC1/ClntMessages/ClntMsgRebind.cpp
+--- dibbler-1.0.1RC1.orig/ClntMessages/ClntMsgRebind.cpp	2014-02-15 18:37:44.000000000 +0100
++++ dibbler-1.0.1RC1/ClntMessages/ClntMsgRebind.cpp	2015-06-29 17:26:26.094741817 +0200
+@@ -23,6 +23,8 @@
+ #include "Logger.h"
+ #include "ClntOptOptionRequest.h"
+ #include "ClntOptStatusCode.h"
++#include "ClntTransMgr.h"
++#include "ClntIfaceMgr.h"
+ 
+ using namespace std;
+ 
+@@ -75,16 +77,10 @@ TClntMsgRebind::TClntMsgRebind(TOptList
+ 
+ void TClntMsgRebind::answer(SPtr<TClntMsg> Reply)
+ {
+-    TClntMsg::answer(Reply);
+-    return;
+-
+-#if 0
+-  /// @todo: Fix REPLY support for REBIND
+-  
+-SPtr<TOpt> opt;
+-    
++    SPtr<TOpt> opt;
++    unsigned int iaCnt = 0; 
+     // get DUID
+-    SPtr<TClntOptServerIdentifier> ptrDUID;
++    SPtr<TOptDUID> ptrDUID;
+     ptrDUID = (Ptr*) Reply->getOption(OPTION_SERVERID);
+     
+     SPtr<TClntOptOptionRequest> ptrOptionReqOpt=(Ptr*)getOption(OPTION_ORO);
+@@ -110,8 +106,7 @@ SPtr<TOpt> opt;
+                     break;
+                 }
+             }
+-            ptrOptIA->setContext(ClntIfaceMgr, ClntTransMgr, ClntCfgMgr, ClntAddrMgr,
+-                                 ptrDUID->getDUID(), SPtr<TIPv6Addr>() /*NULL*/, Reply->getIface());
++            ptrOptIA->setContext(ptrDUID->getDUID(), SPtr<TIPv6Addr>() /*NULL*/, Reply->getIface());
+ 
+             ptrOptIA->doDuties();
+             break;
+@@ -133,7 +128,7 @@ SPtr<TOpt> opt;
+                     break;
+                 }
+             }
+-            pd->setContext(ClntIfaceMgr, ClntTransMgr, ClntCfgMgr, ClntAddrMgr, ptrDUID->getDUID(), 0, (TMsg*)this);
++            pd->setContext(ptrDUID->getDUID(), SPtr<TIPv6Addr>() /*NULL*/, (TMsg*)this);
+             pd->doDuties();
+             break;
+         }
+@@ -156,7 +151,6 @@ SPtr<TOpt> opt;
+     //in such a case new Solicit message should be sent
+  
+    if(iaCnt) IsDone = true;
+-#endif
+ }
+ 
+ void TClntMsgRebind::updateIA(SPtr <TClntOptIA_NA> ptrOptIA,

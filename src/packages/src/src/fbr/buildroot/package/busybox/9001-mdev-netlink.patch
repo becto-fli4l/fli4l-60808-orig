@@ -1,0 +1,242 @@
+diff -purN busybox-1.26.2.orig/util-linux/mdev.c busybox-1.26.2/util-linux/mdev.c
+--- busybox-1.26.2.orig/util-linux/mdev.c	2017-08-30 14:08:19.178098274 +0200
++++ busybox-1.26.2/util-linux/mdev.c	2017-08-30 14:13:00.261054164 +0200
+@@ -65,6 +65,14 @@
+ //config:	  These devices will request userspace look up the files in
+ //config:	  /lib/firmware/ and if it exists, send it to the kernel for
+ //config:	  loading into the hardware.
++//config:
++//config:config FEATURE_MDEV_NETLINK
++//config:	bool "Support netlink layer"
++//config:	default n
++//config:	help
++//config:	  This adds support for the kernel's netlink layer. Events
++//config:	  are received and processed by a daemon (started with
++//config:	  "mdev -s").
+ 
+ //applet:IF_MDEV(APPLET(mdev, BB_DIR_SBIN, BB_SUID_DROP))
+ 
+@@ -99,6 +107,9 @@
+ #include "libbb.h"
+ #include "common_bufsiz.h"
+ #include "xregex.h"
++#if ENABLE_FEATURE_MDEV_NETLINK
++#include <linux/netlink.h>
++#endif
+ 
+ /* "mdev -s" scans /sys/class/xxx, looking for directories which have dev
+  * file (it is of the form "M:m\n"). Example: /sys/class/tty/tty0/dev
+@@ -859,6 +870,16 @@ static int FAST_FUNC fileAction(const ch
+ 		void *userData,
+ 		int depth UNUSED_PARAM)
+ {
++#if ENABLE_FEATURE_MDEV_NETLINK
++	size_t len = strlen(fileName);
++
++	/* len check is for paranoid reasons */
++	if (len <= 7 || strcmp(fileName + len - 7, "/uevent") != 0 || len >= PATH_MAX)
++		return FALSE;
++
++	xopen_xwrite_close(fileName, "add");
++	(void) userData;
++#else
+ 	size_t len = strlen(fileName) - 4; /* can't underflow */
+ 	char *path = userData;	/* char array[PATH_MAX + SCRATCH_SIZE] */
+ 	char subsys[PATH_MAX];
+@@ -892,6 +913,7 @@ static int FAST_FUNC fileAction(const ch
+ 	}
+ 
+ 	make_device(/*DEVNAME:*/ NULL, path, OP_add);
++#endif
+ 
+ 	return TRUE;
+ }
+@@ -994,6 +1016,7 @@ static void open_mdev_log(const char *se
+ 	}
+ }
+ 
++#if !ENABLE_FEATURE_MDEV_NETLINK
+ /* If it exists, does /dev/mdev.seq match $SEQNUM?
+  * If it does not match, earlier mdev is running
+  * in parallel, and we need to wait.
+@@ -1079,6 +1102,118 @@ static void signal_mdevs(unsigned my_pid
+ 		}
+ 	}
+ }
++#else /* !ENABLE_FEATURE_MDEV_NETLINK */
++static void run_netlink_loop(int sock, struct sockaddr_nl *snl, char *temp)
++{
++	G.subsystem = NULL;
++	while (1) {
++		int err;
++		fd_set rdfs;
++		FD_ZERO(&rdfs);
++		FD_SET(sock, &rdfs);
++		
++		err = select(sock + 1, &rdfs, NULL, NULL, NULL);
++		if (err != 1) {
++			if (errno != EINTR)
++				bb_simple_perror_msg_and_die ("select");
++			else
++				continue;
++		}
++		else {
++			struct msghdr smsg;
++			struct iovec iov;
++			char buf[8192];
++			ssize_t buflen;
++			char *p, *pend;
++
++			char *action = NULL;
++			char *env_devname = NULL;
++			char *env_devpath = NULL;
++			char *fw = NULL;
++
++			memset(buf, 0, sizeof buf);
++			iov.iov_base = &buf;
++			iov.iov_len = sizeof buf - 1;
++			memset (&smsg, 0, sizeof smsg);
++			smsg.msg_iov = &iov;
++			smsg.msg_iovlen = 1;
++			smsg.msg_name = snl;
++			smsg.msg_namelen = sizeof *snl;
++
++			buflen = recvmsg(sock, &smsg, 0);
++			if (buflen <= 0) {
++				continue;
++			}
++			if (buflen == sizeof(buf) - 1) {
++				continue;
++			}
++
++			dbg1("%s %s", curtime(), buf);
++			p = buf + strlen(buf) + 1;
++			pend = buf + buflen;
++			while (p != pend) {
++				dbg1("  %s", p);
++				putenv(p);
++				if (strncmp(p, "ACTION=", 7) == 0) {
++					action = xstrdup(p + 7);
++				}
++				else if (strncmp(p, "DEVNAME=", 8) == 0) {
++					env_devname = xstrdup(p + 8);
++				}
++				else if (strncmp(p, "DEVPATH=", 8) == 0) {
++					env_devpath = xstrdup(p + 8);
++				}
++				else if (strncmp(p, "SUBSYSTEM=", 10) == 0) {
++					G.subsystem = xstrdup(p + 10);
++				}
++				else if (strncmp(p, "FIRMWARE=", 9) == 0) {
++					fw = xstrdup(p + 9);
++				}
++				p += strlen(p) + 1;
++			}
++
++			if (action && env_devpath) {
++				smalluint op = index_in_strings(keywords, action);
++				switch (op) {
++				case OP_remove :
++					/* Ignoring "remove firmware". It was reported
++					 * to happen and to cause erroneous deletion
++					 * of device nodes. */
++					if (!fw) {
++						snprintf(temp, PATH_MAX, "/sys%s", env_devpath);
++						make_device(env_devname, temp, OP_remove);
++					}
++					
++					break;
++
++				default :
++					snprintf(temp, PATH_MAX, "/sys%s", env_devpath);
++					make_device(env_devname, temp, op);
++					if (ENABLE_FEATURE_MDEV_LOAD_FIRMWARE) {
++						if (fw)
++							load_firmware(fw, temp);
++					}
++					
++					break;
++				}
++			}
++
++			p = buf + strlen(buf) + 1;
++			while (p != pend) {
++				bb_unsetenv(p);
++				p += strlen(p) + 1;
++			}
++
++			free(fw);
++			free(G.subsystem);
++			G.subsystem = NULL;
++			free(env_devpath);
++			free(env_devname);
++			free(action);
++		}
++	}
++}
++#endif /* !ENABLE_FEATURE_MDEV_NETLINK */
+ 
+ int mdev_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int mdev_main(int argc UNUSED_PARAM, char **argv)
+@@ -1106,6 +1241,30 @@ int mdev_main(int argc UNUSED_PARAM, cha
+ 		 * Scan: mdev -s
+ 		 */
+ 		struct stat st;
++#if ENABLE_FEATURE_MDEV_NETLINK
++		int err;
++		int sock;
++		struct sockaddr_nl snl;
++		int size;
++		pid_t child;
++
++		sock = socket(PF_NETLINK, SOCK_RAW, NETLINK_KOBJECT_UEVENT);
++		if (sock < 0) {
++			bb_simple_perror_msg_and_die("socket");
++		}
++
++		memset(&snl, 0, sizeof snl);
++		snl.nl_family = AF_NETLINK;
++		snl.nl_groups = 0x1;
++		err = bind(sock, (struct sockaddr *) &snl, sizeof snl);
++
++		if (err < 0) {
++			bb_simple_perror_msg_and_die("bind");
++		}
++
++		size = 64*1024; /* udev uses 128 MiB! */
++		setsockopt(sock, SOL_SOCKET, SO_RCVBUFFORCE, &size, sizeof size);
++#endif
+ 
+ #if ENABLE_FEATURE_MDEV_CONF
+ 		/* Same as xrealloc_vector(NULL, 4, 0): */
+@@ -1117,11 +1276,22 @@ int mdev_main(int argc UNUSED_PARAM, cha
+ 
+ 		putenv((char*)"ACTION=add");
+ 
++#if ENABLE_FEATURE_MDEV_NETLINK /* start mdev daemon process handling netlink events */
++		open_mdev_log(NULL, getpid());
++		child = xfork();
++		if (child == 0) {
++			run_netlink_loop(sock, &snl, temp);
++		}
++#endif
++
+ 		/* Create all devices from /sys/dev hierarchy */
+ 		recursive_action("/sys/dev",
+ 				 ACTION_RECURSE | ACTION_FOLLOWLINKS,
+ 				 fileAction, dirAction, temp, 0);
+ 	} else {
++#if ENABLE_FEATURE_MDEV_NETLINK
++		bb_error_msg("explicit mdev invocation ignored, event will be handled by mdev daemon process");
++#else /* old code not based on netlink layer */
+ 		char *fw;
+ 		char *seq;
+ 		char *action;
+@@ -1185,6 +1355,7 @@ int mdev_main(int argc UNUSED_PARAM, cha
+ 			xwrite_str(seq_fd, utoa(seqnum + 1));
+ 			signal_mdevs(my_pid);
+ 		}
++#endif
+ 	}
+ 
+ 	if (ENABLE_FEATURE_CLEAN_UP)

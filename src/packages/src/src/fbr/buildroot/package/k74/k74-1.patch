@@ -1,0 +1,63 @@
+diff -urN a/k74-ppdev.c b/k74-ppdev.c
+--- a/k74-ppdev.c	2009-12-12 07:13:53.000000000 +0100
++++ b/k74-ppdev.c	2012-07-25 15:09:21.024904107 +0200
+@@ -17,7 +17,7 @@
+     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+ 
+-#define K74_VERSION "2.0"
++#define K74_VERSION "2.0p1"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -121,7 +121,8 @@
+ "    clear             clear the bits\n"
+ "    toggle            change the state of the bits\n"
+ "    write n           write decimal number n to the port\n"
+-"    read              read the port and print on stdout in decimal\n"
++"    read              read the port and print on stdout in decimal;\n"
++"                      if a bit was selected before, only this bit is read\n"
+ "    watch             continuous read and report changes\n"
+ "\n"
+ "Examples\n"
+@@ -133,7 +134,7 @@
+ 
+ int main ( int argc, char *argv[] )
+ {
+-  int i, bit, port=0;
++  int i, bit=0, port=0;
+ 
+   /* process command line arguments */
+   for(i=1;i<argc;i++) {
+@@ -204,14 +205,22 @@
+     if (!strcmp(argv[i], "write")) {
+       if ( i++ == argc ) break;
+       port_write(port,atoi(argv[i]));
++      continue;
+     }
+ 
+     if (!strcmp(argv[i], "read")) {
+-      fprintf(stdout,"%d\n",port_read(port));
++      if (bit) {
++        fprintf(stdout,"%d\n",port_read(port) & bit ? 1 : 0);
++      }
++      else {
++        fprintf(stdout,"%d\n",port_read(port));
++      }
++      continue;
+     }
+ 
+     if (!strcmp(argv[i], "pause")) {
+         usleep(100000);
++        continue;
+     }
+ 
+     if (!strcmp(argv[i], "watch")) {
+@@ -227,6 +236,7 @@
+         }
+         usleep(100000);
+       }
++      continue;
+     }
+ 
+     bit = 1<<atoi(argv[i]);

@@ -1,0 +1,332 @@
+diff -purN dibbler-1.0.1.orig/AddrMgr/AddrMgr.cpp dibbler-1.0.1/AddrMgr/AddrMgr.cpp
+--- dibbler-1.0.1.orig/AddrMgr/AddrMgr.cpp	2015-07-30 22:41:29.000000000 +0200
++++ dibbler-1.0.1/AddrMgr/AddrMgr.cpp	2016-06-20 09:12:04.599937618 +0200
+@@ -246,6 +246,12 @@ bool TAddrMgr::updateInterfacesInfoIA(SP
+         return true;
+     }
+ 
++    // Allow wildcard names
++    const string &name = ia->getIfacename();
++    if (name.length() > 0 && name [name.length() - 1] == '+') {
++        return true;
++    }
++
+     // Check if name is present in the system
+     NameToIndexMapping::const_iterator n = nameToIndex.find(ia->getIfacename());
+     if (n == nameToIndex.end()) {
+@@ -266,6 +272,36 @@ bool TAddrMgr::updateInterfacesInfoIA(SP
+     return true;
+ }
+ 
++void TAddrMgr::updateInterfacesInfo(const std::string &wildcardName,
++                                    int ifindex) {
++    firstClient();
++    while (SPtr<TAddrClient> client = getClient()) {
++
++        client->firstIA();
++        while (SPtr<TAddrIA> ia = client->getIA()) {
++            updateInterfacesInfoIA(ia, wildcardName, ifindex);
++        }
++
++        client->firstTA();
++        while (SPtr<TAddrIA> ta = client->getTA()) {
++            updateInterfacesInfoIA(ta, wildcardName, ifindex);
++        }
++
++        client->firstPD();
++        while (SPtr<TAddrIA> pd = client->getPD()) {
++            updateInterfacesInfoIA(pd, wildcardName, ifindex);
++        }
++    }
++}
++
++void TAddrMgr::updateInterfacesInfoIA(SPtr<TAddrIA> ia,
++                                      const std::string &wildcardName,
++                                      int ifindex) {
++    if (ia->getIfacename() == wildcardName) {
++        ia->setIfindex(ifindex);
++    }
++}
++
+ 
+ // --------------------------------------------------------------------
+ // --- time related methods -------------------------------------------
+diff -purN dibbler-1.0.1.orig/AddrMgr/AddrMgr.h dibbler-1.0.1/AddrMgr/AddrMgr.h
+--- dibbler-1.0.1.orig/AddrMgr/AddrMgr.h	2015-07-30 22:37:49.000000000 +0200
++++ dibbler-1.0.1/AddrMgr/AddrMgr.h	2016-06-20 09:12:04.599937618 +0200
+@@ -56,6 +56,11 @@ class TAddrMgr
+                                 const NameToIndexMapping& nameToIndex,
+                                 const IndexToNameMapping& indexToName);
+ 
++    void updateInterfacesInfo(const std::string &wildcardName, int ifindex);
++
++    void updateInterfacesInfoIA(SPtr<TAddrIA> ia,
++                                const std::string &wildcardName, int ifindex);
++
+     //--- Client container ---
+     void addClient(SPtr<TAddrClient> x);
+     void firstClient();
+diff -purN dibbler-1.0.1.orig/IfaceMgr/IfaceMgr.cpp dibbler-1.0.1/IfaceMgr/IfaceMgr.cpp
+--- dibbler-1.0.1.orig/IfaceMgr/IfaceMgr.cpp	2016-06-20 09:13:45.431439757 +0200
++++ dibbler-1.0.1/IfaceMgr/IfaceMgr.cpp	2016-06-20 09:12:04.599937618 +0200
+@@ -115,6 +115,20 @@ SPtr<TIfaceIface> TIfaceMgr::getIfaceByN
+ }
+ 
+ /*
++ * returns all interfaces with names starting with a given prefix
++ * @param prefix - interface name prefix
++ */
++List(TIfaceIface) TIfaceMgr::getIfacesByPrefix(const std::string& prefix) {
++    List(TIfaceIface) result;
++    IfaceLst.first();
++    while ( SPtr<TIfaceIface> ptr = IfaceLst.get() ) {
++        if ( !strncmp(prefix.c_str(),ptr->getName(),prefix.length()) )
++            result.append(ptr);
++    }
++    return result;
++}
++
++/*
+  * gets interface by it ID (or NULL if no such interface exists)
+  * @param id - interface id
+  */
+diff -purN dibbler-1.0.1.orig/IfaceMgr/IfaceMgr.h dibbler-1.0.1/IfaceMgr/IfaceMgr.h
+--- dibbler-1.0.1.orig/IfaceMgr/IfaceMgr.h	2014-10-18 20:31:26.000000000 +0200
++++ dibbler-1.0.1/IfaceMgr/IfaceMgr.h	2016-06-20 09:12:04.599937618 +0200
+@@ -31,6 +31,7 @@ class TIfaceMgr {
+     void firstIface();
+     SPtr<TIfaceIface> getIface();
+     SPtr<TIfaceIface> getIfaceByName(const std::string& name);
++    List(TIfaceIface) getIfacesByPrefix(const std::string& prefix);
+     SPtr<TIfaceIface> getIfaceByID(int id);
+     virtual SPtr<TIfaceIface> getIfaceBySocket(int fd);
+     int countIface();
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgIface.cpp dibbler-1.0.1/SrvCfgMgr/SrvCfgIface.cpp
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgIface.cpp	2015-08-09 15:23:23.000000000 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgIface.cpp	2016-06-20 09:12:04.599937618 +0200
+@@ -466,6 +466,15 @@ string TSrvCfgIface::getFullName() const
+     return string(Name_) + "/" + oss.str();
+ }
+ 
++bool TSrvCfgIface::isWildcard() const {
++    const string::size_type len = Name_.length();
++    return len > 0 && Name_[len-1] == '+';
++}
++
++string TSrvCfgIface::getWildcardPrefix() const {
++    return Name_.substr(0, Name_.length() - 1);
++}
++
+ SPtr<TIPv6Addr> TSrvCfgIface::getUnicast() {
+     return Unicast_;
+ }
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgIface.h dibbler-1.0.1/SrvCfgMgr/SrvCfgIface.h
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgIface.h	2015-07-30 23:48:00.000000000 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgIface.h	2016-06-20 09:12:04.599937618 +0200
+@@ -37,6 +37,8 @@ public:
+     int	getID() const;
+     std::string getName() const;
+     std::string getFullName() const;
++    bool isWildcard() const;
++    std::string getWildcardPrefix() const;
+ 
+     // permanent address management (IA_NA)
+     void addAddrClass(SPtr<TSrvCfgAddrClass> addrClass);
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp	2016-06-20 09:13:56.381612783 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp	2016-06-20 09:12:04.599937618 +0200
+@@ -160,6 +160,7 @@ bool TSrvCfgMgr::setGlobalOptions(SPtr<T
+  */
+ bool TSrvCfgMgr::matchParsedSystemInterfaces(SrvParser *parser) {
+     int cfgIfaceCnt;
++    int lastWildcardIface = -1;
+     cfgIfaceCnt = parser->SrvCfgIfaceLst.count();
+     Log(Debug) << cfgIfaceCnt << " interface(s) specified in " << SRVCONF_FILE << LogEnd;
+ 
+@@ -201,6 +202,13 @@ bool TSrvCfgMgr::matchParsedSystemInterf
+             continue; // skip physical interface checking part
+         }
+ 
++        if (cfgIface->isWildcard()) {
++            cfgIface->setID(--lastWildcardIface);
++            this->SrvCfgWildcardIfaceLst.append(cfgIface);
++            this->addIface(cfgIface);
++            continue;
++        }
++
+         // physical interface
+         if (cfgIface->getID()==-1) {
+             // ID==-1 means that user referenced to interface by name
+@@ -347,10 +355,13 @@ long TSrvCfgMgr::countIface() {
+  * If no such interface exists, 0 will be returned.
+  */
+ SPtr<TSrvCfgIface> TSrvCfgMgr::checkInactiveIfaces() {
+-    if (!InactiveLst.count())
++    if (!InactiveLst.count() && !SrvCfgWildcardIfaceLst.count())
+         return SPtr<TSrvCfgIface>(); // NULL
+ 
+     SrvIfaceMgr().redetectIfaces();
++    if (!InactiveLst.count())
++        return SPtr<TSrvCfgIface>();
++
+     SPtr<TSrvCfgIface> x;
+     SPtr<TIfaceIface> iface;
+     InactiveLst.first();
+@@ -390,6 +401,15 @@ SPtr<TSrvCfgIface> TSrvCfgMgr::checkInac
+     return SPtr<TSrvCfgIface>(); // NULL
+ }
+ 
++int TSrvCfgMgr::wildcardIfaceCnt() {
++    return this->SrvCfgWildcardIfaceLst.count();
++}
++
++void TSrvCfgMgr::addWildcardIfaceInstance(SPtr<TSrvCfgIface> cfgIface,
++                                          SPtr<TIfaceIface> physIface) {
++    this->IfaceMap[physIface->getID()] = cfgIface;
++    this->IfaceNameMap[physIface->getName()] = cfgIface;
++}
+ 
+ TSrvCfgMgr::~TSrvCfgMgr() {
+     Log(Debug) << "SrvCfgMgr cleanup." << LogEnd;
+@@ -783,6 +803,11 @@ SPtr<TSrvCfgIface> TSrvCfgMgr::getIfaceB
+         if ( ptrIface->getID()==iface )
+             return ptrIface;
+     }
++    // perhaps it's an instance of a wildcard interface?
++    TIfaceMap::iterator it = this->IfaceMap.find(iface);
++    if (it != this->IfaceMap.end()) {
++        return it->second;
++    }
+     Log(Error) << "Invalid interface (ifindex=" << iface
+                << ") specifed: no such interface." << LogEnd;
+     return SPtr<TSrvCfgIface>(); // NULL
+@@ -796,6 +821,11 @@ SPtr<TSrvCfgIface> TSrvCfgMgr::getIfaceB
+             return ptrIface;
+         }
+     }
++    // perhaps it's an instance of a wildcard interface?
++    TIfaceNameMap::iterator it = this->IfaceNameMap.find(name);
++    if (it != this->IfaceNameMap.end()) {
++        return it->second;
++    }
+     Log(Error) << "Invalid interface (name=" << name
+                << ") specifed: no such interface." << LogEnd;
+     return SPtr<TSrvCfgIface>(); // NULL
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h	2016-06-20 09:13:56.381612783 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h	2016-06-20 09:12:04.599937618 +0200
+@@ -23,6 +23,7 @@ class TSrvCfgMgr;
+ #include "DUID.h"
+ #include "KeyList.h"
+ #include "SrvCfgClientClass.h"
++#include <map>
+ 
+ #define SrvCfgMgr() (TSrvCfgMgr::instance())
+ 
+@@ -48,6 +49,8 @@ public:
+     void makeInactiveIface(SPtr<TSrvCfgIface> iface, bool inactive);
+     int inactiveIfacesCnt();
+     SPtr<TSrvCfgIface> checkInactiveIfaces();
++    int wildcardIfaceCnt();
++    void addWildcardIfaceInstance(SPtr<TSrvCfgIface> cfgIface, SPtr<TIfaceIface> physIface);
+ 
+     void dump();
+ 
+@@ -155,6 +158,7 @@ protected:
+     bool validateIface(SPtr<TSrvCfgIface> ptrIface);
+     bool validateClass(SPtr<TSrvCfgIface> ptrIface, SPtr<TSrvCfgAddrClass> ptrClass);
+     List(TSrvCfgIface) SrvCfgIfaceLst;
++    List(TSrvCfgIface) SrvCfgWildcardIfaceLst;
+     List(TSrvCfgIface) InactiveLst;
+     List(TSrvCfgClientClass) ClientClassLst;
+     bool matchParsedSystemInterfaces(SrvParser *parser);
+@@ -184,6 +188,11 @@ protected:
+ 
+     bool PerformanceMode_;
+     bool DropUnicast_;
++
++    typedef std::map<int, SPtr<TSrvCfgIface> > TIfaceMap;
++    typedef std::map<std::string, SPtr<TSrvCfgIface> > TIfaceNameMap;
++    TIfaceMap IfaceMap;
++    TIfaceNameMap IfaceNameMap;
+ };
+ 
+ #endif /* SRVCONFMGR_H */
+diff -purN dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.cpp dibbler-1.0.1/SrvTransMgr/SrvTransMgr.cpp
+--- dibbler-1.0.1.orig/SrvTransMgr/SrvTransMgr.cpp	2016-06-20 09:13:52.771555741 +0200
++++ dibbler-1.0.1/SrvTransMgr/SrvTransMgr.cpp	2016-06-20 09:12:04.599937618 +0200
+@@ -191,6 +191,18 @@ int TSrvTransMgr::checkReconfigures() {
+  */
+ bool TSrvTransMgr::openSocket(SPtr<TSrvCfgIface> confIface, int port) {
+ 
++    if (confIface->isWildcard()) {
++        List(TIfaceIface) ifaces = SrvIfaceMgr().getIfacesByPrefix(confIface->getWildcardPrefix());
++        ifaces.first();
++        while (SPtr<TIfaceIface> iface = ifaces.get()) {
++            if (iface->countSocket() == 0) {
++                SrvCfgMgr().addWildcardIfaceInstance(confIface, iface);
++                this->openSocket(confIface, iface, port);
++            }
++        }
++        return true;
++    }
++
+     int ifindex = -1;
+     if (confIface->isRelay()) {
+       ifindex = confIface->getRelayID();
+@@ -286,7 +298,8 @@ long TSrvTransMgr::getTimeout()
+     unsigned long ifaceRecheckPeriod = 10;
+     unsigned long addrTimeout = 0xffffffff;
+     SPtr<TSrvMsg> ptrMsg;
+-    if (SrvCfgMgr().inactiveIfacesCnt() && ifaceRecheckPeriod<min) {
++    if ((SrvCfgMgr().inactiveIfacesCnt() + SrvCfgMgr().wildcardIfaceCnt()) > 0
++            && ifaceRecheckPeriod<min) {
+         min = ifaceRecheckPeriod;
+     }
+     addrTimeout = SrvAddrMgr().getValidTimeout();
+@@ -502,7 +515,7 @@ void TSrvTransMgr::doDuties()
+     }
+ 
+     // Open socket on interface which becames ready during server run
+-    if (SrvCfgMgr().inactiveMode())
++    if (SrvCfgMgr().inactiveMode() || SrvCfgMgr().wildcardIfaceCnt() > 0)
+     {
+         SPtr<TSrvCfgIface> x;
+         x = SrvCfgMgr().checkInactiveIfaces();
+@@ -510,6 +523,13 @@ void TSrvTransMgr::doDuties()
+             openSocket(x, port_);
+     }
+ 
++    // Open socket on interfaces belonging to a wildcard interface
++    SrvCfgMgr().firstIface();
++    while (SPtr<TSrvCfgIface> confIface = SrvCfgMgr().getIface()) {
++        if (confIface->isWildcard()) {
++            this->openSocket(confIface, this->port_);
++        }
++    }
+ }
+ 
+ 
+@@ -698,8 +718,20 @@ bool TSrvTransMgr::sanitizeAddrDB() {
+ 
+     // Ok, let's iterate over all loaded entries in Ifa
+ 
+-    return SrvAddrMgr().updateInterfacesInfo(currentNameToIndex,
+-                                             currentIndexToName);
++    if (!SrvAddrMgr().updateInterfacesInfo(currentNameToIndex,
++                                           currentIndexToName)) {
++        return false;
++    }
++
++    // Change indices of wildcard instances
++    SrvCfgMgr().firstIface();
++    while (SPtr<TSrvCfgIface> confIface = SrvCfgMgr().getIface()) {
++        if (confIface->isWildcard()) {
++            SrvAddrMgr().updateInterfacesInfo(confIface->getName(), confIface->getID());
++        }
++    }
++
++    return true;
+ }
+ 
+ ostream & operator<<(ostream &s, TSrvTransMgr &x)

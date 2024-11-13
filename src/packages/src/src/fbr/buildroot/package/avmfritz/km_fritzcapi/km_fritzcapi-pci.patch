@@ -1,0 +1,1119 @@
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.c km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.c
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.c	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.c	2019-03-13 19:25:03.220757474 +0100
+@@ -23,7 +23,6 @@
+ #include <asm/io.h>
+ #include <asm/irq.h>
+ #include <asm/atomic.h>
+-#include <asm/system.h>
+ #include <linux/version.h>
+ #include <linux/ioport.h>
+ #include <linux/sched.h>
+@@ -41,6 +40,9 @@
+ #include <linux/isdn/capiutil.h>
+ #include <linux/isdn/capicmd.h>
+ #include <stdarg.h>
++#include <linux/export.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
+ #include "main.h"
+ #include "tables.h"
+ #include "queue.h"
+@@ -99,7 +101,7 @@ static atomic_t			crit_level		= ATOMIC_I
+ static unsigned long		crit_flags;
+ static atomic_t			scheduler_enabled	= ATOMIC_INIT (0);
+ static atomic_t			scheduler_id		= ATOMIC_INIT (-1);
+-static spinlock_t		sched_lock		= SPIN_LOCK_UNLOCKED;
++static DEFINE_SPINLOCK(sched_lock);
+ #if !defined (__fcclassic__)
+ static int			card_id			= 0;
+ #endif
+@@ -107,7 +109,7 @@ static int			card_id			= 0;
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ static void scheduler (unsigned long data);
+-static irqreturn_t irq_handler (int irq, void * args, struct pt_regs * regs);
++static irqreturn_t irq_handler (int irq, void * args);
+ 
+ static DECLARE_TASKLET_DISABLED (scheduler_tasklet, scheduler, 0);
+ 
+@@ -194,7 +196,7 @@ static void copy_version (struct capi_ct
+ 	}
+ 	lib_strncpy (ctrl->serial, tmp, CAPI_SERIAL_LEN);
+ 	lib_memcpy (&ctrl->profile, card->string[6], sizeof (capi_profile));
+-	strncpy (ctrl->manu, "AVM GmbH", CAPI_MANUFACTURER_LEN);
++	lib_strncpy (ctrl->manu, "AVM GmbH", CAPI_MANUFACTURER_LEN);
+ 	ctrl->version.majorversion = 2;
+ 	ctrl->version.minorversion = 0;
+ 	tmp = card->string[0];
+@@ -220,16 +222,6 @@ static void kill_version (card_t * card)
+ } /* kill_version */
+ 
+ /*---------------------------------------------------------------------------*\
+-\*---------------------------------------------------------------------------*/
+-static void pprintf (char * page, int * len, const char * fmt, ...) {
+-	va_list args;
+-
+-	va_start (args, fmt);
+-	*len += vsprintf (page + *len, fmt, args);
+-	va_end (args);
+-} /* pprintf */
+-
+-/*---------------------------------------------------------------------------*\
+ \*-C-------------------------------------------------------------------------*/
+ static inline int in_critical (void) {
+ 	
+@@ -374,9 +366,9 @@ static int install_card (card_t * card)
+ 			card->irq, 
+ 			&irq_handler, 
+ #if defined (__fcpci__) || defined (__fcpcmcia__)
+-			SA_INTERRUPT | SA_SHIRQ, 
++			IRQF_SHARED,
+ #else
+-			SA_INTERRUPT, 
++			0,
+ #endif
+ 			TARGET, 
+ 			card
+@@ -470,7 +462,12 @@ static int __kcapi load_ware (struct cap
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static char * __kcapi proc_info (struct capi_ctr * ctrl) {
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static char * __kcapi proc_info (struct capi_ctr * ctrl)
++#else 
++static char * __kcapi proc_show (struct capi_ctr * ctrl)
++#endif
++{
+ 	card_t *	card;
+ 	static char	text[80];
+ 
+@@ -490,39 +487,38 @@ static char * __kcapi proc_info (struct
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static int __kcapi ctr_info (
+-	char *			page, 
+-	char **			start, 
+-	off_t			ofs,
+-	int			count, 
+-	int *			eof,
+-	struct capi_ctr *	ctrl
+-) {
++
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static int __kcapi ctr_info (struct seq_file *m, void *v)
++#else
++int __kcapi ctr_proc_show (struct seq_file *m, void *v)
++#endif
++{
++	struct capi_ctr *ctrl = m->private;
+ 	card_t *		card;
+ 	char *			temp;
+ 	unsigned char		flag;
+-	int			len = 0;
+ 
+ 	assert (ctrl != NULL);
+ 	card = (card_t *) ctrl->driverdata;
+ 	assert (card != NULL);
+-	pprintf (page, &len, "%-16s %s\n", "name", SHORT_LOGO);
+-	pprintf (page, &len, "%-16s 0x%04x\n", "io", card->base);
+-	pprintf (page, &len, "%-16s %d\n", "irq", card->irq);
++	seq_printf(m, "%-16s %s\n", "name", SHORT_LOGO);
++	seq_printf(m, "%-16s 0x%04x\n", "io", card->base);
++	seq_printf(m, "%-16s %d\n", "irq", card->irq);
+ 	temp = card->version ? card->string[1] : "A1";
+-	pprintf (page, &len, "%-16s %s\n", "type", temp);
++	seq_printf(m, "%-16s %s\n", "type", temp);
+ 	temp = card->version ? card->string[0] : "-";
+ #if defined (__fcclassic__) || defined (__fcpcmcia__)
+-	pprintf (page, &len, "%-16s 0x%04x\n", "revision", card->info);
++	seq_printf(m, "%-16s 0x%04x\n", "revision", card->info);
+ #elif defined (__fcpci__)
+-	pprintf (page, &len, "%-16s %d\n", "class", card_id);
++	seq_printf(m, "%-16s %d\n", "class", card_id);
+ #endif
+-	pprintf (page, &len, "%-16s %s\n", "ver_driver", temp);
+-	pprintf (page, &len, "%-16s %s\n", "ver_cardtype", SHORT_LOGO);
++	seq_printf(m, "%-16s %s\n", "ver_driver", temp);
++	seq_printf(m, "%-16s %s\n", "ver_cardtype", SHORT_LOGO);
+ 
+ 	flag = ((unsigned char *) (ctrl->profile.manu))[3];
+ 	if (flag) {
+-		pprintf(page, &len, "%-16s%s%s%s%s%s%s%s\n", "protocol",
++		seq_printf(m, "%-16s%s%s%s%s%s%s%s\n", "protocol",
+ 			(flag & 0x01) ? " DSS1" : "",
+ 			(flag & 0x02) ? " CT1" : "",
+ 			(flag & 0x04) ? " VN3" : "",
+@@ -534,21 +530,34 @@ static int __kcapi ctr_info (
+ 	}
+ 	flag = ((unsigned char *) (ctrl->profile.manu))[5];
+ 	if (flag) {
+-		pprintf(page, &len, "%-16s%s%s%s%s\n", "linetype",
++		seq_printf(m, "%-16s%s%s%s%s\n", "linetype",
+ 			(flag & 0x01) ? " point to point" : "",
+ 			(flag & 0x02) ? " point to multipoint" : "",
+ 			(flag & 0x08) ? " leased line without D-channel" : "",
+ 			(flag & 0x04) ? " leased line with D-channel" : ""
+ 		);
+ 	}
+-	if (len < ofs) {
+-		return 0;
+-	}
+-	*eof = 1;
+-	*start = page - ofs;
+-	return ((count < len - ofs) ? count : len - ofs);
++
++	return 0;
+ } /* ctr_info */
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++static int ctr_proc_open(struct inode *inode, struct file *file)
++{
++       return single_open(file, ctr_info, PDE_DATA(inode));
++}
++
++const struct file_operations ctr_proc_fops = {
++       .owner          = THIS_MODULE,
++       .open           = ctr_proc_open,
++       .read           = seq_read,
++       .llseek         = seq_lseek,
++       .release        = single_release,
++};
++#else
++	EXPORT_SYMBOL(ctr_proc_show);
++#endif
++
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ static void __kcapi reset_ctrl (struct capi_ctr * ctrl) {
+@@ -569,7 +578,7 @@ static void __kcapi reset_ctrl (struct c
+ 		}
+ 	}
+ 	stop (card);
+-	capi_ctr_reseted (ctrl);
++	capi_ctr_down (ctrl);
+ #if defined (__fcpnp__)
+ 	pnp_disable_dev (card->dev);
+ #endif
+@@ -625,8 +634,12 @@ int __kcapi add_card (struct capi_driver
+ 	ctrl->register_appl =	register_appl;
+ 	ctrl->release_appl =	release_appl;
+ 	ctrl->send_message =	send_msg;
+-	ctrl->procinfo =	proc_info;
+-	ctrl->ctr_read_proc =	ctr_info;
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0))
++	ctrl->procinfo		= proc_info;
++	ctrl->proc_fops     = &ctr_proc_fops;
++#else
++	ctrl->proc_show     = ctr_proc_show;
++#endif
+ 	if (0 != (res = attach_capi_ctr (ctrl))) {
+ 		dec_use_count ();
+ 		stop (card);
+@@ -836,11 +849,10 @@ static void scheduler (unsigned long dat
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-static irqreturn_t irq_handler (int irq, void * args, struct pt_regs * regs) {
++static irqreturn_t irq_handler (int irq, void * args) {
+ 	int	res	= IRQ_NONE;
+ 	
+ 	UNUSED_ARG (irq);
+-	UNUSED_ARG (regs);
+ 	if (args != NULL) {
+ 		assert (capi_lib->cm_handle_events != NULL);
+ 		if (atomic_read (&scheduler_id) == smp_processor_id ()) {
+@@ -882,7 +894,7 @@ void __stack init (unsigned len, void (_
+ int fcpcmcia_addcard (unsigned int port, unsigned irq) {
+ 	capicardparams args;
+ 
+-	NOTE("CS addcard: io %x, irq %u\n", port, irq);
++	NOTE("CS addcard: io 0x%x, irq %u\n", port, irq);
+ 	args.port = port;
+ 	args.irq  = irq;
+ 	return add_card (&fritz_capi_driver, &args);
+@@ -890,7 +902,7 @@ int fcpcmcia_addcard (unsigned int port,
+ 
+ int fcpcmcia_delcard (unsigned int port, unsigned irq) {
+ 
+-	NOTE("CS delcard: io %x, irq %u\n", port, irq);
++	NOTE("CS delcard: io 0x%x, irq %u\n", port, irq);
+ 	if (NULL != capi_controller) { 
+ 		reset_ctrl (capi_controller);
+ 		remove_ctrl (capi_controller);
+@@ -901,10 +913,10 @@ int fcpcmcia_delcard (unsigned int port,
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-int driver_init (void) {
++int avm_init (void) {
+ 
+ 	return (NULL != (capi_lib = link_library (NULL)));
+-} /* driver_init */
++} /* avm_init */
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.h km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.h
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.h	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/driver.h	2019-03-13 19:25:03.220757474 +0100
+@@ -23,7 +23,6 @@
+ #ifndef __have_driver_h__
+ #define __have_driver_h__
+ 
+-#include <linux/config.h>
+ #include <linux/skbuff.h>
+ #include <linux/capi.h>
+ #include <linux/list.h>
+@@ -98,7 +97,7 @@ extern int fcpcmcia_delcard (unsigned, u
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-extern int driver_init (void);
++extern int avm_init (void);
+ extern void driver_exit (void);
+ 
+ /*---------------------------------------------------------------------------*\
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/fcpcmcia_cs.c km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/fcpcmcia_cs.c
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/fcpcmcia_cs.c	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/fcpcmcia_cs.c	2019-03-13 19:25:03.220757474 +0100
+@@ -24,11 +24,7 @@
+ #include <linux/serial.h>
+ #include <linux/major.h>
+ #include <asm/io.h>
+-#include <asm/system.h>
+ 
+-#include <pcmcia/version.h>
+-#include <pcmcia/cs_types.h>
+-#include <pcmcia/cs.h>
+ #include <pcmcia/cistpl.h>
+ #include <pcmcia/ciscode.h>
+ #include <pcmcia/ds.h>
+@@ -43,10 +39,6 @@
+ 
+ #include <linux/version.h>
+ 
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,10)
+-#define PCMCIA_IRQ_INFO2
+-#endif
+-
+ /*====================================================================*/
+ MODULE_LICENSE("GPL");
+ 
+@@ -79,21 +71,6 @@ static void cs_msg(int error, const char
+ 
+ /*====================================================================*/
+ 
+-#if defined (PCMCIA_IRQ_INFO2)
+-/* Parameters that can be set with 'insmod' */
+-
+-/* This means pick from 15, 12, 11, 10, 9, 7, 5, 4, and 3 */
+-static int default_irq_list[10] = { 15, 12, 11, 10, 9, 7, 5, 4, 3, -1 };
+-static int irq_list_count       = -1;
+-static int irq_list[10];
+-
+-module_param_array (irq_list, int, irq_list_count, 0);
+-
+-MODULE_PARM_DESC (irq_list, "List of IRQ numbers");
+-#endif
+-
+-/*====================================================================*/
+-
+ /*
+    Entry points into the card driver.
+ */
+@@ -110,9 +87,9 @@ extern int fcpcmcia_delcard (unsigned in
+    handler.
+ */
+ 
+-static void cs_config(dev_link_t *);
+-static void cs_release(dev_link_t *);
+-static int cs_event(event_t event, int priority, event_callback_args_t *);
++static int cs_config(struct pcmcia_device *link);
++static void cs_release(struct pcmcia_device *link);
++
+ 
+ /*
+    The attach() and detach() entry points are used to create and destroy
+@@ -120,49 +97,7 @@ static int cs_event(event_t event, int p
+    needed to manage one actual PCMCIA card.
+ */
+ 
+-static dev_link_t * cs_attach(void);
+-static void cs_detach(dev_link_t *);
+-
+-/*
+-   The dev_info variable is the "key" that is used to match up this
+-   device driver with appropriate cards, through the card configuration
+-   database.
+-*/
+-
+-static dev_info_t dev_info = "fcpcmcia_cs";
+-
+-/*
+-   A linked list of "instances" of the skeleton device.  Each actual
+-   PCMCIA card corresponds to one device instance, and is described
+-   by one dev_link_t structure (defined in ds.h).
+-
+-   You may not want to use a linked list for this -- for example, the
+-   memory card driver uses an array of dev_link_t pointers, where minor
+-   device numbers are used to derive the corresponding array index.
+-*/
+-
+-static dev_link_t *dev_list = NULL;
+-
+-/*
+-   A dev_link_t structure has fields for most things that are needed
+-   to keep track of a socket, but there will usually be some device
+-   specific information that also needs to be kept track of.  The
+-   'priv' pointer in a dev_link_t structure can be used to point to
+-   a device-specific private data structure, like this.
+-
+-   A driver needs to provide a dev_node_t structure for each device
+-   on a card.  In some cases, there is only one device per card (for
+-   example, ethernet cards, modems).  In other cases, there may be
+-   many actual or logical devices (SCSI adapters, memory cards with
+-   multiple partitions).  The dev_node_t structures need to be kept
+-   in a linked list starting at the 'dev' field of a dev_link_t
+-   structure.  We allocate them in the card's private data structure,
+-   because they generally can't be allocated dynamically.
+-*/
+-   
+-typedef struct local_info_t {
+-    dev_node_t	node;
+-} local_info_t;
++static void cs_detach(struct pcmcia_device *p_dev);
+ 
+ /*======================================================================
+ 
+@@ -176,83 +111,17 @@ typedef struct local_info_t {
+     
+ ======================================================================*/
+ 
+-static dev_link_t *cs_attach(void)
++static int cs_probe(struct pcmcia_device *p_dev)
+ {
+-    client_reg_t client_reg;
+-    dev_link_t *link;
+-    local_info_t *local;
+-    int ret;
+-#if defined (PCMCIA_IRQ_INFO2)
+-    int i;
+-#endif
+-    
+     NOTE("Attaching device...\n");
+ 
+-    /* Initialize the dev_link_t structure */
+-    link = kmalloc(sizeof(struct dev_link_t), GFP_KERNEL);
+-    if (!link)
+-        goto err;
+-    memset(link, 0, sizeof(struct dev_link_t));
+-
+-    /* The io structure describes IO port mapping */
+-    link->io.NumPorts1 = 16;
+-    link->io.Attributes1 = IO_DATA_PATH_WIDTH_8;
+-    link->io.NumPorts2 = 0;
+-
+-    /* Interrupt setup */
+-    link->irq.Attributes = IRQ_TYPE_DYNAMIC_SHARING|IRQ_FIRST_SHARED;
+-
+-#if defined (PCMCIA_IRQ_INFO2)
+-    link->irq.IRQInfo1 = IRQ_INFO2_VALID|IRQ_LEVEL_ID;
+-    if (irq_list_count > 0) {
+-	for (i = 0; (i < irq_list_count) && (irq_list[i] > 0); i++)
+-	    link->irq.IRQInfo2 |= 1 << irq_list[i];
+-    } else {
+-	for (i = 0; (i < irq_list_count) && (default_irq_list[i] > 0); i++)
+-	    link->irq.IRQInfo2 |= 1 << default_irq_list[i];
+-    }
+-#else
+-    link->irq.IRQInfo1 = IRQ_LEVEL_ID;
+-#endif
+-    
+     /* General socket configuration */
+-    link->conf.Attributes = CONF_ENABLE_IRQ;
+-    link->conf.Vcc = 50;
+-    link->conf.IntType = INT_MEMORY_AND_IO;
+-    link->conf.ConfigIndex = 1;
+-    link->conf.Present = PRESENT_OPTION;
+-
+-    /* Allocate space for private device-specific data */
+-    local = kmalloc(sizeof(local_info_t), GFP_KERNEL);
+-    if (!local)
+-        goto err_kfree;
+-    memset(local, 0, sizeof(local_info_t));
+-    link->priv = local;
+-    
+-    /* Register with Card Services */
+-    link->next = dev_list;
+-    dev_list = link;
+-    client_reg.dev_info = &dev_info;
+-    client_reg.Attributes = INFO_IO_CLIENT | INFO_CARD_SHARE;
+-    client_reg.EventMask =
+-	CS_EVENT_CARD_INSERTION | CS_EVENT_CARD_REMOVAL |
+-	CS_EVENT_RESET_PHYSICAL | CS_EVENT_CARD_RESET |
+-	CS_EVENT_PM_SUSPEND | CS_EVENT_PM_RESUME;
+-    client_reg.event_handler = &cs_event;
+-    client_reg.Version = 0x0210;
+-    client_reg.event_callback_args.client_data = link;
+-    ret = pcmcia_register_client(&link->handle, &client_reg);
+-    if (ret != 0) {
+-	cs_error(link->handle, RegisterClient, ret);
+-	cs_detach(link);
+-	goto err;
+-    }
+-    return link;
++    p_dev->config_flags |= CONF_ENABLE_IRQ | CONF_AUTO_SET_IO;
++    p_dev->config_index = 1;
++    p_dev->config_regs = PRESENT_OPTION;
++
++    return cs_config(p_dev);
+ 
+- err_kfree:
+-    kfree(link);
+- err:
+-    return NULL;
+ } /* cs_attach */
+ 
+ /*======================================================================
+@@ -264,39 +133,10 @@ static dev_link_t *cs_attach(void)
+ 
+ ======================================================================*/
+ 
+-static void cs_detach(dev_link_t *link)
++static void cs_detach(struct pcmcia_device *link)
+ {
+-    dev_link_t **linkp;
+-
+-    NOTE("Detaching device...\n");
+-
+-    /* Locate device structure */
+-    for (linkp = &dev_list; *linkp; linkp = &(*linkp)->next)
+-	if (*linkp == link) break;
+-    if (*linkp == NULL)
+-	return;
+-
+-    /*
+-       If the device is currently configured and active, we won't
+-       actually delete it yet.  Instead, it is marked so that when
+-       the release() function is called, that will trigger a proper
+-       detach().
+-    */
+-    if (link->state & DEV_CONFIG) {
+-	link->state |= DEV_STALE_LINK;
+-	return;
+-    }
+-
+-    /* Break the link with Card Services */
+-    if (link->handle)
+-	pcmcia_deregister_client(link->handle);
+-    
+-    /* Unlink device structure, free pieces */
+-    *linkp = link->next;
+-    if (link->priv) {
+-	kfree(link->priv);
+-    }
+-    kfree(link);
++       cs_release(link);
++       kfree(link->priv);
+     
+ } /* cs_detach */
+ 
+@@ -308,168 +148,72 @@ static void cs_detach(dev_link_t *link)
+     
+ ======================================================================*/
+ 
+-static int get_tuple(client_handle_t handle, tuple_t *tuple, cisparse_t *parse)
++static int cs_configcheck(struct pcmcia_device *p_dev,
++                              void *priv_data)
+ {
+-    int i = pcmcia_get_tuple_data(handle, tuple);
+-    if (i != CS_SUCCESS) return i;
+-    return pcmcia_parse_tuple(handle, tuple, parse);
+-}
++       return pcmcia_request_io(p_dev);
++ }
+ 
+-static int first_tuple(client_handle_t handle, tuple_t *tuple,
+-		     cisparse_t *parse)
++static int cs_config(struct pcmcia_device *link)
+ {
+-    int i = pcmcia_get_first_tuple(handle, tuple);
+-    if (i != CS_SUCCESS) return i;
+-    return get_tuple(handle, tuple, parse);
+-}
+-
+-static int next_tuple(client_handle_t handle, tuple_t *tuple,
+-		     cisparse_t *parse)
+-{
+-    int i = pcmcia_get_next_tuple(handle, tuple);
+-    if (i != CS_SUCCESS) return i;
+-    return get_tuple(handle, tuple, parse);
+-}
+-
+-static void cs_config(dev_link_t *link)
+-{
+-    client_handle_t handle;
+-    tuple_t tuple;
+-    cisparse_t parse;
+-    cistpl_cftable_entry_t *cf = &parse.cftable_entry;
+-    local_info_t *dev;
+-    int i;
+-    u_char buf[64];
++    int i = -1;
+     char devname[128];
+-    handle = link->handle;
+-    dev = link->priv;
+-
+-    /*
+-       This reads the card's CONFIG tuple to find its configuration
+-       registers.
+-    */
+-    do {
+-	tuple.DesiredTuple = CISTPL_CONFIG;
+-	i = pcmcia_get_first_tuple(handle, &tuple);
+-	if (i != CS_SUCCESS) break;
+-	tuple.TupleData = buf;
+-	tuple.TupleDataMax = 64;
+-	tuple.TupleOffset = 0;
+-	i = pcmcia_get_tuple_data(handle, &tuple);
+-	if (i != CS_SUCCESS) break;
+-	i = pcmcia_parse_tuple(handle, &tuple, &parse);
+-	if (i != CS_SUCCESS) break;
+-	link->conf.ConfigBase = parse.config.base;
+-    } while (0);
+-    if (i != CS_SUCCESS) {
+-	cs_error(link->handle, ParseTuple, i);
+-	link->state &= ~DEV_CONFIG_PENDING;
+-	return;
+-    }
+-    
+-    /* Configure card */
+-    link->state |= DEV_CONFIG;
+ 
+-    do {
++    devname[0] = 0;
++    if (link->prod_id[1])
++           strlcpy(devname, link->prod_id[1], sizeof(devname));
+ 
+-	tuple.Attributes = 0;
+-	tuple.TupleData = buf;
+-	tuple.TupleDataMax = 254;
+-	tuple.TupleOffset = 0;
+-	tuple.DesiredTuple = CISTPL_VERS_1;
+-
+-	devname[0] = 0;
+-	if( !first_tuple(handle, &tuple, &parse) && parse.version_1.ns > 1 ) {
+-	    strlcpy(devname,parse.version_1.str + parse.version_1.ofs[1], 
+-			sizeof(devname));
+-	}
+-	/*
+-         * find IO port
+-         */
+-	tuple.TupleData = (cisdata_t *)buf;
+-	tuple.TupleOffset = 0; tuple.TupleDataMax = 255;
+-	tuple.Attributes = 0;
+-	tuple.DesiredTuple = CISTPL_CFTABLE_ENTRY;
+-	i = first_tuple(handle, &tuple, &parse);
+-	while (i == CS_SUCCESS) {
+-	    if (cf->io.nwin > 0) {
+-		link->conf.ConfigIndex = cf->index;
+-		link->io.BasePort1 = cf->io.win[0].base;
+-		link->io.NumPorts1 = cf->io.win[0].len;
+-		link->io.NumPorts2 = 0;
+-                NOTE("testing i/o %#x-%#x\n",
+-			link->io.BasePort1,
+-		        link->io.BasePort1+link->io.NumPorts1-1);
+-		i = pcmcia_request_io(link->handle, &link->io);
+-		if (i == CS_SUCCESS) goto found_port;
+-	    }
+-	    i = next_tuple(handle, &tuple, &parse);
+-	}
++    if (pcmcia_loop_config(link, cs_configcheck, NULL))
++           return -ENODEV;
+ 
+-found_port:
+-	if (i != CS_SUCCESS) {
+-	    cs_error(link->handle, RequestIO, i);
+-	    break;
+-	}
+-	
++     do {
+ 	/*
+ 	 * allocate an interrupt line
+ 	 */
+-	i = pcmcia_request_irq(link->handle, &link->irq);
+-	if (i != CS_SUCCESS) {
+-	    cs_error(link->handle, RequestIRQ, i);
+-	    pcmcia_release_io(link->handle, &link->io);
++	if (!link->irq) {
++            /* undo */
++            pcmcia_disable_device(link);
+ 	    break;
+ 	}
+ 	
+ 	/*
+          * configure the PCMCIA socket
+ 	  */
+-	i = pcmcia_request_configuration(link->handle, &link->conf);
+-	if (i != CS_SUCCESS) {
+-	    cs_error(link->handle, RequestConfiguration, i);
+-	    pcmcia_release_io(link->handle, &link->io);
+-	    pcmcia_release_irq(link->handle, &link->irq);
++	i = pcmcia_enable_device(link);
++	if (i != 0) {
++            pcmcia_disable_device(link);
+ 	    break;
+ 	}
+ 
+     } while (0);
+ 
+-    /* At this point, the dev_node_t structure(s) should be
+-       initialized and arranged in a linked list at link->dev. */
+-
+-    strcpy(dev->node.dev_name, "A1");
+-    dev->node.major = 64;
+-    dev->node.minor = 0;
+-    link->dev = &dev->node;
+-    
+-    link->state &= ~DEV_CONFIG_PENDING;
+     /* If any step failed, release any partially configured state */
+     if (i != 0) {
+         ERROR("Failed to setup controller, releasing link...\n");
+ 	cs_release(link);
+-	return;
++	return -ENODEV;
+     }
+     NOTE("Ready to call card driver for '%s'...\n", devname);
+ 
+-    if ((i = fcpcmcia_addcard(link->io.BasePort1, link->irq.AssignedIRQ)) < 0) {
++    if ((i = fcpcmcia_addcard(link->resource[0]->start, link->irq)) < 0) {
+         ERROR(
+-		"Failed to add AVM-%s-Controller at i/o %x, irq %d\n",
+-		dev->node.dev_name, 
+-		link->io.BasePort1, 
+-		link->irq.AssignedIRQ
++		"Failed to add AVM-%s-Controller at i/o 0x%x, irq %d\n",
++		devname,
++		(unsigned int) link->resource[0]->start,
++		link->irq
+ 	);
+ 	cs_release(link);
+-	return;
++	return -ENODEV;
+     }
+-    dev->node.minor = i;
++    link->priv = (void *) (unsigned long) i;
+ 
+     NOTE(
+-	"Card driver for '%s' has been set up: i/o %x, irq %d\n", 
++	"Card driver for '%s' has been set up: i/o 0x%x, irq %d\n", 
+ 	devname, 
+-	link->io.BasePort1, 
+-	link->irq.AssignedIRQ
++	(unsigned int) link->resource[0]->start,
++	link->irq
+     );
++    return 0;
+ } /* cs_config */
+ 
+ /*======================================================================
+@@ -480,78 +224,27 @@ found_port:
+     
+ ======================================================================*/
+ 
+-static void cs_release(dev_link_t *link)
++static void cs_release(struct pcmcia_device *link)
+ {
+-    fcpcmcia_delcard(link->io.BasePort1, link->irq.AssignedIRQ);
++    fcpcmcia_delcard(link->resource[0]->start, link->irq);
+ 
+-    /* Unlink the device chain */
+-    link->dev = NULL;
+-    
+-    /* Don't bother checking to see if these succeed or not */
+-    pcmcia_release_configuration(link->handle);
+-    pcmcia_release_io(link->handle, &link->io);
+-    pcmcia_release_irq(link->handle, &link->irq);
+-    link->state &= ~DEV_CONFIG;
+-    
+-    if (link->state & DEV_STALE_LINK)
+-	cs_detach(link);
+-    
++    pcmcia_disable_device(link);
+ } /* cs_release */
+ 
+-/*======================================================================
+-
+-    The card status event handler.  Mostly, this schedules other
+-    stuff to run after an event is received.  A CARD_REMOVAL event
+-    also sets some flags to discourage the net drivers from trying
+-    to talk to the card any more.
+-
+-    When a CARD_REMOVAL event is received, we immediately set a flag
+-    to block future accesses to this device.  All the functions that
+-    actually access the device should check this flag to make sure
+-    the card is still present.
+-    
+-======================================================================*/
+-
+-static int cs_event(event_t event, int priority, event_callback_args_t *args)
+-{
+-    dev_link_t *link = args->client_data;
+-
+-    LOG("Card service event: %x\n", event);
+-    switch (event) {
+-    case CS_EVENT_CARD_REMOVAL:
+-	link->state &= ~DEV_PRESENT;
+-	if (link->state & DEV_CONFIG)
+-		cs_release(link);
+-	break;
+-    case CS_EVENT_CARD_INSERTION:
+-	link->state |= DEV_PRESENT | DEV_CONFIG_PENDING;
+-	cs_config(link);
+-	break;
+-    case CS_EVENT_PM_SUSPEND:
+-	link->state |= DEV_SUSPEND;
+-	/* Fall through... */
+-    case CS_EVENT_RESET_PHYSICAL:
+-	if (link->state & DEV_CONFIG)
+-	    pcmcia_release_configuration(link->handle);
+-	break;
+-    case CS_EVENT_PM_RESUME:
+-	link->state &= ~DEV_SUSPEND;
+-	/* Fall through... */
+-    case CS_EVENT_CARD_RESET:
+-	if (link->state & DEV_CONFIG)
+-	    pcmcia_request_configuration(link->handle, &link->conf);
+-	break;
+-    }
+-    return 0;
+-} /* cs_event */
++static struct pcmcia_device_id fcpcmcia_ids[] = {
++	PCMCIA_DEVICE_PROD_ID12("AVM", "ISDN A", 0x95d42008, 0xadc9d4bb),
++	PCMCIA_DEVICE_PROD_ID12("ISDN", "CARD", 0x8d9761c8, 0x01c5aa7b),
++	PCMCIA_DEVICE_NULL
++};
++MODULE_DEVICE_TABLE(pcmcia, fcpcmcia_ids);
+ 
+ static struct pcmcia_driver cs_driver = {
+ 	.owner	= THIS_MODULE,
+-	.drv	= {
+-		.name	= "fcpcmcia_cs",
+-	},
+-	.attach	= cs_attach,
+-	.detach	= cs_detach,
++	.name	= "fcpcmcia_cs",
++	.probe	= cs_probe,
++	.remove	= cs_detach,
++	.id_table = fcpcmcia_ids,
++
+ };
+ 
+ static int __init cs_init(void)
+@@ -563,12 +256,6 @@ static void __exit cs_exit(void)
+ {
+ 	pcmcia_unregister_driver(&cs_driver);
+ 
+-	/* XXX: this really needs to move into generic code.. */
+-	while (dev_list != NULL) {
+-		if (dev_list->state & DEV_CONFIG)
+-			cs_release(dev_list);
+-		cs_detach(dev_list);
+-	}
+ }
+ 
+ module_init(cs_init);
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/lib.c km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/lib.c
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/lib.c	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/lib.c	2019-03-16 09:51:12.011918398 +0100
+@@ -529,10 +529,10 @@ void __attr os_timer_poll (void) {
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ #if defined (DRIVER_TYPE_DSL)
+-static __attr int os_gettimeofday (struct timeval * tv) {
++static __attr int os_gettimeofday (ktime_t * tv) {
+ 
+ 	if (NULL != tv) {
+-		do_gettimeofday (tv);
++		tv = ktime_get();
+ 	}
+ 	return 0;
+ } /* os_gettimeofday */
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/libdefs.h km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/libdefs.h
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/libdefs.h	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/libdefs.h	2019-03-16 09:51:17.355918294 +0100
+@@ -105,7 +105,7 @@ typedef struct __lib {
+ 	int (__attr * timer_stop) (unsigned);
+ 	void (__attr * timer_poll) (void);
+ #if defined (DRIVER_TYPE_DSL)
+-	int (__attr * get_time) (struct timeval *);
++	int (__attr * get_time) (ktime_t *);
+ #endif
+ 
+ #if defined (DRIVER_TYPE_DSL_TM) || defined (DRIVER_TYPE_DSL_USB)
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/main.c km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/main.c
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/main.c	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/main.c	2019-03-13 19:25:03.224757424 +0100
+@@ -21,9 +21,12 @@
+  */
+ 
+ #include <stdarg.h>
+-#include <asm/uaccess.h>
+-#include <linux/config.h>
+ #include <linux/version.h>
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4,14,0))
++#include <asm/uaccess.h>
++#else
++#include <linux/uaccess.h>
++#endif
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/init.h>
+@@ -153,7 +156,7 @@ void dec_use_count (void) {
+ \*---------------------------------------------------------------------------*/
+ #if defined (__fcclassic__)
+ 
+-static int __devinit isa_start (
++static int isa_start (
+ 	unsigned short		io_arg,
+ 	unsigned short		irq_arg
+ ) {
+@@ -190,7 +193,7 @@ static void isa_stop (void) {
+ \*---------------------------------------------------------------------------*/
+ #if defined (__fcpnp__)
+ 
+-static int __devinit fritz_probe (
++static int fritz_probe (
+ 	struct pnp_dev *		dev,
+ 	const struct pnp_device_id *	id
+ ) {
+@@ -205,7 +208,7 @@ static int __devinit fritz_probe (
+ 	NOTE(PRODUCT_LOGO " found: port 0x%04x, irq %u\n", pars.port, pars.irq);
+ 
+ 	NOTE("Loading...\n");
+-	if (!driver_init ()) {
++	if (!avm_init ()) {
+ 		ERROR("Error: Driver library not available.\n");
+ 		ERROR("Not loaded.\n");
+ 		return res;
+@@ -228,7 +231,7 @@ static int __devinit fritz_probe (
+ \*---------------------------------------------------------------------------*/
+ #if defined (__fcpnp__)
+ 
+-static void __devexit fritz_remove (struct pnp_dev * dev) {
++static void fritz_remove (struct pnp_dev * dev) {
+ 	card_t *	card;
+ 	
+ 	card = (card_t *) pnp_get_drvdata (dev);
+@@ -252,7 +255,7 @@ static void __devexit fritz_remove (stru
+ \*---------------------------------------------------------------------------*/
+ #if defined (__fcpci__)
+ 
+-static int __devinit fritz_probe (
++static int fritz_probe (
+ 	struct pci_dev *		dev,
+ 	const struct pci_device_id *	id
+ ) {
+@@ -270,7 +273,7 @@ static int __devinit fritz_probe (
+ 	NOTE (PRODUCT_LOGO " found: port 0x%04x, irq %u\n", pars.port, pars.irq);
+ 
+ 	NOTE("Loading...\n");
+-	if (!driver_init ()) {
++	if (!avm_init ()) {
+ 		ERROR("Error: Driver library not available.\n");
+ 		ERROR("Not loaded.\n");
+ 		return -EBUSY;
+@@ -293,7 +296,7 @@ static int __devinit fritz_probe (
+ \*---------------------------------------------------------------------------*/
+ #if defined (__fcpci__)
+ 
+-static void __devexit fritz_remove (struct pci_dev * dev) {
++static void fritz_remove (struct pci_dev * dev) {
+ 	card_t *	card;
+ 	
+ 	card = (card_t *) pci_get_drvdata (dev);
+@@ -321,7 +324,7 @@ static struct pci_driver	fcpci_driver =
+ 	.name		= TARGET,
+ 	.id_table	= fcpci_id_table,
+ 	.probe		= fritz_probe,
+-	.remove		= __devexit_p(fritz_remove),
++	.remove		= fritz_remove,
+ } ;
+ 
+ #elif defined (__fcpnp__)
+@@ -331,7 +334,7 @@ static struct pnp_driver	fcpnp_driver =
+ 	.name		= TARGET,
+ 	.id_table	= fcpnp_id_table,
+ 	.probe		= fritz_probe,
+-	.remove		= __devexit_p(fritz_remove),
++	.remove		= fritz_remove,
+ } ;
+ 
+ #endif
+@@ -355,7 +358,6 @@ static int __init fritz_init (void) {
+ 		lib_strncpy (REVISION, DRIVER_REV, sizeof (REVISION));
+ 	}
+ 	NOTE("%s, revision %s\n", DRIVER_LOGO, REVISION);
+-        NOTE("(%s built on %s at %s)\n", TARGET, __DATE__, __TIME__);
+ 		
+ #ifdef __LP64__
+ 	NOTE("-- 64 bit CAPI driver --\n");
+@@ -364,7 +366,7 @@ static int __init fritz_init (void) {
+ #endif
+ 
+ #if defined (__fcpci__)	
+-	if (0 == (err = pci_module_init (&fcpci_driver))) {
++	if (0 == (err = pci_register_driver (&fcpci_driver))) {
+ 		LOG("PCI driver registered.\n");
+ 		register_capi_driver (&fritz_capi_driver);
+ 		LOG("CAPI driver registered.\n");
+@@ -378,7 +380,7 @@ static int __init fritz_init (void) {
+ 	}
+ 	return err;
+ #elif defined (__fcpcmcia__) || defined (__fcclassic__)
+-	if (!driver_init ()) {
++	if (!avm_init ()) {
+ 		ERROR("Error: Driver library not available.\n");
+ 		ERROR("Not loaded.\n");
+ 		return -EBUSY;
+@@ -402,8 +404,10 @@ static int __init fritz_init (void) {
+ \*---------------------------------------------------------------------------*/
+ static void __exit fritz_exit (void) {
+ 
++#if defined (__fcpcmcia__) || defined (__fcclassic__)
+ #if defined (__fcclassic__)
+ 	isa_stop ();
++#endif
+ 	libheap_exit ();
+ #endif
+ 	unregister_capi_driver (&fritz_capi_driver);
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/Makefile km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/Makefile
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/Makefile	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/Makefile	2019-03-13 19:25:03.224757424 +0100
+@@ -59,5 +59,5 @@ endif
+ 
+ 
+ install:
+-		$(MAKE) -C $(KDIR) modules_add SUBDIRS=$(CURDIR)
++		$(MAKE) -C $(KDIR) modules_install SUBDIRS=$(CURDIR)
+ 
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.c km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.c
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.c	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.c	2019-03-16 09:51:27.223918102 +0100
+@@ -110,10 +110,10 @@ static unsigned		lib_heap_size	= 0;
+ #define	FENCE2_OK(h,m)	(*(unsigned *)(((char *) m)+(h)->size)==FENCE_TAG)
+ 
+ static unsigned		alloc_count	= 0;
+-static spinlock_t	track_lock	= SPIN_LOCK_UNLOCKED;
++static DEFINE_SPINLOCK(track_lock);
+ 
+ #if !defined (NDEBUG) && defined (LOG_TIMER)
+-static struct timeval	zero_time;
++static ktime_t	zero_time;
+ #endif
+ #endif
+ 
+@@ -394,8 +394,8 @@ void setup_timer (dbg_timer * t, long ds
+ \*---------------------------------------------------------------------------*/
+ int check_timer (dbg_timer * t) {
+ 	int		res = 1;
+-	struct timeval	now;
+-	struct timeval	delta;
++	ktime_t	now;
++	ktime_t	delta;
+ 	
+ 	assert (t != NULL);
+ 	do_gettimeofday (&now);
+@@ -418,10 +418,10 @@ int check_timer (dbg_timer * t) {
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-int check_timer_cb (dbg_timer * t, void (* callback) (dbg_timer *, struct timeval *)) {
++int check_timer_cb (dbg_timer * t, void (* callback) (dbg_timer *, ktime_t *)) {
+ 	int		res = 1;
+-	struct timeval	now;
+-	struct timeval	delta;
++	ktime_t	now;
++	ktime_t	delta;
+ 	
+ 	assert (t != NULL);
+ 	do_gettimeofday (&now);
+@@ -442,7 +442,7 @@ int check_timer_cb (dbg_timer * t, void
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ void touch_timer (dbg_timer * t) {
+-	struct timeval	temp, delta;
++	ktime_t	temp, delta;
+ 	
+ 	assert (t != NULL);
+ 	do_gettimeofday (&temp);
+@@ -453,7 +453,7 @@ void touch_timer (dbg_timer * t) {
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ void start_watch (dbg_timer * w) {
+-	struct timeval	temp, delta;
++	ktime_t	temp, delta;
+ 	
+ 	assert (w != NULL);
+ 	do_gettimeofday (&temp);
+@@ -464,7 +464,7 @@ void start_watch (dbg_timer * w) {
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+ void stop_watch (dbg_timer * w) {
+-	struct timeval	temp, delta;
++	ktime_t	temp, delta;
+ 	
+ 	assert (w != NULL);
+ 	do_gettimeofday (&temp);
+@@ -529,7 +529,7 @@ int lock_init (lock_t * plock) {
+ 		ERROR("Could not allocate lock structure!!!\n");
+ 		return 0;
+ 	}
+-	tmp->lock = SPIN_LOCK_UNLOCKED;
++	spin_lock_init(&tmp->lock);
+ 	*plock = tmp;
+ 	return 1;
+ } /* lock_init */
+diff -purN km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.h km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.h
+--- km_fritzcapi-2.6-43.i586/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.h	2019-03-13 19:13:31.165457788 +0100
++++ km_fritzcapi-2.6-43.i586-fli4l-pci/usr/src/kernel-modules/fritzcapi/fritz.pci/src/tools.h	2019-03-16 09:51:35.255917946 +0100
+@@ -71,16 +71,6 @@ extern void vlprintf (const char *, cons
+ 
+ /*---------------------------------------------------------------------------*\
+ \*---------------------------------------------------------------------------*/
+-#ifndef atomic_xchg
+-static inline unsigned long atomic_xchg (
+-	volatile atomic_t *	v, 
+-	unsigned		value
+-) {
+-	return __xchg (value, &v->counter, sizeof (unsigned));
+-} /* atomic_xchg */
+-#endif
+-/*---------------------------------------------------------------------------*\
+-\*---------------------------------------------------------------------------*/
+ #ifndef NDEBUG
+ extern unsigned hallocated (void);
+ extern int hvalid (void *);
+@@ -146,8 +136,8 @@ extern void memdump (const void *, unsig
+ typedef struct {
+ 
+ 	const char *	name;
+-	struct timeval	t;
+-	struct timeval	d;
++	ktime_t	t;
++	ktime_t	d;
+ } dbg_timer;
+ 
+ #define	PRINT_TIMER(x)		log ( \
+@@ -174,7 +164,7 @@ extern void timers_stop (void);
+ \*---------------------------------------------------------------------------*/
+ extern void setup_timer (dbg_timer *, long, long);
+ extern int check_timer (dbg_timer *);
+-extern int check_timer_cb (dbg_timer *, void (*) (dbg_timer *, struct timeval *));
++extern int check_timer_cb (dbg_timer *, void (*) (dbg_timer *, ktime_t *));
+ extern void touch_timer (dbg_timer *);
+ 
+ extern void start_watch (dbg_timer *);

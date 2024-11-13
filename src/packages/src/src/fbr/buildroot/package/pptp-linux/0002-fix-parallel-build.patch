@@ -1,0 +1,24 @@
+Fix parallel build issue
+
+The config.h header file must be created before being used to build
+source files that include it, especially version.c. In order for this
+to happen even in highly-parallel builds, we add a dependency of all
+object files on config.h, in order to ensure it gets generated before
+make attempts to build the object files.
+
+Signed-off-by: Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
+
+Index: b/Makefile
+===================================================================
+diff -purN pptp-1.10.0.orig/Makefile pptp-1.10.0/Makefile
+--- pptp-1.10.0.orig/Makefile	2018-01-18 01:12:00.000000000 +0100
++++ pptp-1.10.0/Makefile	2018-01-31 12:21:53.360653410 +0100
+@@ -42,6 +42,8 @@ PPTP_DEPS = pptp_callmgr.h pptp_gre.h pp
+ 
+ all: config.h $(PPTP_BIN) pptpsetup.8
+ 
++$(PPTP_OBJS): config.h
++
+ $(PPTP_BIN): $(PPTP_OBJS) $(PPTP_DEPS)
+ 	$(CC) -o $(PPTP_BIN) $(PPTP_OBJS) $(LDFLAGS) $(LIBS)
+ 

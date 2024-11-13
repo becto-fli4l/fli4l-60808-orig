@@ -1,0 +1,40 @@
+From: Phil Elwell <phil@raspberrypi.org>
+Date: Wed, 13 Nov 2019 16:28:10 +0000
+Subject: Revert "brcmfmac: Disable power management"
+
+Shortly after the release of the Pi 3B, a loss of SSH connectivity
+over WiFi was traced to the power management handling, so power
+management was disabled. And so it has remained ever since.
+
+Enabling power management saves 55mA (~270mW) on a Pi 4B, so is very
+much worth the minimal effort of reverting this patch, which was
+squashed and rebased many times since then to the commit hash is
+meaningless.
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.org>
+---
+ drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+index 1b48569fb6a0..397cc028a34d 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+@@ -2772,8 +2772,6 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
+ 	 * preference in cfg struct to apply this to
+ 	 * FW later while initializing the dongle
+ 	 */
+-	pr_info("power management disabled\n");
+-	enabled = false;
+ 	cfg->pwr_save = enabled;
+ 	if (!check_vif_up(ifp->vif)) {
+ 
+@@ -2787,7 +2785,7 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
+ 		brcmf_dbg(INFO, "Do not enable power save for P2P clients\n");
+ 		pm = PM_OFF;
+ 	}
+-	brcmf_dbg(INFO, "power save %s\n", (pm ? "enabled" : "disabled"));
++	brcmf_err("power save %s\n", (pm ? "enabled" : "disabled"));
+ 
+ 	err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_PM, pm);
+ 	if (err) {

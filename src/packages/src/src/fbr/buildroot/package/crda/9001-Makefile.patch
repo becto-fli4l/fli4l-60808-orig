@@ -1,0 +1,58 @@
+diff -urN crda-3.18.orig/Makefile crda-3.18/Makefile
+--- crda-3.18.orig/Makefile	2016-06-16 17:40:36.688685513 +0200
++++ crda-3.18/Makefile	2016-06-16 17:43:19.226314442 +0200
+@@ -26,7 +26,7 @@
+ RUNTIME_PUBKEY_DIR?=/etc/wireless-regdb/pubkeys
+ 
+ CFLAGS += -O2 -fpic
+-CFLAGS += -std=gnu99 -Wall -pedantic
++override CFLAGS += -std=gnu99 -Wall -pedantic
+ CFLAGS += -Wall -g
+ LDLIBREG += -lreg
+ LDLIBS += $(LDLIBREG)
+@@ -39,13 +39,13 @@
+ all_noverify: $(LIBREG) crda intersect regdbdump db2rd optimize
+ 
+ ifeq ($(USE_OPENSSL),1)
+-CFLAGS += -DUSE_OPENSSL -DPUBKEY_DIR=\"$(RUNTIME_PUBKEY_DIR)\" `pkg-config --cflags openssl`
++override CFLAGS += -DUSE_OPENSSL -DPUBKEY_DIR=\"$(RUNTIME_PUBKEY_DIR)\" `pkg-config --cflags openssl`
+ LDLIBS += `pkg-config --libs openssl`
+ 
+ $(LIBREG): keys-ssl.c
+ 
+ else
+-CFLAGS += -DUSE_GCRYPT
++override CFLAGS += -DUSE_GCRYPT
+ LDLIBS += -lgcrypt
+ 
+ $(LIBREG): keys-gcrypt.c
+@@ -60,17 +60,17 @@
+ NL32FOUND := $(shell pkg-config --atleast-version=3 libnl-3.2 && echo Y)
+ 
+ ifeq ($(NL32FOUND),Y)
+-CFLAGS += -DCONFIG_LIBNL30
++override CFLAGS += -DCONFIG_LIBNL30
+ NLLIBS += $(shell pkg-config --libs libnl-genl-3.2)
+ NLLIBNAME = libnl-3.2
+ else
+ 	ifeq ($(NL3FOUND),Y)
+-	CFLAGS += -DCONFIG_LIBNL30
++	override CFLAGS += -DCONFIG_LIBNL30
+ 	NLLIBS += $(shell pkg-config --libs libnl-genl-3.0)
+ 	NLLIBNAME = libnl-3.0
+ 	else
+ 		ifeq ($(NL2FOUND),Y)
+-		CFLAGS += -DCONFIG_LIBNL20
++		override CFLAGS += -DCONFIG_LIBNL20
+ 		NLLIBS += -lnl-genl
+ 		NLLIBNAME = libnl-2.0
+ 		else
+@@ -86,7 +86,7 @@
+ endif
+ 
+ NLLIBS += `pkg-config --libs $(NLLIBNAME)`
+-CFLAGS += `pkg-config --cflags $(NLLIBNAME)`
++override CFLAGS += `pkg-config --cflags $(NLLIBNAME)`
+ 
+ ifeq ($(V),1)
+ Q=

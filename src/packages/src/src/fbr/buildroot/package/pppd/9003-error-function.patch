@@ -1,0 +1,49 @@
+diff -purN pppd-2.4.7.orig/pppd/plugins/rp-pppoe/pppoe-discovery.c pppd-2.4.7/pppd/plugins/rp-pppoe/pppoe-discovery.c
+--- pppd-2.4.7.orig/pppd/plugins/rp-pppoe/pppoe-discovery.c	2018-01-30 23:14:51.744756634 +0100
++++ pppd-2.4.7/pppd/plugins/rp-pppoe/pppoe-discovery.c	2018-01-30 23:16:59.765742802 +0100
+@@ -15,6 +15,7 @@
+ #include <errno.h>
+ #include <string.h>
+ 
++#define PPPOE_STANDALONE
+ #include "pppoe.h"
+ 
+ #ifdef HAVE_UNISTD_H
+diff -purN pppd-2.4.7.orig/pppd/plugins/rp-pppoe/pppoe.h pppd-2.4.7/pppd/plugins/rp-pppoe/pppoe.h
+--- pppd-2.4.7.orig/pppd/plugins/rp-pppoe/pppoe.h	2018-01-30 23:14:51.815755516 +0100
++++ pppd-2.4.7/pppd/plugins/rp-pppoe/pppoe.h	2018-01-30 23:16:59.765742802 +0100
+@@ -99,6 +99,9 @@ typedef unsigned long UINT32_t;
+ #endif
+ #endif
+ 
++#if defined(PPPOE_STANDALONE)
++#include <syslog.h>
++#endif
+ 
+ 
+ /* Ethernet frame types according to RFC 2516 */
+@@ -322,6 +325,7 @@ static inline int parseHostUniq(const ch
+ 
+ #define SET_STRING(var, val) do { if (var) free(var); var = strDup(val); } while(0);
+ 
++#if !defined(PPPOE_STANDALONE)
+ #define CHECK_ROOM(cursor, start, len) \
+ do {\
+     if (((cursor)-(start))+(len) > MAX_PPPOE_PAYLOAD) { \
+@@ -329,6 +333,16 @@ do {\
+         return; \
+     } \
+ } while(0)
++#else
++#define CHECK_ROOM(cursor, start, len) \
++do {\
++    if (((cursor)-(start))+(len) > MAX_PPPOE_PAYLOAD) { \
++	syslog(LOG_ERR, "Would create too-long packet");	\
++	fprintf(stderr, "Would create too-long packet");	\
++        return; \
++    } \
++} while(0)
++#endif
+ 
+ /* True if Ethernet address is broadcast or multicast */
+ #define NOT_UNICAST(e) ((e[0] & 0x01) != 0)

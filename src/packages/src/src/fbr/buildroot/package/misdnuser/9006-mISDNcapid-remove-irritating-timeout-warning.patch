@@ -1,0 +1,37 @@
+From 121473d8cd997214599f038e0bc0e3e1dc2a7a26 Mon Sep 17 00:00:00 2001
+From: Christoph Schulz <develop@kristov.de>
+Date: Tue, 12 Feb 2019 23:03:09 +0100
+Subject: [PATCH] mISDNcapid: remove irritating timeout warning
+
+The loop within BCthread() continously emits a warning like the following one
+
+  BCthread(24062):Bchannel1 timeout (release not pending) thread=24062
+
+every 500 ms as long as no data is received over the B-channel. This is very
+irritating and noisy and fills up the log file without a good reason. This
+commit lets the warning be shown only if the timeout occurs while a release
+operation is pending (and this is worth a warning because such a timeout does
+not occur under normal circumstances).
+---
+ capi20/daemon.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/capi20/daemon.c b/capi20/daemon.c
+index 1a16cca..6fb621e 100644
+--- a/capi20/daemon.c
++++ b/capi20/daemon.c
+@@ -1051,9 +1051,9 @@ static void *BCthread(void *arg)
+ 			continue;
+ 		}
+ 		if (ret == 0) { /* timeout */
+-			wprint("Bchannel%d %stimeout (release %spending) thread=%05d\n", bi->nr,
+-				bi->got_timeout ? "2. " : "", bi->release_pending ? "" : "not ", bi->tid);
+ 			if (bi->release_pending) {
++				wprint("Bchannel%d %stimeout (release pending) thread=%05d\n", bi->nr,
++					bi->got_timeout ? "2. " : "", bi->tid);
+ 				if (bi->got_timeout) { /* 2 times */
+ 					bi->detached = 1;
+ 					ret = pthread_detach(bi->thread);
+-- 
+2.19.2
+

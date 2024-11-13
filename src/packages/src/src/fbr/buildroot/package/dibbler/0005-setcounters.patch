@@ -1,0 +1,55 @@
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.cpp	2016-07-24 22:01:08.372459078 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.cpp	2016-07-24 22:01:12.982577961 +0200
+@@ -798,13 +798,20 @@ bool TSrvCfgMgr::validateClass(SPtr<TSrv
+     return true;
+ }
+ 
+-SPtr<TSrvCfgIface> TSrvCfgMgr::getIfaceByID(int iface) {
++SPtr<TSrvCfgIface> TSrvCfgMgr::getIfaceByID(int iface, bool includeInactive) {
+     SPtr<TSrvCfgIface> ptrIface;
+     firstIface();
+     while ( ptrIface = getIface() ) {
+         if ( ptrIface->getID()==iface )
+             return ptrIface;
+     }
++    if (includeInactive) {
++        InactiveLst.first();
++        while (ptrIface = InactiveLst.get()) {
++            if ( ptrIface->getID()==iface )
++                return ptrIface;
++        }
++    }
+     // perhaps it's an instance of a wildcard interface?
+     TIfaceMap::iterator it = this->IfaceMap.find(iface);
+     if (it != this->IfaceMap.end()) {
+@@ -1081,7 +1088,7 @@ void TSrvCfgMgr::setCounters()
+         SPtr<TAddrIA> ia;
+         client->firstIA();
+         while ( ia=client->getIA() ) {
+-            iface = getIfaceByID(ia->getIfindex());
++            iface = getIfaceByID(ia->getIfindex(), true);
+             if (!iface)
+                 continue;
+ 
+@@ -1096,7 +1103,7 @@ void TSrvCfgMgr::setCounters()
+         // prefixes
+         client->firstPD();
+         while (ia = client->getPD() ) {
+-            iface = getIfaceByID(ia->getIfindex());
++            iface = getIfaceByID(ia->getIfindex(), true);
+             if (!iface)
+                 continue;
+             SPtr<TAddrPrefix> prefix;
+diff -purN dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h
+--- dibbler-1.0.1.orig/SrvCfgMgr/SrvCfgMgr.h	2016-07-24 21:59:02.839222574 +0200
++++ dibbler-1.0.1/SrvCfgMgr/SrvCfgMgr.h	2016-07-24 22:01:12.982577961 +0200
+@@ -42,7 +42,7 @@ public:
+     //Interfaces acccess methods
+     void firstIface();
+     SPtr<TSrvCfgIface> getIface();
+-    SPtr<TSrvCfgIface> getIfaceByID(int iface);
++    SPtr<TSrvCfgIface> getIfaceByID(int iface, bool includeInactive = false);
+     SPtr<TSrvCfgIface> getIfaceByName(const std::string& name);
+     long countIface();
+     void addIface(SPtr<TSrvCfgIface> iface);

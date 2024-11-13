@@ -1,0 +1,89 @@
+diff -u pptp-linux-1.5.0.orig/Makefile pptp-linux-1.5.0/Makefile
+--- pptp-linux-1.5.0.orig/Makefile	Thu Sep 23 09:41:38 2004
++++ pptp-linux-1.5.0/Makefile	Thu Sep 23 09:47:10 2004
+@@ -1,5 +1,5 @@
+ # $Id$
+-VERSION=1.5.0
++VERSION=1.5.0-fli4l
+ RELEASE=
+ 
+ #################################################################
+@@ -12,7 +12,7 @@
+ 
+ CC	= gcc
+ RM	= rm -f
+-OPTIMIZE= -O0
++OPTIMIZE= -Os
+ DEBUG	= -g
+ INCLUDE =
+ CFLAGS  = -Wall $(OPTIMIZE) $(DEBUG) $(INCLUDE)
+diff -u pptp-linux-1.5.0.orig/pptp.c pptp-linux-1.5.0/pptp.c
+--- pptp-linux-1.5.0.orig/pptp.c	Thu Sep 23 09:41:38 2004
++++ pptp-linux-1.5.0/pptp.c	Mon Sep 27 11:00:41 2004
+@@ -56,6 +56,9 @@
+ int log_level = 1;
+ int disable_buffer = 0;
+ 
++/* control buffering -- ignore buffering logic completely */
++int ignore_buffering = 0;
++
+ struct in_addr get_ip_address(char *name);
+ int open_callmgr(struct in_addr inetaddr, char *phonenr, int argc,char **argv,char **envp, int pty_fd, int gre_fd);
+ void launch_callmgr(struct in_addr inetaddr, char *phonenr, int argc,char **argv,char **envp);
+@@ -167,6 +170,7 @@
+             {"localbind", 1, 0, 0},
+             {"loglevel", 1, 0, 0},
+ 	    {"nobuffer", 0, 0, 0},
++	    {"ignorebuffer", 0, 0, 0},
+             {0, 0, 0, 0}
+         };
+         int option_index = 0;
+@@ -219,6 +223,9 @@
+                         usage(argv[0]);
+                 } else if (option_index == 9) { /* --nobuffer */
+ 		    disable_buffer = 1;
++                } else if (option_index == 10) { /* --ignorebuffer */
++		    log("ignoring buffering completely...");
++		    ignore_buffering = 1;
+ 		}
+                 break;
+             case '?': /* unrecognised option */
+diff -u pptp-linux-1.5.0.orig/pptp_ctrl.c pptp-linux-1.5.0/pptp_ctrl.c
+--- pptp-linux-1.5.0.orig/pptp_ctrl.c	Thu Sep 23 09:41:38 2004
++++ pptp-linux-1.5.0/pptp_ctrl.c	Mon Sep 27 11:00:41 2004
+@@ -1027,8 +1027,10 @@
+             pptp_conn_close(global.conn, PPTP_STOP_NONE);
+     }
+     /* "Keep Alives and Timers, 2": check echo status */
+-    if (global.conn->ka_state == KA_OUTSTANDING) /*no response to keep-alive*/
+-        pptp_conn_close(global.conn, PPTP_STOP_NONE);
++    if (global.conn->ka_state == KA_OUTSTANDING) { /*no response to keep-alive*/
++	log ("closing connection due to missing echo reply");
++	pptp_conn_close(global.conn, PPTP_STOP_NONE);
++    }
+     else { /* ka_state == NONE */ /* send keep-alive */
+         struct pptp_echo_rqst rqst = {
+             PPTP_HEADER_CTRL(PPTP_ECHO_RQST), hton32(global.conn->ka_id) };
+diff -u pptp-linux-1.5.0.orig/pptp_gre.c pptp-linux-1.5.0/pptp_gre.c
+--- pptp-linux-1.5.0.orig/pptp_gre.c	Thu Sep 23 09:41:38 2004
++++ pptp-linux-1.5.0/pptp_gre.c	Thu Sep 23 09:45:13 2004
+@@ -380,7 +380,7 @@
+         return 0; 
+     }
+     /* check for expected sequence number */
+-    if ( first || (seq == seq_recv + 1)) { /* wrap-around safe */
++    if ( first || (seq == seq_recv + 1) || ignore_buffering) { /* wrap-around safe */
+ 	if ( log_level >= 2 )
+             log("accepting packet %d", seq);
+         stats.rx_accepted++;
+diff -u pptp-linux-1.5.0.orig/pptp_gre.h pptp-linux-1.5.0/pptp_gre.h
+--- pptp-linux-1.5.0.orig/pptp_gre.h	Thu Sep 23 09:41:38 2004
++++ pptp-linux-1.5.0/pptp_gre.h	Mon Sep 27 11:00:41 2004
+@@ -11,6 +11,7 @@
+ 
+ extern int syncppp;
+ extern int disable_buffer;
++extern int ignore_buffering;
+ 
+ typedef struct pack_track {
+   uint32_t seq;       // seq no of this tracked packet

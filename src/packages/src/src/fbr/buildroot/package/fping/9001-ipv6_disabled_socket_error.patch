@@ -1,0 +1,38 @@
+diff -Naur fping-4.0.orig/src/fping.c fping-4.0/src/fping.c
+--- fping-4.0.orig/src/fping.c	2017-04-23 18:03:08.000000000 +0200
++++ fping-4.0/src/fping.c	2018-01-04 07:34:48.407272347 +0100
+@@ -681,6 +681,10 @@
+ 
+     /* validate various option settings */
+ 
++    if (!socket4 && !socket6) {
++        crash_and_burn("can't create socket (must run as root?)");
++    }
++
+     if (ttl > 255) {
+         fprintf(stderr, "%s: ttl %u out of range\n", prog, ttl);
+         exit(1);
+diff -Naur fping-4.0.orig/src/socket4.c fping-4.0/src/socket4.c
+--- fping-4.0.orig/src/socket4.c	2017-04-23 18:03:08.000000000 +0200
++++ fping-4.0/src/socket4.c	2018-01-04 07:05:05.700365015 +0100
+@@ -62,7 +62,7 @@
+         /* try non-privileged icmp (works on Mac OSX without privileges, for example) */
+         s = socket(AF_INET, SOCK_DGRAM, proto->p_proto);
+         if (s < 0) {
+-            errno_crash_and_burn("can't create socket (must run as root?)");
++            return 0;
+         }
+     }
+ 
+diff -Naur fping-4.0.orig/src/socket6.c fping-4.0/src/socket6.c
+--- fping-4.0.orig/src/socket6.c	2017-04-23 18:03:08.000000000 +0200
++++ fping-4.0/src/socket6.c	2018-01-04 07:05:01.767305629 +0100
+@@ -61,7 +61,7 @@
+         /* try non-privileged icmp (works on Mac OSX without privileges, for example) */
+         s = socket(AF_INET6, SOCK_DGRAM, proto->p_proto);
+         if (s < 0) {
+-            errno_crash_and_burn("can't create raw socket (must run as root?)");
++            return 0;
+         }
+     }
+ 

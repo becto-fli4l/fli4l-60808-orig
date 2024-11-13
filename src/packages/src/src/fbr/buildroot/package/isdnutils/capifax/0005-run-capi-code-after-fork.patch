@@ -1,0 +1,93 @@
+diff -purN isdnutils-3.25.orig/capifax/capifaxrcvd.c isdnutils-3.25/capifax/capifaxrcvd.c
+--- isdnutils-3.25.orig/capifax/capifaxrcvd.c	2017-02-09 23:44:26.372232888 +0100
++++ isdnutils-3.25/capifax/capifaxrcvd.c	2017-02-09 23:44:35.029178511 +0100
+@@ -271,9 +271,45 @@ void usage(void) {
+ 	exit(1);
+ }
+ 
+-int main(int argc, char **argv) {
++int run(void) {
+ 	int numController;
+ 	int BChannels, Contr;
++
++	Slot = INVALID_CONNECTION_ID;
++	MainStateChange_p = MainStateChange;
++	MainDataAvailable_p = MainDataAvailable;
++	MainIncomingCall_p = MainIncomingCall;
++	if (!RegisterCAPI())
++		return -1;
++	atexit (ReleaseCAPI);
++	InitConnectionIDHandling();
++	if (!(numController = GetNumController())) {
++		fprintf(stderr, "No CAPI controllers available\n");
++		return -2;
++	}
++	BChannels = 0;
++	for (Contr=1; Contr<=numController; Contr++)
++		BChannels += GetNumOfSupportedBChannels(Contr);
++	if (!BChannels) {
++		fprintf(stderr, "No B-Channels available\n");
++		return -3;
++	}
++	openlog("capifaxrcvd", LOG_PID, LOG_DAEMON);
++	close(0);
++	close(1);
++#if 0 /* kristov: don't close stderr as it is used for printing various error messages */
++	close(2);
++#endif
++	while (1)
++		ReceiveFax();
++	if ((Slot != INVALID_CONNECTION_ID) &&
++		(GetState(Slot) != Disconnected) &&
++		(GetState(Slot) != D_DisconnectPending))
++		Disconnect(Slot);
++	return 0;
++}
++
++int main(int argc, char **argv) {
+ 	int c;
+ 
+ 	while ((c = getopt(argc, argv, "l:i:h:n:")) != EOF) {
+@@ -301,40 +337,10 @@ int main(int argc, char **argv) {
+ 		perror(RcvDir);
+ 		return -1;
+ 	}
+-	Slot = INVALID_CONNECTION_ID;
+-	MainStateChange_p = MainStateChange;
+-	MainDataAvailable_p = MainDataAvailable;
+-	MainIncomingCall_p = MainIncomingCall;
+-	if (!RegisterCAPI())
+-		return -1;
+-	atexit (ReleaseCAPI);
+-	InitConnectionIDHandling();
+-	if (!(numController = GetNumController())) {
+-		fprintf(stderr, "No CAPI controllers available\n");
+-		return -2;
+-	}
+-	BChannels = 0;
+-	for (Contr=1; Contr<=numController; Contr++)
+-		BChannels += GetNumOfSupportedBChannels(Contr);
+-	if (!BChannels) {
+-		fprintf(stderr, "No B-Channels available\n");
+-		return -3;
+-	}
++
+ 	switch (fork()) {
+ 		case 0:
+-			openlog("capifaxrcvd", LOG_PID, LOG_DAEMON);
+-			close(0);
+-			close(1);
+-#if 0 /* kristov: don't close stderr as it is used for printing various error messages */
+-			close(2);
+-#endif
+-			while (1)
+-				ReceiveFax();
+-			if ((Slot != INVALID_CONNECTION_ID) &&
+-	    			(GetState(Slot) != Disconnected) &&
+-	    			(GetState(Slot) != D_DisconnectPending))
+-				Disconnect(Slot);
+-			break;
++			return run();
+ 		case -1:
+ 			perror("fork");
+ 			exit(errno);

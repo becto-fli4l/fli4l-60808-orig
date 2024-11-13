@@ -1,0 +1,730 @@
+diff -purN pppd-2.4.7.orig/pppd/auth.c pppd-2.4.7/pppd/auth.c
+--- pppd-2.4.7.orig/pppd/auth.c	2018-01-30 23:19:47.576103496 +0100
++++ pppd-2.4.7/pppd/auth.c	2018-01-30 23:19:57.728943829 +0100
+@@ -269,6 +269,7 @@ static int  set_noauth_addr __P((char **
+ static int  set_permitted_number __P((char **));
+ static void check_access __P((FILE *, char *));
+ static int  wordlist_count __P((struct wordlist *));
++static int  cb_check_user __P((char *user, char *mask));
+ 
+ #ifdef MAXOCTETS
+ static void check_maxoctets __P((void *));
+@@ -808,6 +809,7 @@ network_phase(unit)
+     int unit;
+ {
+     lcp_options *go = &lcp_gotoptions[unit];
++    lcp_options *ho = &lcp_hisoptions[unit];
+ 
+     /* Log calling number. */
+     if (*remote_number)
+@@ -828,17 +830,37 @@ network_phase(unit)
+     /*
+      * If we negotiated callback, do it now.
+      */
+-    if (go->neg_callback) {
++    if (go->neg_callback || ho->neg_callback) {
+ 	new_phase(PHASE_CALLBACK);
+ #ifdef CBCP_SUPPORT
+-	if (go->cbopt.neg_cbcp)
++	if (go->cbopt.neg_cbcp || ho->cbopt.neg_cbcp)
+ 	    (*cbcp_protent.open)(unit);
+ 	else {
+ #endif
+-	    persist = 0;
+-	    status = EXIT_CALLBACK;
+-	    lcp_close(0, "Call me back, please");
+-	    callback_client_script();
++	    if (go->neg_callback) {
++		persist = 0;
++		status = EXIT_CALLBACK;
++		lcp_close(unit, "Call me back, please");
++		callback_client_script();
++	    } else {
++		char *number = NULL;
++		if (cb_map_user(&number) == CB_NOT_ALLOWED) {
++		    status = EXIT_NEGOTIATION_FAILED;
++		    lcp_close(unit, "Callback not allowed");
++		} else {
++		    if (!number)
++			number = ho->cbopt.message;
++		    if (!number || !*number) {
++			status = EXIT_NEGOTIATION_FAILED;
++			lcp_close(unit, "Callback impossible, number missing");
++		    } else {
++			persist = 0;
++			status = EXIT_CALLBACK;
++			lcp_close(unit, "Calling back soon");
++			callback_server_script(number, 0);
++		    }
++		}
++	    }
+ #ifdef CBCP_SUPPORT
+ 	}
+ #endif
+@@ -2393,3 +2415,186 @@ callback_client_script()
+ 
+     run_program(argv[0], argv, 0, NULL, NULL, 0);
+ }
++
++/*
++ * callback_server_script - execute a callback server script with arguments
++ * interface-name peer-name tty speed number delay ipparam
++  */
++void
++callback_server_script(number, delay)
++    char *number;
++    int delay;
++{
++    char strspeed[32];
++    char strdelay[32];
++    char *argv[9];
++
++    slprintf(strspeed, sizeof(strspeed), "%d", baud_rate);
++    slprintf(strdelay, sizeof(strdelay), "%d", delay);
++
++    argv[0] = _PATH_CB_SERVER;
++    argv[1] = ifname;
++    argv[2] = peer_authname;
++    argv[3] = devnam;
++    argv[4] = strspeed;
++    argv[5] = number;
++    argv[6] = strdelay;
++    argv[7] = ipparam;
++    argv[8] = NULL;
++
++    run_program(argv[0], argv, 0, NULL, NULL, 0);
++}
++
++/*
++ * cb_map_user - maps authenticated user to callback number. Returns
++ * - CB_NOT_ALLOWED if the user has not been found or calling him back is
++ *   forbidden
++ * - CB_USER_PROVIDED if the user has been found and is allowed to specify the
++ *   callback number by himself
++ * - CB_ADMIN_DEFINED if the user has been found together with the callback
++ *   number to use; in this case, *number points to a dynamically allocated
++ *   string which contains the number
++ */
++int
++cb_map_user(number)
++    char **number;
++{
++    if (*peer_authname) {
++	FILE *userfile = fopen(_PATH_CB_USERS, "r");
++	if (userfile == NULL)
++	    return CB_NOT_ALLOWED;
++	else {
++	    char uname[256];
++	    int newline;
++	    int result = CB_NOT_ALLOWED;
++
++	    struct stat sbuf;
++	    if (fstat(fileno(userfile), &sbuf) < 0) {
++		warn("Cannot stat callback user file %s: %m", _PATH_CB_USERS);
++	    } else if ((sbuf.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
++		warn("Callback user file %s has world and/or group access",
++		     _PATH_CB_USERS);
++	    }
++
++	    if (getword(userfile, uname, &newline, _PATH_CB_USERS)) {
++		char option[256];
++		newline = 1;
++		int got_fit, best_fit = 0;
++
++		for (;;) {
++		    /*
++		     * Skip until we find a word at the start of a line.
++		     */
++		    while (!newline && getword(userfile, uname,  &newline,
++					       _PATH_CB_USERS))
++			;
++		    if (!newline)
++			break;		/* got to end of file */
++
++		    /*
++		     * Got a user - check if it's a match or a wildcard.
++		     */
++		    got_fit = cb_check_user(peer_authname, uname);
++		    if (got_fit <= best_fit){
++			newline = 0;
++			continue;
++		    }
++
++		    /* Read the options */
++		    best_fit = got_fit;
++		    if (getword(userfile, option, &newline, _PATH_CB_USERS))
++			break;
++
++		    if (newline)
++			*option = 0;
++
++		    if (best_fit == 100)
++			break;
++		}
++
++		if (strcmp(option, "-") == 0) {
++#if 0 /* already set above */
++		    result = CB_NOT_ALLOWED;
++#endif
++		} else if (strcmp(option, "*") == 0) {
++		    result = CB_PROVIDED_BY_HIM;
++		} else {
++		    result = CB_PROVIDED_BY_US;
++		    *number = strdup(option);
++		}
++	    }
++	    fclose(userfile);
++	    return result;
++	}
++    }
++    else
++	return CB_PROVIDED_BY_HIM;
++}    
++
++/* give me the hit rate. wild cars '*?' valids */
++static int
++cb_check_user(user, mask)
++    char *user;
++    char *mask;
++{
++    char *curr_user = user;
++    char *curr_mask = mask;
++    char *find, backp = 0;
++    int  count, len = 0;
++    
++    if (strcmp(user, mask) == 0)
++	return 100;
++
++    if (strcmp(mask, "*") == 0)
++	return 1;
++
++    count = 0;
++
++    while ((find = strpbrk(curr_mask, "*?")) != 0) {
++	if (find != curr_mask) {
++	    len = find - curr_mask;
++	    if (strncmp(curr_user, curr_mask, len) != 0)
++		break;
++	}
++
++	curr_mask += len + 1;
++	curr_user += len;
++	count += len;
++	if (*curr_user == 0)
++	    break;
++	
++	if (*find == '?') {
++	    curr_user++;
++	    if (*curr_user == 0)
++		break;
++	} else {
++	    if (*curr_mask == 0)
++		break;
++
++	    if ((find = strpbrk(curr_mask, "*?")) != 0) {
++		backp = *find;
++		*find = 0;
++	    }
++	    curr_user = strstr(curr_user, curr_mask);
++	    if (find)
++		*find = backp;
++	    if (!curr_user)
++		break;
++
++	    find = strpbrk(curr_mask, "*?");
++	    if (find)
++		len = find - curr_mask;
++	    else
++		len = strlen(curr_mask);
++
++	    curr_mask += len;
++	    curr_user += len;
++	    count += len;
++	}
++    }
++    
++    if (*curr_user && *curr_mask && strcmp(curr_user, curr_mask) == 0)
++	count += strlen(curr_user);
++
++    return count * 100 / strlen(user);
++}
+diff -purN pppd-2.4.7.orig/pppd/cbcp.c pppd-2.4.7/pppd/cbcp.c
+--- pppd-2.4.7.orig/pppd/cbcp.c	2018-01-30 23:19:47.576103496 +0100
++++ pppd-2.4.7/pppd/cbcp.c	2018-01-30 23:19:57.729943813 +0100
+@@ -1,7 +1,10 @@
+ /*
+  * cbcp - Call Back Configuration Protocol.
+  *
+- * Copyright (c) 1995 Pedro Roque Marques.  All rights reserved.
++ * Copyright (c) 1995 Pedro Roque Marques
++ * Copyright (c) 2001 Bolke de Bruin
++ *
++ * All rights reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -87,9 +90,13 @@ cbcp_state cbcp[NUM_PPP];
+ 
+ static void cbcp_recvreq __P((cbcp_state *us, u_char *pckt, int len));
+ static void cbcp_sendresp __P((cbcp_state *us));
+-static void cbcp_up __P((cbcp_state *us));
+ static void cbcp_recvack __P((cbcp_state *us, u_char *pckt, int len));
+ static void cbcp_send __P((cbcp_state *us, int code, u_char *buf, int len));
++static void cbcp_up __P((cbcp_state *us));
++static void cbcp_make_options __P((cbcp_state *us));
++static void cbcp_sendreq __P((void *arg));
++static void cbcp_recvresp __P((cbcp_state *us, u_char *pckt, int len));
++static void cbcp_sendack __P((cbcp_state *us));
+ 
+ /* init state */
+ static void
+@@ -101,6 +108,7 @@ cbcp_init(iface)
+     us = &cbcp[iface];
+     memset(us, 0, sizeof(cbcp_state));
+     us->us_unit = iface;
++    us->us_id = 1;
+     us->us_type |= (1 << CB_CONF_NO);
+     us->us_delay = 5; /* Default to 5 seconds callback delay */
+ }
+@@ -125,7 +133,10 @@ cbcp_open(unit)
+ {
+     cbcp_state *us = &cbcp[unit];
+     dbglog("cbcp_open");
+-    TIMEOUT(cbcp_timeout, us, CBCP_REQTIMEOUT);
++    if (lcp_hisoptions[unit].cbopt.neg_cbcp)
++	cbcp_make_options(&cbcp[unit]);
++    else
++	TIMEOUT(cbcp_timeout, us, CBCP_REQTIMEOUT);
+ }
+ 
+ static void
+@@ -148,6 +159,8 @@ cbcp_input(unit, inpacket, pktlen)
+     u_short len;
+ 
+     cbcp_state *us = &cbcp[unit];
++    lcp_options *go = &lcp_gotoptions[unit];
++    lcp_options *ho = &lcp_hisoptions[unit];
+ 
+     inp = inpacket;
+ 
+@@ -171,16 +184,31 @@ cbcp_input(unit, inpacket, pktlen)
+  
+     switch(code) {
+     case CBCP_REQ:
++	if (!go->cbopt.neg_cbcp) {
++    	    error("cbcp_input: CBCP_REQ received in server mode");
++	    return;
++	}
+         us->us_id = id;
+ 	cbcp_recvreq(us, inp, len);
+ 	break;
+ 
+     case CBCP_RESP:
+-	if (debug)
+-	    dbglog("cbcp_input: CBCP_RESP received");
++	if (!ho->cbopt.neg_cbcp) {
++    	    error("cbcp_input: CBCP_RESP received in client mode!");
++	    return;
++	}
++	if (debug && id != us->us_id)
++	    dbglog("cbcp_input: id doesn't match: expected %d, received %d",
++		   us->us_id, id);
++
++	cbcp_recvresp(us, inp, len);
+ 	break;
+ 
+     case CBCP_ACK:
++	if (!go->cbopt.neg_cbcp) {
++	    error("cbcp_input: CBCP_ACK received in server mode");
++	    return;
++	}
+ 	if (debug && id != us->us_id)
+ 	    dbglog("cbcp_input: id doesn't match: expected %d, received %d",
+ 		   us->us_id, id);
+@@ -483,3 +511,195 @@ cbcp_up(us)
+     lcp_close(us->us_unit, "Call me back, please");
+     callback_client_script();
+ }
++
++/* Make options
++   if auth req, options from callback-users file, else use CBCP_CONF_USER */
++static void
++cbcp_make_options(us)
++    cbcp_state *us;
++{
++    us->us_number = NULL;
++    switch (cb_map_user(&us->us_number)) {
++    case CB_PROVIDED_BY_HIM :
++	us->us_allowed = ( 1 << CB_CONF_USER );
++	break;
++    case CB_PROVIDED_BY_US :
++	us->us_allowed = ( 1 << CB_CONF_ADMIN );
++	us->us_numlen = strlen(us->us_number);
++	break;
++    case CB_NOT_ALLOWED :
++    default :
++	us->us_allowed = ( 1 << CB_CONF_NO );
++	break;
++    }
++
++    cbcp_sendreq(us);
++}
++
++/* make cbcp request packet & send it */
++static void
++cbcp_sendreq(arg)
++    void *arg;
++{
++    cbcp_state *us = (cbcp_state *) arg;
++    u_char cb_allow = us->us_allowed;
++    u_char buf[256];
++    u_char *bufp = buf;
++    int len = 0;
++
++    ++us->us_count;
++    if (us->us_count <= CBCP_MAXRETRY)
++	TIMEOUT(cbcp_sendreq, us, CBCP_DEFTIMEOUT);
++    else {
++	status = EXIT_NEGOTIATION_FAILED;
++	lcp_close(us->us_unit, "CBCP: not responding");
++	return;
++    }
++
++    dbglog("cbcp_sendreq: cb_allowed=%d", cb_allow);
++
++    if (cb_allow & ( 1 << CB_CONF_USER ) ) {
++	int const cbopt_len = 5;
++	dbglog("cbcp_sendreq: CONF_USER");
++	len += cbopt_len;
++	PUTCHAR(CB_CONF_USER, bufp);
++	PUTCHAR(cbopt_len, bufp);
++	PUTCHAR(0, bufp);
++	PUTCHAR(CBCP_ADDRTYPE_PHONENUM, bufp);
++	PUTCHAR(0, bufp);
++    }
++
++    if (cb_allow & ( 1 << CB_CONF_ADMIN ) ) {
++	int const cbopt_len = 3;
++	dbglog("cbcp_sendreq: CONF_ADMIN");
++	len += cbopt_len;
++	PUTCHAR(CB_CONF_ADMIN, bufp);
++	PUTCHAR(cbopt_len, bufp);
++	PUTCHAR(0, bufp);
++    }
++
++    if (cb_allow & ( 1 << CB_CONF_NO ) ) {
++	int const cbopt_len = 2;
++	dbglog("cbcp_sendreq: CONF_NO");
++	len += cbopt_len;
++	PUTCHAR(CB_CONF_NO, bufp);
++	PUTCHAR(cbopt_len, bufp);
++    }
++
++    if (len)
++	cbcp_send(us, CBCP_REQ, buf, len);
++    else {
++	UNTIMEOUT(cbcp_sendreq, us);
++	error("cbcp_sendreq: no callback options");
++    }
++}  
++
++/* Received CBCP response, make ACK */
++static void
++cbcp_recvresp(us, pckt, len)
++    cbcp_state *us;
++    u_char *pckt;
++    int len;
++{
++    u_char type, addr_type;
++    int opt_len;
++    char address[256];
++
++    if (len) {
++	GETCHAR(type, pckt);
++	GETCHAR(opt_len, pckt);
++
++	if (!(( 1 << type ) & us->us_allowed )) {
++	    dbglog("CBCP: received callback options incompatible"
++		   " with the ones we offered");
++	    return;
++	}
++
++	if ((type != CB_CONF_NO) &&
++	    (type != CB_CONF_USER) &&
++	    (type != CB_CONF_ADMIN)) {
++	    warn("cbcp_recvresp: received unknown callback type %d", type);
++	    return;
++	}
++
++	UNTIMEOUT(cbcp_sendreq, us);
++	us->us_count = 0;
++
++	if (opt_len > 2)
++	    GETCHAR(us->us_delay, pckt)
++
++	if (opt_len > 3) {
++	    GETCHAR(addr_type, pckt);
++	    memcpy(address, pckt, opt_len - 4);
++	    address[opt_len - 4] = 0;
++	    if (address[0])
++		dbglog("cbcp_recvresp: we will call: %s", address);
++	    us->us_number = strdup(address);
++	    us->us_numlen = opt_len - 4;
++	}
++
++	us->us_type = ( 1 << type );    
++	cbcp_sendack(us);
++    }
++    else {
++	warn("cbcp_recvresp: packet is too small");
++    }
++}
++
++/* Send the CBCP_ACK packet */
++static void
++cbcp_sendack(us)
++    cbcp_state *us;
++{
++    u_char cb_type = us->us_type;
++    u_char buf[256];
++    u_char *bufp = buf;
++    int len = 0;
++    int slen;
++    
++    dbglog("cbcp_sendack: cb_type=%d", cb_type);
++
++    if (cb_type == (1 << CB_CONF_USER )) {
++	dbglog("cbcp_sendack: CONF_USER");
++	slen = us->us_numlen;
++	if (slen > 250) {
++	    warn("cbcp_sendack: callback number truncated to 250 characters");
++	    slen = 250;
++	}
++	PUTCHAR(CB_CONF_USER, bufp);
++	len = 3 + 1 + slen + 1;
++	PUTCHAR(len , bufp);
++	PUTCHAR(us->us_delay, bufp);
++	PUTCHAR(CBCP_ADDRTYPE_PHONENUM, bufp);
++	BCOPY(us->us_number, bufp, slen + 1);
++	cbcp_send(us, CBCP_ACK, buf, len);
++	callback_server_script(us->us_number, us->us_delay);
++	return;
++    }
++
++    if (cb_type == (1 << CB_CONF_ADMIN )) {
++	dbglog("cbcp_sendack: CONF_ADMIN");
++	PUTCHAR(CB_CONF_ADMIN, bufp);
++	len = 3;
++	PUTCHAR(len, bufp);
++	PUTCHAR(us->us_delay, bufp);
++	cbcp_send(us, CBCP_ACK, buf, len);
++	callback_server_script(us->us_number, us->us_delay);
++	return;
++    }
++
++    if (cb_type == (1 << CB_CONF_NO )) {
++	dbglog("cbcp_sendack: CONF_NO");
++	PUTCHAR(CB_CONF_NO, bufp);
++	len = 2;
++	PUTCHAR(len , bufp);
++	cbcp_send(us, CBCP_ACK, buf, len);
++	if (!us->us_ncpstart) {
++	    start_networks(us->us_unit);
++	    us->us_ncpstart = 1;
++	}
++	return;
++    }
++
++    warn("cbcp_sendack: invalid callback type %d", cb_type);
++}
+diff -purN pppd-2.4.7.orig/pppd/cbcp.h pppd-2.4.7/pppd/cbcp.h
+--- pppd-2.4.7.orig/pppd/cbcp.h	2018-01-30 23:19:47.577103480 +0100
++++ pppd-2.4.7/pppd/cbcp.h	2018-01-30 23:19:57.729943813 +0100
+@@ -9,6 +9,8 @@ typedef struct cbcp_state {
+     char   *us_number;	/* Telephone Number */
+     int    us_numlen;	/* Length of telephone Number */
+     int    us_delay;	/* Callback delay */
++    int    us_count;	/* Number of retransmissions */
++    int    us_ncpstart;	/* non-zero if negotiation of NCPs has been started */
+ } cbcp_state;
+ 
+ extern cbcp_state cbcp[];
+@@ -36,5 +38,9 @@ extern struct protent cbcp_protent;
+ 
+ #define CBCP_REQTIMEOUT	15	/* time in seconds to wait for a CBCP request
+ 				   before giving up */
++#define CBCP_DEFTIMEOUT	5	/* time in seconds to wait before repeating
++				   last CBCP packet */
++#define CBCP_MAXRETRY	50	/* maximum number of retransmissions of CBCP
++				   packets */
+ 
+ #endif
+diff -purN pppd-2.4.7.orig/pppd/lcp.c pppd-2.4.7/pppd/lcp.c
+--- pppd-2.4.7.orig/pppd/lcp.c	2018-01-30 23:19:47.577103480 +0100
++++ pppd-2.4.7/pppd/lcp.c	2018-01-30 23:19:57.729943813 +0100
+@@ -292,6 +292,7 @@ static void lcp_input __P((int, u_char *
+ static void lcp_protrej __P((int));
+ static int  lcp_printpkt __P((u_char *, int,
+ 			      void (*) __P((void *, char *, ...)), void *));
++static void lcp_check_options __P((void));
+ 
+ struct protent lcp_protent = {
+     PPP_LCP,
+@@ -308,7 +309,7 @@ struct protent lcp_protent = {
+     "LCP",
+     NULL,
+     lcp_option_list,
+-    NULL,
++    lcp_check_options,
+     NULL,
+     NULL
+ };
+@@ -383,9 +384,11 @@ setcallback(argv)
+ 
+     cbcp[0].us_number = (char *) lcp_wantoptions[0].cbopt.message;
+     cbcp[0].us_numlen = lcp_wantoptions[0].cbopt.mlen;
+-    if (cbcp[0].us_number[0])
+-	cbcp[0].us_type |= (1 << CB_CONF_USER);
+-    cbcp[0].us_type |= (1 << CB_CONF_ADMIN);
++    if (strcmp(lcp_wantoptions[0].cbopt.message, "server") != 0) {
++	if (cbcp[0].us_number[0])
++	    cbcp[0].us_type |= (1 << CB_CONF_USER);
++	cbcp[0].us_type |= (1 << CB_CONF_ADMIN);
++    }
+ #endif
+     return 1;
+ }
+@@ -1954,6 +1957,74 @@ lcp_reqci(f, inp, lenp, reject_if_disagr
+ 	    ho->neg_accompression = 1;
+ 	    break;
+ 
++	case CI_CALLBACK:
++	    if (!ao->neg_callback || !(ao->cbopt.neg_rfc || ao->cbopt.neg_cbcp)
++		|| cilen < CILEN_CB) {
++		orc = CONFREJ;
++		break;
++	    }
++	    GETCHAR(cichar, p);
++	    if (!(cichar <= CB_NAME || cichar == CB_CBCP)) {
++		orc = CONFREJ;
++		break;
++	    }
++
++	    /*
++	     * suggest RFC 1570 style callback negotiation if
++	     * - peer wants CBCP, but we allow only RFC 1570 style callback
++	     *   negotiation, or
++	     * - peer wants RFC 1570 style callback negotiation, but we allow
++	     *   it only with a different message type
++	     */
++	    if (ao->cbopt.neg_rfc &&
++		    ((cichar == CB_CBCP && !ao->cbopt.neg_cbcp) ||
++		    (cichar <= CB_NAME && ao->cbopt.type != cichar))) {
++		orc = CONFNAK;
++		PUTCHAR(CI_CALLBACK, nakp);
++		PUTCHAR(CILEN_CB, nakp);
++		PUTCHAR(ao->cbopt.type, nakp);
++		break;
++	    /*
++	     * suggest CBCP if peer wants RFC 1570 style callback negotiation
++	     * but we allow only CBCP
++	     */
++	    } else if (cichar <= CB_NAME && !ao->cbopt.neg_rfc
++		       && ao->cbopt.neg_cbcp) {
++		orc = CONFNAK;
++		PUTCHAR(CI_CALLBACK, nakp);
++		PUTCHAR(CILEN_CB, nakp);
++		PUTCHAR(CB_CBCP, nakp);
++		break;
++	    }
++
++	    cilen -= CILEN_CB;
++	    if (cilen > 0) {
++		ho->cbopt.message = (char *) malloc(cilen + 1);
++		if (!ho->cbopt.message) {
++		    warn("Out of memory while storing peer's callback message,"
++			 " rejecting callback request");
++		    orc = CONFREJ;
++		    break;
++		} else {
++		    char *msg = ho->cbopt.message;
++		    int i;
++		    for (i = 0; i < cilen; ++i) {
++			GETCHAR(*msg++, p);
++		    }
++		    *msg = '\0';
++		    ho->cbopt.mlen = cilen;
++		}
++	    }
++
++	    ho->neg_callback = 1;
++	    if (cichar == CB_CBCP) {
++		ho->cbopt.neg_cbcp = 1;
++	    } else {
++		ho->cbopt.neg_rfc = 1;
++		ho->cbopt.type = cichar;
++	    }
++	    break;
++
+ 	case CI_MRRU:
+ 	    if (!ao->neg_mrru || !multilink ||
+ 		cilen != CILEN_SHORT) {
+@@ -2579,3 +2650,22 @@ lcp_echo_lowerdown (unit)
+         lcp_echo_timer_running = 0;
+     }
+ }
++
++/*
++ * lcp_check_options - check that any LCP-related options are OK,
++ * and assign appropriate defaults.
++ */
++static void
++lcp_check_options()
++{
++    /*
++     * Decide whether we we call back our peer (server mode) or the peer calls
++     * us back (client mode)
++     */
++    if (lcp_wantoptions[0].neg_callback &&
++	strcmp(lcp_wantoptions[0].cbopt.message, "server") == 0) {
++	lcp_allowoptions[0].neg_callback = 1;
++	lcp_allowoptions[0].cbopt = lcp_wantoptions[0].cbopt;
++	lcp_wantoptions[0].neg_callback = 0;
++    }
++}
+diff -purN pppd-2.4.7.orig/pppd/pathnames.h pppd-2.4.7/pppd/pathnames.h
+--- pppd-2.4.7.orig/pppd/pathnames.h	2018-01-30 23:19:47.577103480 +0100
++++ pppd-2.4.7/pppd/pathnames.h	2018-01-30 23:19:57.729943813 +0100
+@@ -46,6 +46,8 @@
+ #endif /* IPX_CHANGE */
+ 
+ #define _PATH_CB_CLIENT	 _ROOT_PATH "/etc/ppp/callback-client"
++#define _PATH_CB_SERVER	 _ROOT_PATH "/etc/ppp/callback-server"
++#define _PATH_CB_USERS	 _ROOT_PATH "/etc/ppp/callback-users"
+ 
+ #ifdef __STDC__
+ #define _PATH_PPPDB	_ROOT_PATH _PATH_VARRUN "pppd2.tdb"
+diff -purN pppd-2.4.7.orig/pppd/pppd.h pppd-2.4.7/pppd/pppd.h
+--- pppd-2.4.7.orig/pppd/pppd.h	2018-01-30 23:19:47.577103480 +0100
++++ pppd-2.4.7/pppd/pppd.h	2018-01-30 23:19:57.730943797 +0100
+@@ -590,7 +590,9 @@ int  auth_ip_addr __P((int, u_int32_t));
+ int  auth_number __P((void));	/* check if remote number is authorized */
+ int  bad_ip_adrs __P((u_int32_t));
+ 				/* check if IP address is unreasonable */
+-void callback_client_script __P((char *)); /* runs callback client script */
++void callback_client_script __P((void)); /* run callback client script */
++void callback_server_script __P((char *, int)); /* run callback server script */
++int  cb_map_user __P((char **)); /* map user to callback type/number */
+ 
+ /* Procedures exported from demand.c */
+ void demand_conf __P((void));	/* config interface(s) for demand-dial */
+@@ -948,4 +950,9 @@ extern void (*snoop_send_hook) __P((unsi
+ #define offsetof(type, member) ((size_t) &((type *)0)->member)
+ #endif
+ 
++/* Codes returned by cb_map_user. */
++#define CB_NOT_ALLOWED 0
++#define CB_PROVIDED_BY_HIM 1
++#define CB_PROVIDED_BY_US 2
++
+ #endif /* __PPP_H__ */

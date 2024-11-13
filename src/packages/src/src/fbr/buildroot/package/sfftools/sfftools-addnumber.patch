@@ -1,0 +1,84 @@
+diff -urN sfftools-3_1_4.orig/src/cmdline.cpp sfftools-3_1_4.patched/src/cmdline.cpp
+--- sfftools-3_1_4.orig/src/cmdline.cpp	2016-03-12 20:47:26.963209323 +0100
++++ sfftools-3_1_4.patched/src/cmdline.cpp	2016-03-12 20:51:52.000000000 +0100
+@@ -78,7 +78,7 @@
+   m_nTiffCompression = COMPRESSION_CCITTFAX3;
+   m_nJpegQuality     = 40;
+   m_nFileIdx         = 0;
+-  m_bKeepDate = m_bKeepVRes = m_bOverwrite = m_bQuiet = false;
++  m_bKeepDate = m_bKeepVRes = m_bOverwrite = m_bQuiet = m_bNumber = false;
+ }
+ 
+ //-------------------------------------------------------------
+@@ -105,7 +105,8 @@
+   cout << "-t or -tif        Output is one multi-paged TIFF file containing all pages" << endl;
+   cout << "-r or -keepres    Inhibit line doubling for low-res faxes" << endl;
+   cout << "-d or -keepdate   Keep date and time of input file for the output file(s)" << endl;
+-  cout << "-q or -quiet      No messages except errors" << endl << endl;
++  cout << "-q or -quiet      No messages except errors" << endl;
++  cout << "-n or -number     Allways add number to filename" << endl << endl;
+   cout << "The OUTSPEC is interpreted as:" << endl;
+   cout << " - a filename if only one input file is given." << endl;
+   cout << " - a directory name if more than one input file is given." << endl << endl;
+@@ -173,6 +174,7 @@
+     { "keepdate",   no_argument,       0,    'd' }, //       9
+     { "out",        required_argument, 0,    'o' }, //      10
+     { "quiet",      no_argument,       0,    'q' }, //      11
++    { "number",     no_argument,       0,    'n' }, //      12
+     // end-of-list marker
+     { 0, 0, 0, 0 }
+   };
+@@ -258,6 +260,9 @@
+     case 'q':
+       m_bQuiet = true;
+       break;
++    case 'n':
++      m_bNumber = true;
++      break;
+     case '?': // getopt_long_only noticed an error
+       printUsage();
+       throw CSimpleException(CSimpleException::err_cmdline);
+diff -urN sfftools-3_1_4.orig/src/cmdline.h sfftools-3_1_4.patched/src/cmdline.h
+--- sfftools-3_1_4.orig/src/cmdline.h	2016-03-12 20:47:26.963209323 +0100
++++ sfftools-3_1_4.patched/src/cmdline.h	2016-03-12 20:48:21.275152279 +0100
+@@ -53,6 +53,7 @@
+   bool         m_bKeepVRes;
+   bool         m_bOverwrite;
+   bool         m_bQuiet;
++  bool         m_bNumber;
+   std::string  m_strOutSpec;
+ 
+   char       **m_argv;
+@@ -89,6 +90,7 @@
+   bool keepVRes()           { return m_bKeepVRes; };
+   bool doOverwrite()        { return m_bOverwrite; };
+   bool beQuiet()            { return m_bQuiet; };
++  bool addNumber()          { return m_bNumber; };
+   int  getJpegQuality()     { return m_nJpegQuality; };
+   int  getTiffCompression() { return m_nTiffCompression; };
+   int  getOutputFormat()    { return m_nOutputFormat; };
+diff -urN sfftools-3_1_4.orig/src/main.cpp sfftools-3_1_4.patched/src/main.cpp
+--- sfftools-3_1_4.orig/src/main.cpp	2016-03-12 20:47:26.971209315 +0100
++++ sfftools-3_1_4.patched/src/main.cpp	2016-03-12 20:53:21.000000000 +0100
+@@ -173,8 +173,8 @@
+               // A fixed name was given, so use it as a base name
+               outPath = pathOutFileName;
+               std::string orgExt = fs::extension(outPath);
+-              if (nFileCountOut > 1) {
+-                sprintf(acNumber, "_%03d", nPage+1);
++              if ((nFileCountOut > 1) || proc.addNumber()) {
++                sprintf(acNumber, "%03d", nPage+1);
+                 outPath = fs::change_extension(outPath, acNumber);
+                 if (orgExt.length()) {
+                   std::string strTemp = outPath.string();
+@@ -185,8 +185,8 @@
+             } else {
+               // Otherwise construct output filename from input filename
+               outPath = pathOutDirectory / pathInFileName.leaf();
+-              if (nFileCountOut > 1) {
+-                sprintf(acNumber, "_%03d", nPage+1);
++              if ((nFileCountOut > 1) || proc.addNumber()) {
++                sprintf(acNumber, "%03d", nPage+1);
+                 outPath = fs::change_extension(outPath, acNumber);
+                 std::string strTemp = outPath.string();
+                 strTemp += pOut->GetExtension();

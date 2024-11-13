@@ -1,0 +1,103 @@
+diff -purN busybox-1.26.2.orig/util-linux/mdev.c busybox-1.26.2/util-linux/mdev.c
+--- busybox-1.26.2.orig/util-linux/mdev.c	2017-08-30 14:16:58.691620707 +0200
++++ busybox-1.26.2/util-linux/mdev.c	2017-08-30 16:06:22.990475667 +0200
+@@ -281,6 +281,7 @@ struct rule {
+ 	IF_FEATURE_MDEV_EXEC(char *r_cmd;)
+ 	regex_t match;
+ 	struct envmatch *envmatch;
++	struct envmatch *attrmatch;
+ };
+ 
+ struct globals {
+@@ -336,6 +337,12 @@ static void clean_up_rule(struct rule *r
+ 		regfree(&e->match);
+ 		e = e->next;
+ 	}
++	e = rule->attrmatch;
++	while (e) {
++		free(e->envname);
++		regfree(&e->match);
++		e = e->next;
++	}
+ }
+ 
+ static void clean_up_cur_rule(void)
+@@ -369,6 +376,7 @@ static void sighup_handler(int sig UNUSE
+ static char *parse_envmatch_pfx(char *val)
+ {
+ 	struct envmatch **nextp = &G.cur_rule.envmatch;
++	struct envmatch **anextp = &G.cur_rule.attrmatch;
+ 
+ 	for (;;) {
+ 		struct envmatch *e;
+@@ -376,15 +384,26 @@ static char *parse_envmatch_pfx(char *va
+ 		char *eq = strchr(val, '=');
+ 		if (!eq /* || eq == val? */)
+ 			return val;
+-		if (endofname(val) != eq)
+-			return val;
+ 		semicolon = strchr(eq, ';');
+ 		if (!semicolon)
+ 			return val;
+-		/* ENVVAR=regex;... */
+-		*nextp = e = xzalloc(sizeof(*e));
+-		nextp = &e->next;
+-		e->envname = xstrndup(val, eq - val);
++		if (val[0] == '{' && val != eq && *(eq - 1) == '}') {
++			/* {ATTR}=regex;... */
++			if (endofname(val + 1) != eq - 1)
++				return val;
++			*anextp = e = xzalloc(sizeof(*e));
++			anextp = &e->next;
++			*(eq - 1) = '\0';
++			e->envname = xstrndup(val + 1, eq - val - 2);
++			*(eq - 1) = '}';
++		} else {
++			/* ENVVAR=regex;... */
++			if (endofname(val) != eq)
++				return val;
++			*nextp = e = xzalloc(sizeof(*e));
++			nextp = &e->next;
++			e->envname = xstrndup(val, eq - val);
++		}
+ 		*semicolon = '\0';
+ 		xregcomp(&e->match, eq + 1, REG_EXTENDED);
+ 		*semicolon = ';';
+@@ -551,6 +570,28 @@ static int env_matches(struct envmatch *
+ 	return 1;
+ }
+ 
++static int attr_matches(struct envmatch *e, char *path)
++{
++	char *path_end = path + strlen(path);
++	char *val = path_end + 1;
++	while (e) {
++		int r, len;
++		*path_end = '/';
++		strcpy(val, e->envname);
++		len = open_read_close(path, val, SCRATCH_SIZE - 1);
++		if (len < 0)
++			len = 0;
++		*path_end = '\0';
++		val[len] = '\0';
++
++		r = regexec(&e->match, val, /*size*/ 0, /*range[]*/ NULL, /*eflags*/ 0);
++		if (r != 0) /* no match */
++			return 0;
++		e = e->next;
++	}
++	return 1;
++}
++
+ #else
+ 
+ # define next_rule() (&G.cur_rule)
+@@ -686,6 +727,8 @@ static void make_device(char *device_nam
+ #if ENABLE_FEATURE_MDEV_CONF
+ 		if (!env_matches(rule->envmatch))
+ 			continue;
++		if (!attr_matches(rule->attrmatch, path))
++			continue;
+ 		if (rule->maj >= 0) {  /* @maj,min rule */
+ 			if (major != rule->maj)
+ 				continue;

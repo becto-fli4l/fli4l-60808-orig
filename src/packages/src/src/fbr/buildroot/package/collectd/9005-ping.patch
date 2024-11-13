@@ -1,0 +1,77 @@
+diff -purN collectd-5.7.1.orig/src/ping.c collectd-5.7.1/src/ping.c
+--- collectd-5.7.1.orig/src/ping.c	2017-01-23 08:53:57.720449278 +0100
++++ collectd-5.7.1/src/ping.c	2017-08-30 16:45:28.571117585 +0200
+@@ -54,6 +54,7 @@
+  */
+ struct hostlist_s {
+   char *host;
++  int ignore;
+ 
+   uint32_t pkg_sent;
+   uint32_t pkg_recv;
+@@ -146,7 +147,7 @@ static int ping_dispatch_all(pingobj_t *
+   int status;
+ 
+   for (pingobj_iter_t *iter = ping_iterator_get(pingobj); iter != NULL;
+-       iter = ping_iterator_next(iter)) { /* {{{ */
++       /*iterator is advanced within the loop*/) { /* {{{ */
+     char userhost[NI_MAXHOST];
+     double latency;
+     size_t param_size;
+@@ -162,6 +163,7 @@ static int ping_dispatch_all(pingobj_t *
+     if (status != 0) {
+       WARNING("ping plugin: ping_iterator_get_info failed: %s",
+               ping_get_error(pingobj));
++      iter = ping_iterator_next(iter);
+       continue;
+     }
+ 
+@@ -171,6 +173,13 @@ static int ping_dispatch_all(pingobj_t *
+ 
+     if (hl == NULL) {
+       WARNING("ping plugin: Cannot find host %s.", userhost);
++      iter = ping_iterator_next(iter);
++      continue;
++    }
++
++    if (hl->ignore) {
++      hl->ignore = 0;
++      iter = ping_iterator_next(iter);
+       continue;
+     }
+ 
+@@ -180,6 +189,7 @@ static int ping_dispatch_all(pingobj_t *
+     if (status != 0) {
+       WARNING("ping plugin: ping_iterator_get_info failed: %s",
+               ping_get_error(pingobj));
++      iter = ping_iterator_next(iter);
+       continue;
+     }
+ 
+@@ -194,6 +204,9 @@ static int ping_dispatch_all(pingobj_t *
+     } else
+       hl->pkg_missed++;
+ 
++    /* advance iterator NOW because ping_host_remove below invalidates it */
++    iter = ping_iterator_next (iter);
++
+     /* if the host did not answer our last N packages, trigger a resolv. */
+     if ((ping_max_missed >= 0) &&
+         (hl->pkg_missed >= ((uint32_t)ping_max_missed))) { /* {{{ */
+@@ -215,6 +228,8 @@ static int ping_dispatch_all(pingobj_t *
+         status = ping_host_add(pingobj, hl->host);
+         if (status != 0)
+           ERROR("ping plugin: ping_host_add (%s) failed.", hl->host);
++        else
++          hl->ignore = 1;
+       }
+     } /* }}} ping_max_missed */
+   }   /* }}} for (iter) */
+@@ -472,6 +487,7 @@ static int ping_config(const char *key,
+     }
+ 
+     hl->host = host;
++    hl->ignore = 0;
+     hl->pkg_sent = 0;
+     hl->pkg_recv = 0;
+     hl->pkg_missed = 0;

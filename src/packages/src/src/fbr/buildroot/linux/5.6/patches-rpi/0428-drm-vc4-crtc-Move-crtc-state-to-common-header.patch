@@ -1,0 +1,77 @@
+From: Maxime Ripard <maxime@cerno.tech>
+Date: Thu, 26 Dec 2019 15:45:04 +0100
+Subject: drm/vc4: crtc: Move crtc state to common header
+
+We'll need to access the crtc_state from outside of vc4_crtc.c, so let's
+move it to vc4_drv.h
+
+Signed-off-by: Maxime Ripard <maxime@cerno.tech>
+---
+ drivers/gpu/drm/vc4/vc4_crtc.c | 21 ---------------------
+ drivers/gpu/drm/vc4/vc4_drv.h  | 21 +++++++++++++++++++++
+ 2 files changed, 21 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/gpu/drm/vc4/vc4_crtc.c b/drivers/gpu/drm/vc4/vc4_crtc.c
+index dc165d7ce64f..0bc8e4a4007a 100644
+--- a/drivers/gpu/drm/vc4/vc4_crtc.c
++++ b/drivers/gpu/drm/vc4/vc4_crtc.c
+@@ -44,27 +44,6 @@
+ #include "vc4_drv.h"
+ #include "vc4_regs.h"
+ 
+-struct vc4_crtc_state {
+-	struct drm_crtc_state base;
+-	/* Dlist area for this CRTC configuration. */
+-	struct drm_mm_node mm;
+-	bool feed_txp;
+-	bool txp_armed;
+-
+-	struct {
+-		unsigned int left;
+-		unsigned int right;
+-		unsigned int top;
+-		unsigned int bottom;
+-	} margins;
+-};
+-
+-static inline struct vc4_crtc_state *
+-to_vc4_crtc_state(struct drm_crtc_state *crtc_state)
+-{
+-	return (struct vc4_crtc_state *)crtc_state;
+-}
+-
+ #define CRTC_WRITE(offset, val) writel(val, vc4_crtc->regs + (offset))
+ #define CRTC_READ(offset) readl(vc4_crtc->regs + (offset))
+ 
+diff --git a/drivers/gpu/drm/vc4/vc4_drv.h b/drivers/gpu/drm/vc4/vc4_drv.h
+index d2d253a94288..2703b9d8936b 100644
+--- a/drivers/gpu/drm/vc4/vc4_drv.h
++++ b/drivers/gpu/drm/vc4/vc4_drv.h
+@@ -488,6 +488,27 @@ to_vc4_crtc(struct drm_crtc *crtc)
+ 	return (struct vc4_crtc *)crtc;
+ }
+ 
++struct vc4_crtc_state {
++	struct drm_crtc_state base;
++	/* Dlist area for this CRTC configuration. */
++	struct drm_mm_node mm;
++	bool feed_txp;
++	bool txp_armed;
++
++	struct {
++		unsigned int left;
++		unsigned int right;
++		unsigned int top;
++		unsigned int bottom;
++	} margins;
++};
++
++static inline struct vc4_crtc_state *
++to_vc4_crtc_state(struct drm_crtc_state *crtc_state)
++{
++	return (struct vc4_crtc_state *)crtc_state;
++}
++
+ #define V3D_READ(offset) readl(vc4->v3d->regs + offset)
+ #define V3D_WRITE(offset, val) writel(val, vc4->v3d->regs + offset)
+ #define HVS_READ(offset) readl(vc4->hvs->regs + offset)

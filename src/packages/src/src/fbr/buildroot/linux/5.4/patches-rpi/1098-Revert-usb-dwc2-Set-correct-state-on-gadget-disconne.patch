@@ -1,0 +1,36 @@
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Tue, 6 Oct 2020 11:44:16 +0100
+Subject: Revert "usb/dwc2: Set correct state on gadget disconnect"
+
+This reverts commit c3974850cc10de2596893eaec2f5c456e9ded6a0.
+
+See: https://github.com/raspberrypi/linux/issues/3885
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.com>
+---
+ drivers/usb/dwc2/core_intr.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/dwc2/core_intr.c b/drivers/usb/dwc2/core_intr.c
+index 081d3493fbea..44d74584c727 100644
+--- a/drivers/usb/dwc2/core_intr.c
++++ b/drivers/usb/dwc2/core_intr.c
+@@ -546,11 +546,14 @@ static void dwc2_handle_usb_suspend_intr(struct dwc2_hsotg *hsotg)
+ 						__func__);
+ 			}
+ skip_power_saving:
+-			/* Raspberry Pi seems to call the suspend interrupt on gadget disconnect, so instead of setting state to suspend set to not attached */
+-
+-			hsotg->lx_state = DWC2_L3;
++			/*
++			 * Change to L2 (suspend) state before releasing
++			 * spinlock
++			 */
++			hsotg->lx_state = DWC2_L2;
+ 
+-			usb_gadget_set_state(&hsotg->gadget, USB_STATE_NOTATTACHED);
++			/* Call gadget suspend callback */
++			call_gadget(hsotg, suspend);
+ 		}
+ 	} else {
+ 		if (hsotg->op_state == OTG_STATE_A_PERIPHERAL) {

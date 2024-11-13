@@ -1,0 +1,284 @@
+diff -purN lua-5.3.4.orig/src/ldump.c lua-5.3.4/src/ldump.c
+--- lua-5.3.4.orig/src/ldump.c	2015-10-08 17:53:49.000000000 +0200
++++ lua-5.3.4/src/ldump.c	2018-03-12 23:31:18.401575064 +0100
+@@ -55,7 +55,7 @@ static void DumpByte (int y, DumpState *
+ }
+ 
+ 
+-static void DumpInt (int x, DumpState *D) {
++static void DumpInt (int32_t x, DumpState *D) {
+   DumpVar(x, D);
+ }
+ 
+@@ -74,7 +74,7 @@ static void DumpString (const TString *s
+   if (s == NULL)
+     DumpByte(0, D);
+   else {
+-    size_t size = tsslen(s) + 1;  /* include trailing '\0' */
++    uint32_t size = tsslen(s) + 1;  /* include trailing '\0' */
+     const char *str = getstr(s);
+     if (size < 0xFF)
+       DumpByte(cast_int(size), D);
+@@ -186,8 +186,8 @@ static void DumpHeader (DumpState *D) {
+   DumpByte(LUAC_VERSION, D);
+   DumpByte(LUAC_FORMAT, D);
+   DumpLiteral(LUAC_DATA, D);
+-  DumpByte(sizeof(int), D);
+-  DumpByte(sizeof(size_t), D);
++  DumpByte(sizeof(int32_t), D);
++  DumpByte(sizeof(uint32_t), D);
+   DumpByte(sizeof(Instruction), D);
+   DumpByte(sizeof(lua_Integer), D);
+   DumpByte(sizeof(lua_Number), D);
+diff -purN lua-5.3.4.orig/src/llimits.h lua-5.3.4/src/llimits.h
+--- lua-5.3.4.orig/src/llimits.h	2015-11-19 20:16:22.000000000 +0100
++++ lua-5.3.4/src/llimits.h	2018-03-12 23:31:18.401575064 +0100
+@@ -48,7 +48,7 @@ typedef unsigned char lu_byte;
+ #define MAX_LMEM	((l_mem)(MAX_LUMEM >> 1))
+ 
+ 
+-#define MAX_INT		INT_MAX  /* maximum value of an int */
++#define MAX_INT		INT32_MAX  /* maximum value of an int */
+ 
+ 
+ /*
+@@ -113,7 +113,7 @@ typedef LUAI_UACINT l_uacInt;
+ #define cast_void(i)	cast(void, (i))
+ #define cast_byte(i)	cast(lu_byte, (i))
+ #define cast_num(i)	cast(lua_Number, (i))
+-#define cast_int(i)	cast(int, (i))
++#define cast_int(i)	cast(int32_t, (i))
+ #define cast_uchar(i)	cast(unsigned char, (i))
+ 
+ 
+@@ -159,11 +159,7 @@ typedef LUAI_UACINT l_uacInt;
+ ** type for virtual-machine instructions;
+ ** must be an unsigned with (at least) 4 bytes (see details in lopcodes.h)
+ */
+-#if LUAI_BITSINT >= 32
+-typedef unsigned int Instruction;
+-#else
+-typedef unsigned long Instruction;
+-#endif
++typedef uint32_t Instruction;
+ 
+ 
+ 
+diff -purN lua-5.3.4.orig/src/lobject.h lua-5.3.4/src/lobject.h
+--- lua-5.3.4.orig/src/lobject.h	2016-08-01 21:51:24.000000000 +0200
++++ lua-5.3.4/src/lobject.h	2018-03-12 23:31:18.401575064 +0100
+@@ -100,7 +100,7 @@ struct GCObject {
+ typedef union Value {
+   GCObject *gc;    /* collectable objects */
+   void *p;         /* light userdata */
+-  int b;           /* booleans */
++  int32_t b;       /* booleans */
+   lua_CFunction f; /* light C functions */
+   lua_Integer i;   /* integer numbers */
+   lua_Number n;    /* float numbers */
+@@ -304,9 +304,9 @@ typedef struct TString {
+   CommonHeader;
+   lu_byte extra;  /* reserved words for short strings; "has hash" for longs */
+   lu_byte shrlen;  /* length for short strings */
+-  unsigned int hash;
++  uint32_t hash;
+   union {
+-    size_t lnglen;  /* length for long strings */
++    uint32_t lnglen;  /* length for long strings */
+     struct TString *hnext;  /* linked list for hash table */
+   } u;
+ } TString;
+@@ -347,7 +347,7 @@ typedef struct Udata {
+   CommonHeader;
+   lu_byte ttuv_;  /* user value's tag */
+   struct Table *metatable;
+-  size_t len;  /* number of bytes */
++  uint32_t len;  /* number of bytes */
+   union Value user_;  /* user value */
+ } Udata;
+ 
+@@ -396,8 +396,8 @@ typedef struct Upvaldesc {
+ */
+ typedef struct LocVar {
+   TString *varname;
+-  int startpc;  /* first point where variable is active */
+-  int endpc;    /* first point where variable is dead */
++  int32_t startpc;  /* first point where variable is active */
++  int32_t endpc;    /* first point where variable is dead */
+ } LocVar;
+ 
+ 
+@@ -409,18 +409,18 @@ typedef struct Proto {
+   lu_byte numparams;  /* number of fixed parameters */
+   lu_byte is_vararg;
+   lu_byte maxstacksize;  /* number of registers needed by this function */
+-  int sizeupvalues;  /* size of 'upvalues' */
+-  int sizek;  /* size of 'k' */
+-  int sizecode;
+-  int sizelineinfo;
+-  int sizep;  /* size of 'p' */
+-  int sizelocvars;
+-  int linedefined;  /* debug information  */
+-  int lastlinedefined;  /* debug information  */
++  int32_t sizeupvalues;  /* size of 'upvalues' */
++  int32_t sizek;  /* size of 'k' */
++  int32_t sizecode;
++  int32_t sizelineinfo;
++  int32_t sizep;  /* size of 'p' */
++  int32_t sizelocvars;
++  int32_t linedefined;  /* debug information  */
++  int32_t lastlinedefined;  /* debug information  */
+   TValue *k;  /* constants used by the function */
+   Instruction *code;  /* opcodes */
+   struct Proto **p;  /* functions defined inside the function */
+-  int *lineinfo;  /* map from opcodes to source lines (debug information) */
++  int32_t *lineinfo;  /* map from opcodes to source lines (debug information) */
+   LocVar *locvars;  /* information about local variables (debug information) */
+   Upvaldesc *upvalues;  /* upvalue information */
+   struct LClosure *cache;  /* last-created closure with this prototype */
+@@ -475,7 +475,7 @@ typedef union Closure {
+ typedef union TKey {
+   struct {
+     TValuefields;
+-    int next;  /* for chaining (offset for next node) */
++    int32_t next;  /* for chaining (offset for next node) */
+   } nk;
+   TValue tvk;
+ } TKey;
+@@ -498,7 +498,7 @@ typedef struct Table {
+   CommonHeader;
+   lu_byte flags;  /* 1<<p means tagmethod(p) is not present */
+   lu_byte lsizenode;  /* log2 of size of 'node' array */
+-  unsigned int sizearray;  /* size of 'array' array */
++  uint32_t sizearray;  /* size of 'array' array */
+   TValue *array;  /* array part */
+   Node *node;
+   Node *lastfree;  /* any free position is before this position */
+@@ -512,7 +512,7 @@ typedef struct Table {
+ ** 'module' operation for hashing (size is always a power of 2)
+ */
+ #define lmod(s,size) \
+-	(check_exp((size&(size-1))==0, (cast(int, (s) & ((size)-1)))))
++	(check_exp((size&(size-1))==0, (cast(int32_t, (s) & ((size)-1)))))
+ 
+ 
+ #define twoto(x)	(1<<(x))
+diff -purN lua-5.3.4.orig/src/lstrlib.c lua-5.3.4/src/lstrlib.c
+--- lua-5.3.4.orig/src/lstrlib.c	2016-12-22 14:08:50.000000000 +0100
++++ lua-5.3.4/src/lstrlib.c	2018-03-12 23:34:04.677599999 +0100
+@@ -1230,7 +1230,7 @@ static KOption getoption (Header *h, con
+     case 'L': *size = sizeof(long); return Kuint;
+     case 'j': *size = sizeof(lua_Integer); return Kint;
+     case 'J': *size = sizeof(lua_Integer); return Kuint;
+-    case 'T': *size = sizeof(size_t); return Kuint;
++    case 'T': *size = sizeof(uint32_t); return Kuint;
+     case 'f': *size = sizeof(float); return Kfloat;
+     case 'd': *size = sizeof(double); return Kfloat;
+     case 'n': *size = sizeof(lua_Number); return Kfloat;
+diff -purN lua-5.3.4.orig/src/luaconf.h lua-5.3.4/src/luaconf.h
+--- lua-5.3.4.orig/src/luaconf.h	2016-12-22 14:08:50.000000000 +0100
++++ lua-5.3.4/src/luaconf.h	2018-03-12 23:44:06.380439241 +0100
+@@ -10,6 +10,7 @@
+ 
+ #include <limits.h>
+ #include <stddef.h>
++#include <stdint.h>
+ 
+ 
+ /*
+@@ -117,14 +118,14 @@
+ 
+ #if defined(LUA_32BITS)		/* { */
+ /*
+-** 32-bit integers and 'float'
++** 32-bit integers and 'double'
+ */
+ #if LUAI_BITSINT >= 32  /* use 'int' if big enough */
+ #define LUA_INT_TYPE	LUA_INT_INT
+ #else  /* otherwise use 'long' */
+ #define LUA_INT_TYPE	LUA_INT_LONG
+ #endif
+-#define LUA_FLOAT_TYPE	LUA_FLOAT_FLOAT
++#define LUA_FLOAT_TYPE	LUA_FLOAT_DOUBLE
+ 
+ #elif defined(LUA_C89_NUMBERS)	/* }{ */
+ /*
+@@ -534,23 +535,27 @@
+ ** use LUAI_UACINT here to avoid problems with promotions (which
+ ** can turn a comparison between unsigneds into a signed comparison)
+ */
++#if 0 /* see below */
+ #define LUA_UNSIGNED		unsigned LUAI_UACINT
++#endif
+ 
+ 
+ /* now the variable definitions */
+ 
+ #if LUA_INT_TYPE == LUA_INT_INT		/* { int */
+ 
+-#define LUA_INTEGER		int
++#define LUA_INTEGER		int32_t
+ #define LUA_INTEGER_FRMLEN	""
++#define LUA_UNSIGNED		uint32_t
+ 
+-#define LUA_MAXINTEGER		INT_MAX
+-#define LUA_MININTEGER		INT_MIN
++#define LUA_MAXINTEGER		INT32_MAX
++#define LUA_MININTEGER		INT32_MIN
+ 
+ #elif LUA_INT_TYPE == LUA_INT_LONG	/* }{ long */
+ 
+ #define LUA_INTEGER		long
+ #define LUA_INTEGER_FRMLEN	"l"
++#define LUA_UNSIGNED		unsigned long
+ 
+ #define LUA_MAXINTEGER		LONG_MAX
+ #define LUA_MININTEGER		LONG_MIN
+@@ -563,6 +568,7 @@
+ 
+ #define LUA_INTEGER		long long
+ #define LUA_INTEGER_FRMLEN	"ll"
++#define LUA_UNSIGNED		unsigned long long
+ 
+ #define LUA_MAXINTEGER		LLONG_MAX
+ #define LUA_MININTEGER		LLONG_MIN
+@@ -572,6 +578,7 @@
+ 
+ #define LUA_INTEGER		__int64
+ #define LUA_INTEGER_FRMLEN	"I64"
++#define LUA_UNSIGNED		unsigned __int64
+ 
+ #define LUA_MAXINTEGER		_I64_MAX
+ #define LUA_MININTEGER		_I64_MIN
+diff -purN lua-5.3.4.orig/src/lundump.c lua-5.3.4/src/lundump.c
+--- lua-5.3.4.orig/src/lundump.c	2015-11-02 17:09:30.000000000 +0100
++++ lua-5.3.4/src/lundump.c	2018-03-12 23:31:18.401575064 +0100
+@@ -65,7 +65,7 @@ static lu_byte LoadByte (LoadState *S) {
+ 
+ 
+ static int LoadInt (LoadState *S) {
+-  int x;
++  int32_t x;
+   LoadVar(S, x);
+   return x;
+ }
+@@ -86,7 +86,7 @@ static lua_Integer LoadInteger (LoadStat
+ 
+ 
+ static TString *LoadString (LoadState *S) {
+-  size_t size = LoadByte(S);
++  uint32_t size = LoadByte(S);
+   if (size == 0xFF)
+     LoadVar(S, size);
+   if (size == 0)
+@@ -240,8 +240,8 @@ static void checkHeader (LoadState *S) {
+   if (LoadByte(S) != LUAC_FORMAT)
+     error(S, "format mismatch in");
+   checkliteral(S, LUAC_DATA, "corrupted");
+-  checksize(S, int);
+-  checksize(S, size_t);
++  checksize(S, int32_t);
++  checksize(S, uint32_t);
+   checksize(S, Instruction);
+   checksize(S, lua_Integer);
+   checksize(S, lua_Number);

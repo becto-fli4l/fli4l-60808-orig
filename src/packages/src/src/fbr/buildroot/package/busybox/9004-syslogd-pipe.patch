@@ -1,0 +1,29 @@
+diff --git a/sysklogd/syslogd.c b/sysklogd/syslogd.c
+index bdc9fdef9..0b26ab626 100644
+--- a/sysklogd/syslogd.c
++++ b/sysklogd/syslogd.c
+@@ -711,9 +711,14 @@ static void log_locally(time_t now, char *msg, logFile_t *log_file)
+ 			/* log_file->isRegular = 0; - already is */
+ 		} else {
+  reopen:
++		if (log_file->path[0] == '|') {
++			log_file->fd = open(log_file->path + 1, O_WRONLY | O_NONBLOCK);
++		}
++		else {
+ 			log_file->fd = open(log_file->path, O_WRONLY | O_CREAT
+-					| O_NOCTTY | O_APPEND | O_NONBLOCK,
+-					0666);
++						| O_NOCTTY | O_APPEND | O_NONBLOCK,
++						0666);
++		}
+ 			if (log_file->fd < 0) {
+ 				/* cannot open logfile? - print to /dev/console then */
+ 				int fd = device_open(DEV_CONSOLE, O_WRONLY | O_NOCTTY | O_NONBLOCK);
+@@ -993,6 +998,7 @@ static void do_syslogd(void)
+ 	signal_no_SA_RESTART_empty_mask(SIGINT, record_signo);
+ 	//signal_no_SA_RESTART_empty_mask(SIGQUIT, record_signo);
+ 	signal(SIGHUP, SIG_IGN);
++	signal(SIGPIPE, SIG_IGN);
+ #ifdef SYSLOGD_MARK
+ 	signal(SIGALRM, do_mark);
+ 	alarm(G.markInterval);

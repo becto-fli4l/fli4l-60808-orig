@@ -1,0 +1,68 @@
+diff -urN reaver-1.4.orig/src/Makefile.in reaver-1.4/src/Makefile.in
+--- reaver-1.4.orig/src/Makefile.in	2013-12-24 21:47:48.413001125 +0100
++++ reaver-1.4/src/Makefile.in	2013-12-24 21:49:41.714268534 +0100
+@@ -5,33 +5,33 @@
+ exec_prefix=@exec_prefix@
+ CONFDIR=@sysconfdir@/@target@
+ COPTS=-DCONF_DIR='"$(CONFDIR)"' -DREAVER_DATABASE='"$(CONFDIR)/reaver.db"'
+-LDFLAGS=$(LIBWPS_DIR)/*.o wps/*.o tls/bignum.o tls/libtls.a utils/libutils.a crypto/libcrypto.a lwe/libiw.a @LDFLAGS@
++LDFLAGS=$(sort $(wildcard $(LIBWPS_DIR)/*.o)) $(sort $(wildcard wps/*.o)) tls/bignum.o tls/libtls.a utils/libutils.a crypto/libcrypto.a lwe/libiw.a @LDFLAGS@
+ 
+ all: wash reaver
+ 
+-wash: wps libiw libwps.o argsparser.o globule.o init.o misc.o 80211.o iface.o
+-	$(CC) $(CFLAGS) $(COPTS) $(INC) wpsmon.c *.o $(LDFLAGS) -o wash
++wash: wps libiw libwps/libwps.o argsparser.o globule.o init.o misc.o 80211.o iface.o
++	$(CC) $(CFLAGS) $(COPTS) $(INC) wpsmon.c $$(ls -1 *.o | sort) $(LDFLAGS) -o wash
+ 
+-reaver: wps libiw libwps.o argsparser.o globule.o init.o sigint.o sigalrm.o misc.o cracker.o
+-	$(CC) $(CFLAGS) $(COPTS) $(INC) wpscrack.c *.o $(LDFLAGS) -o reaver
++reaver: wps libiw  libwps/libwps.o argsparser.o globule.o init.o sigint.o sigalrm.o misc.o cracker.o
++	$(CC) $(CFLAGS) $(COPTS) $(INC) wpscrack.c $$(ls -1 *.o | sort) $(LDFLAGS) -o reaver
+ 
+-libwps.o:
+-	(cd $(LIBWPS_DIR) && make)
++libwps/libwps.o:
++	$(MAKE) -C $(LIBWPS_DIR)
+ 
+ wps: libutils libcrypto
+-	(cd wps && make)
++	$(MAKE) -C wps
+ 
+ libutils:
+-	(cd utils && make)
++	$(MAKE) -C utils
+ 
+ libcrypto: libtls
+-	(cd crypto && make)
++	$(MAKE) -C crypto
+ 
+ libtls:
+-	(cd tls && make)
++	$(MAKE) -C tls
+ 
+ libiw:
+-	(cd lwe && make BUILD_STATIC=y libiw.a)
++	$(MAKE) -C lwe BUILD_STATIC=y libiw.a
+ 
+ init.o:
+ 	$(CC) $(CFLAGS) $(COPTS) init.c -c
+@@ -93,12 +93,12 @@
+ clean:
+ 	rm -f *~ *.o reaver wash
+ 	rm -rf *.cache config.status config.log
+-	(cd utils && make clean)
+-	(cd tls && make clean)
+-	(cd crypto && make clean)
+-	(cd wps && make clean)
+-	(cd lwe && make realclean)
+-	(cd $(LIBWPS_DIR) && make clean)
++	$(MAKE) -C utils clean
++	$(MAKE) -C tls clean
++	$(MAKE) -C crypto clean
++	$(MAKE) -C wps clean
++	$(MAKE) -C lwe clean
++	$(MAKE) -C $(LIBWPS_DIR) clean
+ 	rm -f Makefile config.h
+ 
+ cleanbin: 

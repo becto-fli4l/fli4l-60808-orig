@@ -1,0 +1,503 @@
+From: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+Date: Thu, 2 Apr 2020 19:54:33 +0200
+Subject: ARM: dts: overlays: Unify overlay CMA handling
+
+Now that we don't have to abuse the kernel command line to change CMA's
+size we can clean-up and centralize CMA usage in overlays.
+
+A new file, cma-overlay.dts is created to be used as a standalone
+overlay or included on other overlays. All CMA users are converted to
+this scheme. Ultimately upstream-overlay.dts is also updated to use the
+default CMA size provided by upstream.
+
+Signed-off-by: Nicolas Saenz Julienne <nsaenzjulienne@suse.de>
+---
+ arch/arm/boot/dts/overlays/Makefile           |  1 +
+ arch/arm/boot/dts/overlays/README             | 17 +++++
+ arch/arm/boot/dts/overlays/cma-overlay.dts    | 32 +++++++++
+ .../boot/dts/overlays/upstream-overlay.dts    | 56 +++++-----------
+ .../dts/overlays/vc4-fkms-v3d-overlay.dts     | 51 ++------------
+ .../boot/dts/overlays/vc4-kms-v3d-overlay.dts | 66 ++++---------------
+ 6 files changed, 85 insertions(+), 138 deletions(-)
+ create mode 100644 arch/arm/boot/dts/overlays/cma-overlay.dts
+
+diff --git a/arch/arm/boot/dts/overlays/Makefile b/arch/arm/boot/dts/overlays/Makefile
+index 66f5be258aa5..71033f81b024 100644
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -26,6 +26,7 @@ dtbo-$(CONFIG_ARCH_BCM2835) += \
+ 	audremap.dtbo \
+ 	balena-fin.dtbo \
+ 	bmp085_i2c-sensor.dtbo \
++	cma.dtbo \
+ 	dht11.dtbo \
+ 	dionaudio-loco.dtbo \
+ 	dionaudio-loco-v2.dtbo \
+diff --git a/arch/arm/boot/dts/overlays/README b/arch/arm/boot/dts/overlays/README
+index 49f09c85eb2f..baed73e0de5f 100644
+--- a/arch/arm/boot/dts/overlays/README
++++ b/arch/arm/boot/dts/overlays/README
+@@ -548,6 +548,19 @@ Info:   This overlay is now deprecated - see i2c-sensor
+ Load:   <Deprecated>
+ 
+ 
++Name:   cma
++Info:   Set custom CMA sizes, only use if you know what you are doing, might
++        clash with other overlays like vc4-fkms-v3d and vc4-kms-v3d.
++Load:   dtoverlay=cma,<param>=<val>
++Params: cma-256                 CMA is 256MB (needs 1GB)
++        cma-192                 CMA is 192MB (needs 1GB)
++        cma-128                 CMA is 128MB
++        cma-96                  CMA is 96MB
++        cma-64                  CMA is 64MB
++        cma-size                CMA size in bytes, 4MB aligned
++        cma-default             Use upstream's default value
++
++
+ Name:   dht11
+ Info:   Overlay for the DHT11/DHT21/DHT22 humidity/temperature sensors
+         Also sometimes found with the part number(s) AM230x.
+@@ -2650,6 +2663,8 @@ Params: cma-256                 CMA is 256MB (needs 1GB)
+         cma-128                 CMA is 128MB
+         cma-96                  CMA is 96MB
+         cma-64                  CMA is 64MB
++        cma-size                CMA size in bytes, 4MB aligned
++        cma-default             Use upstream's default value
+ 
+ 
+ Name:   vc4-kms-kippah-7inch
+@@ -2669,6 +2684,8 @@ Params: cma-256                 CMA is 256MB (needs 1GB)
+         cma-128                 CMA is 128MB
+         cma-96                  CMA is 96MB
+         cma-64                  CMA is 64MB
++        cma-size                CMA size in bytes, 4MB aligned
++        cma-default             Use upstream's default value
+         audio                   Enable or disable audio over HDMI (default "on")
+ 
+ 
+diff --git a/arch/arm/boot/dts/overlays/cma-overlay.dts b/arch/arm/boot/dts/overlays/cma-overlay.dts
+new file mode 100644
+index 000000000000..4fbdf161672e
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/cma-overlay.dts
+@@ -0,0 +1,32 @@
++/*
++ * cma.dts
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835";
++
++	fragment@0 {
++		target = <&cma>;
++		frag0: __overlay__ {
++			/*
++			 * The default size when using this overlay is 256 MB
++			 * and should be kept as is for backwards
++			 * compatibility.
++			 */
++			size = <0x10000000>;
++		};
++	};
++
++	__overrides__ {
++		cma-256 = <&frag0>,"size:0=",<0x10000000>;
++		cma-192 = <&frag0>,"size:0=",<0xC000000>;
++		cma-128 = <&frag0>,"size:0=",<0x8000000>;
++		cma-96  = <&frag0>,"size:0=",<0x6000000>;
++		cma-64  = <&frag0>,"size:0=",<0x4000000>;
++		cma-size = <&frag0>,"size:0"; /* in bytes, 4MB aligned */
++		cma-default = <0>,"-0";
++	};
++};
+diff --git a/arch/arm/boot/dts/overlays/upstream-overlay.dts b/arch/arm/boot/dts/overlays/upstream-overlay.dts
+index 96837d962188..4d46790d81c9 100644
+--- a/arch/arm/boot/dts/overlays/upstream-overlay.dts
++++ b/arch/arm/boot/dts/overlays/upstream-overlay.dts
+@@ -1,4 +1,4 @@
+-// redo: ovmerge -c vc4-kms-v3d-overlay.dts,cma-96 dwc2-overlay.dts,dr_mode=otg
++// redo: ovmerge -c vc4-kms-v3d-overlay.dts,cma-default dwc2-overlay.dts,dr_mode=otg
+ 
+ /dts-v1/;
+ /plugin/;
+@@ -8,114 +8,90 @@
+ / {
+ 	compatible = "brcm,bcm2835";
+ 	fragment@0 {
+-		target-path = "/chosen";
++		target = <&cma>;
+ 		__dormant__ {
+-			bootargs = "cma=256M";
++			size = <0x10000000>;
+ 		};
+ 	};
+ 	fragment@1 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=192M";
+-		};
+-	};
+-	fragment@2 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=128M";
+-		};
+-	};
+-	fragment@3 {
+-		target-path = "/chosen";
+-		__overlay__ {
+-			bootargs = "cma=96M";
+-		};
+-	};
+-	fragment@4 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=64M";
+-		};
+-	};
+-	fragment@5 {
+ 		target = <&i2c2>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@6 {
++	fragment@2 {
+ 		target = <&fb>;
+ 		__overlay__ {
+ 			status = "disabled";
+ 		};
+ 	};
+-	fragment@7 {
++	fragment@3 {
+ 		target = <&pixelvalve0>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@8 {
++	fragment@4 {
+ 		target = <&pixelvalve1>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@9 {
++	fragment@5 {
+ 		target = <&pixelvalve2>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@10 {
++	fragment@6 {
+ 		target = <&hvs>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@11 {
++	fragment@7 {
+ 		target = <&hdmi>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@12 {
++	fragment@8 {
+ 		target = <&v3d>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@13 {
++	fragment@9 {
+ 		target = <&vc4>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@14 {
++	fragment@10 {
+ 		target = <&clocks>;
+ 		__overlay__ {
+ 			claim-clocks = <BCM2835_PLLD_DSI0 BCM2835_PLLD_DSI1 BCM2835_PLLH_AUX BCM2835_PLLH_PIX>;
+ 		};
+ 	};
+-	fragment@15 {
++	fragment@11 {
+ 		target = <&vec>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@16 {
++	fragment@12 {
+ 		target = <&txp>;
+ 		__overlay__ {
+ 			status = "okay";
+ 		};
+ 	};
+-	fragment@17 {
++	fragment@13 {
+ 		target = <&hdmi>;
+ 		__dormant__ {
+ 			dmas;
+ 		};
+ 	};
+-	fragment@18 {
++	fragment@14 {
+ 		target = <&usb>;
+ 		#address-cells = <1>;
+ 		#size-cells = <1>;
+diff --git a/arch/arm/boot/dts/overlays/vc4-fkms-v3d-overlay.dts b/arch/arm/boot/dts/overlays/vc4-fkms-v3d-overlay.dts
+index d9af97c8414f..ca344492bed8 100644
+--- a/arch/arm/boot/dts/overlays/vc4-fkms-v3d-overlay.dts
++++ b/arch/arm/boot/dts/overlays/vc4-fkms-v3d-overlay.dts
+@@ -5,77 +5,36 @@
+ /dts-v1/;
+ /plugin/;
+ 
++#include "cma-overlay.dts"
++
+ / {
+ 	compatible = "brcm,bcm2835";
+ 
+-	fragment@0 {
+-		target-path = "/chosen";
+-		__overlay__ {
+-			bootargs = "cma=256M";
+-		};
+-	};
+-
+ 	fragment@1 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=192M";
+-		};
+-	};
+-
+-	fragment@2 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=128M";
+-		};
+-	};
+-
+-	fragment@3 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=96M";
+-		};
+-	};
+-
+-	fragment@4 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=64M";
+-		};
+-	};
+-
+-	fragment@5 {
+ 		target = <&fb>;
+ 		__overlay__  {
+ 			status = "disabled";
+ 		};
+ 	};
+ 
+-	fragment@6 {
++	fragment@2 {
+ 		target = <&firmwarekms>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@7 {
++	fragment@3 {
+ 		target = <&v3d>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@8 {
++	fragment@4 {
+ 		target = <&vc4>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+-
+-	__overrides__ {
+-		cma-256 = <0>,"+0-1-2-3-4";
+-		cma-192 = <0>,"-0+1-2-3-4";
+-		cma-128 = <0>,"-0-1+2-3-4";
+-		cma-96  = <0>,"-0-1-2+3-4";
+-		cma-64  = <0>,"-0-1-2-3+4";
+-	};
+ };
+diff --git a/arch/arm/boot/dts/overlays/vc4-kms-v3d-overlay.dts b/arch/arm/boot/dts/overlays/vc4-kms-v3d-overlay.dts
+index c5f687e8bcb9..b40aa1d8f432 100644
+--- a/arch/arm/boot/dts/overlays/vc4-kms-v3d-overlay.dts
++++ b/arch/arm/boot/dts/overlays/vc4-kms-v3d-overlay.dts
+@@ -7,108 +7,75 @@
+ 
+ #include <dt-bindings/clock/bcm2835.h>
+ 
++#include "cma-overlay.dts"
++
+ / {
+ 	compatible = "brcm,bcm2835";
+ 
+-	fragment@0 {
+-		target-path = "/chosen";
+-		__overlay__ {
+-			bootargs = "cma=256M";
+-		};
+-	};
+-
+ 	fragment@1 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=192M";
+-		};
+-	};
+-
+-	fragment@2 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=128M";
+-		};
+-	};
+-
+-	fragment@3 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=96M";
+-		};
+-	};
+-
+-	fragment@4 {
+-		target-path = "/chosen";
+-		__dormant__ {
+-			bootargs = "cma=64M";
+-		};
+-	};
+-
+-	fragment@5 {
+ 		target = <&i2c2>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@6 {
++	fragment@2 {
+ 		target = <&fb>;
+ 		__overlay__  {
+ 			status = "disabled";
+ 		};
+ 	};
+ 
+-	fragment@7 {
++	fragment@3 {
+ 		target = <&pixelvalve0>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@8 {
++	fragment@4 {
+ 		target = <&pixelvalve1>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@9 {
++	fragment@5 {
+ 		target = <&pixelvalve2>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@10 {
++	fragment@6 {
+ 		target = <&hvs>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@11 {
++	fragment@7 {
+ 		target = <&hdmi>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@12 {
++	fragment@8 {
+ 		target = <&v3d>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@13 {
++	fragment@9 {
+ 		target = <&vc4>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@14 {
++	fragment@10 {
+ 		target = <&clocks>;
+ 		__overlay__  {
+ 			claim-clocks = <
+@@ -120,21 +87,21 @@
+ 		};
+ 	};
+ 
+-	fragment@15 {
++	fragment@11 {
+ 		target = <&vec>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@16 {
++	fragment@12 {
+ 		target = <&txp>;
+ 		__overlay__  {
+ 			status = "okay";
+ 		};
+ 	};
+ 
+-	fragment@17 {
++	fragment@13 {
+ 		target = <&hdmi>;
+ 		__dormant__  {
+ 			dmas;
+@@ -142,11 +109,6 @@
+ 	};
+ 
+ 	__overrides__ {
+-		cma-256 = <0>,"+0-1-2-3-4";
+-		cma-192 = <0>,"-0+1-2-3-4";
+-		cma-128 = <0>,"-0-1+2-3-4";
+-		cma-96  = <0>,"-0-1-2+3-4";
+-		cma-64  = <0>,"-0-1-2-3+4";
+ 		audio   = <0>,"!17";
+ 	};
+ };

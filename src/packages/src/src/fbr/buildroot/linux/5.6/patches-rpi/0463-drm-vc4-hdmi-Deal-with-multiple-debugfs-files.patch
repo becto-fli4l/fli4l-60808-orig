@@ -1,0 +1,34 @@
+From: Maxime Ripard <maxime@cerno.tech>
+Date: Thu, 16 Jan 2020 14:27:56 +0100
+Subject: drm/vc4: hdmi: Deal with multiple debugfs files
+
+The HDMI driver was registering a single debugfs file so far with the name
+hdmi_regs.
+
+Obviously, this is not going to work anymore when will have multiple HDMI
+controllers since we will end up trying to register two files with the same
+name.
+
+Let's use the ID to avoid that name conflict.
+
+Signed-off-by: Maxime Ripard <maxime@cerno.tech>
+---
+ drivers/gpu/drm/vc4/vc4_hdmi.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/vc4/vc4_hdmi.c b/drivers/gpu/drm/vc4/vc4_hdmi.c
+index 253079c56ae8..1ead995f7514 100644
+--- a/drivers/gpu/drm/vc4/vc4_hdmi.c
++++ b/drivers/gpu/drm/vc4/vc4_hdmi.c
+@@ -1377,7 +1377,10 @@ static int vc4_hdmi_bind(struct device *dev, struct device *master, void *data)
+ 	if (ret)
+ 		goto err_destroy_encoder;
+ 
+-	vc4_debugfs_add_file(drm, "hdmi_regs", vc4_hdmi_debugfs_regs, vc4_hdmi);
++	vc4_debugfs_add_file(drm,
++			     variant->id ? "hdmi1_regs" : "hdmi_regs",
++			     vc4_hdmi_debugfs_regs,
++			     vc4_hdmi);
+ 
+ 	return 0;
+ 

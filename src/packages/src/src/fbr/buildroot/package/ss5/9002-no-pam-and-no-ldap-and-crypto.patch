@@ -1,0 +1,130 @@
+diff -urN ss5-3.8.9.orig/common/Makefile ss5-3.8.9/common/Makefile
+--- ss5-3.8.9.orig/common/Makefile	2012-01-11 13:03:52.000000000 +0100
++++ ss5-3.8.9/common/Makefile	2015-03-29 16:46:23.636708868 +0200
+@@ -2,7 +2,7 @@
+ top_srcdir=..
+ top_builddir=..
+ 
+-COMMONOBJ  = SS5OpenLdap.o SS5Radius.o SS5MySql.o
++COMMONOBJ  = SS5Radius.o SS5MySql.o
+ 
+ 
+ CFLAGS=-g -O2 -DLINUX -D_FILE_OFFSET_BITS=64 -I . -I ../include   -ggdb -Wall -Wextra -pedantic -fno-strict-aliasing  -fPIC
+diff -urN ss5-3.8.9.orig/common/Makefile.in ss5-3.8.9/common/Makefile.in
+--- ss5-3.8.9.orig/common/Makefile.in	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/common/Makefile.in	2015-03-29 16:46:23.636708868 +0200
+@@ -2,7 +2,7 @@
+ top_srcdir=@top_srcdir@
+ top_builddir=@top_builddir@
+ 
+-COMMONOBJ  = SS5OpenLdap.o SS5Radius.o SS5MySql.o
++COMMONOBJ  = SS5Radius.o SS5MySql.o
+ 
+ 
+ CFLAGS=@CFLAGS@ -I . -I ../include  @EXTRA_CFLAGS@ -fPIC
+diff -urN ss5-3.8.9.orig/configure ss5-3.8.9/configure
+--- ss5-3.8.9.orig/configure	2012-01-11 10:33:26.000000000 +0100
++++ ss5-3.8.9/configure	2015-03-29 16:48:12.298680445 +0200
+@@ -4050,8 +4050,7 @@
+ 
+ 
+ 
+-for ac_header in arpa/inet.h fcntl.h netdb.h netinet/in.h stdlib.h string.h sys/ioctl.h sys/socket.h sys/time.h syslog.h unistd.h \
+-  security/pam_misc.h security/pam_appl.h
++for ac_header in arpa/inet.h fcntl.h netdb.h netinet/in.h stdlib.h string.h sys/ioctl.h sys/socket.h sys/time.h syslog.h unistd.h
+ do
+ as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
+ if { as_var=$as_ac_Header; eval "test \"\${$as_var+set}\" = set"; }; then
+@@ -6423,7 +6422,7 @@
+ # Checks for OS
+ if test "$OS" = "Linux"; then
+    CFLAGS="$CFLAGS -DLINUX -D_FILE_OFFSET_BITS=64"
+-   LIBS="-rdynamic -ldl -lssl -lldap -lpam -lpam_misc -lcrypto"
++   LIBS="-rdynamic -ldl -lssl -lcrypto"
+ fi;
+ if test "$OS" = "SunOS"; then
+    CFLAGS="$CFLAGS -DSOLARIS -fPIC -O2 -L/usr/local/lib -R/usr/local/lib"
+diff -urN ss5-3.8.9.orig/modules/mod_authen/Makefile.in ss5-3.8.9/modules/mod_authen/Makefile.in
+--- ss5-3.8.9.orig/modules/mod_authen/Makefile.in	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/modules/mod_authen/Makefile.in	2015-03-29 16:46:23.636708868 +0200
+@@ -4,7 +4,6 @@
+ MODULEOBJ  = 	SS5Mod_authentication.o		\
+ 		SS5Basic.o			\
+ 		SS5ExternalProgram.o		\
+-		SS5Pam.o			\
+ 		../../common/SS5Radius.o        \
+ 		SS5Supa.o
+ 
+diff -urN ss5-3.8.9.orig/modules/mod_authen/SS5Mod_authentication.c ss5-3.8.9/modules/mod_authen/SS5Mod_authentication.c
+--- ss5-3.8.9.orig/modules/mod_authen/SS5Mod_authentication.c	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/modules/mod_authen/SS5Mod_authentication.c	2015-03-29 16:46:23.636708868 +0200
+@@ -23,7 +23,6 @@
+ #include"SS5Basic.h"
+ #include"SS5Radius.h"
+ #include"SS5ExternalProgram.h"
+-#include"SS5Pam.h"
+ #include"SS5Supa.h"
+ 
+ #ifdef SS5_USE_GSSAPI
+@@ -244,7 +243,9 @@
+          */
+         switch( SS5SocksOpt.Authentication ) {
+           case EAP_AUTHENTICATION:    err = S5AuthProgramCheck(ci, pid);    break;
++#if 0
+   	  case PAM_AUTHENTICATION:    err = S5PamCheck(ci);                 break;
++#endif
+   	  case RADIUS_AUTHENTICATION: 
+             err = S5RadiusAuth(ci, pid);          
+ 
+diff -urN ss5-3.8.9.orig/modules/mod_author/Makefile.in ss5-3.8.9/modules/mod_author/Makefile.in
+--- ss5-3.8.9.orig/modules/mod_author/Makefile.in	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/modules/mod_author/Makefile.in	2015-03-29 16:46:23.636708868 +0200
+@@ -1,2 +1,2 @@
+ MODULE		= mod_authorization.so
+-MODULEOBJ	= SS5Mod_authorization.o ../../common/SS5OpenLdap.o ../../common/SS5MySql.o
++MODULEOBJ	= SS5Mod_authorization.o ../../common/SS5MySql.o
+diff -urN ss5-3.8.9.orig/modules/mod_author/SS5Mod_authorization.c ss5-3.8.9/modules/mod_author/SS5Mod_authorization.c
+--- ss5-3.8.9.orig/modules/mod_author/SS5Mod_authorization.c	2012-01-09 05:18:39.000000000 +0100
++++ ss5-3.8.9/modules/mod_author/SS5Mod_authorization.c	2015-03-29 16:46:23.636708868 +0200
+@@ -18,7 +18,6 @@
+ 
+ #include"SS5Main.h"
+ #include"SS5Mod_authorization.h"
+-#include"SS5OpenLdap.h"
+ #ifdef SS5_USE_MYSQL
+ #include"SS5MySql.h"
+ #include<mysql/mysql.h>
+@@ -31,7 +30,6 @@
+   #include<lber.h>
+ #endif
+ 
+-#include<ldap.h>
+ 
+ char *ss5ver=SS5_VERSION;
+ 
+diff -urN ss5-3.8.9.orig/modules/mod_socks4/Makefile.in ss5-3.8.9/modules/mod_socks4/Makefile.in
+--- ss5-3.8.9.orig/modules/mod_socks4/Makefile.in	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/modules/mod_socks4/Makefile.in	2015-03-29 16:46:23.636708868 +0200
+@@ -1,2 +1,2 @@
+ MODULE		= mod_socks4.so
+-MODULEOBJ	= SS5Mod_socks4.o ../../common/SS5OpenLdap.o
++MODULEOBJ	= SS5Mod_socks4.o
+diff -urN ss5-3.8.9.orig/modules/mod_socks5/Makefile.in ss5-3.8.9/modules/mod_socks5/Makefile.in
+--- ss5-3.8.9.orig/modules/mod_socks5/Makefile.in	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/modules/mod_socks5/Makefile.in	2015-03-29 16:46:23.636708868 +0200
+@@ -1,2 +1,2 @@
+ MODULE		= mod_socks5.so
+-MODULEOBJ	= SS5Mod_socks5.o ../../common/SS5OpenLdap.o
++MODULEOBJ	= SS5Mod_socks5.o
+diff -urN ss5-3.8.9.orig/src/Makefile.in ss5-3.8.9/src/Makefile.in
+--- ss5-3.8.9.orig/src/Makefile.in	2011-08-26 14:28:01.000000000 +0200
++++ ss5-3.8.9/src/Makefile.in	2015-03-29 16:46:23.636708868 +0200
+@@ -13,7 +13,7 @@
+          SS5GSSApi.o		\
+          SS5Modules.o
+ 
+-COMMONOBJ = ../common/SS5OpenLdap.o ../common/SS5Radius.o ../common/SS5MySql.o
++COMMONOBJ = ../common/SS5Radius.o ../common/SS5MySql.o
+ 
+ SRV     = ss5srv
+ SRVOBJ  = SS5Srv.o

@@ -1,0 +1,85 @@
+diff -urN eagle-usb-2.3.3.orig/driver/firmware/Makefile eagle-usb-2.3.3/driver/firmware/Makefile
+--- eagle-usb-2.3.3.orig/driver/firmware/Makefile	2004-12-30 17:39:36.000000000 +0100
++++ eagle-usb-2.3.3/driver/firmware/Makefile	2013-11-30 11:28:43.327890874 +0100
+@@ -13,7 +13,8 @@
+ 
+ -include ../../Makefile.common
+ 
+-CFLAGS=-O2 -pipe -Wall -pedantic
++CFLAGS=-O2 -pipe
++COPTS =$(CFLAGS) -Wall -pedantic
+ 
+ POTS_DIR=sagem/pots
+ ISDN_DIR=sagem/isdn
+@@ -29,7 +30,7 @@
+ 	./buildDSP -d $(ISDN_DIR) $@
+ 
+ buildDSP: builddsp.c
+-	$(CC) $(CFLAGS) builddsp.c -o buildDSP
++	$(HOSTCC) $(COPTS) builddsp.c -o buildDSP
+ 
+ install:
+ 	$(INSTALL) -d $(EU_DSP_DIR) && \
+diff -urN eagle-usb-2.3.3.orig/driver/user/Makefile eagle-usb-2.3.3/driver/user/Makefile
+--- eagle-usb-2.3.3.orig/driver/user/Makefile	2005-05-18 21:56:54.000000000 +0200
++++ eagle-usb-2.3.3/driver/user/Makefile	2013-11-30 11:28:43.327890874 +0100
+@@ -9,16 +9,17 @@
+ VERSION=$(shell cat ../../VERSION)
+ 
+ 
+-CFLAGS=-O2 -pipe -Wall -pedantic -DLINUX -g -DCONF_DIR="\"$(EU_DIR)\"" -DBIN_DIR="\"$(EU_DSP_DIR)\"" '-DEAGLEUSBVERSION="$(VERSION)"'
++CFLAGS=-O2 -pipe
++COPTS=$(CFLAGS) -Wall -pedantic -DLINUX -g -DCONF_DIR="\"$(EU_DIR)\"" -DBIN_DIR="\"$(EU_DSP_DIR)\"" '-DEAGLEUSBVERSION="$(VERSION)"'
+ 
+ ifeq ($(USE_CMVS),1)
+-CFLAGS+=-DUSE_CMVS
++COPTS+=-DUSE_CMVS
+ endif
+ 
+ all: eaglectrl
+ 
+ eaglectrl: eaglectrl.c ../eagle-usb.h
+-	$(CC) $(CFLAGS) $< -o $@
++	$(CC) $(COPTS) $< -o $@
+ 
+ install:
+ 	$(INSTALL) -d $(SBINDIR) && \
+diff -urN eagle-usb-2.3.3.orig/pppoa/Makefile eagle-usb-2.3.3/pppoa/Makefile
+--- eagle-usb-2.3.3.orig/pppoa/Makefile	2004-12-30 17:39:36.000000000 +0100
++++ eagle-usb-2.3.3/pppoa/Makefile	2013-11-30 11:28:56.379783316 +0100
+@@ -18,27 +18,28 @@
+ # Program paths
+ #PPPOA_PATH=$(SBINDIR)/pppoa
+ #PATHS='-DPPPOA_PATH="$(PPPOA_PATH)"' '-DPPPD_PATH="$(PPPD_PATH)"'
+-CFLAGS= -O2 -Wall -Wstrict-prototypes -ansi -pedantic $(DEFINES) $(PATHS)
++CFLAGS= -O2
++COPTS = $(CFLAGS) -Wall -Wstrict-prototypes -ansi -pedantic $(DEFINES) $(PATHS)
+ 
+ all: pppoa
+ 
+ pppoa: pppoa.o if.o debug.o common.o ppp.o
+-	$(CC) -o pppoa pppoa.o if.o debug.o common.o ppp.o
++	$(CC) $(LDFLAGS) -o pppoa pppoa.o if.o debug.o common.o ppp.o
+ 
+ pppoa.o: pppoa.c pppoa.h
+-	$(CC) $(CFLAGS) '-DVERSION="$(VERSION)"' -c -o pppoa.o pppoa.c
++	$(CC) $(COPTS) '-DVERSION="$(VERSION)"' -c -o pppoa.o pppoa.c
+ 
+ ppp.o: ppp.c pppoa.h
+-	$(CC) $(CFLAGS) '-DVERSION="$(VERSION)"' -c -o ppp.o ppp.c
++	$(CC) $(COPTS) '-DVERSION="$(VERSION)"' -c -o ppp.o ppp.c
+ 
+ if.o: if.c pppoa.h
+-	$(CC) $(CFLAGS) '-DVERSION="$(VERSION)"' -c -o if.o if.c
++	$(CC) $(COPTS) '-DVERSION="$(VERSION)"' -c -o if.o if.c
+ 
+ common.o: common.c pppoa.h
+-	$(CC) $(CFLAGS) '-DVERSION="$(VERSION)"' -c -o common.o common.c
++	$(CC) $(COPTS) '-DVERSION="$(VERSION)"' -c -o common.o common.c
+ 
+ debug.o: debug.c pppoa.h
+-	$(CC) $(CFLAGS) '-DVERSION="$(VERSION)"' -c -o debug.o debug.c
++	$(CC) $(COPTS) '-DVERSION="$(VERSION)"' -c -o debug.o debug.c
+ 
+ install: pppoa
+ 	$(INSTALL) -d $(SBINDIR)

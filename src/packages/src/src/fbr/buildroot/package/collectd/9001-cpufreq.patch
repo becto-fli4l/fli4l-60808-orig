@@ -1,0 +1,55 @@
+diff -purN collectd-5.7.1.orig/src/cpufreq.c collectd-5.7.1/src/cpufreq.c
+--- collectd-5.7.1.orig/src/cpufreq.c	2017-01-23 08:53:57.696448545 +0100
++++ collectd-5.7.1/src/cpufreq.c	2017-08-30 16:40:15.007517989 +0200
+@@ -25,9 +25,13 @@
+ #include "common.h"
+ #include "plugin.h"
+ 
++#define SYSFS_ATTR_SCALING "scaling_cur_freq"
++#define SYSFS_ATTR_CPUINFO "cpuinfo_cur_freq"
++
+ static int num_cpu = 0;
++static char const *sysfs_attr = SYSFS_ATTR_SCALING;
+ 
+-static int cpufreq_init(void) {
++static void cpufreq_get_num_cpus(void) {
+   int status;
+   char filename[256];
+ 
+@@ -35,9 +39,8 @@ static int cpufreq_init(void) {
+ 
+   while (1) {
+     status = snprintf(filename, sizeof(filename),
+-                      "/sys/devices/system/cpu/cpu%d/cpufreq/"
+-                      "scaling_cur_freq",
+-                      num_cpu);
++                      "/sys/devices/system/cpu/cpu%d/cpufreq/%s",
++                      num_cpu, sysfs_attr);
+     if ((status < 1) || ((unsigned int)status >= sizeof(filename)))
+       break;
+ 
+@@ -46,6 +49,15 @@ static int cpufreq_init(void) {
+ 
+     num_cpu++;
+   }
++}
++
++static int cpufreq_init(void) {
++
++  cpufreq_get_num_cpus();
++  if (num_cpu == 0) {
++    sysfs_attr = SYSFS_ATTR_CPUINFO;
++    cpufreq_get_num_cpus();
++  }
+ 
+   INFO("cpufreq plugin: Found %d CPU%s", num_cpu, (num_cpu == 1) ? "" : "s");
+ 
+@@ -71,7 +83,7 @@ static int cpufreq_read(void) {
+   for (int i = 0; i < num_cpu; i++) {
+     char filename[PATH_MAX];
+     snprintf(filename, sizeof(filename),
+-             "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", i);
++             "/sys/devices/system/cpu/cpu%d/cpufreq/%s", i, sysfs_attr);
+ 
+     value_t v;
+     if (parse_value_file(filename, &v, DS_TYPE_GAUGE) != 0) {

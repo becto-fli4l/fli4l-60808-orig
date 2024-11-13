@@ -1,0 +1,177 @@
+diff -purN hostapd-2.6.orig/hostapd/defconfig hostapd-2.6/hostapd/defconfig
+--- hostapd-2.6.orig/hostapd/defconfig	2016-10-02 20:51:11.000000000 +0200
++++ hostapd-2.6/hostapd/defconfig	2017-03-04 19:42:40.209061240 +0100
+@@ -119,6 +119,8 @@ CONFIG_EAP_TTLS=y
+ #CONFIG_WPS_UPNP=y
+ # Enable WPS support with NFC config method
+ #CONFIG_WPS_NFC=y
++# Enable loop over all control interfaces for WPS commands
++#CONFIG_WPS_FOREACH=y
+ 
+ # EAP-IKEv2
+ #CONFIG_EAP_IKEV2=y
+diff -purN hostapd-2.6.orig/src/ap/wps_hostapd.c hostapd-2.6/src/ap/wps_hostapd.c
+--- hostapd-2.6.orig/src/ap/wps_hostapd.c	2016-10-02 20:51:11.000000000 +0200
++++ hostapd-2.6/src/ap/wps_hostapd.c	2017-03-04 19:42:40.209061240 +0100
+@@ -43,6 +43,7 @@ static void hostapd_wps_ap_pin_timeout(v
+ static void hostapd_wps_nfc_clear(struct wps_context *wps);
+ 
+ 
++#ifdef CONFIG_WPS_FOREACH
+ struct wps_for_each_data {
+ 	int (*func)(struct hostapd_data *h, void *ctx);
+ 	void *ctx;
+@@ -90,6 +91,7 @@ static int hostapd_wps_for_each(struct h
+ 	return iface->interfaces->for_each_interface(iface->interfaces,
+ 						     wps_for_each, &data);
+ }
++#endif /* CONFIG_WPS_FOREACH */
+ 
+ 
+ static int hostapd_wps_new_psk_cb(void *ctx, const u8 *mac_addr,
+@@ -242,7 +244,11 @@ static void hostapd_wps_reg_success_cb(v
+ 	data.uuid_e = uuid_e;
+ 	data.dev_pw = dev_pw;
+ 	data.dev_pw_len = dev_pw_len;
++#ifdef CONFIG_WPS_FOREACH
+ 	hostapd_wps_for_each(hapd, wps_stop_registrar, &data);
++#else /* CONFIG_WPS_FOREACH */
++	wps_stop_registrar(hapd, &data);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -623,7 +629,11 @@ static int hapd_wps_cred_cb(struct hosta
+ static int hostapd_wps_cred_cb(void *ctx, const struct wps_credential *cred)
+ {
+ 	struct hostapd_data *hapd = ctx;
++#ifdef CONFIG_WPS_FOREACH
+ 	return hostapd_wps_for_each(hapd, hapd_wps_cred_cb, (void *) cred);
++#else /* CONFIG_WPS_FOREACH */
++	return hapd_wps_cred_cb(hapd, (void *) cred);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -704,7 +714,11 @@ static void hostapd_pwd_auth_fail(struct
+ 	hapd->wps_stats.failure_reason = WPS_EI_AUTH_FAILURE;
+ 	os_memcpy(hapd->wps_stats.peer_addr, data->peer_macaddr, ETH_ALEN);
+ 
++#ifdef CONFIG_WPS_FOREACH
+ 	hostapd_wps_for_each(hapd, wps_pwd_auth_fail, data);
++#else /* CONFIG_WPS_FOREACH */
++	wps_pwd_auth_fail(hapd, data);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -727,7 +741,11 @@ static int wps_ap_pin_success(struct hos
+ 
+ static void hostapd_wps_ap_pin_success(struct hostapd_data *hapd)
+ {
++#ifdef CONFIG_WPS_FOREACH
+ 	hostapd_wps_for_each(hapd, wps_ap_pin_success, NULL);
++#else /* CONFIG_WPS_FOREACH */
++	wps_ap_pin_success(hapd, NULL);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -1305,8 +1323,13 @@ int hostapd_wps_add_pin(struct hostapd_d
+ 			return -1;
+ 		data.uuid = u;
+ 	}
++#ifdef CONFIG_WPS_FOREACH
+ 	if (hostapd_wps_for_each(hapd, wps_add_pin, &data) < 0)
+ 		return -1;
++#else /* CONFIG_WPS_FOREACH */
++	if (wps_add_pin(hapd,  &data) < 0)
++		return -1;
++#endif /* CONFIG_WPS_FOREACH */
+ 	return data.added ? 0 : -1;
+ }
+ 
+@@ -1338,7 +1361,11 @@ int hostapd_wps_button_pushed(struct hos
+ 
+ 	os_memset(&ctx, 0, sizeof(ctx));
+ 	ctx.p2p_dev_addr = p2p_dev_addr;
++#ifdef CONFIG_WPS_FOREACH
+ 	ret = hostapd_wps_for_each(hapd, wps_button_pushed, &ctx);
++#else /* CONFIG_WPS_FOREACH */
++	ret = wps_button_pushed(hapd, &ctx);
++#endif /* CONFIG_WPS_FOREACH */
+ 	if (ret == 0 && !ctx.count)
+ 		ret = -1;
+ 	return ret;
+@@ -1369,7 +1396,11 @@ int hostapd_wps_cancel(struct hostapd_da
+ 	int ret;
+ 
+ 	os_memset(&ctx, 0, sizeof(ctx));
++#ifdef CONFIG_WPS_FOREACH
+ 	ret = hostapd_wps_for_each(hapd, wps_cancel, &ctx);
++#else /* CONFIG_WPS_FOREACH */
++	ret = wps_cancel(hapd, &ctx);
++#endif /* CONFIG_WPS_FOREACH */
+ 	if (ret == 0 && !ctx.count)
+ 		ret = -1;
+ 	return ret;
+@@ -1589,7 +1620,11 @@ static int wps_ap_pin_disable(struct hos
+ void hostapd_wps_ap_pin_disable(struct hostapd_data *hapd)
+ {
+ 	wpa_printf(MSG_DEBUG, "WPS: Disabling AP PIN");
++#ifdef CONFIG_WPS_FOREACH
+ 	hostapd_wps_for_each(hapd, wps_ap_pin_disable, NULL);
++#else /* CONFIG_WPS_FOREACH */
++	wps_ap_pin_disable(hapd, NULL);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -1625,7 +1660,11 @@ const char * hostapd_wps_ap_pin_random(s
+ 		return NULL;
+ 	os_snprintf(data.pin_txt, sizeof(data.pin_txt), "%08u", pin);
+ 	data.timeout = timeout;
++#ifdef CONFIG_WPS_FOREACH
+ 	hostapd_wps_for_each(hapd, wps_ap_pin_set, &data);
++#else /* CONFIG_WPS_FOREACH */
++	wps_ap_pin_set(hapd, &data);
++#endif /* CONFIG_WPS_FOREACH */
+ 	return hapd->conf->ap_pin;
+ }
+ 
+@@ -1646,7 +1685,11 @@ int hostapd_wps_ap_pin_set(struct hostap
+ 	if (os_snprintf_error(sizeof(data.pin_txt), ret))
+ 		return -1;
+ 	data.timeout = timeout;
++#ifdef CONFIG_WPS_FOREACH
+ 	return hostapd_wps_for_each(hapd, wps_ap_pin_set, &data);
++#else /* CONFIG_WPS_FOREACH */
++	return wps_ap_pin_set(hapd, &data);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -1660,7 +1703,11 @@ static int wps_update_ie(struct hostapd_
+ 
+ void hostapd_wps_update_ie(struct hostapd_data *hapd)
+ {
++#ifdef CONFIG_WPS_FOREACH
+ 	hostapd_wps_for_each(hapd, wps_update_ie, NULL);
++#else /* CONFIG_WPS_FOREACH */
++	wps_update_ie(hapd, NULL);
++#endif /* CONFIG_WPS_FOREACH */
+ }
+ 
+ 
+@@ -1744,7 +1791,11 @@ static int hostapd_wps_add_nfc_password_
+ 	data.oob_dev_pw = attr->oob_dev_password;
+ 	data.oob_dev_pw_len = attr->oob_dev_password_len;
+ 	data.added = 0;
++#ifdef CONFIG_WPS_FOREACH
+ 	if (hostapd_wps_for_each(hapd, wps_add_nfc_password_token, &data) < 0)
++#else /* CONFIG_WPS_FOREACH */
++	if (wps_add_nfc_password_token(hapd, &data) < 0)
++#endif /* CONFIG_WPS_FOREACH */
+ 		return -1;
+ 	return data.added ? 0 : -1;
+ }

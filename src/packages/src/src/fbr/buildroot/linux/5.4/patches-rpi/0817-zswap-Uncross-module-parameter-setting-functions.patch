@@ -1,0 +1,38 @@
+From: Phil Elwell <phil@raspberrypi.com>
+Date: Tue, 19 May 2020 15:47:02 +0100
+Subject: zswap: Uncross module parameter setting functions
+
+The "compressor" and "zpool" parameters of the zswap module each has
+a custom setter function that calls __zswap_param_set with specific
+parameters, but the "zpool" setter uses parameters that are correct for
+the "compressor" parameter, and vice-versa.
+
+Fix this by swapping the function bodies over.
+
+Fixes: 90b0fc26d5db ("zswap: change zpool/compressor at runtime")
+
+Signed-off-by: Phil Elwell <phil@raspberrypi.com>
+---
+ mm/zswap.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/mm/zswap.c b/mm/zswap.c
+index 46a322316e52..b0fc8d9ffe1f 100644
+--- a/mm/zswap.c
++++ b/mm/zswap.c
+@@ -761,13 +761,13 @@ static int __zswap_param_set(const char *val, const struct kernel_param *kp,
+ static int zswap_compressor_param_set(const char *val,
+ 				      const struct kernel_param *kp)
+ {
+-	return __zswap_param_set(val, kp, zswap_zpool_type, NULL);
++	return __zswap_param_set(val, kp, NULL, zswap_compressor);
+ }
+ 
+ static int zswap_zpool_param_set(const char *val,
+ 				 const struct kernel_param *kp)
+ {
+-	return __zswap_param_set(val, kp, NULL, zswap_compressor);
++	return __zswap_param_set(val, kp, zswap_zpool_type, NULL);
+ }
+ 
+ static int zswap_enabled_param_set(const char *val,

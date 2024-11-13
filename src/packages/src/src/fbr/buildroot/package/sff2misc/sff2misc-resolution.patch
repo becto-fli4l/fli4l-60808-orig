@@ -1,0 +1,179 @@
+--- sff-1.0/sff2misc.c.orig	2009-01-22 13:12:32.562074530 +0100
++++ sff-1.0/sff2misc.c	2009-01-22 13:12:54.273319744 +0100
+@@ -18,20 +18,22 @@
+  * First check in.
+  *
+  */
++#include <stdlib.h>
+ #include <stdio.h>
+ 
+ #include "sff.h"
+ 
+ void usage(void) {
+-	fprintf(stderr, "usage: sff2g3 -fmt SFFfile OutputfileBasename\n");
++	fprintf(stderr, "usage: sff2misc -fmt SFFfile OutputfileBasename\n");
+ 	fprintf(stderr, "       where fmt is:\n");
+ 	fprintf(stderr, "         p  to produce PostScript\n");
+ 	fprintf(stderr, "         j  to produce JPEG\n");
++	fprintf(stderr, "         d  to produce double height JPEG\n");
+ 	fprintf(stderr, "         m  to produce PBM\n");
+ 	exit(1);
+ }
+ 
+-void main(int argc, char **argv) {
++int main(int argc, char **argv) {
+ 	sff_file *f;
+ 	int fmt;
+ 
+@@ -41,6 +43,9 @@
+ 		usage();
+ 	switch (argv[1][1]) {
+ 		case 'p':
++			fmt = 3;
++			break;
++		case 'd':
+ 			fmt = 2;
+ 			break;
+ 		case 'j':
+@@ -58,4 +63,6 @@
+ 		exit(1);
+ 	}
+ 	decodeSFF(f, argv[3], fmt);
++
++	return (0);
+ }
+diff -ru sff-1.0.org/sfffunc.c sff-1.0/sfffunc.c
+--- sff-1.0.org/sfffunc.c	1998-10-11 22:22:07.000000000 +0200
++++ sff-1.0/sfffunc.c	2006-01-31 04:53:27.000000000 +0100
+@@ -347,6 +347,7 @@
+ 	fprintf(f, "%%%%BoundingBox: 0 0 595 842\n");
+ 	fprintf(f, "%%%%DocumentPaperSizes: A4\n");
+ 	fprintf(f, "%%%%EndComments\n");
++	fprintf(f, "%%%%EndProlog\n");
+ }
+ 
+ static void write_ps_pag_header(FILE *f, int page, int height) {
+@@ -354,9 +355,9 @@
+ 	fprintf(f, "5 dict begin\n");
+ 	fprintf(f, "0.10 832.0 translate\n");
+ 	fprintf(f, "585.0 -822.0 scale\n");
+-	fprintf(f, "/scanline 217 string def\n");
++	fprintf(f, "/scanline 216 string def\n");
+ 	fprintf(f, "1728 %d 1\n", height);
+-	fprintf(f, "[ 1728 0 0 2106 0 0 ]\n");
++	fprintf(f, "[ 1728 0 0 %d 0 0 ]\n", height);
+ 	fprintf(f, "{ currentfile scanline readhexstring pop }\n");
+ 	fprintf(f, "image\n");
+ }
+@@ -398,12 +399,13 @@
+ 			drawrun = drawrunP;
+ 			break;
+ 		case 1:
++		case 2:
+ 			cinfo.err = jpeg_std_error(&jerr);
+ 			jpeg_create_compress(&cinfo);
+ 			ext = ".jpg";
+ 			drawrun = drawrunJ;
+ 			break;
+-		case 2:
++		case 3:
+ 			ext = ".ps";
+ 			sprintf(outname, "%s%s", name, ext);
+ 			if ((out = fopen(outname, "w")) == NULL) {
+@@ -428,13 +430,14 @@
+ 				fprintf(out, "1728 %d\n", height);
+ 				break;
+ 			case 1:
++			case 2:
+ 				if ((out = fopen(outname, "w")) == NULL) {
+ 					perror(outname);
+ 					exit(errno);
+ 				}
+ 				jpeg_stdio_dest(&cinfo, out);
+ 				cinfo.image_width = 1728;
+-				cinfo.image_height = height;
++				cinfo.image_height = height * format;
+ 				cinfo.input_components = 1;
+ 				cinfo.in_color_space = JCS_GRAYSCALE;
+ 				cinfo.density_unit = 1;
+@@ -444,17 +447,18 @@
+ 				jpeg_set_quality(&cinfo, 40, FALSE);
+ 				jpeg_start_compress(&cinfo, TRUE);
+ 				break;
+-			case 2:
++			case 3:
+ 				write_ps_pag_header(out, pc, height);
+ 				break;
+ 		}
+ 		do {
+ 			switch (format) {
+ 				case 0:
+-				case 2:
++				case 3:
+ 					memset(outbuf, 0, sizeof(outbuf));
+ 					break;
+ 				case 1:
++				case 2:
+ 					memset(outbuf, 0xff, sizeof(outbuf));
+ 					break;
+ 			}
+@@ -466,13 +470,19 @@
+ 						case 0:
+ 							/* PBM */
+ 							fwrite(outbuf, 216, 1, out);
++				                        if (ff->paghdr.vres == 0)
++							   fwrite(outbuf, 216, 1, out);
+ 							break;
+ 						case 1:
+ 							/* JPEG */
++						case 2:
++							/* JPEG  double height*/
+ 							row_pointer[0] = outbuf;
+ 							jpeg_write_scanlines(&cinfo, row_pointer, 1);
++							if (format == 2)
++								jpeg_write_scanlines(&cinfo, row_pointer, 1); 
+ 							break;
+-						case 2:
++						case 3:
+ 							/* PostScript */
+ 							write_ps_scanline(out);
+ 							break;
+@@ -495,12 +505,17 @@
+ 					switch (format) {
+ 						case 0:
+ 							fwrite(outbuf, 216, 1, out);
++				                        if (ff->paghdr.vres == 0)
++							   fwrite(outbuf, 216, 1, out);
+ 							break;
+ 						case 1:
++						case 2:
+ 							row_pointer[0] = outbuf;
+ 							jpeg_write_scanlines(&cinfo, row_pointer, 1);
++							if (format == 2)
++								jpeg_write_scanlines(&cinfo, row_pointer, 1); 
+ 							break;
+-						case 2:
++						case 3:
+ 							/* PostScript */
+ 							write_ps_scanline(out);
+ 							break;
+@@ -514,16 +529,17 @@
+ 				fclose(out);
+ 				break;
+ 			case 1:
++                        case 2:
+ 				jpeg_finish_compress(&cinfo);
+ 				fclose(out);
+ 				break;
+-			case 2:
++			case 3:
+ 				write_ps_pag_trailer(out);
+ 				break;
+ 		}
+ 		pc++;
+ 	} while (!done);
+-	if (format == 2) {
++	if (format == 3) {
+ 		write_ps_doc_trailer(out);
+ 		fclose(out);
+ 	}

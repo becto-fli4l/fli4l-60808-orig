@@ -1,0 +1,171 @@
+diff -purN dibbler-1.0.1.orig/IfaceMgr/IfaceMgr.cpp dibbler-1.0.1/IfaceMgr/IfaceMgr.cpp
+--- dibbler-1.0.1.orig/IfaceMgr/IfaceMgr.cpp	2016-06-20 08:29:56.992793916 +0200
++++ dibbler-1.0.1/IfaceMgr/IfaceMgr.cpp	2016-06-20 08:57:35.197175943 +0200
+@@ -338,7 +338,8 @@ void TIfaceMgr::optionToEnv(TNotifyScrip
+                 params.addPrefix(prefix->getPrefix(),
+                                  prefix->getPrefixLength(),
+                                  prefix->getPref(),
+-                                 prefix->getValid());
++                                 prefix->getValid(),
++                                 txtPrefix);
+             }
+         }
+         break;
+@@ -350,26 +351,23 @@ void TIfaceMgr::optionToEnv(TNotifyScrip
+             while (SPtr<TOpt> subopt = opt->getOption()) {
+                 if (subopt->getOptType() != OPTION_RTPREFIX)
+                     continue; // ignore other options
+-                params.addParam("OPTION_NEXT_HOP_RTPREFIX", opt->getPlain() + " " + subopt->getPlain());
++                params.addParam("OPTION_NEXT_HOP_RTPREFIX", opt->getPlain() + " " + subopt->getPlain(), txtPrefix);
+             }
+         } else {
+             // no suboptions, just NEXT_HOP (default router, without ::/0 route specified)
+             // Will define something like this: OPTION_NEXT_HOP=2001:db8:1::1
+-            params.addParam("OPTION_NEXT_HOP", opt->getPlain());
++            params.addParam("OPTION_NEXT_HOP", opt->getPlain(), txtPrefix);
+         }
+         break;
+     }
+     case OPTION_RTPREFIX: {
+-        params.addParam("OPTION_RTPREFIX", opt->getPlain());
++        params.addParam("OPTION_RTPREFIX", opt->getPlain(), txtPrefix);
+         break;
+     }
+     default: {
+       stringstream tmp;
+-      if (txtPrefix.length()) {
+-        tmp << txtPrefix << "_";
+-      }
+       tmp << "OPTION" << opt->getOptType();
+-      params.addParam(tmp.str().c_str(), opt->getPlain());
++      params.addParam(tmp.str().c_str(), opt->getPlain(), txtPrefix);
+       break;
+     }
+     }
+@@ -480,6 +478,7 @@ void TIfaceMgr::notifyScripts(const std:
+     }
+ 
+     // add options from client message
++    params.resetCounters();
+     question->firstOption();
+     while( SPtr<TOpt> opt = question->getOption() ) {
+         optionToEnv(params, opt, "CLNT");
+diff -purN dibbler-1.0.1.orig/Misc/ScriptParams.cpp dibbler-1.0.1/Misc/ScriptParams.cpp
+--- dibbler-1.0.1.orig/Misc/ScriptParams.cpp	2013-10-27 19:33:06.000000000 +0100
++++ dibbler-1.0.1/Misc/ScriptParams.cpp	2016-06-20 08:57:35.197175943 +0200
+@@ -17,10 +17,11 @@
+ using namespace std;
+ 
+ TNotifyScriptParams::TNotifyScriptParams() 
+-    :envCnt(0), ipCnt(1), pdCnt(1) {
++    :envCnt(0) {
+     for (int i = 0; i<512; i++) {
+         env[i] = 0;
+     }
++    resetCounters();
+ }
+ 
+ /// adds parameter to parameters list
+@@ -29,17 +30,22 @@ TNotifyScriptParams::TNotifyScriptParams
+ /// @param value value to be copied
+ ///
+ /// @return next unused offset
+-void TNotifyScriptParams::addParam(const std::string& name, const std::string& value)
++void TNotifyScriptParams::addParam(const std::string& name, const std::string& value,
++                                   std::string prefix /*= std::string("")*/ )
+ {
+     if (envCnt>=MAX_PARAMS) {
+         Log(Error) << "Too many parameter for script: " << envCnt << LogEnd;
+         return;
+     }
+ 
++    if (prefix.length()) {
++        prefix += "_";
++    }
++
+     // +2, because = and \n have to be added.
+-    size_t len = name.length() + value.length() + 2;
++    size_t len = name.length() + prefix.length() + value.length() + 2;
+     char * tmp = new char[len];
+-    snprintf(tmp, len, "%s=%s", name.c_str(), value.c_str());
++    snprintf(tmp, len, "%s%s=%s", prefix.c_str(), name.c_str(), value.c_str());
+     env[envCnt] = tmp;
+     envCnt++;
+ }
+@@ -54,23 +60,27 @@ TNotifyScriptParams::~TNotifyScriptParam
+     }
+ }
+ 
++void TNotifyScriptParams::resetCounters() {
++    ipCnt = 1;
++    pdCnt = 1;
++}
+ 
+ void TNotifyScriptParams::addAddr(SPtr<TIPv6Addr> addr, unsigned int prefered, unsigned int valid, 
+                                   std::string txt /*= std::string("")*/ ) {
+     stringstream name, value;
+     name << "ADDR" << ipCnt;
+-    addParam(name.str(), addr->getPlain());
++    addParam(name.str(), addr->getPlain(), txt);
+     name.str("");
+ 
+     name << "ADDR" << ipCnt << "PREF";
+     value << prefered;
+-    addParam(name.str(), value.str());
++    addParam(name.str(), value.str(), txt);
+     name.str("");
+     value.str("");
+ 
+     name << "ADDR" << ipCnt << "VALID";
+     value << valid;
+-    addParam(name.str(), value.str());
++    addParam(name.str(), value.str(), txt);
+     ipCnt++;
+ }
+ 
+@@ -78,24 +88,24 @@ void TNotifyScriptParams::addPrefix(SPtr
+                                     unsigned int valid, std::string txt /*= std::string("") */ ) {
+     stringstream name, value;
+     name << "PREFIX" << pdCnt;
+-    addParam(name.str(), prefix->getPlain());
++    addParam(name.str(), prefix->getPlain(), txt);
+     name.str("");
+ 
+     name << "PREFIX" << pdCnt << "LEN";
+     value << length;
+-    addParam(name.str(), value.str());
++    addParam(name.str(), value.str(), txt);
+     name.str("");
+     value.str("");
+ 
+     name << "PREFIX" << pdCnt << "PREF";
+     value << prefered;
+-    addParam(name.str(), value.str());
++    addParam(name.str(), value.str(), txt);
+     name.str("");
+     value.str("");
+ 
+     name << "PREFIX" << pdCnt << "VALID";
+     value << valid;
+-    addParam(name.str(), value.str());
++    addParam(name.str(), value.str(), txt);
+     name.str("");
+     value.str("");
+ 
+diff -purN dibbler-1.0.1.orig/Misc/ScriptParams.h dibbler-1.0.1/Misc/ScriptParams.h
+--- dibbler-1.0.1.orig/Misc/ScriptParams.h	2013-10-27 19:33:06.000000000 +0100
++++ dibbler-1.0.1/Misc/ScriptParams.h	2016-06-20 08:57:35.197175943 +0200
+@@ -23,11 +23,12 @@ public:
+     int pdCnt;
+     TNotifyScriptParams();
+     ~TNotifyScriptParams();
+-    void addParam(const std::string& name, const std::string& value);
++    void addParam(const std::string& name, const std::string& value, std::string prefix = std::string(""));
+     void addAddr(SPtr<TIPv6Addr> addr, unsigned int prefered, unsigned int valid, 
+                  std::string txt = std::string("") );
+     void addPrefix(SPtr<TIPv6Addr> prefix, unsigned short length, unsigned int prefered, 
+                    unsigned int valid, std::string txt = std::string(""));
++    void resetCounters();
+ };
+ 
+ #endif

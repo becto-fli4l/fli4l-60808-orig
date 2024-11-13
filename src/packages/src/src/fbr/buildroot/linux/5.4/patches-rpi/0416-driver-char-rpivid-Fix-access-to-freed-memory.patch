@@ -1,0 +1,28 @@
+From: Dave Stevenson <dave.stevenson@raspberrypi.com>
+Date: Tue, 21 Jan 2020 16:44:14 +0000
+Subject: driver: char: rpivid: Fix access to freed memory
+
+The error path during probe frees the private memory block, and
+then promptly dereferences it to log an error message.
+
+Use the base device instead of the pointer to it in the private
+structure.
+
+Signed-off-by: Dave Stevenson <dave.stevenson@raspberrypi.com>
+---
+ drivers/char/broadcom/rpivid-mem.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/char/broadcom/rpivid-mem.c b/drivers/char/broadcom/rpivid-mem.c
+index fa97649b86c0..fbf3d4f3fe0c 100644
+--- a/drivers/char/broadcom/rpivid-mem.c
++++ b/drivers/char/broadcom/rpivid-mem.c
+@@ -229,7 +229,7 @@ static int rpivid_mem_probe(struct platform_device *pdev)
+ failed_get_resource:
+ 	kfree(priv);
+ failed_inst_alloc:
+-	dev_err(priv->dev, "could not load rpivid_mem");
++	dev_err(&pdev->dev, "could not load rpivid_mem");
+ 	return err;
+ }
+ 

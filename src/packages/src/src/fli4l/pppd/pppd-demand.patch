@@ -1,0 +1,150 @@
+diff -ur ppp-orig/pppd/demand.c ppp/pppd/demand.c
+--- ppp-orig/pppd/demand.c	2006-02-10 11:13:32.656232516 +0100
++++ ppp/pppd/demand.c	2006-02-10 11:15:54.693435655 +0100
+@@ -41,6 +41,8 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <netdb.h>
++#include <unistd.h>
++#include <syslog.h>
+ #include <sys/param.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+@@ -48,6 +50,8 @@
+ #include <sys/resource.h>
+ #include <sys/stat.h>
+ #include <sys/socket.h>
++#include <netinet/in.h>
++#include <arpa/inet.h>
+ #ifdef PPP_FILTER
+ #include <net/if.h>
+ #include <net/bpf.h>
+@@ -234,6 +238,14 @@
+     int c, rv;
+ 
+     rv = 0;
++
++/* check for synchronous connection... */
++
++    if ( (p[0] == 0xFF) && (p[1] == 0x03) ) {
++        rv = loop_frame(p,n);
++        return rv;
++    }
++
+     for (; n > 0; --n) {
+ 	c = *p++;
+ 	if (c == PPP_FLAG) {
+@@ -312,17 +324,75 @@
+  * loopback, now that the real serial link is up.
+  */
+ void
+-demand_rexmit(proto)
++update_checksum (u_int16_t *chksum, u_int32_t new_ip, u_int32_t old_ip)
++{
++  unsigned long sum;
++  
++  sum = ntohs(*chksum) + 
++    ntohs((u_int16_t)(old_ip & 0xffff)) + 
++    ntohs((u_int16_t)(old_ip >> 16)) +
++    (~ntohs((uint16_t)new_ip) & 0xffff) + 
++    (~ntohs((uint16_t)(new_ip >> 16)) & 0xffff);
++
++  sum = (sum & 0xffff) + (sum>>16);
++  *chksum = htons(sum + (sum>>16));
++}
++
++void
++demand_rexmit(proto, newip)
+     int proto;
++    u_int32_t newip;
+ {
+     struct packet *pkt, *prev, *nextpkt;
++    unsigned iphdr;
++    struct timeval tv;
++    char ipstr[16];
+ 
+     prev = NULL;
+     pkt = pend_q;
+     pend_q = NULL;
++
++    tv.tv_sec = 1;
++    tv.tv_usec = 0;
++    select(0,NULL,NULL,NULL,&tv);	/* Sleep for 1 Seconds */
++
+     for (; pkt != NULL; pkt = nextpkt) {
+ 	nextpkt = pkt->next;
+ 	if (PPP_PROTOCOL(pkt->data) == proto) {
++            if ( (proto == PPP_IP) && newip ) {
++		/* Get old checksum */
++	        u_int32_t old_ip;
++
++		iphdr = (pkt->data[4] & 15) << 2;
++
++		old_ip = *((u_int32_t *) (pkt->data + 16));
++		*((u_int32_t *) (pkt->data + 16)) = newip;
++		
++		update_checksum (((u_int16_t *) (pkt->data+14)), newip, old_ip);
++		switch (pkt->data[13]) {
++		case 17: /* tcp */
++		  update_checksum (((u_int16_t *) (pkt->data+10+iphdr)), newip, old_ip);
++		  break;
++		case 6: /* udp */
++		  update_checksum (((u_int16_t *) (pkt->data+20+iphdr)), newip, old_ip);
++		  break;
++		}
++
++		/* Log Packet */
++		strcpy(ipstr,inet_ntoa(*( (struct in_addr *) (pkt->data+16))));
++		if (pkt->data[13] == 1) {
++		    syslog(LOG_INFO,"Open ICMP %s -> %s\n",
++			ipstr,
++			inet_ntoa(*( (struct in_addr *) (pkt->data+20))));
++		} else {
++		    syslog(LOG_INFO,"Open %s %s:%d -> %s:%d\n",
++			pkt->data[13] == 6 ? "TCP" : "UDP",
++			ipstr,
++			ntohs(*( (short *) (pkt->data+iphdr+4))),
++			inet_ntoa(*( (struct in_addr *) (pkt->data+20))),
++			ntohs(*( (short *) (pkt->data+iphdr+6))));
++                }
++            }
+ 	    output(0, pkt->data, pkt->length);
+ 	    free(pkt);
+ 	} else {
+diff -ur ppp-orig/pppd/ipcp.c ppp/pppd/ipcp.c
+--- ppp-orig/pppd/ipcp.c	2006-02-10 11:13:32.592226566 +0100
++++ ppp/pppd/ipcp.c	2006-02-10 11:15:42.884337925 +0100
+@@ -1770,7 +1770,7 @@
+ 		    proxy_arp_set[f->unit] = 1;
+ 
+ 	}
+-	demand_rexmit(PPP_IP);
++	demand_rexmit(PPP_IP,go->ouraddr);
+ 	sifnpmode(f->unit, PPP_IP, NPMODE_PASS);
+ 
+     } else {
+Only in ppp/pppd: ipcp.c.orig
+diff -ur ppp-orig/pppd/ipv6cp.c ppp/pppd/ipv6cp.c
+--- ppp-orig/pppd/ipv6cp.c	2004-01-13 05:00:17.000000000 +0100
++++ ppp/pppd/ipv6cp.c	2006-02-10 11:15:42.888338297 +0100
+@@ -1229,7 +1229,7 @@
+ 	    }
+ 
+ 	}
+-	demand_rexmit(PPP_IPV6);
++	demand_rexmit(PPP_IPV6,0);
+ 	sifnpmode(f->unit, PPP_IPV6, NPMODE_PASS);
+ 
+     } else {
+diff -ur ppp-orig/pppd/pppd.h ppp/pppd/pppd.h
+--- ppp-orig/pppd/pppd.h	2006-02-10 11:13:32.612228425 +0100
++++ ppp/pppd/pppd.h	2006-02-10 11:15:42.888338297 +0100
+@@ -551,7 +551,7 @@
+ void demand_block __P((void));	/* set all NPs to queue up packets */
+ void demand_unblock __P((void)); /* set all NPs to pass packets */
+ void demand_discard __P((void)); /* set all NPs to discard packets */
+-void demand_rexmit __P((int));	/* retransmit saved frames for an NP */
++void demand_rexmit __P((int, u_int32_t)); /* retransmit saved frames for an NP*/
+ int  loop_chars __P((unsigned char *, int)); /* process chars from loopback */
+ int  loop_frame __P((unsigned char *, int)); /* should we bring link up? */
+ 

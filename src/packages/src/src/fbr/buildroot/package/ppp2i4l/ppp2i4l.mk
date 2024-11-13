@@ -1,0 +1,14 @@
+PPP2I4L_VERSION =
+PPP2I4L_SITE = $(FLI4L_SRCDIR)/base/ppp2i4l
+PPP2I4L_SITE_METHOD = local
+PPP2I4L_SOURCE =
+
+define PPP2I4L_BUILD_CMDS
+	+$(TARGET_MAKE_ENV) $(MAKE) -C $(@D) $(TARGET_CONFIGURE_OPTS)
+endef
+
+define PPP2I4L_INSTALL_TARGET_CMDS
+	$(INSTALL) -D $(@D)/ppp2i4l $(TARGET_DIR)/usr/sbin/ppp2i4l
+endef
+
+$(eval $(generic-package))

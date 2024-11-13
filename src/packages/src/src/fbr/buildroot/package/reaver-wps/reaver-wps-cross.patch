@@ -1,0 +1,192 @@
+diff -urN reaver-1.4.orig/src/common/lib.rules reaver-1.4/src/common/lib.rules
+--- reaver-1.4.orig/src/common/lib.rules	2012-01-18 10:02:38.000000000 +0100
++++ reaver-1.4/src/common/lib.rules	2012-10-13 20:51:19.000000000 +0200
+@@ -6,7 +6,7 @@
+ CFLAGS = -MMD -O2 -Wall -g
+ endif
+ 
+-CFLAGS += -I.. -I../utils
++COPTS = -I.. -I../utils
+ 
+ 
+ Q=@
+@@ -17,5 +17,5 @@
+ endif
+ 
+ %.o: %.c
+-	$(Q)$(CC) -c -o $@ $(CFLAGS) $<
++	$(Q)$(CC) -c -o $@ $(CFLAGS) $(COPTS) $<
+ 	@$(E) "  CC " $<
+diff -urN reaver-1.4.orig/src/crypto/Makefile reaver-1.4/src/crypto/Makefile
+--- reaver-1.4.orig/src/crypto/Makefile	2012-01-18 10:02:40.000000000 +0100
++++ reaver-1.4/src/crypto/Makefile	2012-10-13 20:53:03.000000000 +0200
+@@ -9,9 +9,9 @@
+ 
+ include ../common/lib.rules
+ 
+-CFLAGS += -DCONFIG_TLS_INTERNAL_CLIENT
+-CFLAGS += -DCONFIG_TLS_INTERNAL_SERVER
+-#CFLAGS += -DALL_DH_GROUPS
++COPTS += -DCONFIG_TLS_INTERNAL_CLIENT
++COPTS += -DCONFIG_TLS_INTERNAL_SERVER
++#COPTS += -DALL_DH_GROUPS
+ 
+ LIB_OBJS= \
+ 	aes-cbc.o \
+diff -urN reaver-1.4.orig/src/libwps/Makefile reaver-1.4/src/libwps/Makefile
+--- reaver-1.4.orig/src/libwps/Makefile	2012-01-18 10:02:39.000000000 +0100
++++ reaver-1.4/src/libwps/Makefile	2012-10-13 20:54:37.000000000 +0200
+@@ -1,8 +1,8 @@
+ CC=gcc
+-CFLAGS=-Wall
++COPTS=-Wall
+ 
+ libwps.o:
+-	$(CC) $(CFLAGS) libwps.c -c
++	$(CC) $(CFLAGS) $(COPTS) libwps.c -c
+ 
+ clean:
+ 	rm -f *.o
+diff -urN reaver-1.4.orig/src/lwe/Makefile reaver-1.4/src/lwe/Makefile
+--- reaver-1.4.orig/src/lwe/Makefile	2012-01-18 10:02:39.000000000 +0100
++++ reaver-1.4/src/lwe/Makefile	2012-10-13 20:52:51.000000000 +0200
+@@ -102,11 +102,12 @@
+ endif
+ 
+ # Other flags
+-CFLAGS=-Os -W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow \
++CFLAGS=-Os
++#CFLAGS=-O2 -W -Wall -Wstrict-prototypes
++COPTS=-W -Wall -Wstrict-prototypes -Wmissing-prototypes -Wshadow \
+ 	-Wpointer-arith -Wcast-qual -Winline -I.
+-#CFLAGS=-O2 -W -Wall -Wstrict-prototypes -I.
+ DEPFLAGS=-MMD
+-XCFLAGS=$(CFLAGS) $(DEPFLAGS) $(WARN) $(HEADERS) $(WELIB_FLAG) $(WEDEF_FLAG)
++XCFLAGS=$(CFLAGS) $(COPTS) $(DEPFLAGS) $(WARN) $(HEADERS) $(WELIB_FLAG) $(WEDEF_FLAG)
+ PICFLAG=-fPIC
+ 
+ # Standard compilation targets
+diff -urN reaver-1.4.orig/src/Makefile.in reaver-1.4/src/Makefile.in
+--- reaver-1.4.orig/src/Makefile.in	2012-01-18 10:02:40.000000000 +0100
++++ reaver-1.4/src/Makefile.in	2012-10-13 20:55:26.000000000 +0200
+@@ -4,16 +4,16 @@
+ prefix=@prefix@
+ exec_prefix=@exec_prefix@
+ CONFDIR=@sysconfdir@/@target@
+-CFLAGS=-DCONF_DIR='"$(CONFDIR)"' -DREAVER_DATABASE='"$(CONFDIR)/reaver.db"' @CFLAGS@
++COPTS=-DCONF_DIR='"$(CONFDIR)"' -DREAVER_DATABASE='"$(CONFDIR)/reaver.db"'
+ LDFLAGS=$(LIBWPS_DIR)/*.o wps/*.o tls/bignum.o tls/libtls.a utils/libutils.a crypto/libcrypto.a lwe/libiw.a @LDFLAGS@
+ 
+ all: wash reaver
+ 
+ wash: wps libiw libwps.o argsparser.o globule.o init.o misc.o 80211.o iface.o
+-	$(CC) $(CFLAGS) $(INC) wpsmon.c *.o $(LDFLAGS) -o wash
++	$(CC) $(CFLAGS) $(COPTS) $(INC) wpsmon.c *.o $(LDFLAGS) -o wash
+ 
+ reaver: wps libiw libwps.o argsparser.o globule.o init.o sigint.o sigalrm.o misc.o cracker.o
+-	$(CC) $(CFLAGS) $(INC) wpscrack.c *.o $(LDFLAGS) -o reaver
++	$(CC) $(CFLAGS) $(COPTS) $(INC) wpscrack.c *.o $(LDFLAGS) -o reaver
+ 
+ libwps.o:
+ 	(cd $(LIBWPS_DIR) && make)
+@@ -34,55 +34,55 @@
+ 	(cd lwe && make BUILD_STATIC=y libiw.a)
+ 
+ init.o:
+-	$(CC) $(CFLAGS) init.c -c
++	$(CC) $(CFLAGS) $(COPTS) init.c -c
+ 
+ sql.o:
+-	$(CC) $(CFLAGS) $(INC) sql.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) sql.c -c
+ 
+ crc.o:
+-	$(CC) $(CFLAGS) crc.c -c
++	$(CC) $(CFLAGS) $(COPTS) crc.c -c
+ 
+ keys.o:
+-	$(CC) $(CFLAGS) keys.c -c
++	$(CC) $(CFLAGS) $(COPTS) keys.c -c
+ 
+ argsparser.o: globule.o
+-	$(CC) $(CFLAGS) $(INC) argsparser.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) argsparser.c -c
+ 
+ sigint.o: globule.o
+-	$(CC) $(CFLAGS) $(INC) sigint.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) sigint.c -c
+ 
+ exchange.o: globule.o send.o sigalrm.o 80211.o
+-	$(CC) $(CFLAGS) $(INC) exchange.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) exchange.c -c
+ 
+ send.o: globule.o builder.o sigalrm.o
+-	$(CC) $(CFLAGS) send.c -c
++	$(CC) $(CFLAGS) $(COPTS) send.c -c
+ 
+ session.o: globule.o
+-	$(CC) $(CFLAGS) $(INC) session.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) session.c -c
+ 
+ 80211.o: globule.o sql.o builder.o crc.o
+-	$(CC) $(CFLAGS) $(INC) 80211.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) 80211.c -c
+ 
+ iface.o: globule.o
+-	$(CC) $(CFLAGS) iface.c -c
++	$(CC) $(CFLAGS) $(COPTS) iface.c -c
+ 
+ sigalrm.o: globule.o
+-	$(CC) $(CFLAGS) sigalrm.c -c
++	$(CC) $(CFLAGS) $(COPTS) sigalrm.c -c
+ 
+ misc.o: globule.o 
+-	$(CC) $(CFLAGS) misc.c -c
++	$(CC) $(CFLAGS) $(COPTS) misc.c -c
+ 
+ builder.o: globule.o
+-	$(CC) $(CFLAGS) builder.c -c
++	$(CC) $(CFLAGS) $(COPTS) builder.c -c
+ 
+ pins.o: globule.o keys.o
+-	$(CC) $(CFLAGS) pins.c -c
++	$(CC) $(CFLAGS) $(COPTS) pins.c -c
+ 
+ cracker.o: globule.o init.o pins.o iface.o exchange.o session.o 80211.o
+-	$(CC) $(CFLAGS) $(INC) cracker.c -c
++	$(CC) $(CFLAGS) $(COPTS) $(INC) cracker.c -c
+ 
+ globule.o:
+-	$(CC) $(CFLAGS) globule.c -c 
++	$(CC) $(CFLAGS) $(COPTS) globule.c -c 
+ 
+ install: cleanbin
+ 	if [ ! -d $(CONFDIR) ]; then mkdir -p $(CONFDIR); fi
+diff -urN reaver-1.4.orig/src/tls/Makefile reaver-1.4/src/tls/Makefile
+--- reaver-1.4.orig/src/tls/Makefile	2012-01-18 10:02:40.000000000 +0100
++++ reaver-1.4/src/tls/Makefile	2012-10-13 20:53:14.000000000 +0200
+@@ -9,8 +9,8 @@
+ 
+ include ../common/lib.rules
+ 
+-CFLAGS += -DCONFIG_INTERNAL_LIBTOMMATH
+-CFLAGS += -DCONFIG_CRYPTO_INTERNAL
++COPTS += -DCONFIG_INTERNAL_LIBTOMMATH
++COPTS += -DCONFIG_CRYPTO_INTERNAL
+ 
+ LIB_OBJS= \
+ 	asn1.o \
+diff -urN reaver-1.4.orig/src/utils/Makefile reaver-1.4/src/utils/Makefile
+--- reaver-1.4.orig/src/utils/Makefile	2012-01-18 10:02:39.000000000 +0100
++++ reaver-1.4/src/utils/Makefile	2012-10-13 20:51:36.000000000 +0200
+@@ -9,8 +9,8 @@
+ 
+ include ../common/lib.rules
+ 
+-#CFLAGS += -DWPA_TRACE
+-CFLAGS += -DCONFIG_IPV6
++#COPTS += -DWPA_TRACE
++COPTS += -DCONFIG_IPV6
+ 
+ LIB_OBJS= \
+ 	base64.o \

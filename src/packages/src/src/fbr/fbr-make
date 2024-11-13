@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# choose a suitable UTF-8 locale if necessary
+# note that we need a UTF-8 locale as we have entries with UTF-8 encoded names
+# in our repository...
+eval $(locale | grep "^LC_CTYPE=")
+if ! echo "$LC_CTYPE" | grep -q "\.\(utf8\|UTF-8\)$"
+then
+	# no UTF-8 locale active, choose the first available one
+	loc=$(locale -a | sed -n '/\.\(utf8\|UTF-8\)$/p' | head -n 1)
+	if [ -n "$loc" ]
+	then
+		export LC_CTYPE="$loc"
+	else
+		echo "$(basename $0): No usable UTF-8 locale found" >&2
+		exit 1
+	fi
+fi
+
+prog=$(readlink -f "$0")
+progname=$(basename $prog)
+fbr_root=$(dirname $prog)
+wc_root=$fbr_root/../../../../..
+
+# architecture for which a FBR is to be built
+fbr_arch=${FBR_ARCH:-x86}
+export FBR_ARCH=$fbr_arch
+
+# try to determine terminal type
+if [ -n "$FBR_DUMBTTY" ]
+then
+	fbr_dumbtty="$FBR_DUMBTTY"
+elif [ -t 2 ]
+then
+	fbr_dumbtty=no
+else
+	fbr_dumbtty=yes
+fi
+
+fbr_category=
+fbr_branch=
+if [ -d "$wc_root/.svn" ]
+then
+	fbr_category=$(svn info "$fbr_root" 2>/dev/null | grep "^URL:" | sed -n 's,^.*/\([^/]\+\)/[^/]\+/src/packages/src/src/fbr$,\1,p')
+	fbr_branch=$(svn info "$fbr_root" 2>/dev/null | grep "^URL:" | sed -n 's,^.*/\([^/]\+\)/src/packages/src/src/fbr$,\1,p')
+elif [ -d "$wc_root/.hg" ]
+then
+	fbr_category=$(hg svn info "$fbr_root" 2>/dev/null | grep "^URL:" | sed -n 's,^.*/\([^/]\+\)/[^/]\+$,\1,p')
+	fbr_branch=$(hg svn info "$fbr_root" 2>/dev/null | grep "^URL:" | sed -n 's,^.*/\([^/]\+\)$,\1,p')
+	if [ -z "$fbr_category$fbr_branch" ]
+	then
+		fbr_category=4.0
+		fbr_branch=$(hg branch 2>/dev/null)
+	fi
+fi
+[ -n "$fbr_category" ] || fbr_category=unknown
+[ -n "$fbr_branch" ] || fbr_branch=custom
+
+# If FBR_BRANCH is set seperate, use this for building 
+# and not the property from svn or custom value
+if [ -n "$FBR_BRANCH" ]
+then
+	fbr_branch=$FBR_BRANCH
+fi
+
+# If FBR_CATEGORY is set seperate, use this for building 
+# and not the property from svn or unknown value
+if [ -n "$FBR_CATEGORY" ]
+then
+	fbr_category=$FBR_CATEGORY
+fi
+
+if [ -n "$FBR" ]
+then
+	fbr_workdir="$FBR"
+elif [ -n "$FBR_BASEDIR" ]
+then
+	fbr_workdir=$FBR_BASEDIR/fbr-$fbr_category-$fbr_branch-$fbr_arch
+else
+	fbr_workdir=~/.fbr/fbr-$fbr_category-$fbr_branch-$fbr_arch
+fi
+
+if echo "$fbr_root" | grep -q " "
+then
+	echo "$(basename $0): FBR root directory $fbr_root may not contain spaces" >&2
+	exit 1
+fi
+if echo "$fbr_workdir" | grep -q " "
+then
+	echo "$(basename $0): FBR working directory $fbr_workdir may not contain spaces" >&2
+	exit 1
+fi
+
+# help requires special parameter parsing
+if [ $# -eq 0 -o "$1" = "--help" -o "$1" = "-help" -o "$1" = "-h" -o "$1" = "-?" ]
+then
+	set -- help
+fi
+
+# include modules
+for f in $(ls -1 {$fbr_root,$fbr_workdir}/include/*.inc 2>/dev/null | sort -n)
+do
+	. "$f"
+done
