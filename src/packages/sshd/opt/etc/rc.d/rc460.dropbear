@@ -1,0 +1,129 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc460.dropbear - configure dropbear                    __FLI4LVER__
+#
+# Creation:     07.12.2000 fm
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_SSHD" = "yes" ]
+then
+    begin_script SSHD "starting sshd daemon..."
+
+    cat <<-EOF>>/etc/services
+ssh             22/tcp
+ssh             22/udp
+telnet          23/tcp
+EOF
+
+    : ${SSHD_PORT:=22}
+    : ${SSHD_ALLOWPASSWORDLOGIN:=yes}
+
+    if [ 0$SSH_CLIENT_PRIVATE_KEYFILE_N -gt 0 ]
+    then
+        keys=
+        for i in $(seq 1 $SSH_CLIENT_PRIVATE_KEYFILE_N)
+        do
+            eval keys=\"\$keys -i /etc/ssh/\$SSH_CLIENT_PRIVATE_KEYFILE_$i\"
+        done
+        {
+            echo "#!/bin/sh"
+            echo "dbclient $keys \"\$@\""
+        } > /usr/bin/ssh
+        chmod +x /usr/bin/ssh
+    fi
+
+    # make links for multicall binary
+    ln -s /usr/sbin/dropbear /usr/bin/dropbearconvert
+    ln -s /usr/sbin/dropbear /usr/bin/dropbearkey
+    ln -s /usr/sbin/dropbear /usr/bin/scp
+
+    mkdir /.ssh
+    cd /.ssh
+
+    [ 0"$SSHD_PUBLIC_KEY_N" -eq 0 ] || for idx in `seq 1 $SSHD_PUBLIC_KEY_N`
+    do
+        eval key='$SSHD_PUBLIC_KEY_'$idx
+        echo $key >> authorized_keys
+    done
+
+    for pf in /etc/ssh/*
+    do
+        if grep -q -E "^-----BEGIN ([DR]SA|EC) PRIVATE KEY-----$" $pf
+        then
+            mk_writable $pf
+            dropbearconvert openssh dropbear $pf $pf >/dev/null 2>&1
+        fi
+    done
+
+    if [ -e /etc/ssh/known_hosts ]
+    then
+        mv /etc/ssh/known_hosts /.ssh
+    fi
+
+    if [ -e /etc/plink/sshhostkeys ]
+    then
+        mv /etc/plink /.putty
+        chmod 700 /.putty
+    fi
+
+    [ 0"$SSHD_PUBLIC_KEYFILE_N" -eq 0 ] || for idx in `seq 1 $SSHD_PUBLIC_KEYFILE_N`
+    do
+        eval kfn='$SSHD_PUBLIC_KEYFILE_'$idx
+        if grep -q -E "^(ssh-[rd]s[as]|ecdsa-sha2-[^[:space:]]+) " /etc/ssh/$kfn
+        then
+            cat /etc/ssh/$kfn >> authorized_keys
+        fi
+        if grep -q -E "^(ssh-ed25519) " /etc/ssh/$kfn
+        then
+            cat /etc/ssh/$kfn >> authorized_keys
+        fi
+        if grep -q "SSH2 PUBLIC KEY" /etc/ssh/$kfn
+        then
+            keytype=ssh-rsa
+            grep -q "dsa-key" /etc/ssh/$kfn && keytype=ssh-dss
+            echo "$keytype `sed -e 's/^----.*$//g' -e 's/^Comment.*$//g' -e 's/^\n//g' -e 's/^[ ]*$//g' /etc/ssh/$kfn|tr -d '\012'`" >> authorized_keys
+        fi
+        rm -f /etc/ssh/$kfn
+    done
+
+    [ -f /.ssh/authorized_keys ] && chmod 400 /.ssh/authorized_keys
+    chmod 400 /etc/ssh/* 2>/dev/null
+
+    NOPWDLOGIN=
+    if [ "$SSHD_ALLOWPASSWORDLOGIN" = no ]
+    then
+        NOPWDLOGIN=-s
+        log_info "sshd: only public key authentication allowed!"
+    fi
+    trap 1
+    dropbear $NOPWDLOGIN -p $SSHD_PORT
+    trap "" 1
+
+    if [ "$SSHD_CREATEHOSTKEYS" = "yes" ]
+    then
+      mkdir -p /tmp/ssh
+      {
+        log_info "creating in the background new dropbear hostkeys in /tmp/ssh ..."
+        dropbearkey -s 2048 -t rsa -f /tmp/ssh/dropbear_rsa_host_key
+        dropbearkey -s 1024 -t dss -f /tmp/ssh/dropbear_dss_host_key
+        dropbearkey -s 521 -t ecdsa -f /tmp/ssh/dropbear_ecdsa_host_key
+        chmod 400 /tmp/ssh/*
+      } &
+    fi
+
+    cd /
+
+    end_script
+fi
+
+if [ "$OPT_SSH_CLIENT" = "yes" ]
+then
+    begin_script SSH_CLIENT "setting up ssh client..."
+    if [ 0$SSH_CLIENT_PRIVATE_KEYFILE_N -eq 0 ]
+    then
+        ln -s /usr/sbin/dropbear /usr/bin/ssh
+    fi
+    ln -s /usr/sbin/dropbear /usr/bin/dbclient
+    end_script
+fi

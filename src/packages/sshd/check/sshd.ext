@@ -1,0 +1,61 @@
+﻿##-----------------------------------------------------------------------------
+## sshd.ext - fli4l extended configuration check                   __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##                      S E E   R E A D M E . T X T
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##              L E S E N ,  S I E H E   R E A D M E . T X T
+##
+## Creation:     26.06.2001  fm
+## Last Update:  $Id$
+##
+## Copyright (c) 2001 Frank Meyer <frank@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_sshd)
+then
+  provides sshd version 4.0.0
+
+  stat("$config_dir/etc/ssh/known_hosts", known_hosts_file)
+  if(known_hosts_file_res == "OK")
+  then
+    add_to_opt "etc/ssh/known_hosts" "mode=600 flags=utxt"
+  fi
+
+  stat("$config_dir/etc/plink/sshhostkeys", known_hosts_file)
+  if(known_hosts_file_res == "OK")
+  then
+    add_to_opt "etc/plink/sshhostkeys" "mode=644 flags=utxt"
+  fi
+
+  set i=0
+  foreach pkf in sshd_public_keyfile_%
+  do
+    set i=i+1
+    stat("$config_dir/etc/ssh/$pkf", publickeyfile)
+    if(publickeyfile_res == "OK")
+    then
+      add_to_opt "etc/ssh/$pkf" "mode=400 flags=utxt"
+    else
+      error "sshd: missing public keyfile $config_dir/etc/ssh/$pkf in SSHD_PUBLIC_KEYFILE_$i"
+    fi
+  done
+
+  foreach pkf in ssh_client_private_keyfile_%
+  do
+    stat("$config_dir/etc/ssh/$pkf", privatekeyfile)
+    if(privatekeyfile_res == "OK")
+    then
+      add_to_opt "etc/ssh/$pkf" "mode=644 flags=utxt"
+    else
+      error "sshd: missing private keyfile $config_dir/etc/ssh/$pkf in SSH_CLIENT_PRIVATE_KEYFILE_$i"
+    fi
+  done
+
+fi
