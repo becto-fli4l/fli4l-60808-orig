@@ -1,0 +1,41 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /lib/mdev/virtio - mdev helper for virtio-console devices
+#
+# Last Update:  $Id$
+#
+# Copyright 2019 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+if [ ! -c "/dev/${MDEV}" ]
+then
+    exit 1
+fi
+
+case "${ACTION}" in
+
+add)
+    name=$(cat "/sys/${DEVPATH}/name")
+    mkdir -p /dev/virtio-ports
+    ln -s "/dev/${MDEV}" "/dev/virtio-ports/${name}"
+    ;;
+
+remove)
+    # device was already removed, we can't read anything through sysfs
+    # anymore, so just remove all symlinks pointing to MDEV
+
+    for lnk in /dev/virtio-ports/*
+    do
+        [ -e "${lnk}" ] || continue
+
+        target=$(readlink -f -n "${lnk}")
+        if [ "${target}" = "/dev/${MDEV}" ]
+        then
+            rm "${lnk}"
+        fi
+    done
+    ;;
+
+esac
+
+exit 0
