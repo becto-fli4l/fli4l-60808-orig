@@ -1,0 +1,201 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc410.lcd - configure lcd display
+#
+# Creation:     2005-12-22 GM
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_LCD" = yes ]
+then
+  begin_script LCD "loading lcd module ..."
+  
+  lcd_device=">/dev/lcd"
+  if [ "$LCD_FILTER" != '' ]
+  then
+    lcd_device="|"$(LCD_FILTER)">/dev/lcd"
+  fi
+
+  # create /var/run/lcd.conf:
+  {
+    echo "N_LCD_TYPES='$LCD_TYPE_N'"        # N_LCD_TYPES <--> LCD_TYPE_N !!!
+    idx=1
+
+    while [ $idx -le $LCD_TYPE_N ]
+    do
+        eval lcd_type='$LCD_TYPE_'$idx
+        set $lcd_type
+        lcd_type="$1"
+        lcd_pos="$2,$3"
+        
+        echo "LCD_TYPE_$idx='$lcd_type'"
+        echo "LCD_POS_$idx='$lcd_pos'"
+
+        if [ "$lcd_type" = "39" ]           # Is it text ?
+        then
+            lcd_text="$4"
+            idy=5
+            while [ $idy -le $# ]           # copy complete rest of string
+            do
+                eval x='$'$idy
+                lcd_text="$lcd_text"' '"$x"
+                idy=`expr $idy + 1`
+            done
+            
+            echo "LCD_TEXT_$idx='$lcd_text'"
+        fi
+
+        idx=`expr $idx + 1`
+    done
+
+    echo "N_LCD_TYPES_ONLINE='$LCD_TYPE_ONLINE_N'"      # N_LCD_TYPES_ONLINE <--> LCD_TYPE_ONLINE_N !!!
+    idx=1
+
+    while [ $idx -le $LCD_TYPE_ONLINE_N ]
+    do
+        eval lcd_type='$LCD_TYPE_ONLINE_'$idx
+        set $lcd_type
+        lcd_type="$1"
+        lcd_pos="$2,$3"
+
+        echo "LCD_TYPE_ONLINE_$idx='$lcd_type'"
+        echo "LCD_POS_ONLINE_$idx='$lcd_pos'"
+
+        if [ "$lcd_type" = "39" ]             # Is it text ?
+        then
+            lcd_text="$4"
+            idy=5
+            while [ $idy -le $# ]           # copy complete rest of string
+            do
+                eval x='$'$idy
+                lcd_text="$lcd_text"' '"$x"
+                idy=`expr $idy + 1`
+            done
+            
+            echo "LCD_TEXT_ONLINE_$idx='$lcd_text'"
+        fi
+
+        idx=`expr $idx + 1`
+    done
+
+    echo "N_LCD_TYPES_OFFLINE='$LCD_TYPE_OFFLINE_N'"   # N_LCD_TYPES_OFFLINE <--> LCD_TYPE_OFFLINE_N !!!
+    idx=1
+
+    while [ $idx -le $LCD_TYPE_OFFLINE_N ]
+    do
+        eval lcd_type='$LCD_TYPE_OFFLINE_'$idx
+        set $lcd_type
+        lcd_type="$1"
+        lcd_pos="$2,$3"
+
+        echo "LCD_TYPE_OFFLINE_$idx='$lcd_type'"
+        echo "LCD_POS_OFFLINE_$idx='$lcd_pos'"
+
+        if [ "$lcd_type" = "39" ]         # Is it text ?
+        then
+            lcd_text="$4"
+            idy=5
+            while [ $idy -le $# ]           # copy complete rest of string
+            do
+                eval x='$'$idy
+                lcd_text="$lcd_text"' '"$x"
+                idy=`expr $idy + 1`
+            done
+            
+            echo "LCD_TEXT_OFFLINE_$idx='$lcd_text'"
+        fi
+
+        idx=`expr $idx + 1`
+    done
+    
+    echo "LCD_DSL_SPEED_IN='$LCD_DSL_SPEED_IN'"
+    echo "LCD_DSL_SPEED_OUT='$LCD_DSL_SPEED_OUT'"
+    echo "LCD_ADDRESS='$LCD_ADDRESS'"
+    echo "LCD_STOP_MSG='$LCD_STOP_MSG'"
+    echo "LCD_REBOOT_MSG='$LCD_REBOOT_MSG'"
+    echo "lcd_device='$lcd_device'"
+  } >/var/run/lcd.conf
+  
+  # create /etc/lcd_text1.txt - /etc/lcd_text4.txt :
+  
+  idx=1
+  max=4
+  
+  while [ $idx -le $max ]
+  do
+    eval lcd_text='$LCD_VAR_TEXT'$idx
+    set -- "$lcd_text"
+    lcd_text="$*"
+
+    echo "$lcd_text" > '/etc/lcd_text'$idx'.txt'
+
+    idx=`expr $idx + 1`
+  done
+  
+  # start isdn_rate if needed
+  if [ "$LCD_START_ISDN_RATE" = "yes" ]
+  then
+    if [ "$OPT_IMOND" = "yes" ]
+    then
+      case "$LCD_ADDRESS"
+      in
+        com*|ttyS*)
+          lcd_hw_type="matrix-orbital"
+          ;;
+        console|tty*)
+          lcd_hw_type="tty"
+          ;;
+        *)
+          lcd_hw_type="hitachi"
+          ;;
+      esac
+      if [ "$LCD_ADDRESS" != "null" ]
+      then
+        if [ "$OPT_TELMOND" = "yes" ]
+        then
+          eval '/usr/local/bin/isdn_rate -port $IMOND_PORT -type $lcd_hw_type -telmond-port $TELMOND_PORT'$lcd_device &
+        else
+          eval '/usr/local/bin/isdn_rate -port $IMOND_PORT -type $lcd_hw_type'$lcd_device &
+        fi
+      fi
+      if [ -n "$LCD_LANIP" ]
+      then
+        if [ "$OPT_TELMOND" = "yes" ]
+        then
+          eval '/usr/local/bin/isdn_rate -port $IMOND_PORT -type tty -telmond-port $TELMOND_PORT' >/dev/tty9 &
+        else
+          eval '/usr/local/bin/isdn_rate -port $IMOND_PORT -type tty' >/dev/tty9 &
+        fi
+	# Use our iptables-wrapper for netecho to avoid 2 Accesses at the same time to the net-board
+	mv /usr/sbin/netecho /usr/sbin/netecho.real
+	ln /sbin/lockcommand /usr/sbin/netecho
+	if [ -n "$LCD_LANTYPE" ]
+	then
+	  if [ -n "$LCD_LANUSER" -a -n "$LCD_LANPASS" ]
+	  then
+	    /usr/bin/service-restart.sh 10 /usr/local/bin/lcdlan.sh $LCD_LANIP $LCD_LANTYPE $LCD_LANUSER $LCD_LANPASS &
+	  else
+	    /usr/bin/service-restart.sh 10 /usr/local/bin/lcdlan.sh $LCD_LANIP $LCD_LANTYPE &
+	  fi	  
+	else
+	  /usr/bin/service-restart.sh 10 /usr/local/bin/lcdlan.sh $LCD_LANIP &
+	fi
+      fi
+    else
+      log_warn "ISDN_RATE not started since IMOND is not started"
+    fi
+  fi
+
+  # wrap halt
+  mkdir /sbin/real
+  mv /sbin/halt /sbin/real
+  { echo "#!/bin/sh"
+    echo "> /haltflag"
+    echo "/sbin/real/halt"
+  } >/sbin/halt
+  chmod 555 /sbin/halt
+  rm -f /haltflag
+
+  end_script
+fi
+

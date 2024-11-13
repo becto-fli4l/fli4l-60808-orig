@@ -1,0 +1,780 @@
+% Do not remove the next line
+% Synchronized to r44350
+
+\marklabel{sec:opt-lcd }
+{
+  \section {LCD - Affichage des informations sur écran LCD}
+}
+
+\subsection{Introduction}
+
+
+    Avec ce paquetage, vous pouvez relier un module-LCD au port parallèle de
+    l'ordinateur fli4l. Maintenant, il est possible d'utiliser les modules-LCD
+    sur le port série de la société Matrix-Orbital. En outre, il existe aussi
+    un filtre spécial pour écran.
+
+    On peut afficher sur cet écran, les informations suivantes~: la date, l'heure,
+    les valeurs de la charge CPU et naturellement le débit UP et Down de l'ISDN
+    ou de la DSL en Kb/s, ces valeurs seront indiqués par une barre.
+
+
+\subsection{Configuration}\index{OPT\_LCD}
+
+    Si vous voulez utiliser le paquetage LCD, vous devez d'abord définir les
+    variables suivantes~:
+
+\begin{example}
+\begin{verbatim}
+        OPT_LCD='yes'
+
+       (Configuration par défaut : OPT_LCD='no')
+\end{verbatim}
+\end{example}
+
+
+\begin{description}
+  \config{LCD\_COLS}{LCD\_COLS}{LCDCOLS} - Nombre de caractères par ligne.
+
+  Les modules pris actuellement en charge par le kernel, pour le nombre de
+  caractère sont 16, 20, 24, 32 et 40, en général les modules avec 8 et 27
+  caractères fonctionnent également. Vous devez installer les module 16 ou 40
+  caractères pour les faire fonctionner avec le kernel de fli4l.
+
+\config{LCD\_LINES}{LCD\_LINES}{LCDLINES} - Nombre de lignes.
+
+    Valeurs possibles~: 1, 2 et 4.
+
+    Attention~: les écrans (4x16, 4x40 etc.) pour port Parallèle qui ont
+    deux puces contrôleurs, doivent être définis sur 2 lignes~! Les valeurs
+    pour les coordonnées affichage sont indiquées normalement. Le pilote-LCD
+    décide ensuite avec lequel des deux contrôleurs il doit afficher des
+    coordonnés par rapport au nombre de lignes.
+
+\config{LCD\_ADDRESS}{LCD\_ADDRESS}{LCDADDRESS}
+
+      Adresse-IO du Port-LPT, exemple '0x278'
+
+      Si vous utilisez un écran Matrix-Orbital sur le port série, l'interface
+      série utilisée doit être indiquer ici, par exemple 'com1' ou 'com2'. Avec
+      le paramètre 'null', la configuration de écran passera uniquement par le
+      LAN (ou réseau local), voir~: \var{LCD\_LANIP}.
+
+      Il est possible de transférer la diffusion des messages sur l'écran de
+      l'ordinateur~: la 'console' ou tty1 doit être choisi comme écran principal.
+      Cependant, il n'est pas recommandé d'utiliser 'tty1' car l'affichage des
+      messages pourrait se mélanger avec l'affichage normal de fli4l. Vous pouvez
+      sélectionner d'autres consoles virtuelles exemple 'tty2', 'tty3' ... 'tty9'
+      qui pourront être atteint avec les touches ALT-F2, ALT-F3 .... Avec la touche
+      ALT-F1 vous pouvez revenir à nouveau sur l'écran principal.
+
+        \wichtig{
+        Jusqu'à présent on utilisait, seulement les interfaces parallèles sur les
+        cartes-mères ou sur les cartes-ISA. Les interfaces parallèles sur les cartes-PCI
+        ne pouvaient pas être utilisées. Avec cette version vous pouvez configurer
+        les interfaces parallèles en utilisant les cartes-PCI avec la PUCE-NETMO.
+        Au moyen de la commande }
+
+\begin{example}
+\begin{verbatim}
+        cat /proc/pci
+\end{verbatim}
+\end{example}
+
+        \emph{Les Périphériques-PCI reconnus seront affichés. On cherche ensuite le
+        Périphérique approprié avec l'identification Vendor-ID et identification
+        Device-ID, pour être ensuite utilisé comme adresse IO, voici les entrées
+        suivantes~:}
+
+        \begin{itemize}
+        \item Nm9705CV  (Vendor id=9710, Device id=9705, Port1 1. Entrée)
+        \item Nm9735CV  (Vendor id=9710, Device id=9735, Port1 3. Entrée)
+        \item Nm9805CV  (Vendor id=9710, Device id=9805, Port1 1. Entrée)
+        \item Nm9715CV  (Vendor id=9710, Device id=9815, Port1 1. Entrée, Port2 3. Entrée)
+        \item Nm9835CV  (Vendor id=9710, Device id=9835, Port1 3. Entrée)
+        \item Nm9755CV  (Vendor id=9710, Device id=9855, Port1 1. Entrée, Port2 3. Entrée)
+        \end{itemize}
+
+        \emph{La configuration à été installée sans disposer du matériel correspondant
+        pour les tests. Ainsi, veuillez considérer cette fonctionnalité comme
+        expérimentale. En cas d'erreur, veuillez s'il vous plaît, nous envoyer
+        un message détaillé de l'erreur sur le newsgroup~!}
+
+\config{LCD\_LANIP}{LCD\_LANIP}{LCDLANIP} (Variable optionnelle )
+
+      On indique dans cette variable l'adresse-IP pour les cartes contrôleurs AVR-NET-IO
+      de Pollin Electronic avec un écran 2x16 dans un LAN (ou réseau local) ou
+      pour les cartes contrôleurs avec firmware ethersex - voir les variables
+      suivantes. (cette variable est expérimental)
+
+\config{LCD\_LANTYPE}{LCD\_LANTYPE}{LCDLANTYPE} (optionale Variable)
+
+      On indique dans cette variable le type de Firmware.
+      Les choix sont~: 'pollin' (par défaut) - Original-Firmware AVR-NET-IO,
+      'ethersex' - Firmware de www.ethersex.de avec LCD actif
+
+\config{LCD\_LANUSER}{LCD\_LANUSER}{LCDLANUSER} (optionale Variable)
+
+      Authentification pour ethersex, quand PAM et configuré sur le protocole
+      ecmd/tcp.
+      Vous indiquez ici~: Le nom d'utilisateur
+
+\config{LCD\_LANPASS}{LCD\_LANPASS}{LCDLANPASS} (optionale Variable)
+
+      Vous indiquez ici le Mot de passe en relation avec \var{LCD\_LANUSER}
+
+\configlabel{LCD\_TIME\_LONG}{LCDTIMELONG}
+\configlabel{LCD\_TIME\_SHORT}{LCDTIMESHORT}
+\configvar {LCD\_TIME\_LONG   LCD\_TIME\_SHORT}
+
+      Avec ces deux variables, vous pouvez indiquer les valeurs de l'horloge du
+      port-IO pour l'écran LCD. Si les variables sont laissées vides, les paramètres
+      suivants sont pris par défaut~:
+
+\begin{example}
+\begin{verbatim}
+        LCD_TIME_LONG='100'
+        LCD_TIME_SHORT='40'
+\end{verbatim}
+\end{example}
+
+      Si vous avez des problèmes d'affichage avec l'écran LCD, par exemple si vous
+      voyez des caractères bizarres qui apparaissent, vous devez augmenter ces
+      valeurs, par exemple.
+
+\begin{example}
+\begin{verbatim}
+        LCD_TIME_LONG='120'
+        LCD_TIME_SHORT='60'
+\end{verbatim}
+\end{example}
+
+      Ces variables sont sans importances, si vous utilisez un LCD Matrix-Orbital
+      sur port série.
+
+\config{LCD\_ADDR\_TYPE}{LCD\_ADDR\_TYPE}{LCDADDRTYPE}
+ - Type d'adressage pour le contrôleur-LCD.
+
+\begin{example}
+\begin{verbatim}
+        LCD_ADDR_TYPE='0'     # Pour HD44780 et Controlleur compatible
+        LCD_ADDR_TYPE='1'     # Pour HD66712 et Controlleur compatible
+        LCD_ADDR_TYPE='2'     # Obsolète, cette fonctionnalité est maintenant
+                              # disponible avec l'installation '0'
+\end{verbatim}
+\end{example}
+
+    Ces variables sont sans importances, si vous utilisez un LCD Matrix-Orbital
+    sur port série.
+
+\config{LCD\_WINAMP}{LCD\_WINAMP}{LCDWINAMP}
+
+Il existe différente variante de câblage pour les écrans-LCD, prêt équipé autour
+du concept kernel, le câblage normal et le câblage Winamp. Cette dernière variante
+est utilisée pour les nouveaux écrans LCD, vous devez indiquer ici yes.
+
+\config{LCD\_FILTER}{LCD\_FILTER}{LCDFILTER}
+
+- Filtre pour écrans spéciaux.
+A l'heure actuelle, il existe des filtres pour
+- écran ipc\_a78
+
+\begin{example}
+\begin{verbatim}
+        LCD_FILTER='mo2ipc_a78'     # Pour écran mo2ipc_a78
+\end{verbatim}
+\end{example}
+
+\config{LCD\_START\_MSG}{LCD\_START\_MSG}{LCDSTARTMSG}
+
+       Le message enregistré ici sera affiché sur l'écran, lors du démarrage du
+       système peu après le chargement des pilotes. Le message ne doit pas dépasser
+       la longueur d'une ligne, dans le cas contraire nous ne garantissons pas
+       l'affichage complet du texte.
+
+\config{LCD\_STOP\_MSG}{LCD\_STOP\_MSG}{LCDSTOPMSG}
+
+       Le message enregistré ici sera affiché sur l'écran, lors de l'arrêt du
+       système. Le message ne doit pas dépasser la longueur d'une ligne, dans
+       le cas contraire nous ne garantissons pas l'affichage complet du texte.
+
+\config{LCD\_REBOOT\_MSG}{LCD\_REBOOT\_MSG}{LCDREBOOTMSG}
+
+       Le message enregistré ici sera affiché sur l'écran, lors du redémarrage du
+       système. Le message ne doit pas dépasser la longueur d'une ligne, dans le
+       cas contraire nous ne garantissons pas l'affichage complet du texte.
+
+\config{LCD\_START\_ISDN\_RATE}{LCD\_START\_ISDN\_RATE}{LCDSTARTISDNRATE}
+
+      Dans cette variable on indique, si le programme isdn\_rate doit être démarré.
+
+\config{LCD\_TYPE\_N}{LCD\_TYPE\_N}{LCDTYPEN}
+
+      Ulf Lanz a créé un format de distribution pour le programme-isdn\_rate.
+      Ainsi chaque utilisateur peut composer son message selon ses désirs.
+
+      Dans la variable \var{LCD\_\-TYPE\_\-N} vous indiquez le nombre de message
+      ou de types de données à afficher. Ces types de données sont toujours
+      affichés, que se soit en on-line ou en off-line.
+
+\config{LCD\_TYPE\_x}{LCD\_TYPE\_x}{LCDTYPEx}
+
+        Dans la variable \var{LCD\_\-TYPE\_\-x} vous indiquez le type de données
+        souhaitées à affichage, dans les lignes et les colonnes, ces informations
+        apparaîtront sur l'écran. Les types de données sont codés numériquement.
+        Les valeurs possibles sont mentionnées dans le Tableau \ref{tab:lcd-type-x}.
+
+
+        \begin{table}[htbp]
+          \begin{small}
+          \begin{center}
+            \begin{tabular}{rlr}
+               Type &     Information   &        Nombre de caractères \\
+
+
+                0 &       local date dd.mm.yyyy           & 10 \\
+                1 &       local date dd.mm.yy             &  8 \\
+                2 &       local time hh:mm:ss             &  8 \\
+
+                3 &       remote date dd.mm.yyyy          & 10 \\
+                4 &       remote date dd.mm.yy            &  8 \\
+                5 &       remote time hh:mm:ss            &  8 \\
+
+                6 &       isdn status channel 1           &  7 \\
+                7 &       isdn status channel 2           &  7 \\
+                8 &       dsl status                      &  7 \\
+
+                9 &       isdn circuit name channel 1     & 16 \\
+                10 &      isdn circuit name channel 2     & 16 \\
+                11 &      dsl circuit name                & 16 \\
+
+                12 &      isdn input rate bar             &  8 \\
+                13 &      isdn output rate bar            &  8 \\
+                14 &      dsl input rate bar              &  8 \\
+                15 &      dsl output rate bar             &  8 \\
+
+                16 &      isdn input rate                 &  5 \\
+                17 &      isdn output rate                &  5 \\
+                18 &      dsl input rate                  &  9 \\
+                19 &      dsl output rate                 &  9 \\
+
+                20 &      isdn charge channel 1           &  6 \\
+                21 &      isdn charge channel 2           &  6 \\
+                22 &      dsl charge                      &  6 \\
+
+                23 &      isdn ip address channel 1       & 15 \\
+                24 &      isdn ip address channel 2       & 15 \\
+                25 &      dsl ip address                  & 15 \\
+
+                26 &      load 1                          &  5 \\
+                27 &      load 2                          &  5 \\
+
+                28 &      phone                           & 16 \\
+
+                29 &      isdn online time channel 1      &  8 \\
+                30 &      isdn online time channel 2      &  8 \\
+                31 &      dsl online time                 &  8 \\
+
+                32 &      isdn quantity in channel 1      &  8 \\
+                33 &      isdn quantity in channel 2      &  8 \\
+                34 &      dsl quantity in                 &  8 \\
+
+                35 &      isdn quantity out channel 1     &  8 \\
+                36 &      isdn quantity out channel 2     &  8 \\
+                37 &      dsl quantity out                &  8 \\
+
+                38 &      cpu usage                       &  4 \\
+
+                39 &      fixed text                  & max 20 \\
+                40 &      text -$>$ /etc/lcd\_text1.txt  & max 20 \\
+                41 &      text -$>$ /etc/lcd\_text2.txt  & max 20 \\
+                42 &      text -$>$ /etc/lcd\_text3.txt  & max 20 \\
+                43 &      text -$>$ /etc/lcd\_text4.txt  & max 20 \\
+
+                44 &      router uptime                   & 10 \\
+
+            \end{tabular}
+            \caption{aperçu des valeurs pour la variable LCD\_TYPE\_x}
+            \marklabel{tab:lcd-type-x}{}
+          \end{center}
+          \end{small}
+        \end{table}
+
+
+
+
+        Les deux chiffres suivants, indiqués dans la variable \var{LCD\_\-TYPE\_\-1}
+        donnent la position du message. Au format~: "colonne ligne", les deux
+        chiffres commencent à 0 (0 compte pour 1).
+
+      Exemple~:
+
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_1='4 10 1'    # Message, 2ème ligne, à la 11ème colonne
+                    | |  |
+                    | |  \--    Ligne sur l'écran
+                    | \-----    Colonne sur l'écran
+                    \-------    Type de message selon tableau
+\end{verbatim}
+\end{example}
+
+
+        Pour le Type 39 (Fixed texte) si vous voulez encore rajouter du texte,
+        le format de celui-ci sera affiché sur l'écran LCD.
+
+      Exemple~:
+
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_2='39 10 1 Hallo'    # Texte "Hallo" sur la 2ème ligne
+                                      # à la 11ème colonne
+\end{verbatim}
+\end{example}
+
+
+      Les types 40 - 43 affichent le texte, à partir des fichiers types enregistrés
+      dans le répertoire. Les fichiers lu et affichés, sont générés toutes les
+      secondes. vous pouvez les changer par d'autre programme (par exemple telmond).
+      On peut afficher de nouveaux courriels sur l'écran même si l'on est en mode
+      off-line (MyJack). Les fichiers textes, définis dans la variable précédant
+      pour les types de données 40 à 43, (ces fichiers lors de la mise en marche
+      du système seront sauvegardés dans un dossier temporaire, le nom du fichier
+      sera toujours défini simplement en ajoutant un index dans la chaîne de
+      caractères "/etc/lcd\_text$<$Zahl$>$.txt")~:
+
+\begin{example}
+\begin{verbatim}
+        LCD_VAR_TEXT1='Text 1'  # -> /etc/lcd_text1.txt
+        LCD_VAR_TEXT2='Text 2'  # -> /etc/lcd_text2.txt
+        LCD_VAR_TEXT3='Text 3'  # -> /etc/lcd_text3.txt
+        LCD_VAR_TEXT4='Text 4'  # -> /etc/lcd_text4.txt
+\end{verbatim}
+\end{example}
+
+    Depuis la version 1.6.2, il est possible d'afficher des textes différents en
+    fonction du statut on-line off-line. Par exemple, on peut afficher un texte
+    défini pendant le temps on-line et afficher la date et l'heure lorsque la
+    connexion passe en off-line, les caractères seront affichés à la même place
+    sur l'écran. Pour cela les variables suivantes seront ajoutées~:
+
+\config{LCD\_TYPE\_ONLINE\_N}{LCD\_TYPE\_ONLINE\_N}{LCDTYPEONLINEN}
+
+     Dans la variable \var{LCD\_\-TYPE\_\-ONLINE\_\-N} vous indiquez le nombre
+     de types de données à afficher. Ces types de données seront seulement
+     affichés si l'on est on-line.
+
+
+\config{LCD\_TYPE\_ONLINE\_x}{LCD\_TYPE\_ONLINE\_x}{LCDTYPEONLINEx}
+
+      Dans la variable \var{LCD\_\-TYPE\_\-ONLINE\_\-x} vous indiquez le type
+      de données, dans la colonne et la ligne, où seront affichage les informations
+      souhaitées sur l'écran LCD. Le type de données sont numérotés. Voir le
+      format des types correspondant dans le tableau 'LCD\_TEXT\_x' ci-dessus.
+
+      Exemple:
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_ONLINE_1='8 0 0'     # dsl status
+\end{verbatim}
+\end{example}
+
+
+\config{LCD\_TYPE\_OFFLINE\_N}{LCD\_TYPE\_OFFLINE\_N}{LCDTYPEOFFLINEN}
+
+      Dans la variable \var{LCD\_\-TYPE\_\-OFFLINE\_\-N} vous indiquez le nombre
+      de types de données à afficher. Ces types de données seront seulement
+      affichés si l'on est off-line.
+
+
+\config{LCD\_TYPE\_OFFLINE\_x}{LCD\_TYPE\_OFFLINE\_x}{LCDTYPEOFFLINEx}
+
+        Dans la variable \var{LCD\_\-TYPE\_\-OFFLINE\_\-x} vous indiquez le
+        type de données, dans la colonne et la ligne, où seront affichage les
+        informations souhaitées sur l'écran LCD. Le type de données sont
+        numérotés. Voir le format des types correspondant dans le tableau
+        'LCD\_TEXT\_x' ci-dessus.
+
+        Exemple:
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_OFFLINE_1='0 0 0'    # local date
+\end{verbatim}
+\end{example}
+
+\configlabel{LCD\_DSL\_SPEED\_OUT}{LCDDSLSPEEDOUT}
+\config{LCD\_DSL\_SPEED\_IN LCD\_DSL\_SPEED\_OUT}{LCD\_DSL\_SPEED\_IN}{LCDDSLSPEEDIN}
+
+        Avec les variables \var{LCD\_\-DSL\_\-SPEED\_\-IN} et \var{LCD\_\-DSL\_\-SPEED\_\-OUT}
+
+        vous pouvez avoir une échelle de barre d'affichage pour les (type 14 et 15).
+        Vous indiquez ici la vitesse de transfert maximum de la connexion DSL.
+        En principe vous pouvez spécifier la valeur totale. Il est même logique de
+        donner une valeur '+' haute par rapport à la valeur indiquée. Veuillez
+        également noter que les taux réels sont généralement un peu plus élevés
+        par rapport au débit recommandé par les fournisseurs, donc avec DSL1000,
+        vous avez un taux de téléchargement (en arrivée) de 1024 kilobits/s.
+
+        Exemple pour une connexion-DSL 1024/128 kilobit/s~:
+\begin{example}
+\begin{verbatim}
+        LCD_DSL_SPEED_IN='1024' # Bitrate for DSL inbound
+        LCD_DSL_SPEED_OUT='128' # Bitrate for DSL outbound
+\end{verbatim}
+\end{example}
+
+        Pour une connexion ISDN ces valeurs ne sont pas importantes.
+
+\end{description}
+
+\subsection{isdn\_rate}
+
+ Le programme, \flqq{}isdn\_rate\frqq{} est le véritable c\oe{}ur du paquetage LCD.
+ on enregistre l'état des circuits dans le fichier de configuration et on défini
+ les emplacements correspondants pour le type de donnée sur l'écran LCD. Le
+ programme isdn\_rate est appelé comme indiqué ci-dessous~:
+
+\begin{example}
+\begin{verbatim}
+ isdn_rate [-ip router-ip] [-port imond-port] [-telmond-port telmond-port]
+           [-type hitachi|matrix-orbital|tty] [-config config filename]
+\end{verbatim}
+\end{example}
+
+ Définition Des paramètres optionnels~: 
+
+\begin{description}
+\item[-ip router-ip]
+        Avec \var{-ip} on détermine l'adresse-IP du routeur, pour que IMOND puisse
+        envoyer les données. Si le paramètre est laissé vide, l'adresse 127.0.0.1
+        (localhost) est utilisée par défaut. Il est possible de donner le nom du
+        routeur à la place de l'adresse-IP.
+
+\item[-port imond-port]
+        Avec \var{-port} on détermine le port sur lequel IMOND envoie les données. 
+        Configuration par défaut 5000.
+
+\item[-telmond-port telmond-port]
+        Avec \var{-telmond-port} on détermine le port sur lequel TELMOND envoie 
+        les données. Configuration par défaut 5001.
+
+\item[-type hitachi|matrix-orbital|tty]
+        Avec \var{-type} on règle le type d'écran LCD.
+        Sélectionnez \var{hitachi} pour les écrans compatibles HD44780.
+        Sélectionnez \var{matrix-orbital} pour les écrans matrix-orbital.
+        Sélectionnez \var{tty} pour permettre de sortir sur la console du routeur fli4l.
+        IMPORTANT~: avec le programme isdn\_rate on doit toujours indiquer une sortie.
+        Il est donc nécessaire de paramétrer une interface de sortie. tty est la
+        configuration par défaut.
+
+\item[-config configfilename]
+        Avec \var{-config} on détermine le chemin et le nom du fichier lcd.conf.
+        Ce fichier est utilisé par le script rc410.lcd. La valeur par défaut
+        est /var/run/lcd.conf.
+
+Il y a aussi une version isdn\_rate qui fonctionne sous Windows. A cet égard,
+le fichier /var/run/lcd.conf doit être copié après le démarrage du routeur dans
+le répertoire-isdn\_rate ou doit être créé à la main.L'appel du programme pourrait
+alors ressembler à ceci~:
+
+\begin{example}
+\begin{verbatim}
+ isdn_rate -ip fli4l -config lcd.conf
+\end{verbatim}
+\end{example}
+               
+\end{description}
+
+\subsection{Branchement d'un module-LCD sur le port Parallèle}
+ 
+\begin{example}
+\begin{verbatim}
+   13 _____________________________ 1  Vue du port
+      \ o o o o o o o o o o o o o /    Parallèle, au 
+       \ o o o o o o o o o o o o /     dos du PC
+     25 ------------------------- 14  
+
+\end{verbatim}
+\end{example}
+
+
+ Le raccordement d'un écran LCD au routeur se fait de la manière suivante~:
+
+
+\begin{example}
+\begin{verbatim}
+
+ Broches-port-parallèle   Description    Module-LCD   Broche-LCD
+         18-25            GND                             --|
+                          GND                          1  --|- pont
+                          R/W                          5  --|
+                          +5V                          2
+             1            STROBE         EN(1)         6
+             2            D0             D0            7
+             3            D1             D1            8
+             4            D2             D2            9
+             5            D3             D3           10
+             6            D4             D4           11
+             7            D5             D5           12
+             8            D6             D6           13
+             9            D7             D7           14
+            14            Autofeed       RS            4
+            17            Select In      EN(2)         ? (Pour LCDs avec 2 contrôleurs)
+
+  En cas d'affichage rétro-éclairé :
+                                   HG+          15 (avec une valeur environ 20 Ohm)
+                                   GND          16
+\end{verbatim}
+\end{example}
+
+  La broche 3 peut être branchée sur un potentiomètre de $>$= 20 kOhm entre +5V
+  et GND (masse). Ainsi, vous pouvez régler le contraste de l'écran LCD. Sur
+  mon écran LCD (Conrad), la broche 3 se trouve directement reliée à la masse,
+  cela fonctionne très bien.
+
+\begin{example}
+\begin{verbatim}
+
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Broche 3 - driver input)
+\end{verbatim}
+\end{example}
+
+
+
+\subsection{Branchement d'un écran 4x40}
+
+  Le branchement d'un écran LCD 4x40 se différencie par rapport aux autres
+  écrans LCD, ici un exemple du (NLC-40x4x05 - de Conrad)~:
+
+\begin{example}
+\begin{verbatim}
+
+Broches-port-parallèle   Description    Module-LCD         Broche-LCD
+        18-25                                                   --|
+                         GND                                13  --|- pont
+                         R/W                                10  --|
+                         +5V                                14
+            1            STROBE         EU (Enable-Upper)    9
+            2            D0             D0                   8
+            3            D1             D1                   7
+            4            D2             D2                   6
+            5            D3             D3                   5
+            6            D4             D4                   4
+            7            D5             D5                   3
+            8            D6             D6                   2
+            9            D7             D7                   1
+           14            Autofeed       RS                  11
+           17            Select In      ED (Enable-Down)    15
+\end{verbatim}
+\end{example}
+
+  La broche 12 peut être branchée sur un potentiomètre de $>$= 20 kOhm entre
+  +5V et GND (masse). Ainsi, vous pouvez régler le contraste de l'écran LCD.
+  Cependant, vous pouvez toujours brancher la broche 12 directement à la masse
+  cela fonctionne très bien.
+
+\begin{example}
+\begin{verbatim}
+
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Broche 12 - driver input)
+\end{verbatim}
+\end{example}
+
+
+  \begin{itemize}
+  \item Le circuit ED est connecté à la broche 17 du port parallèle.
+
+  \item L'écran est défini dans le fichier lcd.txt comme un écran 2x40.
+
+  \item Pour définir le type dans isdn\_rate on garde quand même 4x40 comme
+        valeur de lignes et de colonnes.
+  \end{itemize}
+
+
+  Pour l'utilisation interne des modules LCD. Il n'y a malheureusement,
+  aucun schéma standard qui correspond à la connexion du port parallèle des
+  cartes-mères. Il faut donc contrôler les broches du connecteur qui est
+  livré avec la carte-mère.
+
+  Une alimentation électrique est nécessaire, on ne peut malheureusement pas
+  utiliser l'alimentation du port parallèle, étant donné que la consommation
+  électrique d'un module LCD est trop élevée. Les connecteurs suivants seront
+  plus adaptés, la souris (PS/2), le clavier (DIN, PS/2), le port jeux ou un
+  connecteur libre de l'alimentation du PC. Certains fabricants de cartes
+  son génèrent les signaux spéciaux sur port jeux. Je n'ai aucune garantie
+  que chacune les distributions fonctionnent. Alors, il est important de~:
+  Toujours mesurer la tension avant le branchement~!
+
+\subsection{Câblage Winamp pour les Modules LCD}
+
+  Par rapport à la conception du Kernel il existe plusieurs variantes de câblages
+  qui équipe des écrans LCD, le câblage normale et le câblage de Winamp. les
+  nouveaux écrans Winamp sont câblés de cette manière.
+
+\begin{example}
+\begin{verbatim}
+   13 _____________________________ 1 Vue du port
+      \ o o o o o o o o o o o o o /   Parallèle, au
+       \ o o o o o o o o o o o o /    dos du PC
+     25 ------------------------- 14
+\end{verbatim}
+\end{example}
+
+ Raccordement de la manière suivante d'un module LCD au routeur avec
+ le câblage Winamp~:
+
+\begin{example}
+\begin{verbatim}
+
+Broches-port-parallèle   Description   Module-LCD    Broche-LCD
+         18-25           GND                          1
+            14           Autofeed       R/W           5
+                         +5V                          2
+             1           STROBE         EN(1)         6
+             2           D0             D0            7
+             3           D1             D1            8
+             4           D2             D2            9
+             5           D3             D3           10
+             6           D4             D4           11
+             7           D5             D5           12
+             8           D6             D6           13
+             9           D7             D7           14
+            16           Init           RS            4
+
+  En cas d'affichage rétro-éclairé :
+                    +5V            HG+          15
+                                   GND          16 (avec une résistance de 100 Ohm)
+\end{verbatim}
+\end{example}
+
+  La broche 3 peut être branchée sur un potentiomètre de $>$= 10 kOhm entre +5V
+  et GND (masse). Ainsi, vous pouvez régler le contraste de l'écran LCD.
+
+\begin{example}
+\begin{verbatim}
+
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Broche 3 - driver input)
+\end{verbatim}
+\end{example}
+
+
+\subsection{Trucs et astuce - Résumé avec la collaboration de Robert Resch}
+
+\begin{description}
+\item [Raccordement de 2 écrans]
+
+  A l'aide de 2 signaux EN, il est possible d'exploiter en même temps, 2
+  écrans en parallèle. La broche 6 de l'écran est connectée à la broche 1
+  (EN1) du port Parallèle et la broche 6 du 2ème écran est connectée à
+  la broche 17 (EN2). Toutes les autres broches sont connectées en
+  parallèle sur les 2 écrans.
+
+
+ \item  [Deux pages d'affichage sur un écran]
+
+  Maintenant, il est aussi possible d'afficher 2 pages sur un écran
+  avec le circuit suivant~:
+\begin{example}
+\begin{verbatim}
+
+   25-pol. Sub-D        LCD
+
+   1 -------|
+            |
+             \
+              \-------- Pin 6
+               
+            |
+   17-------|
+
+          Commutateur
+\end{verbatim}
+\end{example}
+
+  On raccorde le commutateur à la broche 6 de l'écran. Les deux autres
+  contacts sont raccordés sur les deux signaux-EN broche 1 et 17 du
+  port parallèle.
+
+ \item   [Gestion des deux variantes]
+
+  \sloppypar{Le signal-EN2 est généré dès qu'une ligne z dans
+  \var{LCD\_LINES} $< z < 2*$\var{LCD\_LINES} est demandé. Si une plus
+  grande ligne de caractère est utilisée, les deux écrans sont alimentés
+  (pour pouvoir afficher les caractères bien définis par exemple les barres
+  de débit avec isdn\_rate sur les deux écrans). Avec les deux pages sur le
+  même écran, ils peuvent avoir leurs propres caractères bien définis.}
+
+  Avec l'écran 4x40 on configure dans le fichier $<$config$>$/lcd.txt comme
+  un écran 2x40. Les lignes sont cependant représentées par 0-3. Les numéros
+  de ligne 4 et 5 sont dans ce cas affichées sur les deux moitiés d'écran.
+  La ligne 4 va à la ligne 0 et 2, ligne 5, à la ligne 1 et 3.
+
+  Par exemple avec 2 écrans 4x20 commutés en parallèle la gestion se présente
+  de la manière suivante~:
+
+  \begin{itemize}
+  \item Les lignes de 0 à 3 sont affichées sur l'écran 1
+
+  \item Les lignes de 4 à 7 sont affichées sur l'écran 2
+
+  \item Les lignes de 8 à 11 sont affichées sur les deux écrans
+  \end{itemize}
+
+
+ \item [A propos de l'oscillation]
+
+  Si vous avez des problèmes d'oscillation du signal, cela vient peut-être
+  d'un câble trop long ou du port parallèle. Raccourcissent le câble, si
+  cela ne va toujours pas, vous devez créer une terminaison de ligne. Pour
+  ce faire, on place une résistance de 10 kOhm sur la ligne de données
+  (raccord 10!) et le +5V. Cela devrait stabiliser l'oscillation.
+
+\end{description}
+
+
+\subsection{Remerciement}
+
+  Merci à~:
+
+  \begin{itemize}
+  \item Nils Färber (\email{nils@kernelconcepts.de}) pour le pilote
+
+  \item Jürgen Bauer (\email{jb@idowa.net}) pour la première version de isdn\_rate
+
+  \item Frank Meyer (\email{frank@fli4l.de}) pour l'interface imond et Fli4l~:)
+
+  \item Ulf Lanz (\email{u.lanz@odn.de}) pour la distribution des variables isdn\_rate
+
+  \item Robert Resch (\email{rresch@gmx.de}) pour la correction des bugs et
+    des améliorations du pilote-lcd
+
+  \item Stefan Krister (\email{Stefan.Krister@keimfarben.de}) pour le premier
+    arrangement de la documentation
+
+   \item Nicole Hornung (\email{fli4l@xerotech.de}) pour quelques améliorations
+     de la Documentation 
+
+   \item Gerrit Lammert (\email{gerrit@fli4l.de}) pour la transformation de la
+     Doc-texte en Doc-HTML
+  \end{itemize}
+
+
+    Pour toutes questions, suggestions, critique, etc.~:
+
+    Envoyer un courriel à Gernot Miksch \email{ibgm@gmx.de}
+

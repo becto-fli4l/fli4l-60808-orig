@@ -1,0 +1,691 @@
+% Synchronized to r44350
+\marklabel{sec:opt-lcd }
+{
+  \section {LCD - Displaying Status Informations On A LC-Display}
+}
+
+\subsection{Introduction}
+
+
+    This package enables a LCD module connected to the parallel port of 
+    fli4l. Serial LCD modules by Matrix-Orbital can be used too.
+    Some more filters for special displays exist.
+
+    Informations like date, time, values of actual load, ISDN- or DSL 
+    up- and download rates/bars in kb/s can be shown on the display.
+
+
+\subsection{Konfiguration}\index{OPT\_LCD}
+
+
+    To use the package lcd configure the following variables:
+
+\begin{example}
+\begin{verbatim}
+        OPT_LCD='yes'  (Default setting: OPT_LCD='no')
+\end{verbatim}
+\end{example}
+
+
+\begin{description}
+  \config{LCD\_COLS}{LCD\_COLS}{LCDCOLS} - Amount of characters per line.
+  The kernel module supports values of 16, 20, 24, 32 and 40 at the moment. 
+  Modules with 8 or 27 charcters per line usually will work as well.
+  fli4l will transfer 16 res. 40 to the kernel module.
+
+\config{LCD\_LINES}{LCD\_LINES}{LCDLINES} - Amount of lines. 
+
+    Possible values: 1, 2 and 4.
+    
+    Attention: Displays on parallel ports with two controller chips (4x16,
+    4x40 etc.)  have to be defined with two lines! The coordinates of the 
+    values to be shown can be specified as usual. The LCD driver decides 
+    which of the two controllers has to be addressed depending on coordinates.
+    
+\config{LCD\_ADDRESS}{LCD\_ADDRESS}{LCDADDRESS}
+
+      IO address of the LPT port, i.e. '0x278'
+      
+      If a serial display by Matrix-Orbital is used specify the serial port 
+      to be used here i.e. 'com1' or 'com2'. With 'null' LAN-only is set, see: 
+      \var{LCD\_LANIP}
+      
+      Displaying on a monitor:
+      'console' or tty1 choose the main screen. This may lead to output mixed 
+      with normal messages and hence is not advised. 'tty2', 'tty3' ... 'tty9' 
+      select other virtual consoles reached by typing ALT-F2 ... F9. ALT-F1 
+      returns to the main screen.
+
+        \wichtig{
+        parallel interfaces on motherboards or on ISA adapters are fully 
+        supported. PCI adapters with parallel ports provided by NETMOS-Chips
+        can be also used.}
+
+\begin{example}
+\begin{verbatim}
+        cat /proc/pci
+\end{verbatim}
+\end{example}
+
+        \emph{lists PCI devices discovered. Select the device with matching 
+        Vendor-ID and Device-ID and choose one of the following IO addresses:}
+
+        \begin{itemize}
+        \item Nm9705CV  (Vendor id=9710, Device id=9705, Port1 1st entry)
+        \item Nm9735CV  (Vendor id=9710, Device id=9735, Port1 3rd entry)
+        \item Nm9805CV  (Vendor id=9710, Device id=9805, Port1 1st entry)
+        \item Nm9715CV  (Vendor id=9710, Device id=9815, Port1 1st entry, Port2 3rd entry)
+        \item Nm9835CV  (Vendor id=9710, Device id=9835, Port1 3rd entry)
+        \item Nm9755CV  (Vendor id=9710, Device id=9855, Port1 1st entry, Port2 3rd entry)
+        \end{itemize}
+
+        \emph{Consider this as an experimental feature because of the lack of 
+        matching hardware to test. Please report errors on the newsgroups!}
+
+\config{LCD\_LANIP}{LCD\_LANIP}{LCDLANIP} (optional variable)
+
+      IP address of a 16x2 displays on a Pollin AVR-NET-IO in LAN
+      or other displays on ethersex - see further variables
+      (experimental) 
+
+\config{LCD\_LANTYPE}{LCD\_LANTYPE}{LCDLANTYPE} (optional variable)
+      
+      Type of firmware.
+      Choose: 'pollin' (default) - Original firmware AVR-NET-IO
+      'ethersex' - firmware by www.ethersex.de with active LCD
+      
+\config{LCD\_LANUSER}{LCD\_LANUSER}{LCDLANUSER} (optional variable)
+      
+      Authentification for ethersex if PAM is set to ecmd/tcp.
+      Here: Username
+
+\config{LCD\_LANPASS}{LCD\_LANPASS}{LCDLANPASS} (optional variable)
+      
+      Password belonging to \var{LCD\_LANUSER}
+      
+\configlabel{LCD\_TIME\_LONG}{LCDTIMELONG}
+\configlabel{LCD\_TIME\_SHORT}{LCDTIMESHORT}
+\configvar {LCD\_TIME\_LONG   LCD\_TIME\_SHORT}
+
+      These are two timer values for the IO port of the LCD-Display.
+      If blank the following defaults will be used:
+
+\begin{example}
+\begin{verbatim}
+        LCD_TIME_LONG='100'
+        LCD_TIME_SHORT='40'
+\end{verbatim}
+\end{example}
+
+      If problems occur, for example distorted output on the LCD display 
+      try to use higher values:
+      
+\begin{example}
+\begin{verbatim}
+        LCD_TIME_LONG='120'
+        LCD_TIME_SHORT='60'
+\end{verbatim}
+\end{example}
+
+      These variables have no meaning for serial displays by Matrix-Orbital.
+      
+\config{LCD\_ADDR\_TYPE}{LCD\_ADDR\_TYPE}{LCDADDRTYPE}
+ - Way of addressing the LCD controller.
+
+\begin{example}
+\begin{verbatim}
+        LCD_ADDR_TYPE='0'     # For HD44780 and compatible
+        LCD_ADDR_TYPE='1'     # For HD66712 and compatible
+        LCD_ADDR_TYPE='2'     # Obsolete
+        
+\end{verbatim}
+\end{example}
+    
+    These variables have no meaning for serial displays by Matrix-Orbital.
+
+\config{LCD\_WINAMP}{LCD\_WINAMP}{LCDWINAMP}
+
+Ready-to-use LCD displays by Kernel-Concepts exist in different wiring 
+variants: normal and Winamp-wiring. Newer displays use the latter, specify
+'yes' in this case.
+
+\config{LCD\_FILTER}{LCD\_FILTER}{LCDFILTER}
+
+ - Filter for special displays.
+At the moment filters exist for
+- ipc\_a78 displays
+
+\begin{example}
+\begin{verbatim}
+        LCD_FILTER='mo2ipc_a78'     # For mo2ipc_a78 displays
+\end{verbatim}
+\end{example}
+
+\config{LCD\_START\_MSG}{LCD\_START\_MSG}{LCDSTARTMSG}
+
+       The message specified here will be shown on the display during system startup 
+       shortly after driver loading. It should not exceed the length of one line 
+       because longer texts may not be shown completely.
+
+\config{LCD\_STOP\_MSG}{LCD\_STOP\_MSG}{LCDSTOPMSG}
+
+       The message specified here will be shown on the display during system shutdown. 
+       It should not exceed the length of one line because longer texts may not be 
+       shown completely.
+
+\config{LCD\_REBOOT\_MSG}{LCD\_REBOOT\_MSG}{LCDREBOOTMSG}
+
+       The message specified here will be shown on the display during system reboot. 
+       It should not exceed the length of one line because longer texts may not be 
+       shown completely.
+       
+\config{LCD\_START\_ISDN\_RATE}{LCD\_START\_ISDN\_RATE}{LCDSTARTISDNRATE}
+
+      Specifies if program isdn\_rate should be started.
+
+\config{LCD\_TYPE\_N}{LCD\_TYPE\_N}{LCDTYPEN}
+
+      Output format of program isdn\_rate can be largely customized to the personal 
+      taste of the user.
+
+      \var{LCD\_\-TYPE\_\-N} sets the number of data types to be shown.
+      Data types are always shown, independent of being online or not.
+
+
+\config{LCD\_TYPE\_x}{LCD\_TYPE\_x}{LCDTYPEx}
+
+        \var{LCD\_\-TYPE\_\-x} specifies data type and column/row of the 
+        display in which the information should appear. Data types are coded 
+        numerically. Possible values: see table \ref{tab:lcd-type-x}.
+
+        \begin{table}[htbp]
+          \begin{small}
+          \begin{center}
+            \begin{tabular}{rlr}
+               Typ &     Information   &             Characters\\
+
+
+                0 &       local date dd.mm.yyyy           & 10 \\
+                1 &       local date dd.mm.yy             &  8 \\
+                2 &       local time hh:mm:ss             &  8 \\
+
+                3 &       remote date dd.mm.yyyy          & 10 \\
+                4 &       remote date dd.mm.yy            &  8 \\
+                5 &       remote time hh:mm:ss            &  8 \\
+
+                6 &       isdn status channel 1           &  7 \\
+                7 &       isdn status channel 2           &  7 \\
+                8 &       dsl status                      &  7 \\
+
+                9 &       isdn circuit name channel 1     & 16 \\
+                10 &      isdn circuit name channel 2     & 16 \\
+                11 &      dsl circuit name                & 16 \\
+
+                12 &      isdn input rate bar             &  8 \\
+                13 &      isdn output rate bar            &  8 \\
+                14 &      dsl input rate bar              &  8 \\
+                15 &      dsl output rate bar             &  8 \\
+
+                16 &      isdn input rate                 &  5 \\
+                17 &      isdn output rate                &  5 \\
+                18 &      dsl input rate                  &  9 \\
+                19 &      dsl output rate                 &  9 \\
+
+                20 &      isdn charge channel 1           &  6 \\
+                21 &      isdn charge channel 2           &  6 \\
+                22 &      dsl charge                      &  6 \\
+
+                23 &      isdn ip address channel 1       & 15 \\
+                24 &      isdn ip address channel 2       & 15 \\
+                25 &      dsl ip address                  & 15 \\
+
+                26 &      load 1                          &  5 \\
+                27 &      load 2                          &  5 \\
+
+                28 &      phone                           & 16 \\
+
+                29 &      isdn online time channel 1      &  8 \\
+                30 &      isdn online time channel 2      &  8 \\
+                31 &      dsl online time                 &  8 \\
+
+                32 &      isdn quantity in channel 1      &  8 \\
+                33 &      isdn quantity in channel 2      &  8 \\
+                34 &      dsl quantity in                 &  8 \\
+
+                35 &      isdn quantity out channel 1     &  8 \\
+                36 &      isdn quantity out channel 2     &  8 \\
+                37 &      dsl quantity out                &  8 \\
+
+                38 &      cpu usage                       &  4 \\
+
+                39 &      fixed text                  & max 20 \\
+                40 &      text -$>$ /etc/lcd\_text1.txt  & max 20 \\
+                41 &      text -$>$ /etc/lcd\_text2.txt  & max 20 \\
+                42 &      text -$>$ /etc/lcd\_text3.txt  & max 20 \\
+                43 &      text -$>$ /etc/lcd\_text4.txt  & max 20 \\
+
+                44 &      router uptime                   & 10 \\
+
+            \end{tabular}
+            \caption{Overview of possible values for LCD\_TYPE\_x}
+            \marklabel{tab:lcd-type-x}{}
+          \end{center}
+          \end{small}
+        \end{table}
+
+
+
+
+        The following two digits in \var{LCD\_\-TYPE\_\-1} set the position.
+        Format: ``column row'', whereas both digits start with '0'.
+
+      Example:
+
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_1='4 10 1'   # Status in 2nd row, starting from column 11
+                    | |  |
+                    | |  \--    row in display 
+                    | \-----    column in display
+                    \-------    Information type according to table
+\end{verbatim}
+\end{example}
+
+
+        For Type 39 (fixed text) expand format above with a text to be 
+        displayed.
+
+      Example:
+
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_2='39 10 1 Hello'   # Text "Hello" in 2nd row 
+                                     # starting at column 11
+\end{verbatim}
+\end{example}
+
+      
+      Types 40 - 43 fetch text to be displayed from the files mentioned 
+      in the type list. These files are read and displayed every second 
+      during runtime. They can be read and changed by other programs as 
+      well, (i.e. telmond). Possible usecases are messages for incoming 
+      \mbox{E-Mails} even while being offline (MyJack). Standard texts 
+      for data types 40-43 are definded by the following variables (and 
+      are spooled to temporary files during system startup, names are
+      generated by pasting of indexes into the string
+      ``/etc/lcd\_text$<$Zahl$>$.txt''):
+
+\begin{example}
+\begin{verbatim}
+        LCD_VAR_TEXT1='Text 1'  # -> /etc/lcd_text1.txt
+        LCD_VAR_TEXT2='Text 2'  # -> /etc/lcd_text2.txt
+        LCD_VAR_TEXT3='Text 3'  # -> /etc/lcd_text3.txt
+        LCD_VAR_TEXT4='Text 4'  # -> /etc/lcd_text4.txt
+\end{verbatim}
+\end{example}
+
+    Texts can also be displayed depending on online state (i.e. online time 
+    only while being online and while being offline date and time at the same 
+    place).
+    Configure the following variables:
+
+\config{LCD\_TYPE\_ONLINE\_N}{LCD\_TYPE\_ONLINE\_N}{LCDTYPEONLINEN}
+
+      Set the amount of data types to be shown in \var{LCD\_\-TYPE\_\-ONLINE\_\-N}. 
+      They will only be shown while being online.
+
+
+\config{LCD\_TYPE\_ONLINE\_x}{LCD\_TYPE\_ONLINE\_x}{LCDTYPEONLINEx}
+
+      \var{LCD\_\-TYPE\_\-ONLINE\_\-x} Data type, column and row where to 
+      show the information on the display. Data types are coded numerically.
+      Format and type match the ones from the 'LCD\_TEXT\_x' table.
+
+      Example:
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_ONLINE_1=' 8  0 0'     # dsl status
+\end{verbatim}
+\end{example}
+
+
+\config{LCD\_TYPE\_OFFLINE\_N}{LCD\_TYPE\_OFFLINE\_N}{LCDTYPEOFFLINEN}
+
+      \var{LCD\_\-TYPE\_\-OFFLINE\_\-N} sets the number of data types to show.
+      These data types are only displayed while being offline.
+
+
+\config{LCD\_TYPE\_OFFLINE\_x}{LCD\_TYPE\_OFFLINE\_x}{LCDTYPEOFFLINEx}
+
+        \var{LCD\_\-TYPE\_\-OFFLINE\_\-x} Data type, column and row where to 
+      show the information on the display. Data types are coded numerically.
+      Format and type match the ones from the 'LCD\_TEXT\_x' table.
+
+        Example:
+\begin{example}
+\begin{verbatim}
+        LCD_TYPE_OFFLINE_1=' 0  0 0'  # local date
+\end{verbatim}
+\end{example}
+
+\configlabel{LCD\_DSL\_SPEED\_OUT}{LCDDSLSPEEDOUT}
+\config{LCD\_DSL\_SPEED\_IN LCD\_DSL\_SPEED\_OUT}{LCD\_DSL\_SPEED\_IN}{LCDDSLSPEEDIN}
+        \var{LCD\_\-DSL\_\-SPEED\_\-IN} und \var{LCD\_\-DSL\_\-SPEED\_\-OUT} 
+        is used for scaling bar display (type 14 and 15). Maximum data transfer rates of a 
+        DSL connection are set here. In principle any integer value can be specified. 
+        It may be even useful to set slightly higher values to avoid a plus sign at the end 
+        of the bar.
+        Please note that connection names may be slightly different from real data transfer 
+        rates, for example DSL1000 has a maximum download rate (inbound) of 1024 kilobits/s. 
+
+        Example for a DSL connection with 1024/128 kilobit/s:
+\begin{example}
+\begin{verbatim}
+        LCD_DSL_SPEED_IN='1024' # Bitrate for DSL inbound
+        LCD_DSL_SPEED_OUT='128' # Bitrate for DSL outbound
+\end{verbatim}
+\end{example}
+
+        These values are irrelevant for ISDN connections. 
+        
+\end{description}
+
+\subsection{isdn\_rate}
+ The program \glqq{}isdn\_rate\grqq{} is the core of package LCD. It monitors circuit states 
+ and puts out the data types mentioned in the config file at the matching position in the LCD
+ display.
+ isdn\_rate is executed as follows:
+ 
+\begin{example}
+\begin{verbatim}
+ isdn_rate [-ip router-ip] [-port imond-port] [-telmond-port telmond-port]
+           [-type hitachi|matrix-orbital|tty] [-config configfilename]
+\end{verbatim}
+\end{example}
+
+ Optional parameters have the following meanings:
+
+\begin{description}
+\item[-ip router-ip]
+
+        IMOND and/or TELMOND running on a router are used as data sources. 
+        \var{-ip} sets the corresponding router IP address.
+        If the parameter is omitted 127.0.0.1 (localhost) will be used.
+        The name of the router may be used instead of the address as well.
+        
+\item[-port imond-port]
+        \var{-port} sets the port IMOND can be reached at.          
+        Default port is 5000.
+        
+\item[-telmond-port telmond-port]
+        \var{-telmond-port} sets the port TELMOND can be reached at.
+        Default port is 5001.
+        
+\item[-type hitachi|matrix-orbital|tty]
+        \var{-type} sets the display type.
+        \var{hitachi} selects displays compatible to HD44780.
+        \var{matrix-orbital} Matrix-Orbital displays.
+        \var{tty} directs output to console.
+        IMPORTANT: All output of isdn\_rate is directed to stdout. Redirection to 
+        according interfaces is needed because of this.
+        Default value is tty.
+
+\item[-config configfilename]
+        \var{-config} sets the path and the name of the lcd.conf file to be created by 
+        the script rc410.lcd. Default value is /var/run/lcd.conf.
+        
+A windows version of isdn\_rate exists. To use it the file /var/run/lcd.conf either 
+has to be copied manually into the isdn\_rate directory after router startup or has to 
+be created by hand.
+Execution could work like this:
+\begin{example}
+\begin{verbatim}
+ isdn_rate -ip fli4l -config lcd.conf
+\end{verbatim}
+\end{example}
+               
+\end{description}
+
+\subsection{Pin wiring of a LCD module connected to the parallel port}
+ 
+\begin{example}
+\begin{verbatim}
+   13 _____________________________ 1 Front view of a 
+      \ o o o o o o o o o o o o o /   parallel port, rear
+       \ o o o o o o o o o o o o /    side of a PC
+     25 ------------------------- 14
+\end{verbatim}
+\end{example}
+   
+
+ Connecting a LCD module:
+
+ 
+\begin{example}
+\begin{verbatim}
+ 
+ Parallelport-Pin   Beschreibung   LCD-Modul    LCD-Pin
+         18-25      GND                             --|
+                    GND                          1  --|- Bridge
+                    R/W                          5  --|
+                    +5V                          2
+             1      STROBE         EN(1)         6
+             2      D0             D0            7
+             3      D1             D1            8
+             4      D2             D2            9
+             5      D3             D3           10
+             6      D4             D4           11
+             7      D5             D5           12
+             8      D6             D6           13
+             9      D7             D7           14
+            14      Autofeed       RS            4
+            17      Select In      EN(2)         ? (for LCD with 2 controllers)
+
+  Display with backlight:
+                                   HG+          15 (with series resistor ~ 20 Ohm)
+                                   GND          16
+\end{verbatim}
+\end{example}
+
+  Connect a $>$= 20kOhm Poti between +5V and GND on pin 3 to control display contrast. 
+  For my display (Conrad) Pin 3 is directly connected to ground.
+
+\begin{example}
+\begin{verbatim}
+  
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Pin 3 - driver input)
+\end{verbatim}
+\end{example}
+
+
+
+\subsection{Connection of a 4x40 displays}
+
+  Connection of a 4x40 displays differs vastly from other displays -
+  see this Example (Conrad - NLC-40x4x05):
+
+\begin{example}
+\begin{verbatim}
+
+Parallel port pin   Description   LCD module           LCD pin
+        18-25                                             --|
+                   GND                                13  --|- bridge
+                   R/W                                10  --|
+                   +5V                                14
+            1      STROBE         EU (Enable-Upper)    9
+            2      D0             D0                   8
+            3      D1             D1                   7
+            4      D2             D2                   6
+            5      D3             D3                   5
+            6      D4             D4                   4
+            7      D5             D5                   3
+            8      D6             D6                   2
+            9      D7             D7                   1
+           14      Autofeed       RS                  11
+           17      Select In      ED (Enable-Down)    15
+\end{verbatim}
+\end{example}
+
+
+  Connect a $>$= 20kOhm Poti between +5V and GND on pin 12 to control display 
+  contrast. It may be enough to connect pin 12 directly to ground to achieve 
+  readable display.
+  
+\begin{example}
+\begin{verbatim}
+
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Pin 12 - driver input)
+\end{verbatim}
+\end{example}
+
+
+  \begin{itemize}
+  \item Connect ED wire to pin 17 of the parallel port.
+  
+  \item Define the display as 2x40 in lcd.txt.
+  
+  \item As type definition for isdn\_rate set 4x40 for rown-/column size instead.
+  \end{itemize}
+
+
+  Unfortunately no standard exists for the pin wiring of a motherboard's internal parallel 
+  port connector. For internal use of LCD modules the pin connection has to be found in 
+  another way.
+
+  Power supply for a LCD module can't be taken directly from the parallel port because 
+  of its current draw being too high. Use mouse (PS/2), keyboard (DIN, PS/2), game port, 
+  USB or PC power supply instead. Game ports may be complicated as well. Always use a 
+  voltmeter at first! No guarantees can be given, your mileage may vary.
+  
+\subsection{Winamp-wiring of a LCD module}
+ 
+\begin{example}
+\begin{verbatim}
+   13 _____________________________ 1 Front view of a 
+      \ o o o o o o o o o o o o o /   parallel port, rear
+       \ o o o o o o o o o o o o /    side of a PC
+     25 ------------------------- 14
+\end{verbatim}
+\end{example}
+   
+
+ Connecting a LCD module with Winamp wiring:
+
+ 
+\begin{example}
+\begin{verbatim}
+ 
+ Parallel port pin  description    LCD module   LCD pin
+         18-25      GND                          1
+            14      Autofeed       R/W           5
+                    +5V                          2
+             1      STROBE         EN(1)         6
+             2      D0             D0            7
+             3      D1             D1            8
+             4      D2             D2            9
+             5      D3             D3           10
+             6      D4             D4           11
+             7      D5             D5           12
+             8      D6             D6           13
+             9      D7             D7           14
+            16      Init           RS            4
+
+  Displays with backlight:
+                    +5V            HG+          15
+                                   GND          16 (with regulating series resistor 100 Ohm)
+\end{verbatim}
+\end{example}
+
+  Connect a $>$= 10kOhm Poti between +5V and GND on pin 3 to control display contrast. 
+  For my display (Conrad) Pin 3 is directly connected to ground.
+
+\begin{example}
+\begin{verbatim}
+  
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Pin 3 - driver input)
+\end{verbatim}
+\end{example}
+
+
+\subsection{Tips and Tricks}
+
+\begin{description}
+\item [Connecting 2 displays]
+
+   By aid of the 2nd EN signal it is possible to use 2 identical displays 
+   in parallel zu. To accomplish this Pin 6 of the first display is connected 
+   to pin 1 (EN1) of the parallel port while pin 6 of the 2nd display is 
+   wired to pin 17 (EN2). All other wires are connected in parallel.
+
+
+ \item  [Two sided displays]
+
+   For two sided displays make the following connections:
+\begin{example}
+\begin{verbatim}
+
+   25-pol. Sub-D        LCD
+
+   1 -------|
+            |
+             \
+              \-------- Pin 6
+
+            |
+   17-------|
+
+          switch
+\end{verbatim}
+\end{example}
+
+   Pin 6 of the display is connected to the common side of the switch. The two 
+   EN wires are connected to the two pins of the switching side.
+
+
+ \item   [Driving both variants]
+
+  \sloppypar{EN2 signal is generated when a row z is accessed with
+  \var{LCD\_LINES} $< z < 2*$\var{LCD\_LINES}.
+  If a row number higher than that is used both displays are adressed 
+  to get definable chars (i.e. isdn\_rate's bar display) on both displays. 
+  Both display sides can have their own defined chars.}
+
+  Hence for a 4x40 a 2x40 display is specified in $<$config$>$/lcd.txt.
+  Rows are accessed with 0-3. row numbers 4 and 5 are sent to both displays 
+  in this case. Row 4 is sent to row 0 and 2,
+  row 5 is sent to row 1 and 3.
+
+  Addressing i.e. 2 parallel 4x20 displays looks like this:
+
+  \begin{itemize}
+  \item row 0-3 are shown on display 1
+    
+  \item  row 4-7 are shown on display 2 
+    
+  \item row 8-11 are shown on both displays 
+  \end{itemize}
+
+
+ \item [Oscillation loops]
+
+  With long cables or certain parallel ports oscillation loops can cause troubles. 
+  Either use shorter cables or if this is not feasible use a termination. Take 
+  a 10kOhm resistor for each of the 10 data wires connected to +5V. 
+  
+\end{description}
+

@@ -1,0 +1,42 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for lcd
+#
+# Creation:     2006-01-23  gm
+# Last Update:  $Id$
+#
+# Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+provides lcd version 4.0.0
+
+if (opt_lcd)
+then
+  if ( ! (lcd_address =~ "com[0-4]") && ! (lcd_address =~ "console|(tty[0-9]?)") )
+  then
+      add_to_opt "rootfs:lib/modules/${KERNEL_VERSION}/extra/lcdhitachi.ko"
+  fi
+  if (lcd_lanip != "")
+  then
+    add_to_opt "usr/local/bin/lcdlan.sh" "mode=555 flags=sh"
+    add_to_opt "usr/sbin/netecho" "mode=555"
+  fi
+  if (lcd_filter == "mo2ipc_a78")
+  then
+    if (arch != "x86" || arch != "x86_64")
+    then
+      error "LCD_FILTER='mo2ipc_a78' not available for ARCH='$arch'"
+    fi
+    if ( ! (lcd_address =~ "com[0-4]") )
+    then
+      error "If you use filter mo2ipc_a78, you must select a serial interface."
+    fi
+
+    add_to_opt "rootfs:usr/local/bin/mo2ipc_a78" "mode=555"
+  fi
+
+  if (lcd_start_isdn_rate && !opt_imond)
+  then
+    error "If you use isdn_rate, you must enable imond."
+  fi
+fi

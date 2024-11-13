@@ -1,0 +1,94 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/boot.d/rc001.lcd - load lcd driver
+#
+# Creation:     2006-12-22 GM
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+(
+  begin_script LCD "loading lcd driver ..."
+  . /etc/rc.cfg
+
+  lcd_device=">/dev/lcd"
+  if [ "$LCD_FILTER" != '' ]
+  then
+    lcd_device="|"$(LCD_FILTER)">/dev/lcd"
+  fi
+
+  case "$LCD_ADDRESS"
+  in
+    com*|ttyS*)
+      lcd_hw_type="matrix-orbital"
+      rm -f /dev/lcd 2>/dev/null
+      ln -f /dev/$LCD_ADDRESS /dev/lcd
+      if [ $LCD_FILTER = 'mo2ipc_a78' ]
+      then
+        stty -parenb cs8 1200 -opost -cstopb < /dev/lcd
+      else
+        stty -parenb cs8 19200 -opost < /dev/lcd               # Set serial params
+      fi
+      if [ $? != 0 ]
+      then
+        log_error "could not configure serial device"
+      else
+        # prepare display: clear it, set cursor home, backlight on
+        eval '{
+          echo -e "\376R" | tr -d "\012"
+          echo -e "\376X" | tr -d "\012"
+          echo -e "\376B\000" | tr -d "\012"
+          echo -e "\376P\310" | tr -d "\012"
+        }'$lcd_device
+      fi
+      ;;
+    console|tty*)
+      lcd_hw_type="tty"
+      rm -f /dev/lcd 2>/dev/null
+      ln -f /dev/$LCD_ADDRESS /dev/lcd
+      eval 'echo -e "\033[2J\033[H" |tr -d "\012"'$lcd_device    # display clear-home
+      ;;
+    null)
+      lcd_hw_type="tty"
+      rm -f /dev/lcd 2>/dev/null
+      ln -f /dev/$LCD_ADDRESS /dev/lcd
+      ;;
+    *)
+      lcd_hw_type="hitachi"
+      mknod /dev/lcd c 120 0
+
+      # any parameters?
+      LCD_MODUL_PARM=''
+      test -z "$LCD_ADDRESS"    || LCD_MODUL_PARM="$LCD_MODUL_PARM io=$LCD_ADDRESS"
+      TYPE=$LCD_ADDR_TYPE
+      if [ $LCD_WINAMP = 'no' ]
+      then
+        TYPE=`expr $TYPE + 4`
+      fi
+      LCD_MODUL_PARM="$LCD_MODUL_PARM a_type=$TYPE"
+      if [ "$LCD_COLS" = "27" ]
+      then
+        LCD_COLS=40
+      fi
+      if [ "$LCD_COLS" = "8" ]
+      then
+        LCD_COLS=16
+      fi
+      test -z "$LCD_LINES"      || LCD_MODUL_PARM="$LCD_MODUL_PARM lines=$LCD_LINES"
+      test -z "$LCD_COLS"       || LCD_MODUL_PARM="$LCD_MODUL_PARM cols=$LCD_COLS"
+      test -z "$LCD_TIME_LONG"  || LCD_MODUL_PARM="$LCD_MODUL_PARM t_long=$LCD_TIME_LONG"
+      test -z "$LCD_TIME_SHORT" || LCD_MODUL_PARM="$LCD_MODUL_PARM t_short=$LCD_TIME_SHORT"
+
+      # load module
+      do_modprobe lcdhitachi $LCD_MODUL_PARM
+
+      # prepare display: clear it, set cursor home and off
+      eval '{
+        echo -e "\033h" |tr -d "\012"    # Cursor home
+        echo -e "\033K" |tr -d "\012"    # Cursor off
+        echo -e "\033g\000\000" |tr -d "\012"    # Select first Controller
+      }'$lcd_device
+      ;;
+  esac
+  # send message
+  eval 'echo $LCD_START_MSG'$lcd_device
+  end_script
+)

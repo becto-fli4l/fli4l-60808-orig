@@ -1,0 +1,50 @@
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc001.lcd - clear lcd display and say goodbye
+#
+# Creation:     25.12.2005  GM
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script LCD 'Clear LCD Module and say Goodbye ...'
+
+  killall isdn_rate            # should not issue messages to the display any longer
+  
+  if [ -f /var/run/lcd.conf ]
+  then
+    . /var/run/lcd.conf
+  fi
+  eval '{
+    case "$LCD_ADDRESS"
+    in
+      com*|ttyS*)
+        lcd_hw_type="matrix-orbital"
+        # prepare display: clear it, set cursor home, backlight on
+        echo -e "\376R" | tr -d "\012"
+        echo -e "\376X" | tr -d "\012"
+        echo -e "\376B\000" | tr -d "\012"
+        echo -e "\376P\310" | tr -d "\012"
+        ;;
+      console|tty*)
+        lcd_hw_type="tty"
+        echo -e "\033[2J\033[H" |tr -d "\012"    # display clear-home
+        ;;
+      *)
+        lcd_hw_type="hitachi"
+        # prepare display: clear it, set cursor home and off
+        echo -e "\033g\000\376" |tr -d "\012"    # Select both Controllers
+        echo -e "\033c" |tr -d "\012"    # display clear
+        echo -e "\033h" |tr -d "\012"    # Cursor home
+        echo -e "\033K" |tr -d "\012"    # Cursor off
+        echo -e "\033g\000\000" |tr -d "\012"    # Select first Controller 
+        ;;
+    esac
+
+    if [ -f /haltflag ]
+    then
+      echo $LCD_STOP_MSG
+    else
+      echo $LCD_REBOOT_MSG
+    fi
+  }'$lcd_device
+
+end_script
