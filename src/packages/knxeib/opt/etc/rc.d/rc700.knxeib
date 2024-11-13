@@ -1,0 +1,59 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc700.knxeib - start eibd
+#
+# Creation: 16.05.2009 Claas Hilbrecht <babel@fli4l.de>
+# Last Update: $Id$ 
+#--------------------------------------------------------------------
+
+if [ "$OPT_KNXEIB" = yes ]
+then
+    begin_script KNXEIB "configuring and starting KNXEIB..."
+
+    : ${KNXEIBD_DEFAULT_ROUTING:=yes}
+    : ${KNXEIBD_DEFAULT_SERVER:=yes}
+    : ${KNXEIBD_DEFAULT_DISCOVERY:=yes}
+    : ${KNXEIBD_DEFAULT_TUNNELING:=yes}
+    : ${KNXEIBD_DEFAULT_GROUPCACHE:=yes}
+
+    for knxeib_idx in `seq 1 $KNXEIBD_N`
+    do
+        eval knxeib_url='$KNXEIBD_'$knxeib_idx'_URL'
+        eval knxeib_listenport='$KNXEIBD_'$knxeib_idx'_LISTENPORT'
+        eval knxeib_eibaddr='$KNXEIBD_'$knxeib_idx'_EIBADDR'
+        eval knxeib_routing='$KNXEIBD_'$knxeib_idx'_ROUTING'
+        eval knxeib_server='$KNXEIBD_'$knxeib_idx'_SERVER'
+        eval knxeib_discovery='$KNXEIBD_'$knxeib_idx'_DISCOVERY'
+        eval knxeib_tunneling='$KNXEIBD_'$knxeib_idx'_TUNNELING'
+        eval knxeib_groupcache='$KNXEIBD_'$knxeib_idx'_GROUPCACHE'
+
+        : ${knxeib_routing:=$KNXEIBD_DEFAULT_ROUTING}
+        : ${knxeib_server:=$KNXEIBD_DEFAULT_SERVER}
+        : ${knxeib_discovery:=$KNXEIBD_DEFAULT_DISCOVERY}
+        : ${knxeib_tunneling:=$KNXEIBD_DEFAULT_TUNNELING}
+        : ${knxeib_groupcache:=$KNXEIBD_DEFAULT_GROUPCACHE}
+
+        case $knxeib_url in
+            usb*)
+		knxeib_url="usb:`findknxusb | grep ^device | sed -e 's/^device[[:space:]]\+\([[:digit:]:]\+\).*/\1/'`"
+            ;;
+            *)
+            ;;
+        esac
+
+        knxeib_param="-d"
+        [ $knxeib_routing = yes ] && knxeib_param="${knxeib_param} -R"
+        [ $knxeib_server = yes ] && knxeib_param="${knxeib_param} -S"
+        [ $knxeib_discovery = yes ] && knxeib_param="${knxeib_param} -D"
+        [ $knxeib_tunneling = yes ] && knxeib_param="${knxeib_param} -T"
+        [ $knxeib_groupcache = yes ] && knxeib_param="${knxeib_param} -c"
+        [ -n "$knxeib_listenport"  ] && knxeib_param="${knxeib_param} --listen-tcp=$knxeib_listenport"
+        [ -n "$knxeib_eibaddr"  ] && knxeib_param="${knxeib_param} --eibaddr=$knxeib_eibaddr"
+
+        ip r a 224.0.0.0/4 dev eth0
+        eibd $knxeib_param -p/var/run/eibd$knxeib_idx.pid -u/var/run/eibd$knxeib_idx $knxeib_url
+    done
+
+    end_script
+
+fi
