@@ -1,0 +1,121 @@
+% Last Update: $Id$
+\section{DSLMODEM - PPP über internes DSL-Modem}
+
+Dieses Paket erlaubt es, PPP-Verbindungen über ein internes DSL-Modem wie den
+AVM Fritz!DSL-Adapter aufzubauen. Dieses interne DSL-Modem wird dabei direkt an
+den jeweiligen Netzzugang (in Deutschland an den Splitter) angeschlossen.
+Technisch ``verpackt'' das DSL-Modem die Pakete je nach Provider in PPPoE- oder
+PPPoA-Pakete; dies ist jedoch für den fli4l transparent. Hat man ein solches
+DSL-Modem, kann mit diesem Paket somit eine DSL-Verbindung ins Internet
+realisiert werden.
+
+Ein solcher DSL-Zugang wird generell als PPP-Circuit konfiguriert (siehe
+\jump{sect:ppp-circuits}{Circuits vom Typ ``ppp''}), d.\,h. es gilt:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+\end{verbatim}
+\end{example}
+
+Zusätzlich muss das \verb+OPT_PPP_DSLMODEM+ aktiviert werden:
+
+\begin{description}
+\config{OPT\_PPP\_DSLMODEM}{OPT\_PPP\_DSLMODEM}{OPTPPPDSLMODEM}
+
+Diese Variable aktiviert die Unterstützung für PPP über ein internes DSL-Modem.
+Damit auch tatsächlich eine solche Verbindung genutzt werden kann, muss
+mindestens ein PPP-Circuit den Typ ``dslmodem'' besitzen, d.\,h. es muss
+zusätzlich gelten
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+    CIRC_x_PPP_TYPE='dslmodem'
+\end{verbatim}
+\end{example}
+
+(wobei ``x'' einen gültigen Circuit-Index darstellt).
+
+Standard-Einstellung: \verb+OPT_PPP_DSLMODEM='no'+
+
+Beispiel: \verb+OPT_PPP_DSLMODEM='yes'+
+\end{description}
+
+\wichtig{Da die entsprechenden Treiber \emph{nicht} der GPL unterliegen, müssen
+hierfür die \emph{nonfree}-Varianten des gewünschten Kernel-Pakets verwendet
+werden.}
+
+Zu den allgemeinen Circuit-Variablen kommen die folgenden, für
+PPP/dslmodem-Circuits spezifischen Variablen hinzu:
+
+\begin{description}
+\config{CIRC\_x\_PPP\_DSLMODEM\_TYPE}{CIRC\_x\_PPP\_DSLMODEM\_TYPE}{CIRCxPPPDSLMODEMTYPE}
+
+Es gibt verschiedene interne DSL-Modems, über die eine DSL-Anbindung erfolgen
+kann. Das verwendete DSL-Modem wird mit Hilfe der Variablen
+\var{CIRC\_x\_PPP\_DSLMODEM\_TYPE} eingestellt, wobei die in Tabelle
+\ref{tab:internal-dsl-modems} aufgeführten Typen zur Verfügung stehen.
+
+\begin{table}[htb]
+  \centering
+  \begin{tabular}{l|l}
+    Kartentyp & Internes DSL-Modem \\
+    \hline
+    fcdsl & AVM Fritz!Card DSL \\
+    fcdsl2 & AVM Fritz!Card DSLv2 \\
+    fcdslusb & AVM Fritz!Card DSL USB \\
+    fcdslusb2 & AVM Fritz!Card DSL USBv2 \\
+    fcdslsl & AVM Fritz!Card DSL SL \\
+    fcdslslusb & AVM Fritz!Card DSL SL USB \\
+  \end{tabular}
+  \caption{Unterstützte interne DSL-Modems}
+  \label{tab:internal-dsl-modems}
+\end{table}
+
+Beispiel: \verb+CIRC_x_PPP_DSLMODEM_TYPE='fcdsl'+
+
+\config{CIRC\_x\_PPP\_DSLMODEM\_PROVIDER}{CIRC\_x\_PPP\_DSLMODEM\_PROVIDER}{CIRCxPPPDSLMODEMPROVIDER}
+
+Mit dieser Option wird der Typ der Gegenstelle eingestellt. Mögliche Optionen
+sind U-R2, ECI, Siemens, Netcologne, oldArcor, Switzerland, Belgium, Austria1,
+Austria2, Austria3 und Austria4. In Deutschland handelt es sich fast immer um
+UR-2. Siemens und ECI kommen nur bei sehr alten Anschlüssen zum Einsatz.
+Für Schweiz und Belgien sollten die Optionen selbsterklärend sein, und in
+Österreich heißt es ausprobieren.
+
+Sollte jemand für Österreich eine bessere Beschriftung der Optionen haben, möge
+er diese bitte mitteilen.
+
+Beispiel: \verb+CIRC_x_PPP_DSLMODEM_PROVIDER='U-R2'+
+
+\end{description}
+
+Beispiel (Internet-Zugang über DSL):
+
+\begin{example}
+\begin{verbatim}
+    OPT_PPP='yes'
+    OPT_PPP_DSLMODEM='yes'
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='DSL-Manitu'
+    CIRC_1_TYPE='ppp'
+    CIRC_1_ENABLED='yes'
+    CIRC_1_NETS_IPV6_N='1'
+    CIRC_1_NETS_IPV6_1='::/0'
+    CIRC_1_CLASS_N='1'
+    CIRC_1_CLASS_1='internet'
+    CIRC_1_UP='yes'
+    CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_1_USEPEERDNS='yes'
+    CIRC_1_PPP_TYPE='dslmodem'
+    CIRC_1_PPP_USERID='anonymer'
+    CIRC_1_PPP_PASSWORD='surfer'
+    CIRC_1_PPP_DSLMODEM_TYPE='fcdsl'
+    CIRC_1_PPP_DSLMODEM_PROVIDER='U-R2'
+    #
+    CIRC_CLASS_N='1'
+    CIRC_CLASS_1='internet'
+\end{verbatim}
+\end{example}

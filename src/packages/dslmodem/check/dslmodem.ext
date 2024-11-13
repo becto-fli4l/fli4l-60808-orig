@@ -1,0 +1,102 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for dslmodem
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_ppp_dslmodem)
+then
+    provides dslmodem version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+fi
+
+if (opt_ppp_dslmodem && !opt_ppp)
+then
+    error "OPT_PPP_DSLMODEM='yes' requires OPT_PPP='yes'"
+fi
+
+#
+# Circuits
+#
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set type=CIRC_%_TYPE[i]
+        if (type == "ppp")
+        then
+            set ppptype=CIRC_%_PPP_TYPE[i]
+            if (ppptype == "dslmodem")
+            then
+                if (!opt_ppp_dslmodem)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP_DSLMODEM='yes'"
+                fi
+                if (CIRC_%_PPP_DSLMODEM_TYPE[i] == "")
+                then
+                    error "CIRC_${i}_PPP_DSLMODEM_TYPE must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+                if (CIRC_%_PPP_DSLMODEM_PROVIDER[i] == "")
+                then
+                    error "CIRC_${i}_PPP_DSLMODEM_PROVIDER must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+            fi
+        fi
+    fi
+done
+
+if (opt_ppp_dslmodem)
+then
+    foreach i in circ_n
+    do
+        if (CIRC_%_ENABLED[i] == "yes")
+        then
+            if (circ_%_type[i] == "ppp")
+            then
+                set ppptype=circ_%_ppp_type[i]
+                if (ppptype == "dslmodem")
+                then
+                    set dslmodem_type=circ_%_ppp_dslmodem_type[i]
+                    if (dslmodem_type =~ "^fcdsl.*$")
+                    then
+                        # needed for libcapi20 provided by ISDN package
+                        depends on isdn version 4.0
+                    fi
+                    if (!opt_usb)
+                    then
+                        if (dslmodem_type == "fcdslusb" || dslmodem_type == "fcdslusb2" || dslmodem_type == "fcdslslusb")
+                        then
+                            error "you need OPT_USB='yes' for CIRC_${i}_PPP_DSLMODEM_TYPE='${dslmodem_type}'"
+                        fi
+                    fi
+                    if (opt_isdn)
+                    then
+                        if (dslmodem_type == "fcdslsl" && (isdn_type == 104 || isdn_type == 108 || isdn_type == 110 || isdn_type == 113)) then
+                            error "do not use PPP_DSLMODEM_TYPE='fcdslsl' and ISDN_TYPE 104, 108, 110 or 113"
+                        fi
+                        if ((dslmodem_type == "fcdslslusb") && (isdn_type == 104 || isdn_type == 108 || isdn_type == 110 || isdn_type == 113)) then
+                            error "do not use PPP_DSLMODEM_TYPE='fcdslslusb' and ISDN_TYPE 104, 108, 110 or 113"
+                        fi
+                        if ((dslmodem_type == "fcdsl") && (isdn_type != 104)) then
+                            error "only use PPP_DSLMODEM_TYPE='fcdsl' with ISDN_TYPE='104' or set OPT_ISDN='no'"
+                        fi
+                        if ((dslmodem_type == "fcdsl2") && (isdn_type != 108)) then
+                            error "only use PPP_DSLMODEM_TYPE='fcdsl2' with ISDN_TYPE='108' or set OPT_ISDN='no'"
+                        fi
+                        if ((dslmodem_type == "fcdslusb") && (isdn_type != 110)) then
+                            error "only use PPP_DSLMODEM_TYPE='fcdslusb' with ISDN_TYPE='110' or set OPT_ISDN='no'"
+                        fi
+                        if ((dslmodem_type == "fcdslusb2") && (isdn_type != 113)) then
+                            error "only use PPP_DSLMODEM_TYPE='fcdslusb2' with ISDN_TYPE='113' or set OPT_ISDN='no'"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    done
+fi

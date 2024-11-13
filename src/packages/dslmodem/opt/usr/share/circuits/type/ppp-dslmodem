@@ -1,0 +1,154 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-dslmodem - PPP over a Fritz!Card DSL
+#
+# Creation:     28.05.2003 ow
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# PPPoE, see RFC 2516 for details
+DSL_PPPOE_MTU=1492     # 1500 (Ethernet MTU) - 6 (PPPoE header)
+                       # - 2 (PPP header without address/control bytes)
+
+# PPPoA/VC-Mux, see RFC 2364 for details
+DSL_PPPOA_VC_MTU=1478  # 1488 (31 ATM cells of 48 bytes)
+                       # - 2 (PPP header without address/control bytes)
+                       # - 8 (PPPoA CPCS-PDU Trailer)
+
+# PPPoA/LLC, see RFC 2364 for details
+DSL_PPPOA_LLC_MTU=1474 # 1478 (DSL_PPPOA_VC_MTU) - 4 (LLC header)
+
+# other variants like "PPPoA/LLC+SNAP" or "LLC Encapsulated Bridged Ethernet"
+# are not supported by the Fritz!DSL (at least to my knowledge)
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_dslmodem_circuit_add()
+{
+    case $circ_ppp_dslmodem_type in
+    fcdsl*)
+        # set by etc/rc.d/rc220.i4l if AVM CAPI is used
+        if [ -f /var/run/avm_capi ]
+        then
+            local controller=2
+        else
+            local controller=1
+            # we don't know if CAPI has already been loaded for a non-AVM CAPI
+            # adapter, so we have to do it now (init_capi will not do anything
+            # if CAPI layer has already been initialized)
+            init_capi
+        fi
+
+        case $circ_ppp_dslmodem_type in
+        fcdslsl)
+            do_modprobe fcdslsl
+            avmcapictrl load /lib/firmware/isdn/fdssbase.bin $controller
+            ;;
+        fcdslslusb)
+            do_modprobe fcdslslusb
+            avmcapictrl load /lib/firmware/isdn/fdlubase.frm $controller
+            ;;
+        esac
+
+        local vpi= pci= protocol=
+        case "$circ_ppp_dslmodem_provider" in
+        U-R2|ECI)
+            vpi=1
+            vci=32
+            protocol=adslpppoe
+            ;;
+        Siemens)
+            vpi=130
+            vci=32
+            protocol=adslpppoe
+            ;;
+        Switzerland|Belgium|Netcologne)
+            vpi=8
+            vci=35
+            protocol=adslpppoe
+            ;;
+        Austria1)
+            vpi=8
+            vci=67
+            protocol=adslpppoa
+            ;;
+        Austria2)
+            vpi=8
+            vci=48
+            protocol=adslpppoa
+            ;;
+        Austria3)
+            vpi=8
+            vci=67
+            protocol=adslpppoallc
+            ;;
+        Austria4)
+            vpi=8
+            vci=48
+            protocol=adslpppoallc
+            ;;
+        oldArcor)
+            vpi=8
+            vci=35
+            protocol=adslpppoa
+            ;;
+        esac
+
+        local default_mtu=
+        case $protocol in
+        adslpppoe)
+            default_mtu=$DSL_PPPOE_MTU ;;
+        adslpppoa)
+            default_mtu=$DSL_PPPOA_VC_MTU ;;
+        adslpppoallc)
+            default_mtu=$DSL_PPPOA_LLC_MTU ;;
+        esac
+
+        : ${circ_ppp_mtu:=$default_mtu}
+        : ${circ_ppp_mru:=$default_mtu}
+        ppp_connect=/bin/true
+
+        cat >> $2 <<EOF
+plugin capiplugin.so
+/dev/null
+avmadsl
+local
+sync
+EOF
+
+        cat >> $1 << EOF
+circ_ppp_dslmodem_type="$circ_ppp_dslmodem_type"
+circ_ppp_dslmodem_provider="$circ_ppp_dslmodem_provider"
+EOF
+
+        mkdir -p /etc/drdsl
+        cat >/etc/drdsl/adsl.conf <<EOF
+controller $controller
+protocol   $protocol
+vpi        $vpi
+vci        $vci
+EOF
+
+        do_modprobe ppp_synctty
+
+        # for compatibility, map pppoe to the first configured PPPoE circuit
+        local dslmodem_circ=$(circuit_lookup_alias pppoe)
+        if [ -z "$dslmodem_circ" ]
+        then
+            # map pppoe circuit to be able to use 'pppoe' as a circuit name
+            # in fli4lctrl invocations
+            circuit_register_alias pppoe $circ_id
+            # map pppoe interface to be able to use 'pppoe' in firewall
+            # rules
+            net_alias_add pppoe $circ_dev TID_
+        fi
+
+        return 0
+        ;;
+    *)
+        eval $3=\"Unknown DSL modem type '${circ_ppp_dslmodem_type}'\"
+        return 1
+        ;;
+    esac
+}
