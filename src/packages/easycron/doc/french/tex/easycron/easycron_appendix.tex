@@ -1,0 +1,58 @@
+% Do not remove the next line
+% Synchronized to r29817
+
+\marklabel{sec:addcrontabentry}{
+\section{EASYCRON - Complément de Crontab pour la phase de boot}
+}
+
+\textbf{Remarque:} \emph{Les informations qui suivent s'adressent uniquement aux 
+développeurs pour le paquetage opt-fli4l du routeur.}
+
+À partir de la version 2.1.7, le script rc de EasyCron met à disposition
+la fonction \var{add\_crontab\_entry()}. Lorsque vous utilisez cette fonction
+vous pourrez enregistrer d'autres scripts rc, de la position rc101 jusqu'à
+la position rc949. Ces entrées supplémentaires seront activées avec le démarrage
+du démon cron et la fin phase de boot.
+
+\texttt{add\_crontab\_entry} \var{time command [custom]}
+
+Avec \var{time} vous attribuez le temps d'exécution de cron, consultez le manuel
+crontab (5) (\altlink{http://linux.die.net/man/5/crontab}). Avec \var{command}
+vous utilisez la commande à exécuter. Avec le troisième paramètre \var{custom} qui 
+est facultatif. Avec ce paramétre on peut installer des extentions de commandes, 
+selon votre convenance. Si vous placez plusieurs réglages, vous devez les séparer 
+par \var{$\backslash\backslash$}. SVP ne changer \textbf{pas} la variable 
+d'environnement \var{PATH}, car les entrées crontab ne fonctionnerons plus 
+correctement.
+
+\begin{verbatim}
+#
+# example I: normal use, 2 parameters
+#
+     crontime="0 5 1 * *"
+     croncmd="rotate_i_log.sh"
+
+     add_crontab_entry "$crontime" "$croncmd"
+
+#
+# end of example I
+#
+\end{verbatim}
+
+\begin{verbatim}
+#
+# example II: extended use, 3 parameters and 
+#                             multiple environment values 
+#
+     croncustom="source=/var/log/current \\ dest=/mnt/data/log"
+     croncmd='cp $source $dest-`date +\%Y\%m\%d`; > $source'
+     crontime="59 23 * * *"
+
+     add_crontab_entry "$crontime" "$croncmd" "$croncustom"
+
+#
+# end of example II
+#
+\end{verbatim}
+
+L'exactitude des paramètres doit être enregistrés dans le script qui est appelé.

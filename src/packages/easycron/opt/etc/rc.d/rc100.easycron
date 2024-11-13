@@ -1,0 +1,60 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc500.easycron - starting easycron
+#
+# Creation:        01.06.2001  Stephan Manske
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+case "$OPT_EASYCRON" in
+yes)
+
+    begin_script EASYCRON "creating crontab ..."
+    CRONTABS_PATH=/var/spool/cron/crontabs
+
+    mkdir /etc/cron.d
+    mkdir -p $CRONTABS_PATH
+
+    # create empty system crontabfile
+    > /etc/crontab
+
+    add_crontab_entry() 
+    {
+    {
+        case "$#" in "3") echo "$3"  | sed -e 's/\\\\[[:space:]]*/\
+/g' ;; esac
+        echo "$1 $2"
+    } >> $CRONTABS_PATH/root
+    }
+    
+    {
+    echo "PATH=/usr/bin:/usr/sbin:/sbin:/bin:/usr/local/sbin:/usr/local/bin"
+    echo "SHELL=/bin/sh"
+
+    case "$EASYCRON_MAIL" in
+        no) echo 'MAILTO=""' ;;
+    esac
+
+    } > $CRONTABS_PATH/root
+
+    [ 0$EASYCRON_N -eq 0 ] || for idx in `seq 1 $EASYCRON_N`
+    do
+
+      eval cron_custom='$EASYCRON_'$idx'_CUSTOM'
+      eval cron_time='$EASYCRON_'$idx'_TIME'
+      eval cron_command='$EASYCRON_'$idx'_COMMAND'
+
+      case "x$cron_custom" in
+            x) add_crontab_entry "$cron_time" "$cron_command" ;;
+            *) add_crontab_entry "$cron_time" "$cron_command" "$cron_custom" ;;
+      esac
+    
+    done
+
+    chmod 600 $CRONTABS_PATH/root
+
+    # execution of cron moved to rc950.easycron
+    # /usr/sbin/cron
+
+    end_script
+;;
+esac
