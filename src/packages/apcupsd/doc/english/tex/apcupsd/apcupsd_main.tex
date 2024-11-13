@@ -1,0 +1,460 @@
+% Synchronized to r32677
+\section {APCUPSD -- Daemon for APC USVs}
+
+\subsection{Introduction}
+
+  This package provides the APCUPSD daemon {[\ref{apcupsd}]} for monitoring
+  APC-USVs on fli4l. All settings are taken from the orginal package
+  {[\ref{apcupsd_manual}]}.
+ 
+\subsection {Configuration of the APCUPSD package}
+     
+  The configuration is made, as of all fli4l packages, by adjusting the file\\
+  \var{path/fli4l-\version/$<$config$>$/apcupsd.txt} to meet your own demands.
+     
+\begin{description}
+
+\config {OPT\_APCUPSD}{OPT\_APCUPSD}{OPTAPCUPSD}
+
+  The setting  \var{'no'} deactivates OPT\_APCUPSD ompletely. There will be no
+  changes made on the fli4l boot medium or the archive \var{opt.img}.
+  OPT\_APCUPSD does not overwrite other parts of the fli4l installation.
+  To activate OPT\_APCUPSD set the variable \var{OPT\_APCUPSD} to \var{'yes'}.
+
+\end{description}
+
+\subsection {Communication settings}
+\begin{description}
+
+\config {APCUPSD\_UPSNAME}{APCUPSD\_UPSNAME}{APCUPSDUPSNAME}
+
+  Use this to give your UPS a name in log files and such.
+  
+  This is particulary useful if you have multiple UPSes. This does not
+  set the EEPROM. It should be 8 characters or less.
+
+
+\config {APCUPSD\_UPSCABLE}{APCUPSD\_UPSCABLE}{APCUPSDUPSCABLE} 
+ 
+  Defines the type of cable connecting the UPS to fli4l.
+   
+  Possible generic choices for \var{APCUPSD\_UPSCABLE} are:
+ 
+   \var{'simple'}, \var{'smart'}, \var{'ether'} or \var{'usb'}
+  
+  Or a specific cable model number may be used:  
+
+  \var{'940-0119A'}, \var{'940-0127A'}, \var{'940-0128A'}, \var{'940-0020B'},
+  \var{'940-0020C'}, \var{'940-0023A'}, \var{'940-0024B'}, \var{'940-0024C'},
+  \var{'940-1524C'}, \var{'940-0024G'}, \var{'940-0095A'}, \var{'940-0095B'},
+  \var{'940-0095C'}or \var{'M-04-02-2000'}
+
+\config {APCUPSD\_UPSTYPE} {APCUPSD\_UPSTYPE}{APCUPSDUPSTYPE}
+
+  To get apcupsd to work, in addition to defining the 
+  \smalljump{APCUPSDUPSCABLE}{\var{APCUPSD\_UPSCABLE}},
+  you must also define a UPS type , which corresponds to
+  the type of UPS you have set in 
+  \smalljump{APCUPSDUPSDEVICE}{\var{APCUPSD\_UPSDEVICE}}. 
+
+\config {APCUPSD\_UPSDEVICE} {APCUPSD\_UPSDEVICE}{APCUPSDUPSDEVICE}
+
+  You must also specify a device, sometimes referred to as a port.
+  
+  For USB UPSes, please leave the \var{APCUPSD\_UPSDEVICE} directive blank. 
+  For other UPS types, you must specify an appropriate port or address as 
+  described in the following table:
+   
+\begin{tabular}{p{20mm}p{120mm}}
+  UPS type & Device \\ & Description
+  \\\\ 
+  
+  \var{'apcsmart'} & \var{'/dev/tty*'} \\ &
+  Newer serial character device, appropriate for SmartUPS models using
+  a serial cable (not USB).
+  \\\\
+
+  \var{'usb'} & \var{''} \\ &
+  Most new UPSes are USB. A blank \var{APCUPSD\_UPSDEVICE} setting enables
+  autodetection, which is the best choice for most installations. \\\\
+
+  \var{'net'} & \var{'hostname:port'} \\ & 
+  Network link to a master apcupsd through apcupsd's Network Information Server.
+  This is used if the UPS powering the fli4l is connected to a 
+  different computer for monitoring.
+  \\\\
+
+%   snmp & hostname:port:vendor:community \\ & 
+%   SNMP network link to an SNMP-enabled UPS device.
+%   Hostname is the ip address or hostname of the UPS 
+%   on the network. Vendor can be can be 'APC' or 
+%   'APC\_NOTRAP'. 'APC\_NOTRAP' will disable SNMP trap 
+%   catching; you usually want 'APC'. Port is usually 
+%   161. Community is usually 'private'.
+%   (disabled in build from apcupsd binary) \\
+% 
+%   netsnmp & :port:vendor:community \\ &
+%   OBSOLETE \\ &
+%   Same as SNMP above but requires use of the 
+%   net-snmp library. Unless you have a specific need
+%   for this old driver, you should use 'snmp' instead.
+%   (disabled in build from apcupsd binary) \\
+% 
+%   dumb  & /dev/tty** \\ &
+%   Old serial character device for use with simple-signaling UPSes. \\
+
+  \var{'pcnet'} & \var{'ipaddr:username:passphrase[:port]'} \\ &
+  PowerChute Network Shutdown protocol which can be 
+  used as an alternative to SNMP with the AP9617 
+  family of smart slot cards.
+  
+  ipaddr is the IP address of the UPS management card. 
+  
+  username and passphrase are the credentials for which the card 
+  has been configured. 
+  
+  port is the port number on which to listen for messages from the UPS, normally 
+  3052. If this parameter is empty or missing, the 
+  default of 3052 will be used.
+  \\
+\end{tabular}
+
+\config {APCUPSD\_POLLTIME} {APCUPSD\_POLLTIME}{APCUPSDPOLLTIME}
+
+  Interval in seconds at which apcupsd polls the UPS for status.
+  
+  This setting applies both to directly-attached UPSes 
+  (\smalljump{APCUPSDUPSTYPE}{\var{APCUPSD\_UPSTYPE}} \var{'apcsmart'}, \var{'usb'}) 
+  and networked UPSes (\smalljump{APCUPSDUPSTYPE}{\var{APCUPSD\_UPSTYPE}} 
+  \var{'net'}, \var{'pcnet'}). 
+  Lowering this setting will improve apcupsd's responsiveness to certain
+  events at the cost of higher CPU utilization (default \var{'60'}).
+  The default of 60 seconds is appropriate for most situations.
+
+\end {description}
+
+\subsection{Directory settings}
+\begin {description}
+
+\config {APCUPSD\_LOCKFILE} {APCUPSD\_LOCKFILE}{APCUPSDLOCKFILE}
+  
+  Path for device lock file (default \var{'/var/lock'}).
+  
+
+\config {APCUPSD\_SCRIPTDIR} {APCUPSD\_SCRIPTDIR}{APCUPSDSCRIPTDIR}
+    
+  Path to script directory in which apccontrol and event scripts are located.
+  (default \var{'/etc'})
+
+
+\config {APCUPSD\_PWRFAILDIR} {APCUPSD\_PWRFAILDIR}{APCUPSDPWRFAILDIR}
+
+  Path to powerfail directory in which to write the powerfail flag file. 
+  
+  This file is created when apcupsd initiates a system shutdown and is
+  checked in the OS halt scripts to determine if a killpower
+  (turning off UPS output power) is required (default \var{'/etc'}).
+
+
+\config {APCUPSD\_NOLOGINDIR} {APCUPSD\_NOLOGINDIR}{APCUPSDNOLOGINDIR}
+
+  Path to nologin directory in which to write the nologin file.
+  The existence of this flag file tells the OS to disallow new logins 
+  (default \var{'/etc'}).
+
+\end {description}
+
+\subsection{Powerfail settings}
+\begin {description}
+
+\config {APCUPSD\_ONBATTERYDELAY} {APCUPSD\_ONBATTERYDELAY}{APCUPSDONBATTERYDELAY}
+  
+  The time in seconds from when a power failure is detected until we react
+  to it with an onbattery event (default \var{'6'})
+
+  This means that, apccontrol will be called with the powerout argument
+  immediately when a power failure is detected.  However, the
+  onbattery argument is passed to apccontrol only after the 
+  \var{APCUPSD\_ONBATTERYDELAY} time.  
+  If you don't want to be annoyed by short powerfailures, make sure that 
+  apccontrol powerout does nothing i.e. comment out the wall.
+
+\config {APCUPSD\_BATTERYLEVEL} {APCUPSD\_BATTERYLEVEL}{APCUPSDBATTERYLEVEL}
+ 
+  If during a power failure, the remaining battery percentage
+  (as reported by the UPS) is below or equal to \var{APCUPSD\_BATTERYLEVEL}, 
+  apcupsd will initiate a system shutdown (default \var{'5'})
+
+\config {APCUPSD\_MINUTES} {APCUPSD\_MINUTES}{APCUPSDMINUTES}
+ 
+  If during a power failure, the remaining runtime in minutes 
+  (as calculated internally by the UPS) is below or equal to 
+  \var{APCUPSD\_MINUTES},  apcupsd, will initiate a system shutdown
+  (default \var {'3'}).
+
+\config {APCUPSD\_TIMEOUT} {APCUPSD\_TIMEOUT}{APCUPSDTIMEOUT}
+ 
+  If during a power failure, the UPS has run on batteries for 
+  \var{APCUPSD\_TIMEOUT} seconds or longer, 
+  apcupsd will initiate a system shutdown (default \var{'0'}).
+  A value of \var{'0'} disables this timer.
+
+  Note, if you have a Smart UPS, you will most likely want to disable
+  this timer by setting it to zero. That way, you UPS will continue
+  on batteries until either the \% charge remaing drops to or below
+  \var{APCUPSD\_BATTERYLEVEL}, or the remaining battery runtime drops to or
+  below \var{APCUPSD\_MINUTES}.
+  Of course, if you are testing, setting this to \var{'60'} causes a quick 
+  system shutdown if you pull the power plug.   
+  If you have an older dumb UPS, you will want to set this to less than
+  the time you know you can run on batteries.
+ 
+  Note: \var{APCUPSD\_BATTERYLEVEL}, \var{APCUPSD\_MINUTES} and 
+  \var{APCUPSD\_TIMEOUT} work in conjunction, so
+  the first that occurs will cause the initation of a shutdown.
+
+
+\config {APCUPSD\_ANNOY} {APCUPSD\_ANNOY}{APCUPSDANNOY}
+  
+  Time in seconds between annoying users to signoff prior to
+  system shutdown (default \var{'300'}). \var{'0'} disables. 
+
+
+\config {APCUPSD\_ANNOYDELAY} {APCUPSD\_ANNOYDELAY}{APCUPSDANNOYDELAY}
+ 
+  Initial delay after power failure before warning users to get
+  off the system (default \var{'60'}).
+
+
+\config {APCUPSD\_NOLOGON} {APCUPSD\_NOLOGON}{APCUPSDNOLOGON}
+ 
+  The condition which determines when users are prevented from
+  logging in during a power failure.
+  \var{APCUPSD\_NOLOGON} has to be one of 
+  \var{'disable'}, \var{'timeout'}, \var{'percent'}, \var{'minutes'} or
+  \var{'always'} (default \var{'disable'}).
+
+
+\config {APCUPSD\_KILLDELAY} {APCUPSD\_KILLDELAY}{APCUPSDKILLDELAY}
+ 
+  If this value is non-zero, apcupsd will continue running after a
+  shutdown has been requested, and after the specified time in
+  seconds attempt to kill the power. This is for use on systems
+  where apcupsd cannot regain control after a shutdown (default \var{'0'}).
+  \var{'0'} disables.
+
+\end {description}
+
+\subsection{Network server settings}
+
+\begin {description}
+
+\config {APCUPSD\_NETSERVER} {APCUPSD\_NETSERVER}{APCUPSDNETSERVER}
+ 
+  The value \var{'yes'} enables, \var{'no'} disables the network
+  information server. If \var{'yes'}, a network information
+  server process will be started for serving the STATUS and
+  EVENT data over the network (used by CGI programs)
+  (default \var{'no'}).
+
+
+\config {APCUPSD\_NISIP} {APCUPSD\_NISIP}{APCUPSDNISIP}
+ 
+  IP address on which NIS server will listen for incoming connections.
+  This is useful if your server is multi-homed (has more than one
+  network interface and IP address). Default value is \var{'0.0.0.0'} which
+  means any incoming request will be serviced. Alternatively, you can
+  configure this setting to any specific IP address of your server and 
+  NIS will listen for connections only on that interface. Use the
+  loopback address (\var{'127.0.0.1'}) to accept connections only from the
+  local machine.
+
+
+\config {APCUPSD\_NISPORT} {APCUPSD\_NISPORT}{APCUPSDNISPORT}
+ 
+  Port to use for sending STATUS and EVENTS data over the network.
+  It is not used unless \smalljump{APCUPSDNETSERVER}{\var{APCUPSD\_NETSERVER}}
+  is \var{'on'}. If you change this port, you will need to change the
+  corresponding value in the cgi directory and rebuild the cgi programs.
+  Default is \var{'3551'} as registered with the IANA.
+
+
+\config {APCUPSD\_EVENTSFILE} {APCUPSD\_EVENTSFILE}{APCUPSDEVENTSFILE}
+ 
+  If you want the last few EVENTS to be available over the network
+  by the network information server, you must define an EVENTSFILE.
+  (default \var{'/var/log/apcupsd.events'})
+
+
+\config {APCUPSD\_EVENTSFILEMAX} {APCUPSD\_EVENTSFILEMAX}{APCUPSDEVENTSFILEMAX}
+
+  By default, the size of the 
+  \smalljump{APCUPSDEVENTSFILE}{\var{APCUPSD\_EVENTSFILE}} 
+  will be not be allowed to exceed 10 kilobytes.  
+  When the file grows beyond this limit, older EVENTS will
+  be removed from the beginning of the file (first in first out). 
+  The parameter \var{APCUPSD\_EVENTSFILEMAX} can be set to a different kilobyte 
+  value, or set to zero to allow the
+  \smalljump{APCUPSDEVENTSFILE}{\var{APCUPSD\_EVENTSFILE}} to grow without limit.
+
+\end {description}
+
+\subsection{Configuration for share the UPS}
+
+\begin {description}
+
+\config {APCUPSD\_UPSCLASS} {APCUPSD\_UPSCLASS}{APCUPSDUPSCLASS}
+
+   Normally \var{'standalone'} unless you share an UPS using an APC ShareUPS card.
+   \var{APCUPSD\_UPSCLASS} may have an value of
+   \var{'standalone'}, \var{'shareslave'} or \var{'sharemaster'} 
+   (default \var{'standalone'}).
+
+
+\config {APCUPSD\_UPSMODE} {APCUPSD\_UPSMODE}{APCUPSUPSMODE}
+
+   Normally \var{'disable'} unless you share an UPS using an APC ShareUPS card.
+   \var{APCUPSD\_UPSMODE} may have an value of
+   \var{'disable'} or \var{'share'} 
+   (default \var{'disable'}).
+
+\end {description}
+
+\subsection{Logging system}
+
+\begin {description}
+
+\config {APCUPSD\_STATTIME} {APCUPSD\_STATTIME}{APCUPSSTATTIME}
+ 
+  Time interval in seconds between writing the STATUS file 
+  (default \var{'0'}). \var{'0'} disables.
+
+
+\config {APCUPSD\_STATFILE} {APCUPSD\_STATFILE}{APCUPSSTATFILE}
+ 
+ Location of STATUS file (written only if 
+ \smalljump{APCUPSDSTATTIME}{\var{APCUPSD\_STATFILE}} is non-zero)
+ (default \var{'/var/log/apcupsd.status'}).
+
+
+\config {APCUPSD\_LOGSTATS} {APCUPSD\_LOGSTATS}{APCUPSLOGSTATS}
+
+  \var{'on'} enables, \var{'off'} disables the logging of status.
+  
+  Note! This generates a lot of output, so if turn this on, be sure that the
+  file defined in syslog.conf for LOG\_NOTICE is a named pipe (default \var{'off'}).
+  You probably do not want to set this to \var{'on'}.
+
+
+\config {APCUPSD\_DATATIME} {APCUPSD\_DATATIME}{APCUPSDATATIME}
+ 
+   Time interval in seconds between writing the DATA records to
+   the log file (default \var{'0'}). \var{'0'} disables.
+   
+
+
+\config {APCUPSD\_FACILITY} {APCUPSD\_FACILITY}{APCUPSFACILITY}
+ 
+  Defines the logging facility (class) for logging to syslog. 
+  If not specified, it defaults to \var{'daemon'}.
+  This is useful if you want to separate the data logged by apcupsd from other
+  programs.
+
+\end {description}
+
+\subsection{Event Mail}
+
+\begin {description}
+% ##TRANSLATE## : FFL-1633 begin use mailsend
+\config {OPT\_APCUPSD\_EVENTMAIL} {OPT\_APCUPSD\_EVENTMAIL}{OPTAPCUPSDEVENTMAIL}
+
+  If set to \var{'yes'} event mails will be sent to the address in
+  \smalljump{APCUPSDEVENTMAILTO}{\var{APCUPSD\_EVENTMAIL\_TO}} via the account 
+  configured in   
+  \smalljump{APCUPSDEVENTMAILACCOUNT}{\var{APCUPSD\_EVENTMAIL\_ACCOUNT}} 
+  The package MAILSEND must be activated with \var{OPT\_MAILSEND='yes'}.
+  
+  (default \var{'no'}). 
+  
+\config {APCUPSD\_EVENTMAIL\_ACCOUNT} {APCUPSD\_EVENTMAIL\_ACCOUNT}{APCUPSDEVENTMAILACCOUNT}
+
+  Optional MAILSEND account name used to transmit event mails.
+  If the account name is not given, the account \var{'default'} is used.
+
+\config {APCUPSD\_EVENTMAIL\_TO} {APCUPSD\_EVENTMAIL\_TO}{APCUPSDEVENTMAILTO}
+
+  The email address receiving event mails is to be entered here.
+  One or more comma separated recipient addresses can be entered here.
+% ##TRANSLATE## : FFL-1633 end
+
+\end {description}
+
+% \subsection{Im moment nicht gesetzte Variablen von apcupsd}
+% 
+%  ========== Configuration statements used in updating the UPS EPROM =========
+% 
+% 
+%  These statements are used only by apctest when choosing "Set EEPROM with conf
+%  file values" from the EEPROM menu. THESE STATEMENTS HAVE NO EFFECT ON APCUPSD.
+% 
+%  UPS name, max 8 characters 
+% UPSNAME UPS\_IDEN
+% 
+%  Battery date - 8 characters
+% BATTDATE mm/dd/yy
+% 
+%  Sensitivity to line voltage quality (H cause faster transfer to batteries)  
+%  SENSITIVITY H M L        (default = H)
+% SENSITIVITY H
+% 
+%  UPS delay after power return (seconds)
+%  WAKEUP 000 060 180 300   (default = 0)
+% WAKEUP 60
+% 
+%  UPS Grace period after request to power off (seconds)
+%  SLEEP 020 180 300 600    (default = 20)
+% SLEEP 180
+% 
+%  Low line voltage causing transfer to batteries
+%  The permitted values depend on your model as defined by last letter 
+%   of FIRMWARE or APCMODEL. Some representative values are:
+%     D 106 103 100 097
+%     M 177 172 168 182
+%     A 092 090 088 086
+%     I 208 204 200 196     (default = 0 => not valid)
+% LOTRANSFER  208
+% 
+%  High line voltage causing transfer to batteries
+%  The permitted values depend on your model as defined by last letter 
+%   of FIRMWARE or APCMODEL. Some representative values are:
+%     D 127 130 133 136
+%     M 229 234 239 224
+%     A 108 110 112 114
+%     I 253 257 261 265     (default = 0 => not valid)
+% HITRANSFER 253
+% 
+%  Battery charge needed to restore power
+%  RETURNCHARGE 00 15 50 90 (default = 15)
+% RETURNCHARGE 15
+% 
+%  Alarm delay 
+%  0 = zero delay after pwr fail, T = power fail + 30 sec, L = low battery, N = never
+%  BEEPSTATE 0 T L N        (default = 0)
+% BEEPSTATE T
+% 
+%  Low battery warning delay in minutes
+%  LOWBATT 02 05 07 10      (default = 02)
+% LOWBATT 2
+% 
+%  UPS Output voltage when running on batteries
+%  The permitted values depend on your model as defined by last letter 
+%   of FIRMWARE or APCMODEL. Some representative values are:
+%     D 115
+%     M 208
+%     A 100
+%     I 230 240 220 225     (default = 0 => not valid)
+% OUTPUTVOLTS 230
+% 
+%  Self test interval in hours 336=2 weeks, 168=1 week, ON=at power on
+%  SELFTEST 336 168 ON OFF  (default = 336)
+% SELFTEST 336

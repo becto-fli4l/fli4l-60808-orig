@@ -1,0 +1,484 @@
+% Synchronized to r44499
+\section {APCUPSD -- Démon pour onduleur APC}
+
+\subsection{Introduction}
+
+  Ce paquetage contient le démon apcupsd {[\ref{apcupsd}]} pour la surveillance
+  des onduleurs APC sur fli4l. Tous les paramétres ont été pris dans le paquetage
+  original {[\ref{apcupsd_manual}]}.
+
+\subsection{Configuration du paquetage APCUPSD}
+
+  La configuration est créée, comme tous les autre paquetage fli4l, en paramètrant
+  le fichier\\
+  \var{path/fli4l-\version/$<$config$>$/apcupsd.txt} il répondra selon vos propres
+  exigences.
+
+\begin{description}
+
+\config {OPT\_APCUPSD}{OPT\_APCUPSD}{OPTAPCUPSD}
+
+  Avec le paramètre \var{'no'} vous déactivez complètement le paquetage OPT\_APCUPSD.
+  Il n'y aura aucun changement sur le support de boot de fli4l \var{rootfs.img} ou dans
+  l'archive \var{opt.img}. De plus, OPT\_APCUPSD ne remplace aucune autre partie
+  de l'installation de fli4l.\\
+  Pour activer OPT\_APCUPSD vous devez paramétrer la variable \var{OPT\_APCUPSD} sur \var{'yes'}.
+
+\end{description}
+
+\subsection{Paramètres de communication}
+\begin{description}
+
+\config {APCUPSD\_UPSNAME}{APCUPSD\_UPSNAME}{APCUPSDUPSNAME}
+
+  Utilisez cette variable pour donner un nom à votre onduleur, pour le fichier
+  log (ou journal) et autres.
+  C'est particulièrement utile si vous avez plusieurs onduleurs. Le nom n'est
+  pas écrit dans l'EEPROM de l'onduleur. Le nom doit être de 8 caractères maximum.
+
+\config {APCUPSD\_UPSCABLE}{APCUPSD\_UPSCABLE}{APCUPSDUPSCABLE}
+
+ Dans cette variable vous définissez le type de câble de raccordement de l'onduleur
+ à fli4l.
+
+   \var{'simple'}, \var{'smart'}, \var{'ether'} ou \var{'usb'}
+
+  Vous pouvez aussi utiliser l'un des câbles spécifiques~:
+
+  \var{'940-0119A'}, \var{'940-0127A'}, \var{'940-0128A'}, \var{'940-0020B'},
+  \var{'940-0020C'}, \var{'940-0023A'}, \var{'940-0024B'}, \var{'940-0024C'},
+  \var{'940-1524C'}, \var{'940-0024G'}, \var{'940-0095A'}, \var{'940-0095B'},
+  \var{'940-0095C'} ou \var{'M-04-02-2000'}
+
+
+\config {APCUPSD\_UPSTYPE} {APCUPSD\_UPSTYPE}{APCUPSDUPSTYPE}
+
+  Dans cette variable vous définissez le mode de transmission avec laquelle
+  l'onduleur est connecté à fli4l. Le mode de transmission doit être associé
+  au type de périphérique avec la variable \smalljump{APCUPSDUPSDEVICE}{\var{APCUPSD\_UPSDEVICE}}.
+
+
+\config {APCUPSD\_UPSDEVICE} {APCUPSD\_UPSDEVICE}{APCUPSDUPSDEVICE}
+
+  En plus du mode de transmission avec \smalljump{APCUPSDUPSTYPE}{\var{APCUPSD\_UPSTYPE}},
+  le type de périphérique, doit être défini, il sera utilisé pour la
+  communication avec l'onduleur. Le tableau suivant décrit les types de
+  périphérique qui peuvent être spécifiés pour l'onduleur.
+
+  Avec une connexion USB à l'onduleur la variable \var{APCUPSD\_UPSDEVICE}
+  doit être vide.
+
+\begin{tabular}{p{20mm}p{120mm}}
+  Type d'onduleur & Périphérique,  \\ & Description
+  \\\\
+
+  \var{'apcsmart'} & \var{'/dev/tty*'} \\ &
+  Dispositif série pour les modèles SmartUPS, ils utilisent un câble série
+  (pas d'USB).
+  \\\\
+
+  \var{'usb'} & \var{''} \\ &
+  La plupart des onduleurs les plus récents sont connectés via l'USB. 
+  Si la variable \var{APCUPSD\_UPSDEVICE} est vide, cela permettra la détection
+  automatique, c'est le meilleur choix pour la plupart des installations.
+  \\\\
+
+  \var{'net'} & \var{'hostname:port'} \\ & 
+  Connexion réseau à un maître apcupsd par le protocole Network Information
+  Server apcupsd. C'est utile pour un onduleur alimentant fli4l et qui est connecté
+  à un autre ordinateur pour la surveillance.
+  \\\\
+
+%   snmp & hostname:port:vendor:community \\ & 
+%   SNMP network link to an SNMP-enabled UPS device.
+%   Hostname is the ip address or hostname of the UPS 
+%   on the network. Vendor can be can be 'APC' or 
+%   'APC\_NOTRAP'. 'APC\_NOTRAP' will disable SNMP trap 
+%   catching; you usually want 'APC'. Port is usually 
+%   161. Community is usually 'private'.
+%   (disabled in build from apcupsd binary) \\
+% 
+%   netsnmp & :port:vendor:community \\ &
+%   OBSOLETE \\ &
+%   Same as SNMP above but requires use of the 
+%   net-snmp library. Unless you have a specific need
+%   for this old driver, you should use 'snmp' instead.
+%   (disabled in build from apcupsd binary) \\
+% 
+%   dumb  & /dev/tty** \\ &
+%   Old serial character device for use with simple-signaling UPSes. \\
+
+  \var{'pcnet'} & \var{'ipaddr:username:passphrase[:port]'} \\ &
+
+  Protocole PowerChute Network Shutdown, il peut être utilisé comme
+  une alternative à SNMP avec la famille de carte Smart-Slot AP9617.
+
+  ipaddr~: est l'adresse IP de la carte de gestion de l'onduleur.
+
+  username et passphrase~: sont les informations de connexion pour la carte
+  de gestion.
+
+  port~: est le port TCP sur lequel on écoute les messages de l'onduleur,
+  normalement le numéro de port est 3052. Si ce paramètre est manquant
+  ou vide, la valeur par défaut utilisée est 3052.
+  \\
+\end{tabular}
+
+
+\config {APCUPSD\_POLLTIME} {APCUPSD\_POLLTIME}{APCUPSDPOLLTIME}
+
+  Vous indiquez dans cette variable l'intervalle en secondes avec lequel
+  apcupsd interroge le statut de l'onduleur.
+
+  Ce paramètre affecte directement les deux connexions aux onduleurs
+  (\smalljump{APCUPSDUPSTYPE}{\var{APCUPSD\_UPSTYPE}} \var{'apcsmart'}, \var{'usb'},) 
+  ainsi que les onduleurs connectés au réseau (\smalljump{APCUPSDUPSTYPE}{\var{APCUPSD\_UPSTYPE}} 
+  \var{'net'}, \var{'pcnet'}).
+  Une réduction de la valeur d'intervalle, augmente la sensibilité du apcupsd au prix
+  d'une charge plus élevée du CPU (par défaut \var{'60'}).
+  Le réglage par défaut de 60 secondes est approprié dans la plupart des situations.
+
+\end {description}
+
+\subsection{Paramètres des répertoires}
+\begin {description}
+
+\config {APCUPSD\_LOCKFILE} {APCUPSD\_LOCKFILE}{APCUPSDLOCKFILE}
+
+  Vous indiquez dans cette variable le chemin vers le répertoire pour le fichier
+  de verrouillage de l'appareil (par défaut \var{'/var/lock'}).
+
+
+\config {APCUPSD\_SCRIPTDIR} {APCUPSD\_SCRIPTDIR}{APCUPSDSCRIPTDIR}
+
+  Vous indiquez dans cette variable le chemin vers le répertoire pour le script
+  apccontrol et des scripts événements, dans lequel ils sont situés
+  (par défaut \var{'/etc'}).
+
+
+\config {APCUPSD\_PWRFAILDIR} {APCUPSD\_PWRFAILDIR}{APCUPSDPWRFAILDIR}
+
+  Vous indiquez dans cette variable le chemin vers le répertoire pour le fichier
+  powerfail, ce fichier contient un marquage (ou un flag) à chaque coupure électrique.
+
+  Ce fichier est créé lorsque apcupsd initie un arrêt du système et vérifie
+  dans le script d'arrêt s'il est nécessaire d'éteindre l'onduleur
+  (par défaut \var{'/etc'}).
+
+
+\config {APCUPSD\_NOLOGINDIR} {APCUPSD\_NOLOGINDIR}{APCUPSDNOLOGINDIR}
+
+  Vous indiquez dans cette variable le chemin vers le répertoire pour le fichier
+  nologin. Si le fichier existe il désactivera les nouvelles connexions
+  (par défaut \var{'/etc'}).
+
+\end {description}
+
+\subsection{Paramètres pour les coupures de courant}
+\begin {description}
+
+\config {APCUPSD\_ONBATTERYDELAY} {APCUPSD\_ONBATTERYDELAY}{APCUPSDONBATTERYDELAY}
+
+  Vous indiquez dans cette variable le temps en secondes entre la détection
+  d'une coupure de courant et la réaction avec l'argument OnBattery
+  (par défaut \var{'6'}).
+
+  Le script apccontrol sera appelé avec l'argument PowerOut immédiatement après
+  une panne de courant détectée. Avec l'argument OnBattery le script apccontrol sera
+  appelé seulement après un certain temps avec \var{APCUPSD\_ONBATTERYDELAY}
+
+
+\config {APCUPSD\_BATTERYLEVEL} {APCUPSD\_BATTERYLEVEL}{APCUPSDBATTERYLEVEL}
+
+  Vous indiquez dans cette variable le pourcentage de charge restant, lors
+  d'une panne de courant si le pourcentage (tel que mesuré par l'onduleur) est
+  inférieure ou égale à \var{APCUPSD\_BATTERYLEVEL}, apcupsd entamera un
+  arrêt du système (par défaut \var{'5'}).
+
+
+\config {APCUPSD\_MINUTES} {APCUPSD\_MINUTES}{APCUPSDMINUTES}
+
+  Vous indiquez dans cette variable le temps restant en minutes, lors
+  d'une panne de courant si le temps (tel que calculé par l'onduleur) est
+  inférieure ou égale à \var{APCUPSD\_MINUTES}, apcupsd entamera un
+  arrêt du système (par défaut \var{'3'}).
+
+
+\config {APCUPSD\_TIMEOUT} {APCUPSD\_TIMEOUT}{APCUPSDTIMEOUT}
+
+  Vous indiquez dans cette variable le temps restant en seconde, pendant
+  une panne de courant l'onduleur fonctionne sur la batterie si le temps est
+  inférieure ou égale à \var{APCUPSD\_TIMEOUT} apcupsd entamera un arrêt du
+  système. Cela peut indiquer (un temps total de panne de courant à ne pas
+  dépasser) avant l'arrêt du système. (par défaut \var{'0'}).
+  La valeur \var{'0'} désactive cette temporisation.
+
+  Remarque, si vous avez un onduleur Smart, vous allez probablement désactiver
+  cette temporisation en mettant la valeur à zéro. De cette façon, votre onduleur
+  continuera de fonctionner sur la batterie jusqu'à ce que la charge restante
+  de la batterie soit égal à la valeur de \var{APCUPSD\_BATTERYLEVEL} ou que le temps
+  indiqué dans \var{APCUPSD\_MINUTES}. Si vous voulez faire un test, avec la valeur
+  à \var{'60'} et si vous débranchez le cordon d'alimentation cela provoquera un arrêt
+  rapide du système.
+
+  Autre remarque, les variables \var{APCUPSD\_BATTERYLEVEL}, \var{APCUPSD\_MINUTES}
+  et \var{APCUPSD\_TIMEOUT} travail ensemble, de sorte que la première détection
+  d'une valeur, déclenchera un arrêt du système.
+
+
+\config {APCUPSD\_ANNOY} {APCUPSD\_ANNOY}{APCUPSDANNOY}
+
+  Vous indiquez dans cette variable le temps en seconde, pour l'envoi de message
+  aux utilisateurs pour se déconnecter avant l'arrêt du système. en appelant le script
+  apccontrol apcupsd envoie un message énervent (par défaut \var{'300'}).
+  \var{'0'} pour désactiver.
+
+
+\config {APCUPSD\_ANNOYDELAY} {APCUPSD\_ANNOYDELAY}{APCUPSDANNOYDELAY}
+
+  Vous indiquez dans cette variable le temps en seconde, avant que apcupsd
+  commence à demander aux utilisateurs de se déconnecter et de sortir du système
+  (par défaut \var{'60'}).
+
+
+\config {APCUPSD\_NOLOGON} {APCUPSD\_NOLOGON}{APCUPSDNOLOGON}
+
+  Vous indiquez dans cette variable une condition qui empêchera les utilisateurs
+  de se connectés pendant une panne de courant.
+  La variable \var{APCUPSD\_NOLOGON} peut prendre l'une les valeurs suivantes
+  \var{'disable'}, \var{'timeout'}, \var{'percent'}, \var{'minutes'} ou
+  \var{'always'} (par défaut \var{'disable'}).
+
+
+\config {APCUPSD\_KILLDELAY} {APCUPSD\_KILLDELAY}{APCUPSDKILLDELAY}
+
+  Vous indiquez dans cette variable le temps en seconde, si la valeur n'est pas
+  à zéro, apcupsd continuera à fonctionner après une demande d'arrêt et après le
+  temps indiqué ici, ensuite il essaiera de couper la connexion
+
+  Cette fonction est utilisée sur des systèmes où apcupsd ne peut pas reprendre
+  le contrôle après un arrêt (par défaut \var{'0'}).
+  \var{'0'} pour désactiver.
+
+\end {description}
+
+\subsection{Paramètres du serveur sur le réseau}
+
+\begin {description}
+
+\config {APCUPSD\_NETSERVER} {APCUPSD\_NETSERVER}{APCUPSDNETSERVER}
+
+  Avec le paramètre \var{'yes'} vous activez et avec le paramètre \var{'no'}
+  vous déactivez la variable pour le serveur d'information réseau. Si vous
+  avez démarré le processus du serveur d'information réseau, vous pouvez voir
+  l'état et les données d'événement sur le réseau. (Les données sont utilisées
+  par le programme CGI) (par défaut \var{'no'}).
+
+
+\config {APCUPSD\_NISIP} {APCUPSD\_NISIP}{APCUPSDNISIP}
+
+  Vous indiquez dans cette variable l'adresse IP du serveur NIS qui écoute
+  les connexions entrantes. Ce paramètre est utile, si fli4l a de multiples
+  connexions réseau. La valeur par défaut est \var{'0.0.0.0'} cela signifie
+  que toutes requêtes entrantes seront acceptées. Alternativement, vous pouvez
+  paramétrer une adresse IP spécifique de votre serveur NIS et écoutez
+  uniquement les connexions entrantes de cette interface. Vous pouvez
+  utiliser l'adresse de bouclage (\var{'127.0.0.1'}) pour accepter les
+  connexions locales.
+
+
+\config {APCUPSD\_NISPORT} {APCUPSD\_NISPORT}{APCUPSDNISPORT}
+
+  Vous indiquez dans cette variable le port TCP pour la transmission
+  de le statut et les données d'événement sur le réseau. A utiliser
+  seulement si la variable \smalljump{APCUPSDNETSERVER}{\var{APCUPSD\_NETSERVER}}
+  est sur \var{'on'}. Si vous changez ce port, vous aurez besoin de changer
+  la valeur correspondante dans le répertoire cgi et reconstruire le programme CGI.
+  Par défaut \var{'3551'} est enregistré auprès de l'IANA.
+
+
+\config {APCUPSD\_EVENTSFILE} {APCUPSD\_EVENTSFILE}{APCUPSDEVENTSFILE}
+
+  Vous indiquez dans cette variable le fichier d'événement, pour les
+  événements récents qui seront interrogés par le serveur d'information
+  de réseau, (par défaut \var{'/var/log/apcupsd.events'}).
+
+
+\config {APCUPSD\_EVENTSFILEMAX} {APCUPSD\_EVENTSFILEMAX}{APCUPSDEVENTSFILEMAX}
+
+  Par défaut la taille du fichier d'évenement de la variable
+  \smalljump{APCUPSDEVENTSFILE}{\var{APCUPSD\_EVENTSFILE}}
+  ne doit pas dépasser 10 kilo-octets. Lorsque le fichier se développe au-delà
+  de cette limite, les événements plus anciens seront supprimés au début du fichier
+  (premier entré, premier sorti). Le paramètre dans la variable \var{APCUPSD\_EVENTSFILEMAX}
+  peut être réglé sur une valeur différente en kilo-octets ou vous pouvez mettre
+  cette valeur à zéro pour permettre au paramètre de la variable
+  \smalljump{APCUPSDEVENTSFILE}{\var{APCUPSD\_EVENTSFILE}} de croître sans limite.
+
+\end {description}
+
+\subsection{Configuration des actions de l'onduleur}
+
+\begin {description}
+
+\config {APCUPSD\_UPSCLASS} {APCUPSD\_UPSCLASS}{APCUPSDUPSCLASS}
+
+
+   Normalement, vous indiquez dans cette variable \var{'standalone'}
+   sauf si l'onduleur est partagée pour plusieurs serveurs, avec une
+   carte APC Share-Ups. Les valeurs acceptées dans la variable
+   \var{APCUPSD\_UPSCLASS} sont \var{'standalone'}, \var{'shareslave'}
+   ou \var{'sharemaster'} (par défaut \var{'standalone'}).
+
+
+\config {APCUPSD\_UPSMODE} {APCUPSD\_UPSMODE}{APCUPSUPSMODE}
+
+   Normalement, vous indiquez dans cette variable \var{'disable'}
+   sauf si l'onduleur est partagée pour plusieurs serveurs, avec une
+   carte APC Share-Ups. Les valeurs acceptées dans la variable
+   \var{APCUPSD\_UPSMODE} sont \var{'disable'} ou \var{'share'}
+   (par défaut \var{'disable'}).
+
+\end {description}
+
+\subsection{Enregistrement du journal système}
+
+\begin {description}
+
+\config {APCUPSD\_STATTIME} {APCUPSD\_STATTIME}{APCUPSSTATTIME}
+
+  Dans cette variable vous indiquez l'intervalle en seconde pour écrire
+  le fichier de statut (par défaut \var{'0'}). \var{'0'} désactive l'écriture.
+
+
+\config {APCUPSD\_STATFILE} {APCUPSD\_STATFILE}{APCUPSSTATFILE}
+
+ Dans cette variable vous indiquez le chemin du fichier de statut, (il sera écrit
+ seulement si la variable \smalljump{APCUPSDSTATTIME}{\var{APCUPSD\_STATFILE}}
+ n'est pas à zéro) (par défaut \var{'/var/log/apcupsd.status'}).
+
+
+\config {APCUPSD\_LOGSTATS} {APCUPSD\_LOGSTATS}{APCUPSLOGSTATS}
+
+  Dans cette variable vous indiquez les enregistrements du statut dans un fichier
+  journal \var{'on'} activé, \var{'off'} déactivé.
+
+  Remarque~! Cela génère beaucoup informations, si cette option est activer,
+  assurez-vous que dans le fichier syslog.conf à la variable LOG\_NOTICE soit
+  défini 'named pipe' (par défaut \var{'off'}).
+  Normalement vous n'avez pas à placer cette valeur sur \var{'on'}.
+
+
+\config {APCUPSD\_DATATIME} {APCUPSD\_DATATIME}{APCUPSDATATIME}
+
+  Dans cette variable vous indiquez l'intervalle en secondes entre l'écriture du
+  statut et enregistrement des données pour le fichier journal, (par défaut \var{'0'}).
+  \var{'0'} déactive l'enregistrement du journal.
+
+
+\config {APCUPSD\_FACILITY} {APCUPSD\_FACILITY}{APCUPSFACILITY}
+
+ Dans cette variable vous indiquez le domaine de protocole (classe) pour syslog.
+ (par défaut \var{'daemon'}).
+ Il est logique de séparer les données enregistrées par apcupsd des autres programmes.
+
+\end {description}
+
+\subsection{Message d'événement par Mail}
+
+\begin {description}
+
+\config {OPT\_APCUPSD\_EVENTMAIL} {OPT\_APCUPSD\_EVENTMAIL}{OPTAPCUPSDEVENTMAIL}
+
+   Si vous indiquez \var{'yes'} dans cette variable les messages d'événements seront envoyés
+   à l'adresse configurée dans \smalljump{APCUPSDEVENTMAILTO}{\var{APCUPSD\_EVENTMAIL\_TO}}
+   et via le compte configuré dans \smalljump{APCUPSDEVENTMAILACCOUNT}{\var{APCUPSD\_EVENTMAIL\_ACCOUNT}}.
+   De plus le paquetage MAILSEND doit être activé avec \var{OPT\_MAILSEND='yes'}.
+
+  (par défaut \var{'no'}). 
+
+
+\config {APCUPSD\_EVENTMAIL\_ACCOUNT} {APCUPSD\_EVENTMAIL\_ACCOUNT}{APCUPSDEVENTMAILACCOUNT}
+
+  Dans cette variable vous indiquez le nom du compte pour transmettre des messages d'événement,
+  cette variable est optionnelle. Si le nom du compte n'est pas indiqué le compte par \var{'défaut'}
+  sera utilisé.
+
+
+\config {APCUPSD\_EVENTMAIL\_TO} {APCUPSD\_EVENTMAIL\_TO}{APCUPSDEVENTMAILTO}
+
+  Dans cette variable vous indiquez l'adresse mail pour envoyer les messages d'événement.
+  Une ou plusieurs adresses peuvent être configurées, elles doivent être séparées par une
+  virgule.
+
+\end {description}
+
+% \subsection{Im moment nicht gesetzte Variablen von apcupsd}
+% 
+%  ========== Configuration statements used in updating the UPS EPROM =========
+% 
+% 
+%  These statements are used only by apctest when choosing "Set EEPROM with conf
+%  file values" from the EEPROM menu. THESE STATEMENTS HAVE NO EFFECT ON APCUPSD.
+% 
+%  UPS name, max 8 characters 
+% UPSNAME UPS\_IDEN
+% 
+%  Battery date - 8 characters
+% BATTDATE mm/dd/yy
+% 
+%  Sensitivity to line voltage quality (H cause faster transfer to batteries)  
+%  SENSITIVITY H M L        (default = H)
+% SENSITIVITY H
+% 
+%  UPS delay after power return (seconds)
+%  WAKEUP 000 060 180 300   (default = 0)
+% WAKEUP 60
+% 
+%  UPS Grace period after request to power off (seconds)
+%  SLEEP 020 180 300 600    (default = 20)
+% SLEEP 180
+% 
+%  Low line voltage causing transfer to batteries
+%  The permitted values depend on your model as defined by last letter 
+%   of FIRMWARE or APCMODEL. Some representative values are:
+%     D 106 103 100 097
+%     M 177 172 168 182
+%     A 092 090 088 086
+%     I 208 204 200 196     (default = 0 => not valid)
+% LOTRANSFER  208
+% 
+%  High line voltage causing transfer to batteries
+%  The permitted values depend on your model as defined by last letter 
+%   of FIRMWARE or APCMODEL. Some representative values are:
+%     D 127 130 133 136
+%     M 229 234 239 224
+%     A 108 110 112 114
+%     I 253 257 261 265     (default = 0 => not valid)
+% HITRANSFER 253
+% 
+%  Battery charge needed to restore power
+%  RETURNCHARGE 00 15 50 90 (default = 15)
+% RETURNCHARGE 15
+% 
+%  Alarm delay 
+%  0 = zero delay after pwr fail, T = power fail + 30 sec, L = low battery, N = never
+%  BEEPSTATE 0 T L N        (default = 0)
+% BEEPSTATE T
+% 
+%  Low battery warning delay in minutes
+%  LOWBATT 02 05 07 10      (default = 02)
+% LOWBATT 2
+% 
+%  UPS Output voltage when running on batteries
+%  The permitted values depend on your model as defined by last letter 
+%   of FIRMWARE or APCMODEL. Some representative values are:
+%     D 115
+%     M 208
+%     A 100
+%     I 230 240 220 225     (default = 0 => not valid)
+% OUTPUTVOLTS 230
+% 
+%  Self test interval in hours 336=2 weeks, 168=1 week, ON=at power on
+%  SELFTEST 336 168 ON OFF  (default = 336)
+% SELFTEST 336

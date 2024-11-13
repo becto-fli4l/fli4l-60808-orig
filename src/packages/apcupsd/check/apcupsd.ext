@@ -1,0 +1,72 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for apcupsd
+#
+# Creation:     01.07.2013 Roland Franke
+# Last Update:  $Id$
+#
+# Copyright (c) 2013-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_apcupsd)
+then
+    provides apcupsd version 4.0.0
+    depends on fli4l version 4.0
+      
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+        add_to_opt "srv/www/admin/opt_apcupsd.cgi" "mode=555 flags=sh"
+        add_to_opt "srv/www/cgi-bin/opt_apcupsd_iframe.cgi" "mode=555 flags=sh"
+        add_to_opt "srv/www/cgi-bin/multimon.cgi" "mode=755"
+        add_to_opt "srv/www/cgi-bin/upsfstats.cgi" "mode=755"
+        add_to_opt "srv/www/cgi-bin/upsimage.cgi" "mode=755"
+        add_to_opt "srv/www/cgi-bin/upsstats.cgi" "mode=755"
+
+        if (httpd_gui_lang == "auto")
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            stat("opt/srv/www/lang/opt_apcupsd.$lang", langfile)
+            if(langfile_res == "OK")
+            then
+                add_to_opt "srv/www/lang/opt_apcupsd.$lang" "mode=444 flags=sh"
+            else
+                warning "could not find 'srv/www/lang/opt_apcupsd.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/opt_apcupsd.en" "mode=444 flags=sh"
+            fi
+        done
+    fi
+    
+    if (opt_apcupsd_eventmail)
+    then
+        if (opt_mailsend)
+        then
+            depends on mailsend version 4.0
+
+            if (apcupsd_eventmail_account != "default")
+            then
+                set found="no"
+                foreach m in MAILSEND_N
+                do
+                    if (mailsend_%_account[m] == apcupsd_eventmail_account)
+                    then
+                        set found="yes" 
+                    fi
+                done
+                if (found != "yes")
+                then
+                    error "Account '${APCUPSD_EVENTMAIL_ACCOUNT}' not found in MAILSEND_x_ACCOUNT"
+                fi
+            fi
+        else
+            error "OPT_MAILSEND must be 'yes' when OPT_APCUPSD_EVENTMAIL is 'yes'"
+        fi
+    fi
+fi

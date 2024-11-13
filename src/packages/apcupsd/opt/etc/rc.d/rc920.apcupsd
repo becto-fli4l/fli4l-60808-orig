@@ -1,0 +1,165 @@
+#!/bin/sh
+#-----------------------------------------------------------------------------
+# /etc/rc.d/rc920.apcupsd - Start-up                              __FLI4LVER__
+#
+# Creation:     01.07.2013 Roland Franke
+# Modification: 01.07.2013 Roland Franke
+# Last Update:  $Id$
+#-----------------------------------------------------------------------------
+
+if [ "$OPT_APCUPSD" = "yes" ]
+then
+    begin_script APCUPSD "configuring apcupsd ..."
+    CONFIGFILE="/etc/apcupsd/apcupsd.conf"
+
+    {
+        echo "## apcupsd.conf v1.1 ##"
+        echo "#"
+        echo "#  for apcupsd release 3.14.12"
+        echo "#"
+        echo "# "apcupsd" POSIX config file "
+        echo "UPSNAME "$APCUPSD_UPSNAME""
+        echo "UPSCABLE "$APCUPSD_UPSCABLE""
+        if [ "$APCUPSD_UPSTYPE" != "usb" ]
+        then
+            echo "UPSTYPE "$APCUPSD_UPSTYPE""
+            echo "DEVICE "$APCUPSD_UPSDEVICE""
+        else
+            echo "UPSTYPE "$APCUPSD_UPSTYPE""
+        fi
+        echo "SCRIPTDIR "$APCUPSD_SCRIPTDIR""
+        if [ "$APCUPSD_POLLTIME" != "" ]
+        then
+            echo "POLLTIME "$APCUPSD_POLLTIME""
+        fi
+        if [ "$APCUPSD_LOCKFILE" != "" ]
+        then
+            echo "LOCKFILE "$APCUPSD_LOCKFILE""
+        fi
+        if [ "$APCUPSD_PWRFAILDIR" != "" ]
+        then
+            echo "PWRFAILDIR "$APCUPSD_PWRFAILDIR""
+        fi
+        if [ "$APCUPSD_NOLOGONDIR" != "" ]
+        then
+            echo "NOLOGINDIR "$APCUPSD_NOLOGINDIR""
+        fi
+        if [ "$APCUPSD_ONBATTERYDELAY" != "" ]
+        then
+            echo "ONBATTERYDELAY "$APCUPSD_ONBATTERYDELAY""
+        fi
+        if [ "$APCUPSD_BATTERYLEVEL" != "" ]
+        then
+            echo "BATTERYLEVEL "$APCUPSD_BATTERYLEVEL""
+        fi
+        if [ "$APCUPSD_MINUTES" != "" ]
+        then
+            echo "MINUTES "$APCUPSD_MINUTES""
+        fi
+        if [ "$APCUPSD_TIMEOUT" != "" ]
+        then
+            echo "TIMEOUT "$APCUPSD_TIMEOUT""
+        fi
+        if [ "$APCUPSD_ANNOY" != "" ]
+        then
+            echo "ANNOY "$APCUPSD_ANNOY""
+        fi
+        if [ "$APCUPSD_ANNOYDELAY" != "" ]
+        then
+            echo "ANNOYDELAY "$APCUPSD_ANNOYDELAY""
+        fi
+        if [ "$APCUPSD_NOLOGON" != "" ]
+        then
+            echo "NOLOGON "$APCUPSD_NOLOGON""
+        fi
+        if [ "$APCUPSD_KILLDELAY" != "" ]
+        then
+            echo "KILLDELAY "$APCUPSD_KILLDELAY""
+        fi
+        if [ "$APCUPSD_NETSERVER" = "yes" ]
+        then
+            echo "NETSERVER "on""
+            if [ "$APCUPSD_NISIP" != "" ]
+            then
+                echo "NISIP "$APCUPSD_NISIP""
+            else
+                echo "NISIP "0.0.0.0""
+            fi
+            if [ "$APCUPSD_NISPORT" != "" ]
+            then
+                echo "NISPORT "$APCUPSD_NISPORT""
+            else
+                echo "NISPORT "3551""
+            fi
+        fi
+        if [ "$APCUPSD_EVENTSFILE" != "" ]
+        then
+            echo "EVENTSFILE "$APCUPSD_EVENTSFILE""
+            echo "EVENTSFILEMAX "$APCUPSD_EVENTSFILEMAX""
+        fi
+        if [ "$APCUPSD_UPSCLASS" != "" ]
+        then
+            echo "UPSCLASS "$APCUPSD_UPSCLASS""
+        fi
+        if [ "$APCUPSD_UPSMODE" != "" ]
+        then
+            echo "UPSMODE "$APCUPSD_UPSMODE""
+        fi
+        if [ "$APCUPSD_STATTIME" != "" ]
+        then
+            echo "STATTIME "$APCUPSD_STATTIME""
+        fi
+        if [ "$APCUPSD_STATFILE" != "" ]
+        then
+            echo "STATFILE "$APCUPSD_STATFILE""
+        fi
+        if [ "$APCUPSD_LOGSTATS" != "" ]
+        then
+            echo "LOGSTATS "$APCUPSD_LOGSTATS""
+        fi
+        if [ "$APCUPSD_DATATIME" != "" ]
+        then
+            echo "DATATIME "$APCUPSD_DATATIME""
+        fi
+        if [ "$APCUPSD_FACILITY" != "" ]
+        then
+            echo "FACILITY "$APCUPSD_FACILITY""
+        fi
+    } >  $CONFIGFILE
+
+    if [ "$OPT_APCUPSD_EVENTMAIL" = "yes" ]
+    then
+        grep APCUPSD_EVENTMAIL /etc/rc.cfg > /etc/apcupsd/mail.conf
+    fi
+
+    # start daemon
+    /sbin/apcupsd --config-file $CONFIGFILE
+
+    # add apcupds support menu to httpd
+    # we only need to check if the file is here, since an ext
+    # script adds this file only if httpd is active
+    if [ -e /srv/www/admin/opt_apcupsd.cgi ]
+    then
+        log_info "add menu entry for apcupsd to webgui"
+        httpd-menu.sh add -p 600 opt_apcupsd.cgi "APC-UPS" ""
+
+        echo "MONITOR  127.0.0.1 \"`hostname`\" " >> /etc/apcupsd/hosts.conf
+        if [ "0$APCUPSD_NETMON_N" -gt 0 ]
+        then
+            for mon_idx in `seq 1 $APCUPSD_NETMON_N`
+            do
+                eval mon_host='$APCUPSD_NETMON_'$mon_idx'_HOST'
+                eval mon_desc='$APCUPSD_NETMON_'$mon_idx'_DESC'
+                echo "MONITOR  ${mon_host}  \"${mon_desc}\" " >> /etc/apcupsd/hosts.conf
+            done
+        fi
+
+        echo 'TEMPC ' > /etc/apcupsd/multimon.conf
+
+    fi
+
+
+    end_script
+fi
+
+
