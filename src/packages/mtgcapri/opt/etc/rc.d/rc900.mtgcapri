@@ -1,0 +1,151 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc900.mtgcapri - start mtgcapri                      __FLI4LVER__
+#
+# Creation:     19.04.2006 gdw
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_MTGCAPRI in
+yes)
+    begin_script MTGCAPRI "Starting mtG-CAPRI-Server ..."
+
+    CAPRIROOT=/usr/local/mtG-CAPRI-Server
+    mkdir -p $CAPRIROOT/cfg
+    mkdir -p /var/run/capriserver
+
+    #-------------------------
+    # Erstellen der capri.cfg
+    #-------------------------
+
+    servername=`grep " $HOSTNAME " /etc/hosts | cut -d" " -f1`
+    authfile=/var/run/capriserver/capri.aut
+
+    map2persistent MTGCAPRI_TRACEFILE /capri.trc
+    map2persistent MTGCAPRI_LOGFILE /caprilog.txt
+
+    cat > $CAPRIROOT/cfg/capri.cfg <<-EOF
+	# ##########################################################################
+	# Datei zum mtG-CAPRI-Server mit Informationen zur Konfigurierung
+	# ##########################################################################
+	[CAPRICFG]
+	SERVERNAME=Local:$servername
+	AUTHENTIFICATEFILE=$authfile
+	PORTNUMBER=$MTGCAPRI_PORT
+	TRACELEVEL=$MTGCAPRI_TRACELEVEL
+	TRACEFILE=$MTGCAPRI_TRACEFILE
+	LOGFILE=$MTGCAPRI_LOGFILE
+	MULTIPLEBIND=`echo $MTGCAPRI_MULTIPLEBIND | tr [[:lower:]] [[:upper:]]`
+	# ##########################################################################
+	# Dateiende
+	# ##########################################################################
+EOF
+
+    #--------------------------------------------------
+    # Erstellen der capri.aut
+    #--------------------------------------------------
+    if [ "$MTGCAPRI_USER_N" -gt 0 ]
+    then
+        > $authfile
+        for idx in `seq 1 $MTGCAPRI_USER_N`
+        do
+            user=`eval 'echo $MTGCAPRI_USER_'$idx'_NAME | tr [[:lower:]] [[:upper:]] | sed "s/ /_/g"'`
+            eval service='$MTGCAPRI_USER_'$idx'_SERVICE'
+            eval own_numbers='$MTGCAPRI_USER_'$idx'_OWN_NUMBERS'
+            eval own_numbers_list='$MTGCAPRI_USER_'$idx'_OWN_NUMBERS_LIST'
+            eval incoming_numbers='$MTGCAPRI_USER_'$idx'_INCOMING_NUMBERS'
+            eval incoming_numbers_list='$MTGCAPRI_USER_'$idx'_INCOMING_NUMBERS_LIST'
+            eval outgoing_numbers='$MTGCAPRI_USER_'$idx'_OUTGOING_NUMBERS'
+            eval outgoing_numbers_list='$MTGCAPRI_USER_'$idx'_OUTGOING_NUMBERS_LIST'
+            eval time_mo='$MTGCAPRI_USER_'$idx'_TIME_MO'
+            eval time_di='$MTGCAPRI_USER_'$idx'_TIME_DI'
+            eval time_mi='$MTGCAPRI_USER_'$idx'_TIME_MI'
+            eval time_do='$MTGCAPRI_USER_'$idx'_TIME_DO'
+            eval time_fr='$MTGCAPRI_USER_'$idx'_TIME_FR'
+            eval time_sa='$MTGCAPRI_USER_'$idx'_TIME_SA'
+            eval time_so='$MTGCAPRI_USER_'$idx'_TIME_SO'
+
+            own_numbers='"['$own_numbers']"'
+            incoming_numbers='"['$incoming_numbers']"'
+            outgoing_numbers='"['$outgoing_numbers']"'
+            #------------------------------------
+            # Schreibe die Werte in die capri.aut
+            #------------------------------------
+            echo $user
+            echo '[SERVICE:]'
+
+            for i in $service
+            do
+                echo '"'$i'"'
+            done
+
+            echo '[OWN_NUMBERS:]'
+            echo '"1"'
+            echo "$own_numbers"
+
+            case $own_numbers in
+                *partial*)
+                    for i in $own_numbers_list
+                    do
+                        echo '"'$i'"'
+                    done
+                ;;
+            esac
+
+            echo '[INCOMING_NUMBERS:]'
+            echo "$incoming_numbers"
+
+            case $incoming_numbers in
+                *partial*)
+                    for i in $incoming_numbers_list
+                    do
+                        echo '"'$i'"'
+                    done
+                ;;
+            esac
+
+            echo '[OUTGOING_NUMBERS:]'
+            echo "$outgoing_numbers"
+
+            case $outgoing_numbers in
+                *partial*)
+                    for i in $outgoing_numbers_list
+                    do
+                        echo '"'$i'"'
+                    done
+                ;;
+            esac
+
+            cat <<-EOF
+	[TIME:]
+	[MO] "$time_mo"
+	[DI] "$time_di"
+	[MI] "$time_mi"
+	[DO] "$time_do"
+	[FR] "$time_fr"
+	[SA] "$time_sa"
+	[SO] "$time_so"
+EOF
+        done >> $authfile
+    fi
+
+    #-------------------
+    # Starte capriserver
+    #-------------------
+
+    ( cd $CAPRIROOT/bin && service-restart.sh 2 ./capriserver 1>/var/log/capri.out 2>&1 & )
+    sleep 2
+
+    if ! ps | grep "./[c]apriserver" | grep -qv service
+    then
+        if ps | grep -q "./[c]apriserver"
+        then
+            # killing stale restart scripts
+            kill `ps | grep "./[c]apriserver" | cut -c -5`
+        fi
+        log_error "Failed to start mtG-CAPRI-Server!"
+    fi
+
+    end_script
+;;
+esac

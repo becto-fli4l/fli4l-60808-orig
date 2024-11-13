@@ -1,0 +1,351 @@
+% Synchronized to r43580
+\marklabel{sec:opt-mtgcapri}
+{
+\section {OPT\_MTGCAPRI - Interface CAPI ISDN pour fli4l}
+}
+
+\subsection{Introduction}
+
+Le paquetage \var{OPT\_MTGCAPRI} offre une interface CAPI ISDN (en France RNIS ou numeris)
+pour fli4l, il permet aux applications qui utilise le CAPI ISDN d'être exécutés sur
+différents ordinateurs du réseau, sans qu'il y est de carte ISDN installée sur d'autre ordinateur.
+La carte ISDN est installée sur le  routeur elle est donc partagé sur le réseau. \\
+\var{OPT\_MTGCAPRI} est l'intégration d'un serveur Linux CAPRI de la société mtG
+(\altlink{http://www.mtg.de/}) dans l'infrastructure de fli4l.
+
+\subsection{Copyright}
+Le manuel d'installation pour les clients a été récupéré à partir de la documentation d'origine
+du serveur mtG Capri, il est soumis au Copyright de mtG.
+
+\subsection{Condition préalable}
+    \begin{itemize}
+        \item Le logiciel client mtG est nécessaire, il est uniquement disponible pour Windows. \\
+        \item L'utilisation une carte ISDN de la société AVM. Dans le fichier isdn.txt vous pouvez
+			paramétrer la variable \var{ISDN\_TYPE} avec plus 100 types différents.
+   \end{itemize}
+
+
+\subsection{Configuration}
+\begin{description}
+
+\config{OPT\_MTGCAPRI}{OPT\_MTGCAPRI}{OPTMTGCAPRI}
+
+        Paramètre par défaut~: \var{OPT\_MTGCAPRI}='no'
+
+        Si vous mettre cette variable sur 'yes' de serveur Capri sera activé.
+
+\config{MTGCAPRI\_PORT}{MTGCAPRI\_PORT}{MTGCAPRIPORT}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_PORT}='20000'
+
+        La valeur du port est arbitraire, mais ne doit pas être inférieure à 10000, pour éviter
+		d'éventuels conflits en utilisation normal. Il doit être reconnu et configuré dans
+		le fichier capri.ini de chaque client.
+
+        \wichtig{On doit s'assurer que ce port n'est pas ouvert dans base.txt pour
+		les connexions sur Internet~!}
+
+\config{MTGCAPRI\_TRACELEVEL}{MTGCAPRI\_TRACELEVEL}{MTGCAPRITRACELEVEL}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_TRACELEVEL}='1'
+
+        Dans cette variable vous spécifiez le niveau de trace, les traces du programme
+		seront enregistrées dans un fichier.
+		Les valeurs possibles pour le niveau de trace sont~:
+
+        \begin{itemize}
+            \item '0' = aucun enregistrement
+            \item '1' = Erreur
+            \item '2' = comme 1 + CAPI
+            \item '3' = comme 1 + INF
+            \item '4' = Erreur + CAPI + INF + EntryExit
+        \end{itemize}
+
+    \wichtig{Si vous avez une erreur dans votre programme, évitez d'utiliser le niveau
+		de trace élevé, car le fichier grossit relativement vite et la performance
+		du mtG CAPRI diminuera. Des problèmes peuvent apparaître et cela peut interférer avec
+		certaines applications (par exemple pour les fax).}
+
+\config{MTGCAPRI\_TRACEFILE}{MTGCAPRI\_TRACEFILE}{MTGCAPRITRACEFILE}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_TRACEFILE}='/var/log/capri.trc'
+
+        Dans cette variable vous pouvez modifier le nom du fichier qui enregistre les traces.
+		Le nom et l'emplacement du fichier est arbitraire.
+
+        Vous pouvez spécifiez 'auto' ainsi le fichier de données sera automatiquement enregistré
+		dans un dossier système persistantes.
+		S'il vous plaît faite attention à configurer \var{FLI4L\_UUID} en conséquence, car
+		le fichier peut devenir très gros et le /boot ou même le disque virtuel peut déborder.
+
+\config{MTGCAPRI\_LOGFILE}{MTGCAPRI\_LOGFILE}{MTGCAPRILOGFILE}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_LOGFILE}='/var/log/caprilog.txt'
+
+        Dans cette variable vous pouvez également modifier le nom du fichier journal
+
+        Vous pouvez spécifiez 'auto' ainsi le fichier de données sera automatiquement enregistré
+		dans un dossier système persistantes.
+		S'il vous plaît faite attention à configurer \var{FLI4L\_UUID} en conséquence, car
+		le fichier peut devenir très gros et le /boot ou même le disque virtuel peut déborder.
+
+\config{MTGCAPRI\_MULTIPLEBIND}{MTGCAPRI\_MULTIPLEBIND}{MTGCAPRIMULTIPLEBIND}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_MULTIPLEBIND}='no'
+
+        Le serveur permet d'attribuer une (liaison) passive entre plusieurs clients et
+		avec un numéro de téléphone. Si la variable est sur \var{MTGCAPRI\_MULTIPLEBIND}='yes'
+		plusieurs clients peuvent attendre un appel entrant sur le même numéro de téléphone.
+		Si la variable est sur \var{MTGCAPRI\_MULTIPLEBIND}='no' un seul numéro de téléphone
+		peut être affecté par client.
+
+\config{MTGCAPRI\_USER\_N}{MTGCAPRI\_USER\_N}{MTGCAPRIUSERN}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_N}='1'
+
+        Dans cette variable vous activez le nombre d'utilisateurs.
+
+\config{MTGCAPRI\_USER\_x\_NAME}{MTGCAPRI\_USER\_x\_NAME}{MTGCAPRIUSERxNAME}
+
+        Dans cette variable vous indiquez le nom de l'utilisateur. Il doit correspondre au nom
+		du compte de l'utilisateur du client Windows sur lequel le client mtG CAPRI est installé.
+
+\config{MTGCAPRI\_USER\_x\_SERVICE}{MTGCAPRI\_USER\_x\_SERVICE}{MTGCAPRIUSERxSERVICE}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_SERVICE}='all'
+
+        Dans cette variable vous indiquez les services, que l'utilisateur peut utiliser. 
+		Les valeurs possibles sont~: \var{all, fax23, fax4, data64, telefon}. \\
+        Vous pouvez spécifier plusieurs services, il faut les séparés par un espace. \\
+        Exemple~: \var{MTGCAPRI\_USER\_x\_SERVICE}='telefon fax23'
+
+\config{MTGCAPRI\_USER\_x\_OWN\_NUMBERS}{MTGCAPRI\_USER\_x\_OWN\_NUMBERS}{MTGCAPRIUSERxOWNNUMBERS}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_OWN\_NUMBERS}='all'
+
+        Dans cette variable vous indiquez les numéros de téléphones, ainsi l'utilisateur sera
+		autorisé à se connecté de manière passive.
+		Les valeurs possibles sont~:
+        \begin{itemize}
+            \item 'all' = tous les numéros sont autorisés
+            \item 'none' = tous les numéros sont bloqués
+            \item 'partial' = tous les numéros mentionnés dans
+                \jump{MTGCAPRIUSERxOWNNUMBERSLIST}{\var{MTGCAPRI\_USER\_x\_OWN\_NUMBERS\_LIST}}
+                sont autorisés.
+        \end{itemize}
+
+\config{MTGCAPRI\_USER\_x\_OWN\_NUMBERS\_LIST}{MTGCAPRI\_USER\_x\_OWN\_NUMBERS\_LIST}{MTGCAPRIUSERxOWNNUMBERSLIST}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_OWN\_NUMBERS\_LIST}=''
+
+        Dans cette variable vous indiquez les numéros autorisés, si vous avez paramétré
+		\var{MTGCAPRI\_USER\_x\_OWN\_NUMBERS}='partial', les numéros indiqués pourront être
+		utilisés par l'utilisateur.
+		Si vous indiquez plusieurs numéros, ils doivent être séparés par un espace. \\
+		Exemple~: \var{MTGCAPRI\_USER\_x\_OWN\_NUMBERS\_LIST}='12345 12346'
+
+\config{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS}{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS}{MTGCAPRIUSERxINCOMINGNUMBERS}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS}='all'
+
+        Dans cette variable vous indiquez les autorisations de connexion téléphoniques
+		externe passant par le serveur.
+		Les valeurs possibles sont~:
+        \begin{itemize}
+            \item 'all' = tous les numéros sont autorisés
+            \item 'none' = tous les numéros sont bloqués
+            \item 'partial' = tous les numéros mentionnés dans
+                \jump{MTGCAPRIUSERxINCOMINGNUMBERSLIST}{\var{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS\_LIST}}
+                sont autorisés.
+        \end{itemize}
+
+\config{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS\_LIST}{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS\_LIST}{MTGCAPRIUSERxINCOMINGNUMBERSLIST}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS\_LIST}=''
+
+        Dans cette variable vous indiquez les numéros autorisés, si vous avez paramétré
+		\var{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS}='partial', les numéros indiqués pourront
+		être utilisés pour se connecter vers un numéro externe en passant par le serveur.
+		Si vous indiquez plusieurs numéros, ils doivent être séparés par un espace. \\
+		Exemple~: \var{MTGCAPRI\_USER\_x\_INCOMING\_NUMBERS\_LIST}='0172123456 0511'
+		
+		Ce paramètre permet de se connecter au numéro de téléphone '0172123456 'et avec
+		le code de zone '0511'.
+
+\config{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS}{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS}{MTGCAPRIUSERxOUTGOINGNUMBERS}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS}='all'
+
+        Dans cette variable vous indiquez le BLOQUAGE des connexions téléphoniques externe.
+		Les valeurs possibles sont~:
+        \begin{itemize}
+            \item 'all' = tous les numéros sont bloqués 
+            \item 'none' = tous les numéros sont autorisés
+            \item 'partial' = tous les numéros mentionnés dans
+                \jump{MTGCAPRIUSERxOUTGOINGNUMBERSLIST}{\var{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS\_LIST}}
+                sont bloqués
+        \end{itemize}
+
+\config{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS\_LIST}{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS\_LIST}{MTGCAPRIUSERxOUTGOINGNUMBERSLIST}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS\_LIST}=''
+
+        Dans cette variable vous indiquez les numéros bloqués, si vous avez paramétré
+		\var{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS}='partial', les numéros indiqués pourront
+		être bloqués pour une connexion téléphonique externe.
+		Si vous indiquez plusieurs numéros, ils doivent être séparés par un espace.
+		Vous pouvez indiquer uniquement le début des numéros à composer \\
+		Exemple~: \var{MTGCAPRI\_USER\_x\_OUTGOING\_NUMBERS\_LIST}='0900 0180'
+
+		Ce paramètre bloque la connexion des numéros de téléphone commençant par '0900' ou '0180'.
+
+\config{MTGCAPRI\_USER\_x\_TIME\_XX}{MTGCAPRI\_USER\_x\_TIME\_XX}{MTGCAPRIUSERxTIMEXX}
+
+        Paramètre par défaut~: \var{MTGCAPRI\_USER\_x\_TIME\_XX}='0:0 0:0'
+
+        Dans cette variable vous spécifiez les heures, auxquelles l'utilisateur est autorisé
+		à utiliser CAPI du (lundi-dimanche). \\ 
+		Ici quelques exemples~:
+        \begin{verbatim}
+            '0:0 0:0'     - Aucune restriction de l'heure
+            '9:0 17:30'   - Utilisation uniquement de 09:00 à 17:30
+            '24:00 24:00' - Pas d'utilisation
+        \end{verbatim}
+
+
+\end{description}
+
+\subsection{Installation du logiciel client mtG CAPRI}
+    
+	L'installation du client est différente selon le système utilisé, si vous avez un Windows95
+	ou un WindowsNT de base, parce que les fichiers nécessaire à l'installation sont générés par
+	l'architecture du système qui est différent.
+
+    Lors de la configuration du client mtG CAPRI, il faut faire attention au point suivant~: \\
+	S'il existe déjà une application CAPI installé sur l'ordinateur (en d'autres termes, une carte
+	ISDN local), les fichiers dll sont encores installés sur le disque dur, ceux-ci doivent être
+	retirés avant l'installation du mtG CAPRI: CAPI20.DLL et CAPI2032.DLL, tous les deux fichiers sont
+	normalement situées dans le répertoire système. \\
+
+    Si tel est le cas, vous pouvez utiliser l'une des deux manières suivantes~: \\
+	\\
+    a) Désinstallez la carte ISDN et vérifier si les fichiers \var{capi20.dll} et \var{capi2032.dll} ont été enlevés. \\
+    b) Renommer les fichiers DLL nécessaires pour activer plus tard la carte ISDN locale et donc
+	la désactivation du client mtG CAPRI. Lorsque vous renommez les fichiers vous désactivez les pilotes de la carte intégré. \\
+
+    Dans un cas normal, si ces fichiers ne sont pas écrasés par une installation sage du programme
+	(vous devez vérifier le numéro de version et les données du fabricant). L'installation sage du
+	programme n'a pas effectué correctement l'installation.
+
+\subsubsection{Réglage de capri.ini pour l'initialisation du client mtG CAPRI}
+
+    Le fichier capri.ini est utilisé pour initialiser le client mtG CAPRI et aussi pour être identifié
+	par le serveur pour que la connexion soit mise en place, vous devez entrer les paramètres suivants~:
+\begin{verbatim}
+[CAPRI]
+SERVERNAME = Remote:Thor
+PORTNUMBER = 20000
+TRACELEVEL = 0
+TRACEFILE = c:\tmp\capri.trc
+FLOWCTRL = 7
+\end{verbatim}
+
+\begin{description}
+\config{[CAPRI]}{CAPRI}{CAPRI}
+
+    L'en-tête du fichier ne doit pas être modifié.
+
+\config{SERVERNAME}{SERVERNAME}{SERVERNAME}
+
+    Après 'Remote:' le nom de l'alias du serveur pour le réseau TCP/IP doit être placée 
+	 (il correspond au paramètre du fichier hôte et du fichier capri.cfg du mtG CAPRI sur le serveur).
+
+\config{PORTNUMBER}{PORTNUMBER}{PORTNUMBER}
+
+    Cette valeur doit correspondre à celle du fichier capri.cfg sur le serveur.
+
+\config{TRACELEVEL}{TRACELEVEL}{TRACELEVEL}
+
+    Normalement la valeur du niveau de trace pour le client mtG CAPRI est '0'. \\
+	Les valeurs possibles sont~:
+    \begin{itemize}
+        \item 0 = aucun enregistrement
+        \item 1 = Erreur
+        \item 2 = comme 1 + CAPI
+        \item 3 = comme 1 + INF
+        \item 4 = Erreur + CAPI + INF + EntryExit
+    \end{itemize}
+
+    \wichtig{Si vous avez une erreur dans votre programme, évitez d'utiliser le niveau
+		de trace élevé, car le fichier grossit relativement vite et la performance
+		du mtG CAPRI diminuera. Des problèmes peuvent apparaître et cela peut interférer avec
+		certaines applications (par exemple pour les fax).}
+
+\config{TRACEFILE}{TRACEFILE}{TRACEFILE}
+
+    Le nom et le chemin du fichier de trace (pour l'enregistrement) il est créé par mtG CAPRI.
+    Le paramètre peut être modifié (ici~: capri.trc).
+
+\config{FLOWCTRL}{FLOWCTRL}{FLOWCTRL}
+
+    Lors de l'envoi des paquets de données, un contrôle de flux est effectué. \\
+    Les valeurs possibles sont~: \\
+    \begin{itemize}
+        \item 0 = contrôle pas effectué
+        \item 1 = attendre après chaque acquittement de paquet de données
+        \item 2 = maximum 2 paquets de données sans contrôle
+        \item 3 = maximum 3 paquets de données sans contrôle
+        \item ... d'autres valeurs analogiques
+        \item 7 = maximum 7 paquets de données sans contrôle (par défaut)
+    \end{itemize}
+
+    Les valeurs supérieures à 7 sont possible, mais pas recommandé. La spécification de CAPI fournit
+	une valeur de 7.
+
+\end{description}
+
+\subsubsection{Test du client}
+
+	Vous pouvez démarrer par un double clic le logiciel caprit32.exe (pour un environnement 32 bits)
+	et caprit16.exe (pour un environnement 16 bits). Normalement, le message 'Test mtG CAPRI a réussi'
+	doit apparaître. Cependant, si le message 'Test mtG CAPRI échoué' apparaît, les points suivants doivent
+	être vérifiés~:
+    \begin{itemize}
+        \item Toutes les étapes de l'installation du client et du serveur sont-il correctement effectuées~?
+        \item Le nom du serveur mtG CAPRI est-il écrit correctement dans le fichier capri.ini du client~?
+        \item Dans le fichier C:\\Windows\\Hosts (pour Windows95) ou ...\\System32\\Drivers\\Etc\\Hosts
+            (pour Windows NT® et plus) le nom de l'alias de l'ordinateur serveur est-il enregistré~?
+        \item La connexion réseau du serveur est-il établie~?
+        \item L'utilisateur actuellement connecté a t'il les privilèges suffisants dans le fichier
+			d'authentification du serveur mtG CAPRI~?
+    \end{itemize}
+
+    Si le test a été effectué avec succès, une application CAPI (par exemple T-Online) sera démarré
+	à partir du client.
+
+\subsubsection{Les messages d'erreur des applications CAPI}
+
+    Les messages d'erreur des applications CAPI (tels que T-Online, FritzFax etc) sont affichés dans
+	le cas où une carte ISDN avec le logiciel correspondant est installé localement sur l'ordinateur concerné.
+	Ils sont par conséquent souvent trompeur pour mtG CAPRI. \\
+    Exemple~: \\
+
+    Le message 'pilote CAPI 2.0 n'est pas installé sur cet ordinateur' signifie que CAPI (actuellement,
+	dans l'interaction entre le client et le serveur) n'est pas fonctionnelle. Le problème est en rapport
+	avec mtG CAPRI, par exemple, tout est en ordre sur le client mais, la connexion réseau au serveur est
+	interrompu ou le serveur est arrêté. \\
+    \\
+    T-Online génère un message d'erreur lorsque l'utilisateur n'a pas été authentifié sur le serveur~:
+	'Vous ne pouvez pas initialiser DDE (Wsock32)'. \\
+    \\
+    Si le nom du serveur est spécifié de manière incorrecte sur le client, je reçois le message suivant
+	'Résultat de la configuration de la connexion: Le pilotes CAPI est manquent ou ...'. \\
+    \\
+    Avec de tels messages "cryptés" il est donc recommandé~:
+    \begin{itemize}
+        \item de démarrer sur le client le logiciel de test caprit32.exe ou caprit16.exe, pour voir si la connexion
+		au serveur mtG CAPRI peut être établie ou
+        \item de contrôler le fichier trace sur le serveur, il donne une indication sur le problème tels que
+		'utilisateur non autorisé', 'pas de canal libre', 'chaîne demandée n'est pas disponible', etc.
+    \end{itemize}
+

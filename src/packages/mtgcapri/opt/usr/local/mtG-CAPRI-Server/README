@@ -1,0 +1,111 @@
+mtG-CAPRI-Server Version 1.5.4 fuer Linux (i386, uClibc 0.9.28)
+===============================================================
+
+Vor dem Einsatz des mtG-CAPRI-Servers Version 1.5.4 unter Linux (i386) muessen folgende Voraussetzungen erfuellt sein:
+
+Kurzuebersicht:
+===============
+
+- Kernel Version  >= 2.2.13. Empfohlen: 2.2.26, 2.4.32 oder 2.6.17.
+- uClibc 0.9.28-System
+- Kernel mit AVM CAPI 2.0 Support und dem Treiber fuer die entsprechende aktive oder passive AVM ISDN-Karte (modular oder monolithisch)
+- Die CAPI 2.0 Bibliothek aus den ISDN4K-Utilities (libcapi20) muss als dynamisch ladbare Bibliothek (Shared Object File) auf dem System verfuegbar sein (ueblicherweise unter /usr/lib).
+  Versionen der Bibliothek fuer 2.2.x Kernel mit Release-Datum vor dem 22.12.1999 sind fehlerhaft. Weiterhin entsprechen aeltere Versionen nicht der CAPI2.0-Spezifikation fuer Linux.
+  (vertauschte Parameter in Funktionsaufrufen, etc.). Verwenden Sie daher nach Moeglichkeit die aktuelle Version der Bibliothek (s.u.).
+- Der mtG-CAPRI-Server verwendet standardmaessig den TCP-Port 20000 zur Kommunikation mit den Clients. Weiterhin werden vom benutzten RPC dynamisch TCP-Ports >= 1024 für die Kommunikation allokiert. 
+  Es duerfen keine anderen Prozesse laufen, die den selben Port (20000) verwenden. 
+- Die Netzwerkunterstuetzung (TCP/IP) muss den lokalen Gegebenheiten entsprechend auf dem Linux-Server eingerichtet sein (IP-Adresse, Hostname).
+  Der Linux-Server muss von den Windows-Clients aus erreichbar sein (ggf. mit ping oder telnet testen, wie in unserer FAQ beschrieben).
+- Der mtG-CAPRI-Server ist für die Verwendung in einem geschuetzten LAN vorgesehen. Vom Einsatz im Internet oder auf Routern raten wir aus Sicherheitsgruenden grundsaetzlich ab.
+
+
+Details:
+========
+
+mtG-CAPRI ist fuer einen Linux-Kernel 2.2.13 oder hoeher entwickelt. Wir empfehlen aus Sicherheitsgruenden mindestens einen Linux-Kernel der Version 2.2.26 oder 2.4.32.
+Vom Einsatz auf aelteren Kernelversionen raten wir ab und geben hierbei auch keine technische Unterstuetzung.
+
+mtG-CAPRI (Version uClibc 0.9.28) ist fuer ein uClibc 0.9.28-basiertes System entwickelt.
+Der Einsatz auf einem anderen System ist nicht moeglich.
+
+Fuer den Einsatz von mtG-CAPRI ist die CAPI 2.0 Bibliothek (libcapi20) aus den ISDN4K-Utilities (shared) notwendig.
+Diese muessen Sie gegebenenfalls selbst uebersetzen und installieren.
+Sie erhalten die aktuellen und fehlerbereinigten  Sourcen der CAPI 2.0 Bibliothek (Auszug aus dem ISDN4K-Utils Paket) auf unserem Webserver (http://www.mtgnet.de/capri/linux/).
+Die neuesten Releases (CVS) der ISDN4K-Utils erhalten Sie auf ftp://ftp.isdn4linux.de/pub/isdn4linux/ (tagesaktuell)
+
+
+Konfiguration des Kernels:
+==========================
+
+Die Konfiguration, Uebersetzung und Installation eines Linux-Kernels ist nur erfahrenen Benutzern zu empfehlen.
+Bitte verstehen Sie, dass wir hierbei keine technische Unterstuetzung leisten koennen. Bei den SuSE Distributionen wird die ISDN-Unterstuetzung standardmaessig modular eingebunden. 
+Die benoetigten Module (ISDN, AVM B1 CAPI2.0 Support, Treiber fuer die AVM B1 ISA/PCI) sind bereits unter /lib/modules verfuegbar (sofern bei der Installation das ISDN4Linux-Pakte angewaehlt wurde), 
+so dass es genuegen sollte, die ISDN-Karte mit YaST im System einzubinden.
+Bestimmte AVM-Karten (T1/PCI, C4, B1 PCI V4) werden vom 2.2.13-Kernel noch nicht unterstuetzt. Fuer diese Karten brauchen Sie die Kernel-Version 2.2.14, ggf. gepatcht mit den neuesten ISDN-Treiber-Sourcen
+(erhaeltlich auf ftp://ftp.suse.com/pub/).
+
+Starten Sie die Kernel-Konfiguration mit "make menuconfig" (Konsole/X-Terminal) oder "make xconfig" (unter X).
+Aktivieren Sie im Menue "ISDN-Support" den "ISDN-Support". 
+Zusaetzlich muessen Sie die Option "AVM CAPI2.0 Support" auswaehlen und den entsprechenden Treiber fuer Ihre aktive AVM-Karte (B1 ISA/PCI, T1 ISA/PCI, C4) markieren.
+Sowohl "ISDN-Support", als auch "AVM CAPI 2.0 Support" koennen modular oder monolithisch in den Kernel eingebunden werden.
+
+Um mtG-CAPRI fuer Linux mit einer passiven ISDN-Karte des Herstellers AVM (Fritz!Classic, Fritz!PCI, Fritz!PNP oder Fritz!PCMCIA) einsetzen zu koennen, muessen Sie
+einen Kernel mit modularer CAPI2.0 Unterstuetzung verwenden. AVM stellt auf Ihrem FTP-Server bereits vorkompilierte Kartentreiber-Module fuer SuSE-Distributionen zur Verfuegung.
+Ggf. kommt es zu Problemen bei der Verwendung von SMP-Kerneln. Wenden Sie sich in diesem Fall bitte an den Support der Firmen SuSE oder AVM. 
+Wenn Sie eine andere Kernelversion verwenden wollen, muessen Sie das Treibermodul fuer die jeweilige Karte selbst uebersetzen.
+Die Treibersourcen sind in den Treiberarchiven enthalten.
+In den Treiberarchiven, die AVM zur Verfuegung stellt sind ausfuehrliche Installationsanweisungen fuer die gaengigsten Konfigurationen enthalten.
+
+Uebersetzen und installieren Sie den neuen Kernel. Wenn Sie die o.g. Optionen modular konfiguriert haben, uebersetzen und installieren Sie anschliessend die Module.
+Achten Sie bei modularer Konfiguration auf die korrekte Einbindung der Treibermodule durch die Datei /etc/modules.conf (conf.modules) und auf aktualisierte Modulabhaengigkeiten (depmod -a).
+Um weitere Hinweise zu erhalten, konsultieren Sie bitte die Datei README.avmb1 im Unterverzeichnis /Documentation/isdn Ihrer Kernel-Sourcen.
+
+Um Ihre aktive AVM-Karte unter Linux benutzen zu koennen, ist es ausserdem erforderlich, mit dem Programm avmcapictrl/capiinit (Teil der isdn4k-utils) die unter
+ftp.avm.de/cardware/b1/linux/firmware/ erhaeltliche "Firmware" auf die Karte zu laden. Hierbei muessen Sie bei ISA-Karten die mit Jumper konfigurierte I/O-Adresse, sowie einen freien Interrupt angeben.
+
+
+Installation der CAPI 2.0 Bibliothek:
+=====================================
+
+Die folgenden Schritte muessen Sie als Superuser (root) durchfuehren:
+
+Um die CAPI 2.0 Bibliothek zu uebersetzen, entpacken ("tar -xvzf ./isdn4k-libcapi20.tgz") Sie das Archiv (Teilbaum der isdn4k-utils) an geeigneter Stelle (etwa /usr/src) 
+und wechseln Sie in das neu entstandene Verzeichnis "capi20".
+Fuehren Sie erst das Konfigurationsskript (./configure) und danach "make" aus. Installieren Sie die Bibliothek mit "make install".
+Im Verzeichnis /usr/lib muss sich nun die Datei "libcapi20.so" befinden (Symbolischer Link auf libcapi20.so.2.x.x, je nach Version).
+
+
+Installation und Konfiguration des mtG-CAPRI-Servers:
+=====================================================
+
+Entpacken Sie die Datei "capri_ls_v154_i386-uClibc-0.9.28.tar.gz" beispielsweise nach "/usr/local".
+Passen Sie die Dateien capri.cfg und capri.aut Ihren Gegebenheiten entsprechend an (siehe Dokumentation).
+Setzen Sie in dem Skript "cserver" die Variable "CAPRIROOT" mit einem Texteditor (etwa vim) entsprechend (in diesem Beispiel auf "/usr/local/mtG-CAPRI-Server").
+Sie koennen nun den mtG-CAPRI-Server durch Aufruf von "[$CAPRIROOT]/cserver start" starten und durch Aufruf von "[$CAPRIROOT]/cserver stop" wieder stoppen.
+Mit "[$CAPRIROOT]/cserver restart" starten Sie den mtG-CAPRI-Server neu.
+Durch Einrichtung von entsprechenden symbolischen Links in /etc/rc.d/rc2.d kann der mtG-CAPRI-Server auch automatisch beim Booten gestartet werden.
+Der Start des mtG-CAPRI-Servers sollte gegen Ende der Initialisierung von Runlevel 2 erfolgen (etwa "/etc/rc.d/rc2.d/S99capriserver").
+
+
+Dateien:
+========
+
+.../mtG-CAPRI-Server/
+			bin/	capriserver		//  ausfuehrbares Server-Programm
+			cfg/	capri.aut		//  Authentifizierungsdatei
+				capri.cfg		//  Konfigurationsdatei
+			lib/	libcaprisec.so		//  Bibliothek zur Lizensierung
+				libmtg_buf.so		//  Bibliothek tur Pufferverwaltung
+			trace/				//  hier werden Protokolldateien abgelegt
+			cserver				//  Startup-Skript
+			LICENSE				//  Textdatei mit Lizenzbedingungen
+			README				//  Textdatei mit Installationshinweisen
+
+
+Dokumentation:
+==============
+
+Weitere Hinweise zur Einrichtung und zur Verwendung des mtG-CAPRI-Servers entnehmen Sie bitte der im PDF-Format erhaeltlichen Dokumentation.
+
+media transfer AG, Dolivostrasse 11, D-64293 Darmstadt
+Tel.: +49 (0 61 51) / 81 93-0, Fax: +49 (0 61 51) / 81 93-41, Web: http://www.mtg.de, E-Mail: capri@mtg.de
