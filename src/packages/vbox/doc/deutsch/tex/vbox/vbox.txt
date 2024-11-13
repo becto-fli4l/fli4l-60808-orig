@@ -1,0 +1,1911 @@
+  VBOX
+  Michael 'Ghandi' Herold <michael@abadonna.mayn.de>
+  Version 2.0.0BETA5 (17-NOV-98)
+
+  Diese Dokumentation beschreibt die Konfiguration und Installation von
+  vbox Version 2.0.0BETA5, einem Softwarepaket zum Betrieb eines Anruf-
+  beantworters mit isdn4linux.
+  ______________________________________________________________________
+
+  Table of Contents:
+
+  1.      Copyright
+
+  2.      Vorwort
+
+  3.      Erste Schritte
+
+  3.1.    vboxgetty
+
+  3.2.    vboxd
+
+  4.      Konfiguration
+
+  4.1.    vboxgetty.conf
+
+  4.2.    vbox.conf
+
+  4.3.    vboxd.conf
+
+  4.4.    ~/.vboxrc
+
+  4.5.    Zeitangaben
+
+  4.6.    Tagesangaben
+
+  5.      Skriptsprache
+
+  6.      Programme
+
+  6.1.    vboxgetty
+
+  6.2.    vboxd
+
+  6.3.    vbox
+
+  6.4.    vboxbeep
+
+  6.5.    vboxtoau
+
+  6.6.    autovbox
+
+  6.7.    vboxmode
+
+  7.      Verschiedenes
+
+  7.1.    Format der vbox Dateien
+
+  7.2.    Die Library libvbox.a
+
+  7.3.    Neue Dokumentation erzeugen
+
+  8.      Bezugsquellen
+
+  9.      Danksagungen
+  ______________________________________________________________________
+
+  1.  Copyright
+
+  Copyright © 1996, 1997 Michael 'Ghandi' Herold
+
+  Das Paket vbox ist freie Software und kann unter den Bedingungen der
+  GNU General Public License veröffentlicht oder verändert werden.
+
+  Die Dokumentation sowie alle Programme von vbox wurden mit großer
+  Sorgfalt erstellt. Dennoch sind Fehler nicht ganz auszuschließen. Aus
+  diesem Grund sind die in der vorliegenden Dokumentation enthaltenen
+  Angaben mit keiner Verpflichtung oder Garantie irgendeiner Art
+  verbunden. Sowohl Michael Herold als auch die in Kapitel
+  ``Danksagungen'' genannten Personen übernehmen keine Verantwortung
+  oder sonstige Haftung für Schäden, die auf irgendeine Art aus der
+  Benutzung der Dokumentation oder den darin beschriebenen Programmen
+  entstehen oder entstanden sind.
+
+  Die Funktionen zum Konvertieren von ADPCM-2, ADPCM-3, ADPCM-4 und ULAW
+  stammen aus dem Paket mgetty-0.98.tar.gz und sind Copyright © von
+
+  Marc Eberhard <Marc.Eberhard@Uni-Duesseldorf.DE> und Gert Doering
+  <gert@greenie.muc.de>.
+
+  2.  Vorwort
+
+  Das Paket vbox ist ein Ansammlung von Programmen zum Betrieb eines
+  Anrufbeantwortets unter isdn4linux.
+
+  Ab Version 2.0.0 wird die DTMF-Erkennung von isdn4linux und eine
+  Skriptsprache (Tcl mit erweitertem Kommandosatz) unterstützt.  Zudem
+  läuft die komplette Kommunikation der meisten Programme über Netzwerk
+  ab.
+
+  Folgende Softwarepakete müssen funktionsfähig installiert sein:
+
+  ·  Kernel 2.0.x mit HiSax 2.0 (mit den Patches 1-4) oder HiSax 2.1.
+     Der Kernel muß mit Audiosupport für ISDN übersetzt werden. Der
+     originale Telestreiber der im Kernel integriert ist funktioniert
+     nicht mehr, da vbox einige der neuen Features von HiSax
+     unterstützt, die in diesem Treiber nicht vorhanden sind.
+
+  ·  Tcl ab der Version 7.6b1. Von den momentan existierenden Versionen
+     8.0a1 und 8.0a2 rate ich ab, da diese noch Alpha sind und sehr
+     viele Fehler enthalten.
+
+  ·  ncurses ab der Version 1.9.9g.
+
+  Die folgenden Pakete sind optional:
+
+  ·  Die pvftools aus dem mgetty Paket zum nachbearbeiten der mit vbox
+     aufgezeichneten Nachrichten.
+
+  ·  Die sgml-tools zum Umwandeln der Dokumentation in andere Formate.
+
+  Für Anregungen, Diskussionen und Fehlermeldungen existiert eine eigene
+  Mailingliste. Um in diese Liste aufgenommen zu werden, muß eine Mail
+  an
+
+  majordomo@abadonna.mayn.de
+
+  mit der Zeile
+
+  subscribe vbox <youraddress>
+
+  im Body der Nachrichten geschrieben werden, wobei <youraddress> durch
+  die eigene eMail-Adresse ersetzt werden muß.
+
+  Die Mailingliste ist hauptsächlich in deutsch, anderssprachige
+  Anfragen werden aber nach besten Kräften beantwortet.
+
+  3.  Erste Schritte
+
+  Das Kapitel Erste Schritte beschreibt die Einbindung der einzelnen
+  Programme in das System. Ich möchte jeden bitten, wenigstens dieses
+  Kapitel aufmerksam zu lesen, um spätere Probleme zu vermeiden!
+
+  3.1.  vboxgetty
+
+  Das Programm vboxgetty ist das eigentliche Herz von vbox.  Es
+  überwacht die Leitung, nimmt eingehende Anrufe entgegen, spielt
+  Ansagetexte ab und zeichnet die Nachrichten auf.
+
+  vboxgetty sollte am besten aus der '/etc/inittab' gestartet werden.
+  Wenn lieber ein Startskript verwenden werden soll ist darauf achten,
+  daß es völlig normal ist, daß vboxgetty sich während der Laufzeit von
+  alleine beendet; z.B. dann, wenn das Modemdevice nicht initialisiert
+  werden konnte.
+
+  vboxgetty muß vom Benutzer root gestartet werden!
+
+     Beispiel für einen Eintrag in '/etc/inittab':
+
+        I6:2345:respawn:'/sbin'/vboxgetty -d /dev/ttyI6
+        I7:2345:respawn:'/sbin'/vboxgetty -d /dev/ttyI7
+
+  Das Argument -d oder --device muß angegeben werden (siehe Kapitel
+  ``Programme'' unter ``vboxgetty''). Es gibt an welches Modemdevice und
+  welcher Teil von '/etc/isdn/vboxgetty.conf' für diesen vboxgetty
+  verwendet werden soll.
+  Für jeden Benutzer oder jede Benutzergruppe muß in '/var/spool/vbox' ein
+  Verzeichnis angelegt werden, in welches die Konfigurationsdatei
+  'vbox.conf' kopiert werden muß.
+
+  Das angelegte Verzeichnis und alle sich darin befindlichen
+  Unterverzeichnisse oder Dateien müssen mit den richtigen Rechten
+  versehen werden, sodaß der Benutzer oder die Gruppe, die in
+  '/etc/isdn/vboxgetty.conf' eingestellt wurden diese benutzen
+  dürfen!
+
+  Für die weitere Einrichtung und Konfiguration von vboxgetty kann im
+  Kapitel ``Konfiguration'' unter ``vboxgetty'' nachgeschlagen werden.
+
+     Beispiel:
+        Dieses Beispiel zeigt die Einrichtung eines einzelnen Benutzers
+        Namens michael.
+
+        $ mkdir /var/spool/vbox/michael
+        $ mkdir /var/spool/vbox/michael/incoming
+        $ mkdir /var/spool/vbox/michael/messages
+        $ cp ./examples/vbox.conf.example /var/spool/vbox/michael/vbox.conf
+        $ cp ./examples/standard.tcl.example /var/spool/vbox/michael/standard.tcl
+        $ cp ./examples/standard.msg.example /var/spool/vbox/michael/messages/standard.msg
+        $ cp ./examples/beep.msg.example /var/spool/vbox/michael/messages/beep.msg
+        $ cp ./examples/timeout.msg.example /var/spool/vbox/michael/messages/timeout.msg
+        $ chown michael.users /var/spool/vbox/michael -Rv
+        $ chmod o-rwx,g-rwx /var/spool/vbox/michael -Rv
+
+     Die Dateien '/var/spool/vbox/michael/vbox.conf' und
+     '/var/spool/vbox/michael/standard.tcl' müssen jetzt nur noch auf die
+     eigenen Bedürfnisse angepasst werden...
+
+  3.2.  vboxd
+
+  vboxd ist der zweitwichtigste Teil von vbox. Mit diesem Daemon ist es
+  möglich, Nachrichten über Netzwerk zu manipulieren und zu laden.  Die
+  Programme vbox und vboxbeep benötigen vboxd.
+
+  Bevor der Daemon gestartet werden kann, muß in der Datei
+  '/etc/services' ein neuer Service eingetragen werden (nur falls dieser
+  noch nicht enthalten ist).
+
+     Beispiel für '/etc/services':
+
+        20012    vboxd/tcp
+        20012    vboxd/udp
+
+  Danach muß vboxd in der '/etc/inetd.conf' eingetragen werden, damit
+  dieser bei Bedarf gestartet wird. vboxd kann nur mit inetd benutzt
+  werden, er ist alleine nicht lauffähig!
+
+     Beispiel für '/etc/inetd.conf':
+
+        vboxd  stream  tcp  nowait  root  /usr/sbin/tcpd  '/sbin'/vboxd
+
+  Wenn jetzt inetd mit einem SIGHUP dazu veranlaßt wurde seine
+  Konfiguration neu einzulesen, kann mit
+
+  $ telnet localhost vboxd
+
+  getestet werden, ob vboxd reagiert.
+
+  Auf manchen Systemen ist es evtl. noch nötig, die Dateien
+  '/etc/hosts.deny' und '/etc/hosts.allow' sowie die Firewall-Rules
+  anzupassen :-)
+
+  vboxd benutzt die Konfigurationsdatei '/etc/isdn/vboxd.conf', die
+  noch an die lokalen Gegebenheiten angepaßt werden muß (siehe Kapitel
+  ``Konfiguration'' unter ``vboxd'').
+
+  4.  Konfiguration
+
+  Dieses Kapitel beschäftigt sich mit der Konfiguration der einzelnen
+  Komponenten von vbox. Es ist ratsam, dieses Kapitel aufmerksam zu
+  lesen, da sehr viele Änderungen seit den letzten Versionen gemacht
+  wurden.
+
+  4.1.  vboxgetty.conf
+
+  Die Datei 'vboxgetty.conf' dient zum Einstellen von vboxgetty und
+  befindet sich nach der Installation im Verzeichnis '/etc/isdn'.
+
+  Alle Angaben nach einem '#' und alle leere Zeilen werden ignoriert.
+  Die Argumente müssen von den Parametern mit Leerzeichen oder Tabulator
+  voneinander getrennt werden. In den Argumenten darf kein Leerzeichen
+  vorkommen!
+
+     port <string>
+        Modemdevice für das alle Einstellungen bis zum nächsten port-
+        Kommando gelten sollen. Die Einstellungen werden nur benutzt,
+        wenn das Modemdevice das vboxgetty übergeben wurde mit dem des
+        port-Kommandos übereinstimmt.  Alle Einstellungen vor dem ersten
+        port-Kommando sind global und werden von allen Modemdevices
+        benutzt.
+
+        Beispiel:
+           port /dev/ttyI7
+
+     modeminit <string>
+        Kommando zum initialisieren des Modems. In diesem Kommando
+        sollte u.a. die MSN/EAZ angegeben werden, auf welcher vboxgetty
+        eingehende Anrufe überwachen soll. Die Voreinstellung ist ATZ.
+
+        Beispiel:
+           modeminit ATZ&E7850414&B512
+
+     user <string>
+        Name des Benutzers unter dessen Rechten vboxgetty laufen soll.
+        Der Benutzer muß auf dem System existieren und in '/etc/passwd'
+        eingetragen sein. Dieser Parameter muß angegeben werden!
+
+        Beispiel:
+           user michael
+
+     group <string>
+        Name der Gruppe unter dessen Rechten vboxgetty laufen soll. Die
+        Gruppe muß auf dem System existieren und in '/etc/group'
+        eingetragen sein.  Es ist nicht erforderlich, daß der
+        eingestellte Benutzer Mitglied dieser Gruppe ist. Dieser
+        Parameter muß angegeben werden!
+
+        Beispiel:
+           group users
+
+     umask <number>
+        Numerische umask, die von vboxgetty zum anlegen von Dateien
+        verwendet werden soll. Die umask muß als Oktalzahl angegeben
+        werden (siehe chmod(1)).  Die Voreinstellung ist 077.
+
+        Beispiel:
+           umask 077
+
+     dropdtrtime <number>
+        Anzahl der Millisekunden welche die DTR-Leitung auf LOW gesetzt
+        werden soll um das Modem aufzulegen. Voreinstellung ist 800.
+
+        Beispiel:
+           dropdtrtime 1000
+
+     initpause <number>
+        Anzahl der Millisekunden die nach dem Initialisieren des Modems
+        gewartet werden sollen. Die Einstellung dient zum Ausgleich von
+        Verzögerungen bei der Meldung NO CARRIER. Voreinstellung ist
+        1500.
+
+        Beispiel:
+           initpause 2500
+
+     badinitsexit <number>
+        Maximale Anzahl von Fehlschlägen bei der Modeminitialisierung.
+        Ist diese Anzahl erreicht, beendet vboxgetty sich selbst.
+        Voreinstellung ist 0.
+
+        Beispiel:
+           badinitsexit 10
+
+     ringtimeout <number>
+        Zeit in Sekunden die maximal auf ein RING vom Modem gewartet
+        wird. Konnte in diesem Zeitraum kein RING empfangen werden, wird
+        die Entgegennahme des Anrufs abgebrochen. Voreinstellung ist 5.
+
+        Beispiel:
+           ringtimeout 4
+
+     echotimeout <number>
+        Zeit in Sekunden die auf das Echo eines Modemkommandos gewartet
+        wird.  Voreinstellung ist 4.
+
+        Beispiel:
+           echotimeout 3
+
+     commandtimeout <number>
+        Zeit in Sekunden die auf eine Antwort eines Modemkommandos
+        gewartet wird.  Voreinstellung ist 4.
+
+        Beispiel:
+           commandtimeout 4
+
+     alivetimeout <number>
+        Anzahl Sekunden nach deren Ablauf geprüft wird ob das Modem noch
+        auf Kommandos antwortet. Zudem wird die Existens von einigen
+        Kontrolldateien überprüft. Bei Angabe von 0 wird die Überprüfung
+        umgangen. Voreinstellung ist 1800.
+
+        Beispiel:
+           alivetimeout 300
+
+     compression <string>
+        Audiocompression die zum Aufzeichnen von Nachrichten benutzt
+        werden soll.  Folgende Angaben sind möglich:
+
+     ·  ADPCM-2
+
+     ·  ADPCM-3
+
+     ·  ADPCM-4
+
+     ·  ULAW
+
+        Die Kompression ALAW wird nicht mehr unterstützt! Voreinstellung
+        ist ADPCM-4.
+
+        Beispiel:
+           compression ulaw
+
+     spooldir <string>
+        Spoolverzeichnis das benutzt werden soll. Dieses Verzeichniß muß
+        immer existieren und vor dem ersten Start von vboxgetty angelegt
+        werden. Dort werden u.a. die Kontrolldateien für die
+        verschiedenen Programme abgelegt.  Voreinstellung ist
+        /var/spool/vbox/<user>.
+
+        Beispiel:
+           spooldir /var/spool/vbox/michael
+
+     vboxconfig <string>
+        Vollständiger Pfad zur Konfigurationsdatei von vbox.
+        Voreinstellung ist <spooldir>/vbox.conf.
+
+        Beispiel:
+           /var/spool/vbox/michael/vbox.conf
+
+     freespace <number>
+        Anzahl der Bytes die auf der Partition mit dem Spoolverzeichnis
+        frei sein müssen, damit ein Anruf entgegengenommen wird. Bei
+        Angabe von 0 wird die Überprüfung umgangen. Voreinstellung ist
+        0.
+
+        Beispiel:
+           freespace 2000000
+
+     debuglevel <string>
+        Debuglevel der benutzt werden soll. Der Level muß mit einzelen
+        Buchstaben angegeben werden. Voreinstellung ist FEW.
+
+        Folgende Buchstaben können angegeben werden:
+
+     ·  F - Fehler die nicht behoben werden können
+
+     ·  E - Fehler die evtl. behoben werden können
+
+     ·  W - Warnungen
+
+     ·  I - Informationen
+
+     ·  D - Debugging Ausgaben
+
+     ·  J - Noch mehr Debugging Ausgaben.
+
+        Beispiel:
+           debuglevel FEWID
+
+     Beispiel der Datei '/etc/isdn/vboxgetty.conf':
+
+        # Global settings for all ports
+
+        compression             adpcm-4
+        umask                   077
+        badinitsexit            10
+        dropdtrtime             400
+        initpause               2500
+        commandtimeout          4
+        echotimeout             4
+        ringtimeout             5
+        alivetimeout            300
+        freespace               2000000
+        debuglevel              FEWIDJ
+
+        # Settings for port ttyI6
+
+        port /dev/ttyI6
+          modeminit             ATZ&B512&E7850055
+          user                  nicole
+          group                 users
+          spooldir              /var/spool/vbox/nicole
+
+        # Settings for port ttyI7
+
+        port /dev/ttyI7
+          modeminit             ATZ&B512&E7840414
+          user                  michael
+          group                 users
+          spooldir              /var/spool/vbox/michael
+
+  4.2.  vbox.conf
+
+  In dieser Datei kann festgelegt werden, welche Anrufe wann und zu
+  welchen Bedingungen angenommen werden. Ebenso kann hier definiert
+  werden, welche CALLERID zu welcher Person gehört.
+
+  Leere Zeilen und solche die mit einem '#' beginnen werden ignoriert.
+  Alle Zeichen ab einem '#' werden entfernt.
+
+  Die Datei ist in mehrere Sektionen aufgeteilt. Ein Sektionsname
+  beginnt mit einem '[' - gefolgt vom Namen - und endet mit einem ']'.
+  Groß- und Kleinschreibung bei den Sektionsnamen wird nicht beachtet.
+  Eine Sektion endet am Dateiende oder am Beginn einer neuen Sektion.
+
+  Folgende Sektionen existieren:
+
+     [CALLERIDS]
+        In dieser Sektion wird definiert, welche CALLERID welcher Person
+        gehört und welche Einstellungen für diese verwendet werden
+        sollen.
+
+        Bei einem eingehenden Anruf wird die CALLERID des Anrufers
+        ermittelt und mit denen in der Sektion [CALLERIDS] verglichen.
+        Die SECTION der ersten Übereinstimmung wird dann für den
+        weiteren Anruf verwendet...
+
+        Format: PATTERN SECTION REALNAME
+
+        PATTERN
+           UN*X-Pattern einer CALLERID. Es dürfen keine Leerzeichen oder
+           Tabulatoren verwendet werden.
+
+        SECTION
+           Name einer Benutzersektion, die verwendet werden soll. Es
+           dürfen keine Leerzeichen oder Tabulatoren verwendet werden.
+           Bei '-' wird STANDARD, bei '*' der REALNAME als Sektionsname
+           benutzt.
+
+        REALNAME
+           Voller Name der Person, der die CALLERID zugeordnet werden
+           soll. Der Name darf Leerzeichen enthalten.
+
+        Am Ende der Sektion [CALLERIDS] sollte immer der Eintrag
+
+        *   -   *** Unknown ***
+
+     stehen, damit auch Anrufe behandelt werden, die keine oder keine
+     bekannte CALLERID übermitteln.
+
+     [RINGS]
+        In dieser Sektion wird eingestellt, wann und nach wievielen
+        RING's ein Anruf angenommen wird.
+
+        Diese Sektion wird bei einem eingehenden Anruf als erste
+        überprüft um festzustellen, ob dieser zum aktuellen Zeitpunkt
+        überhaupt angenommen werden soll. Die Anzahl der RING's läßt
+        sich in den Benutzersektionen überschreiben.
+
+        Format: TIME DAYS RINGS
+
+        TIME
+           Zeiten, an denen der Anruf entgehengenommen werden soll. Das
+           genaue Format von Zeitangaben ist im Kapitel
+           ``Konfiguration'' unter ``Zeitangaben'' beschrieben. Die
+           Zeitangaben dürfen keine Leerzeichen und keine Tabulatoren
+           enthalten.
+
+        DAYS
+           Tage, an denen der Anruf entgehengenommen werden soll. Das
+           genaue Format von Tagesangaben ist im Kapitel
+           ``Konfiguration'' unter ``Tagesangaben'' beschrieben. Die
+           Tagesangaben dürfen keine Leerzeichen und keine Tabulatoren
+           enthalten.
+
+        RINGS
+           Anzahl der RING's, nach denen der Anruf entgegengenommen
+           werden soll.
+
+           Ab Version 2.0 von HiSax ist der Intervall zwischen den
+           RING's länger. Er entspricht jetzt ungefähr dem eines
+           normalen Telefons, d.h. ein RING bei einmal Klingeln des
+           Telefons.
+
+     Benutzersektionen
+        Mit Benutzersektionen können individuelle Einstellungen für eine
+        bestimmte Person gemacht werden. Der Sektionsname einer
+        Benutzersektion wird genauso angegeben wie bei den normalen
+        Sektionen. Die Namen CALLERIDS und RINGS sind reserviert!
+
+        Format: TIME DAYS MESSAGE RECTIME [FLAG] [...]
+
+        TIME
+           Zeiten, zu denen die Einstellungen benutzt werden sollen. Das
+           genaue Format von Zeitangaben ist im Kapitel
+           ``Konfiguration'' unter ``Zeitangaben'' beschrieben. Die
+           Zeitangaben dürfen keine Leerzeichen und keine Tabulatoren
+           enthalten.
+
+        DAYS
+           Tage, an denen die Einstellungen benutzt werden sollen. Das
+           genaue Format von Tagesangaben ist im Kapitel
+           ``Konfiguration'' unter ``Tagesangaben'' beschrieben. Die
+           Tagesangaben dürfen keine Leerzeichen und keine Tabulatoren
+           enthalten.
+
+        MESSAGE
+           Nachricht die als Ansagetext gespielt werden soll. Es muß
+           entweder der komplette Pfad oder der Name einer Nachricht im
+           Verzeichnis '/var/spool/vbox/<user>/messages' angegeben werden.
+           Voreinstellung ist '/var/spool/vbox/<user>/messages/standard.msg'.
+           Leerzeichen und Tabulatoren sind im Namen nicht erlaubt.
+
+        RECTIME
+           Anzahl der Sekunden die maximal Aufgezeichnet werden sollen.
+           Voreinstellung ist 60 Sekunden.
+
+        FLAG
+           Zusätzliche Flags die angegeben werden können:
+
+           NOANSWER
+              Anruf soll nicht beantwortet werden. In der Voreinstellung
+              wird der Anruf beantwortet.
+
+           NORECORD
+              Es soll keine Nachricht aufgezeichnet werden. In der
+              Voreinstellung wird eine Nachricht aufgezeichnet.
+
+           NOTIMEOUTMSG
+              Es soll keine Timeout-Nachricht gespielt werden. In der
+              Voreinstellung wird die Timeout-Nachricht gespielt.
+
+           NOBEEPMSG
+              Der Beep soll nicht gespielt werden. In der Voreinstellung
+              wird der Beep gespielt.
+
+           NOSTDMSG
+              Der Ansagetext soll nicht gespielt werden. In der
+              Voreinstellung wird der Ansagetext gespielt.
+
+           RINGS=
+              Gibt an nach wievielen RING's der Anruf beantwortet werden
+              soll. Dieses Flag überschreibt die RING's aus der Sektion
+              [RINGS] und das Flag TOLLRINGS.
+
+           TOLLRINGS=
+              Gibt an nach wievielen RING's der Anruf beantwortet werden
+              soll, wenn neue Nachrichten vorhanden sind. Dieses Flag
+              überschreibt die RING's aus der Sektion [RINGS] und das
+              Flag RINGS bei neuen Nachrichten.
+
+              Das Verzeichnis in dem nach neuen Nachrichten gesucht
+              werden soll, muß mit dem Flag TOLLCHECK angegeben werden
+              (oder die Voreinstellung wird benutzt).
+
+           TOLLCHECK=
+              Verzeichnis in dem nach neuen Nachrichten gesucht werden
+              soll. Die Voreinstellung ist '/var/spool/vbox/<user>/incoming'.
+              Leerzeichen oder Tabulatoren im Verzeichnisnamen sind
+              nicht erlaubt.
+
+           SCRIPT=
+              Tcl-Skript das nach der Entgegennahme des Anrufes
+              gestartet werden soll. Es muß entweder der komplette Pfad
+              oder der Name eines Skripts im Verzeichnis
+              '/var/spool/vbox/<user>' angegeben werden. Die Voreinstellung
+              ist '/var/spool/vbox/<user>/standard.tcl'.  Leerzeichen oder
+              Tabulatoren im Skriptnamen sind nicht erlaubt.
+
+     Beispiel der Datei 'vbox.conf':
+
+        # CALLERIDS
+        #
+        # Format: PATTERN SECTION REALNAME
+
+        [CALLERIDS]
+
+        931785041[3-4]  HE_I_KNOW_YOU           Michael Herold
+        9317850054      HE_I_KNOW_YOU           Nicole Sauvage
+        *               -                       *** Unknown ***
+
+        # RINGS
+        #
+        # Format: TIME DAYS RINGS
+
+        [RINGS]
+
+        20:15-21:14,0-8,23:15,22:30-23   MO,DI,MI,DO,FR,SA,SO   2
+        *                                *                      5
+
+        # [USERSECTIONS]
+        #
+        # Format: TIME DAYS STANDARD RECTIME [FLAG] [...]
+
+        [STANDARD]
+
+        20:15-21:14  DO  aktex.msg     90  SCRIPT=standard.tcl RINGS=1
+        *            *   standard.msg  90  SCRIPT=standard.tcl RINGS=6
+
+        [HE_I_KNOW_YOU]
+
+        *            *   standard.msg  60  SCRIPT=standard.tcl TOLLRINGS=2
+
+  4.3.  vboxd.conf
+
+  Die Datei 'vboxd.conf' enthält Einstellungen für vboxd und befindet
+  sich nach der Installation im Verzeichnis '/etc/isdn'.
+
+  Die Konfiguration unterteilt sich in zwei Bereiche, dem Loginbereich
+  (Zeile beginnt mit einem 'L') und dem Zugriffsbereich (Zeile beginnt
+  mit einem 'A').
+
+  Leere Zeilen oder solche die mit einem '#' beginnen werden überlesen.
+
+     Loginbereich
+        Der Loginbereich gibt an, welche Hosts sich in vboxd einloggen
+        dürfen. Bei Hosts denen der Login verweigert wurde wird die
+        Verbindung umgehend geschlossen.
+
+        Format: L:HOSTPATTERN:ACCESS
+
+        HOSTPATTERN
+           UN*X-Pattern eines Hostsnamens oder einer IP-Adresse.
+
+        ACCESS
+           Buchstabe 'Y' wenn ein Login erlaubt ist, oder 'N' wenn
+           nicht.
+        Beispiel:
+
+           L:localhost:Y
+           L:*:N
+
+     Zugriffsbereich
+        Im diesem Bereich wird definiert, welcher Benutzer welches
+        Passwort hat und welche Zugriffsrechte er bekommen soll. Jedem
+        Benutzer der sich mit dem Kommando LOGIN anmeldet, kann ein
+        eigener Bereich zugewiesen werden.
+
+        Format: A:HOSTPATTERN:MODE:NAME:PASSWORD:SPOOLDIR:INCOMINGDIR
+
+        HOSTPATTERN
+           UN*X-Pattern eines Hostsnamens oder einer IP-Adresse.
+
+        MODE
+           Zugriffsmodus für die Nachrichten und die Kontrolldateien. Es
+           können die Buchstaben 'R' für Lesezugriff und 'W' für
+           Schreibzugriff angegeben werden.
+
+           Lesezugriff wird benötigt um sich z.B. die Liste der
+           Nachrichten oder eine Nachricht selbst zu holen.
+           Schreibzugriff ermöglicht z.B. das Löschen von Nachrichten
+           oder anlegen von Kontrolldateien.
+
+        NAME
+           Name unter dem sich mit LOGIN angemeldet werden kann.
+
+        PASSWORD
+           Passwort welches zur Anmeldung benötigt wird.
+
+        SPOOLDIR
+           Spoolverzeichnis das für den angemeldeten Benutzer zugänglich
+           sein soll. Es muß der komplette Pfad angegeben werden. In
+           diesem Verzeichnis werden die Kontrolldateien abgelegt oder
+           abgefragt.
+
+        INCOMINGDIR
+           Verzeichnis in dem sich die Nachrichten des angemeldeten
+           Benutzers befinden.  Es kann der komplette Pfad oder ein
+           Verzeichnis innerhalb von SPOOLDIR angegeben werden. Nur
+           dieses Verzeichnis wird nach Nachrichten durchsucht!
+
+        Beispiel:
+
+           A:localhost:RW:michael:123:/var/spool/vbox/michael:incoming
+           A:localhost:RW:nicole:456:/var/spool/vbox/nicole:incoming
+
+     Beispiel der Datei 'vboxd.conf':
+
+        # Login access list
+
+        L:abadonna.mayn.de:Y
+        L:localhost:Y
+        L:*:N
+
+        # Full access list
+
+        A:abadonna.mayn.de:RW:michael:123:/var/spool/vbox/michael:incoming
+        A:abadonna.mayn.de:RW:nicole:456:/var/spool/vbox/nicole:incoming
+        A:localhost:RW:michael:123:/var/spool/vbox/michael:incoming
+        A:localhost:RW:nicole:456:/var/spool/vbox/nicole:incoming
+
+        # Nothing else!
+
+        A:*:!:!:!:!:!
+
+  4.4.  ~/.vboxrc
+
+  Die Datei '.vboxrc' muß sich im Homeverzeichnis des jeweiligen
+  Benutzers befinden und steuert das Aussehen von vbox. Zudem können in
+  dieser Datei der Benutzername und das Passwort für vboxd gespeichert
+  werden.
+
+  Leere Zeilen und solche die mit einem '#' beginnen werden überlesen.
+  Text ab dem Zeichen '#' wird abgeschnitten. Die Argumente müssen von
+  den Schlüsselworten mit Leerzeichen oder Tabulatoren getrennt werden.
+
+  Folgende Schlüsselworte existieren:
+
+     USERNAME
+
+     PASSWORD
+        Benutzername und Passwort für die vboxd Logins. Diese Angaben
+        werden von den Programmen vbox und vboxctrl ausgewertet. Fehlen
+        sie, muß beim Start dieser Programme der Name und das Passwort
+        eingegeben werden.
+
+     VOLUME
+        Voreingestellte Lautstärke von vbox.
+
+     C_BACKGROUND
+        Farbe für den Bildschirmhintergrund.
+
+     C_STATUSBAR
+        Farbe für den normalen Text in der Statuszeile.
+
+     C_STATUSBAR_HL
+        Farbe für den vorgehobenen Text in der Statuszeile.
+
+     C_POWERLED_ON
+        Farbe für die Power LED an.
+
+     C_POWERLED_OFF
+        Farbe für die Power LED aus.
+
+     C_STATUSLED_ON
+        Farbe für die Status LED's an.
+
+     C_STATUSLED_OFF
+        Farbe für die Status LED's aus.
+
+     C_LIST
+        Farbe für die Nachrichtenliste.
+
+     C_LIST_SELECTED
+        Farbe für einen angewählten Eintrag in der Nachrichtenliste.
+
+     C_INFOTEXT
+        Farbe für den Informationstext über der Nachrichtenliste.
+
+     C_HELP
+        Farbe für das Hilfsfenster.
+
+     C_HELP_BORDER
+        Farbe für den Rahmen des Hilfsfensters.
+
+     C_STATUS
+        Farbe für das Statusfenster.
+
+     C_STATUS_BORDER
+        Farbe für den Rahmen des Statusfensters.
+
+     C_INFO
+        Farbe für das Infofenster.
+
+     C_INFO_BORDER
+        Farbe für den Rahmen des Infofensters.
+
+  Alle Farbangaben werden im Format TEXTFARBE:HINTERGRUNDFARBE
+  angegeben. Es dürfen keine Leerzeichen oder Tabulatoren vorkommen.
+
+  Folgende Textfarben sind möglich:
+
+  ·  BLACK
+
+  ·  RED
+
+  ·  GREEN
+
+  ·  BROWN
+
+  ·  BLUE
+
+  ·  MAGENTA
+
+  ·  CYAN
+
+  ·  GRAY
+
+  ·  DARKGRAY
+
+  ·  LIGHTRED
+
+  ·  LIGHTGREEN
+
+  ·  YELLOW
+
+  ·  LIGHTBLUE
+
+  ·  LIGHTMAGENTA
+
+  ·  LIGHTCYAN
+
+  ·  WHITE
+
+  Folgende Hintergrundfarben sind möglich:
+
+  ·  BLACK
+
+  ·  RED
+
+  ·  GREEN
+
+  ·  BROWN
+
+  ·  BLUE
+
+  ·  MAGENTA
+
+  ·  CYAN
+
+  ·  GRAY
+
+     Beispiel der Datei '~/.vboxrc':
+
+        # Username & password for vboxd login
+
+        USERNAME                michael         # Username to login
+        PASSWORD                123             # Password to login
+
+        # Default volume (vboxplay)
+
+        VOLUME                  200             # Default volume (NAS)
+
+        # Color definitions for vbox
+
+        C_BACKGROUND            GRAY:BLACK      # Background
+        C_STATUSBAR             GRAY:BLUE       # Statusbar
+        C_STATUSBAR_HL          YELLOW:BLUE     # Statusbar (highlight)
+        C_POWERLED_ON           GREEN:BLUE      # Power led (on)
+        C_POWERLED_OFF          RED:BLUE        # Power led (off)
+        C_STATUSLED_ON          YELLOW:BLUE     # Status led (on)
+        C_STATUSLED_OFF         BLACK:BLUE      # Status led (off)
+        C_LIST                  GRAY:BLACK      # Message list
+        C_LIST_SELECTED         GRAY:RED        # Message list (selected)
+        C_INFOTEXT              GREEN:BLACK     # Information
+        C_HELP                  GRAY:BLUE       # Help
+        C_HELP_BORDER           YELLOW:BLUE     # Help (Border)
+        C_STATUS                GRAY:RED        # Status
+        C_STATUS_BORDER         YELLOW:RED      # Status (Border)
+        C_INFO                  GRAY:YELLOW     # Info
+        C_INFO_BORDER           YELLOW:YELLOW   # Info (Border)
+
+  4.5.  Zeitangaben
+
+  Ab v2.0.0 von vbox können die verschiedenen Zeitzonen (z.B. bei den
+  Rings) auch mit einer Minutenangabe versehen werden.
+
+  Einzelne Zeitangaben werden durch Kommata getrennt, Angaben von Start-
+  und Endzeit durch ein Minuszeichen. Die Stundenangaben müssen im
+  24-Stunden-Format - also von 0 Uhr bis 23 Uhr - gemacht werden.
+
+  Die Zeitangaben werden intern immer in Start- und Endzeit umgerechnet,
+  auch dann, wenn nur eine Startzeit angegeben ist.
+
+  Nehmen wir zum Beispiel folgende Zeitangaben:
+
+  20:15-21:14
+
+  Diese Zeit wird intern in 20:15:00-21:14:59 umgerechnet, d.h. Start-
+  und Endzeit sind inklusive!
+
+  Wenn bei einer Zeitangabe keine Minuten angebenen sind, wird bei der
+  Startzeit 0 Minuten und bei der Endzeit 59 Minuten benutzt. Intern
+  werden die Sekunden - die nicht einstellbar sind - nach dem gleichen
+  Schema behandelt.
+
+     Beispiel:
+
+     ·  20          - Umrechnung nach 20:00:00-20:59:59
+
+     ·  20:15-21:14 - Umrechnung nach 20:15:00-21:14:59
+
+     ·  08-11       - Umrechnung nach 08:00:00-11:59:59
+
+     ·  12-15:30    - Umrechnung nach 12:00:00-15:30:59
+
+  Eine Zeitzone zählt als zutreffend (match) wenn die aktuelle Zeit
+  größer/gleich der Startzeit und kleiner/gleich der Endzeit ist.
+
+  Ein '*' als einzige Zeitangabe wird als immer behandelt, ein '-' oder
+  '!' als einzige Zeitangabe als nie.
+
+  4.6.  Tagesangaben
+
+  Einzelne Tagesangaben werden durch Kommanta getrennt. Eine Angabe von
+  Start- und Ende ist hier nicht möglich.
+
+  Folgende Tageskürzel können angegeben werden:
+
+  ·  MO, MON - für Montag
+
+  ·  DI, TUE - für Dienstag
+
+  ·  MI, WED - für Mittwoch
+
+  ·  DO, THU - für Donnerstag
+
+  ·  FR, FRI - für Freitag
+
+  ·  SA, SAT - für Samstag
+
+  ·  SO, SUN - für Sonntag
+
+     Beispiel:
+        MO,DI,DO,FRI,SAT,SO
+
+  5.  Skriptsprache
+
+  Ab Version 2.0.0 von vbox wird tcl als Skriptsprache benutzt, um
+  eingegangene Anrufe zu bearbeiten. Eine genaue Beschreibung der
+  allgemeinen Funktionen von tcl kann der tcl beiliegenden Dokumentation
+  entnommen werden.
+
+  Die Anrufe werden auch weiterhin von vboxgetty entgegengenommen. Die
+  weitere Bearbeitung nach der Entgegennahme erfolgt dann über das tcl
+  Skript.
+
+  Zusätzlich zu den von tcl bereitgestellten Variablen stehen noch
+  einige neue zur Verfügung, die von vboxgetty initialisiert werden (die
+  Angaben in Klammern entsprechen der Voreinstellung):
+
+     vbox_var_bindir
+        Enthält das Verzeichnis, in welches die Programme installiert
+        wurden, die von normalen Benutzern ausgeführt werden dürfen
+        (''/usr/bin'').
+
+     vbox_var_savename
+        Enthält den Dateinamen unter dem die Nachricht gespeichert
+        werden sollte. Der Name errechnet sich aus dem aktuellen Datum
+        und der Prozeß-ID.  Der vorgegebene Name muß nicht benutzt
+        werden!
+
+     vbox_var_rectime
+        Enthält die Anzahl der Sekunden die maximal aufgezeichnet werden
+        soll. Dieser Wert entspricht der Konfiguration des aktuellen
+        Anrufers.
+
+     vbox_var_spooldir
+        Enthält den Pfad zum Spoolverzeichnis des jeweiligen Benutzers
+        ('/var/spool/vbox/<username>').
+
+     vbox_var_checknew
+        Enthält den Pfad in dem nach neuen Nachrichten gesucht werden
+        soll ('/var/spool/vbox/<username>/incoming').
+
+     vbox_msg_standard
+        Enthält den Namen der Datei die als Ansage gespielt werden soll
+        ('/var/spool/vbox/<username>/messages/standard.msg').
+
+     vbox_msg_beep
+        Enthält den Namen der Datei die als Beep gespielt werden soll
+        ('/var/spool/vbox/<username>/messages/beep.msg').
+
+     vbox_msg_timeout
+        Enthält den Namen der Datei die bei einem Timeout gespielt
+        werden soll ('/var/spool/vbox/<username>/messages/timeout.msg').
+
+     vbox_caller_id
+        Enthält die CALLERID des aktuellen Anrufers. Ist diese nicht
+        bekannt, wird 0 eingetragen.
+
+     vbox_caller_phone
+        Enthält die vollständige Telefonnummer des aktuellen Anrufers.
+        Ist diese nicht bekannt, wird "*** Unknown ***" eingetragen.
+
+     vbox_caller_name
+        Enthält den Namen des aktuellen Anrufers. Ist dieser nicht
+        bekannt, wird "*** Unknown ***" eingetragen.
+
+     vbox_user_name
+        Enthält den Namen des Benutzers, unter dessen Rechte der
+        aktuelle vboxgetty läuft.
+
+     vbox_user_home
+        Enthält das Heimatverzeichnis des Benutzers, unter dessen Rechte
+        der aktuelle vboxgetty läuft.
+
+     vbox_flag_standard
+        Enthält TRUE wenn der Ansagetext gespielt werden soll, oder
+        FALSE wenn nicht. Der Wert entspricht der Konfiguration des
+        aktuellen Anrufers.
+
+     vbox_flag_beep
+        Enthält TRUE wenn der Beep gespielt werden soll, oder FALSE wenn
+        nicht. Der Wert entspricht der Konfiguration des aktuellen
+        Anrufers.
+
+     vbox_flag_timeout
+        Enthält TRUE wenn die Timeout-Nachricht gespielt werden soll,
+        oder FALSE wenn nicht. Der Wert entspricht der Konfiguration des
+        aktuellen Benutzers.
+
+     vbox_flag_record
+        Enthält TRUE wenn eine Nachricht aufgezeichnet werden soll, oder
+        FALSE wenn nicht. Der Wert entspricht der Konfiguration des
+        aktuellen Benutzers.
+
+  Zusätzlich zu den von tcl bereitgestellten Funktionen stehen noch
+  einige neue zur Verfügung, mit denen vboxgetty gesteuert werden kann:
+
+     vbox_breaklist <add|rem> <sequence> [...]
+        Mit diesem Befehl kann gesteuert werden, bei welchen Touchtone-
+        Sequenzen vboxgetty das Abspielen, Aufzeichnen oder Warten
+        abbricht.
+
+        Touchtone-Sequenzen müssen immer in der Form *NUMMER# angegeben
+        werden, wobei NUMMER einer Folge von Zeichen der Form 0-9 und A-
+        D enspricht. Auch einzelne Zahlen müssen in der Form *NUMMER#
+        angegeben werden; vboxgetty erkennst selbst, ob die Eingabe vom
+        Anrufer eine einzelne Zahl oder Teil einer Sequenz ist.
+
+        add <sequence> [...]
+           Fügt die Touchtone-Sequenz(en) sequence zur Abbruchliste
+           hinzu. Es können maximal 8 Sequenzen auf einmal angegeben
+           werden.
+
+        rem <sequence> [...]
+           Entfernt die Touchtone-Sequenz(en) sequence aus der
+           Abbruchliste. Wenn als sequence das Schlüsselwort all
+           angegeben wird, wird die komplette Abbruchliste gelöscht. Es
+           können maximal 8 Sequenzen auf einmal angegeben werden.
+
+        Beispiel:
+
+           vbox_breaklist rem all
+           vbox_breaklist add "*08154711#"
+
+     vbox_put_message <message>
+        Mit dieser Funktion kann eine Nachricht abgespielt werden. Die
+        Art des Abbruchs wird als Rückgabewert gesetzt.
+
+        message
+           Vollständiger Name der Datei (inkl. Verzeichnis) die gespielt
+           werden soll.
+
+        Folgende Rückgabewerte sind möglich:
+
+        ERROR
+           Das Abspielen wurde wegen eines Fehlers abgebrochen.
+
+        HANGUP
+           Die Verbindung wurde beendet. Das Skript sollte sich bei
+           dieser Rückgabe beenden.
+
+        OK Die Datei wurde vollständig gespielt und durch kein Ereignis
+           abgebrochen.
+
+        Enthält die Rückgabe einen anderen Wert, handelt es sich um eine
+        Touchtone-Sequenz, die während des Abspielens erkannt wurde.
+
+        Beispiel:
+
+           set RC [ vbox_put_message /var/spool/vbox/michael/messages/standard.msg ]
+
+     vbox_get_message <savename> <timelimit>
+        Zeichnet eine Nachricht auf. Die Art des Abbruchs wird als
+        Rückgabewert gesetzt.
+
+        savename
+           Vollständiger Name der Datei (inkl. Verzeichnis) unter der
+           die Nachricht gespeichert werden soll.
+
+        timelimit
+           Maximale Anzahl Sekunden die Aufgezeichnet werden soll.
+
+        Folgende Rückgabewerte sind möglich:
+
+        ERROR
+           Das Aufzeichnen wurde wegen eines Fehlers abgebrochen.
+
+        TIMEOUT
+
+           Die maximale Aufzeichnungszeit wurde erreicht.
+
+        HANGUP
+           Die Verbindung wurde beendet. Das Skript sollte sich bei
+           dieser Rückgabe beenden.
+
+        OK Die Datei wurde vollständig aufgezeichnet und durch kein
+           Ereignis abgebrochen.
+
+        Enthält die Rückgabe einen anderen Wert, handelt es sich um eine
+        Touchtone-Sequenz, die während des Aufzeichnens erkannt wurde.
+
+        Beispiel:
+
+           set RC [ vbox_get_message /var/spool/vbox/michael/incoming/00000858611291-00022795 90 ]
+
+     vbox_wait <seconds>
+        Wartet eine bestimmte Anzahl von Sekunden auf Eingaben vom
+        Anrufer. Die Art des Abbruchs wird als Rückgabewert gesetzt.
+
+        seconds
+           Anzahl der Sekunden die gewartet werden sollen.
+
+        Folgende Rückgabewerte sind möglich:
+
+        ERROR
+           Das Warten wurde wegen eines Fehlers abgebrochen.
+
+        TIMEOUT
+           Die angegebene Anzahl Sekunden ist abgelaufen.
+
+        HANGUP
+           Die Verbindung wurde beendet. Das Skript sollte sich bei
+           dieser Rückgabe beenden.
+
+        OK Die angegebene Anzahl Sekunden ist abgelaufen.
+
+        Enthält die Rückgabe einen anderen Wert, handelt es sich um eine
+        Touchtone-Sequenz, die während des Aufzeichnens erkannt wurde.
+
+        Beispiel:
+
+           set RC [ vbox_wait 120 ]
+
+     vbox_init_touchtones
+        Dieses Kommando löscht die interne Touchtone-Sequenz.
+
+        Normalerweise werden alle erkannten Touchtones an die interne
+        Touchtone-Sequenz angehängt und auch bei einem Wechsel vom
+        Abspiel- in den Aufnahmemodus nicht gelöscht. Gelöscht wird
+        diese nur bei Eingabe von '*', da dieser Touchtone eine neue
+        Sequenz einleitet.
+
+        Beispiel:
+
+           vbox_init_touchtones
+
+     vbox_pause <ms>
+        Wartet eine bestimmte Anzahl von Millisekunden.
+
+        ms Anzahl der Millisekunden die gewartet werden soll.
+
+        Beispiel:
+
+           vbox_pause 1500
+
+     vbox_get_nr_new_messages <messagebox>
+        Ermittelt die Anzahl der neuen Nachrichten in einem Verzeichnis.
+        Das Ergebnis wird als Rückgabewert gesetzt.
+
+        messagebox
+           Verzeichnis welches untersucht werden soll.
+
+        Beispiel:
+
+           set RC [ vbox_get_nr_new_messages /var/spool/vbox/michael/incoming ]
+
+     vbox_get_nr_all_messages <messagebox>
+        Ermittelt die Anzahl aller Nachrichten in einem Verzeichnis. Das
+        Ergebnis wird als Rückgabewert gesetzt.
+
+        messagebox
+           Verzeichnis welches untersucht werden soll.
+
+        Beispiel:
+
+           set RC [ vbox_get_nr_all_messages /var/spool/vbox/michael/incoming ]
+
+     vbox_message_info <message> <fieldnr>
+        Gibt ein Feld aus dem Header einer Nachricht zurück. Das
+        Ergebnis wird als Rückgabewert gesetzt. Bei einem Fehler enthält
+        der Rückgabewert keine Daten.
+
+        message
+           Vollständiger Pfad und Name der Nachricht, deren Header
+           abgefragt werden soll.
+
+        fieldnr
+           Nummer des Header-Feldes das abgefragt werden soll. Folgende
+           Nummern können angegeben werden:
+
+        ·  1 - Erzeugungsdatum der Nachricht in Sekunden seit dem
+           1.1.1970,
+
+        ·  2 - Kompression der Nachricht,
+
+        ·  3 - Die CALLERID des Anrufers,
+
+        ·  4 - Der Name des Anrufers,
+
+        ·  5 - Die vollständige Telefonnummer des Anrufers,
+
+        ·  6 - Der Wohnort des Anrufers.
+
+        Beispiel:
+
+           set RC [ vbox_messages_info /var/spool/vbox/michael/incoming/00000865241883-00005143 1 ]
+
+  6.  Programme
+
+  6.1.  vboxgetty
+
+  vboxgetty ist das eigentliche Herz von vbox. Er ist für das Erkennen,
+  Entgegennehmen und Steuern von Anrufen zuständig. Die genaue
+  Installation von vboxgetty kann im Kapitel ``Erste Schritte'' unter
+  ``vboxgetty'' nachgelesen werden.
+
+     Benutzung:
+        vboxgetty [OPTION] [OPTION] [...]
+
+  Folgende Optionen können angegeben werden:
+
+     -f, --file FILE
+        Konfigurationsdatei die benutzt werden soll. Voreingestellt
+        liest vboxgetty die Einstellungen aus der Datei
+        '/etc/isdn/vboxgetty.conf'.
+
+     -d, --device TTY
+        Modemdevice das benutzt werden soll. Diese Option muß angegeben
+        werden!
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+     -v, --version
+        Zeigt die Versionsnummer an.
+
+  6.2.  vboxd
+
+  vboxd ist ein Daemon, der über Netzwerk (TCP/IP oder Sockets)
+  angesprochen werden und die mit vbox aufgezeichneten Nachrichten
+  abrufen oder ändern kann.
+
+  Für Programmautoren existieren in der ``libvbox.a'' bereits einige
+  Funktionen um mit vboxd zu kommunizieren. Die genaue Installation von
+  vboxd kann im Kapitel ``Erste Schritte'' unter ``vboxd'' nachgelesen
+  werden.
+
+     Benutzung:
+        vboxd [OPTION] [OPTION] [...]
+
+  Folgende Optionen können angegeben werden:
+
+     -f, --file FILE
+        Konfigurationsdatei die benutzt werden soll. Voreingestellt
+        liest vboxd die Einstellungen aus der Datei
+        '/etc/isdn/vboxd.conf'.
+
+     -t, --timeout SECS
+        Anzahl der Sekunden die vboxd auf ein Kommando vom Client
+        wartet. Wird in diesem Zeitraum kein Kommando empfangen, beendet
+        sich das Programm. Voreinstellung sind 600 Sekunden.
+
+     -v, --version
+        Zeigt die Versionsnummer an.
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+  Nach dem Start steht der Timeout auf 30 Sekunden. Dieser wird erst auf
+  den mit --timeout eingestellten Wert geändert, nachdem das erste
+  Kommando von einem Client empfangen wurde!
+
+  Die nachfolgende Beschreibung befaßt sich mit den internen Kommandos
+  des Daemons und ist eigentlich nur für Programmautoren von Interesse,
+  die in ihren eigenen Programmen mit dem vboxd kommunizieren möchten.
+
+  Der Daemon kann mit einer Reihe von Kommandos gesteuert werden, die
+  alle mit einem Text der Form
+
+  NUMMER BESCHREIBUNG
+
+  beantwortet werden. Einige Kommandos liefern mehrere Antworten
+  hintereinander, jede Antwort beginnt in einer neuen Zeile.
+
+  Der Client sollte die aktuelle Verbindung schließen (und evtl. neu
+  aufbauen), sobald vom Server der Text "281 ." übermittelt wurde.
+  Dieser gibt an, daß der Server die Verbindung beendet hat!
+
+  Die nachfolgend beschriebenen Kommandos können auch andere Kennungen
+  als angegeben zurückliefern. Die Beschreibung zeigt immer nur die
+  Rückgaben des Kommandos selbst, nicht aber die evtl. Rückgaben des
+  Servers an. Andere Rückgabekennungen als beim jeweiligen Kommando
+  angegeben sind als Fehler zu werten!
+
+  Mögliche andere Rückgaben wären:
+
+  ·  281 - Server hat sich beendet.
+
+  ·  580 - Zugriff verweigert.
+
+  ·  583 - Falsche Argumentangabe.
+
+  ·  584 - Falsches Passwort.
+
+  ·  585 - Falsche Nachricht.
+
+  ·  586 - Falsches Kommando.
+
+  ·  589 - Temporärer Fehler.
+
+  Folgende Kommandos werden vom vboxd unterstützt:
+
+     LOGIN <USERNAME> <PASSWORD>
+        Mit diesem Kommando können sich Clients als reguläre Benutzer
+        beim Daemon anmelden. Einige Kommandos sind nur nach einem
+        erfolgreichen Login möglich!  Beim Login wird dem Benutzer ein
+        Spool- und ein Incoming-Verzeichnis zugewiesen, auf die sich
+        alle Kommandos beziehen.
+
+        USERNAME
+           Name des Benutzers der angemeldet werden soll.
+
+        PASSWORD
+           Passwort des Benutzers.
+
+        Bei erfolgreicher Anmeldung enthält die Anwort des Daemons den
+        Rückgabewert 283, gefolgt von einem kurzen Willkommenstext.
+
+     LIST
+        Zeigt eine Liste aller Nachrichten an, die sich im Incoming-
+        Verzeichnis des Benutzers befinden. Dieses Kommando ist nur nach
+        einem erfolgreichen Login möglich. Es wird Lesezugriff benötigt.
+
+        Die Antwort des Daemons ist wie folgt aufgebaut:
+
+        184 +
+        184 F 00000858611291-00022795
+        184 T 858611305
+        184 M 858611305
+        184 C 6
+        184 S 84752
+        184 N Michael Herold
+        184 I 9317850413
+        184 P *** Unknown ***
+        184 L *** Unknown ***
+        184 .
+
+        184 +
+           Leitet den Beginn einer neuen Nachricht ein. Eine Liste kann
+           mehrere Nachrichten enthalten - zu Beginn einer jeden
+           Nachricht wird diese Zeile gesendet.
+
+        184 F
+           gefolgt vom Namen der Datei innerhalb des Incoming-
+           Verzeichnisses.
+
+        184 T
+           gefolgt vom Erzeugungsdatum der Datei. Das Datum wird als
+           Anzahl der Sekunden seit dem 1.1.1970 angegeben.
+
+        184 M
+           gefolgt vom Datum der letzten Änderung. Das Datum wird als
+           Anzahl der Sekunden seit dem 1.1.1970 angegeben. Ist dieses
+           0, wurde die Datei als gelesen markiert.
+
+        184 C
+           gefolgt von der Kompression. Die Kompression wird als Wert
+           zwischen 2 und 6 angegeben.
+
+        184 S
+           gefolgt von der größe der Datei in Bytes.
+
+        184 N
+           gefolgt vom Namen der Person, welche die Nachricht
+           aufgesprochen hat. Konnte diese nicht ermittelt werden, wird
+           "*** Unknown ***" angegeben.
+
+        184 I
+           gefolgt von der CALLERID der Person, welche die Nachricht
+           aufgesprochen hat. Konnte diese nicht ermittelt werden, wird
+           0 angegeben.
+
+        184 P
+           gefolgt von der Telefonnummer der Person, welche die
+           Nachricht aufgesprochen hat. Konnte diese nicht ermittelt
+           werden, wird "*** Unknown ***" angegeben.
+
+        184 F
+           gefolgt vom Wohnort der Person, welche die Nachricht
+           aufgesprochen hat.  Konnte diese nicht ermittelt werden, wird
+           "*** Unknown ***" angegeben.
+
+        184 .
+           Dieser Text wird am Ende aller Nachrichten gesendet. Er gibt
+           an, daß die komplette Liste übermittelt wurde und kein
+           weiterer Eintrag mehr folgt.
+
+     MESSAGE <MESSAGENAME>
+        überträgt eine Nachricht. Dieses Kommando ist nur nach einem
+        erfolgreichen Login möglich. Es wird Lesezugriff benötigt.
+
+        MESSAGENAME
+           Name der Datei die übermittelt werden soll. Pfadangaben
+           werden abgeschnitten - die Datei muß sich im Incoming-
+           Verzeichnis des eingeloggten Benutzers befinden.
+
+        Die Antwort des Daemons schaut in etwa wie folgt aus:
+
+        182 34654
+        [...MESSAGE...]
+        182 .
+
+     Die erste Zeile enthält die Kennung "182" gefolgt von der Anzahl
+     der Zeichen die zu lesen sind. Nach dieser Kennung werden die Daten
+     übermittelt - gefolgt von der Kennung "182 ." die das Ende der
+     Übermittlung kennzeichnet.
+
+     HEADER <MESSAGENAME>
+        Übermittelt einen Nachrichtheader. Dieses Kommando ist nur nach
+        einem erfolgreichen Login möglich. Es wird Lesezugriff benötigt.
+
+        MESSAGENAME
+           Name der Datei deren Header übermittelt werden soll.
+           Pfadangaben werden abgeschnitten - die Datei muß sich im
+           Incoming-Verzeichnis des eingeloggten Benutzers befinden.
+
+        Die Antwort des Daemons schaut in etwa wie folgt aus:
+
+        183 34654
+        [...HEADER...]
+        183 .
+
+     Die erste Zeile enthält die Kennung "183" gefolgt von der Anzahl
+     der Zeichen die zu lesen sind. Nach dieser Kennung werden die Daten
+     übermittelt - gefolgt von der Kennung "183 ." die das Ende der
+     Übermittlung kennzeichnet.
+
+     COUNT
+        Dieses Kommando gibt aus, wieviele neue Dateien sich im
+        Incoming-Verzeichnis des eingeloggten Benutzers befinden. Dieses
+        Kommando ist nur nach einem erfolgreichen Login möglich. Es wird
+        Lesezugriff benötigt.
+
+        Die Ausgabe des Daemons ist in etwa wie folgt:
+
+        181 100 859281096
+
+     Nach der Nummer "181" wird die Anzahl der neuen Nachrichten gefolgt
+     vom Datum der neusten Nachricht ausgegeben. Das Datum wird in
+     Anzahl der Sekunden seit dem 1.1.1970 dargestellt.
+
+     TOGGLE <MESSAGENAME>
+        Wechselt den Status einer Nachricht von gelesen nach ungelesen
+        oder von ungelesen nach gelesen. Dieses Kommando ist nur nach
+        einem erfolgreichen Login möglich. Es wird Schreibzugriff
+        benötigt.
+
+        MESSAGENAME
+           Name der Nachricht deren Status gewechselt werden soll.
+           Pfadangaben werden abgeschnitten - die Datei muß sich im
+           Incoming-Verzeichnis des eingeloggten Benutzers befinden.
+
+        Die Antwort des Daemons schaut in etwa so aus:
+
+        188 859281096
+
+     Nach der Nummer "188" wird das "modification date" in der Form
+     Sekunden seit 1.1.1970 ausgegeben. Der Wert 0 heißt das die
+     Nachricht als gelesen markiert wurde.
+
+     DELETE <MESSAGENAME>
+        Löscht eine Nachricht. Dieses Kommando ist nur nach einem
+        erfolgreichen Login möglich. Es wird Schreibzugriff benötigt.
+        MESSAGENAME
+           Name der Nachricht die gelöscht werden soll. Pfadangaben
+           werden abgeschnitten - die Datei muß sich im Incoming-
+           Verzeichnis des eingeloggten Benutzers befinden.
+
+        Wenn die Datei gelöscht werden konnte, antwortet der Daemon mit
+        der Kennung "287 .".
+
+     STATUSCTRL <CONTROLNAME>
+        Stellt fest, ob sich die angegebene Kontrolldatei im
+        Spoolverzeichnis des Benutzers befindet. Dieses Kommando ist nur
+        nach einem erfolgreichen Login möglich. Es wird Lesezugriff
+        benötigt.
+
+        CONTROLNAME
+           Name der Kontrolldatei die überprüft werden soll. Pfadangaben
+           werden abgeschnitten - die Datei muß sich im Spoolverzeichnis
+           des eingeloggten Benutzers befinden.
+
+        Der Daemon antwortet mit der Kennung "284 1" wenn die Datei
+        existiert, oder mit "284 0" wenn nicht.
+
+     CREATECTRL <CONTROLNAME>
+        Erzeugt die angegebene Kontrolldatei im Spoolverzeichnis des
+        Benutzers. Dieses Kommando ist nur nach einem erfolgreichen
+        Login möglich. Es wird Schreibzugriff benötigt.
+
+        CONTROLNAME
+           Name der Kontrolldatei die erzeugt werden soll. Pfadangaben
+           werden abgeschnitten - die Datei muß sich im Spoolverzeichnis
+           des eingeloggten Benutzers befinden.
+
+        Der Daemon antwortet mit der Kennung "285 1" wenn die Datei
+        angelegt werden konnte, oder mit "285 0" wenn nicht.
+
+     REMOVECTRL <CONTROLNAME>
+        Entfernt die angegebene Kontrolldatei im Spoolverzeichnis des
+        Benutzers. Dieses Kommando ist nur nach einem erfolgreichen
+        Login möglich. Es wird Schreibzugriff benötigt.
+
+        CONTROLNAME
+           Name der Kontrolldatei die entfernt werden soll. Pfadangaben
+           werden abgeschnitten - die Datei muß sich im Spoolverzeichnis
+           des eingeloggten Benutzers befinden.
+
+        Der Daemon antwortet mit der Kennung "286 1" wenn die Datei
+        entfernt werden konnte, oder mit "286 0" wenn nicht.
+
+  6.3.  vbox
+
+  Das Programm vbox dient als Frontend zum Nachrichten lesen, löschen
+  oder ändern. Zudem können die Kontrolldateien erzeugt oder gelöscht
+  werden. Es wird vboxd benötigt.
+
+     Benutzung:
+        vbox [OPTION] [OPTION] [...]
+
+  Folgende Optionen können angegeben werden:
+
+     -m, --hostname NAME
+        Gibt an auf welchem Host mit dem vboxd verbunden werden soll.
+        Voreinstellung ist localhost.
+
+     -p, --port PORT
+        Gibt an welcher Port benutzt werden soll. Voreinstellung ist der
+        Eintrag vboxd/tcp aus '/etc/services'.
+
+     -c, --playcmd PROG
+        Legt fest mit welchem Programm die Nachrichten gespielt werden
+        sollen.  Voreinstellung ist ''/usr/bin'/vboxplay'.
+
+     -r, --reload SECS
+        Gibt an nach wievielen Sekunden die Nachrichtenliste neu
+        eingelesen werden soll (neue Darstellung erfolgt nur bei neuen
+        Nachrichten). Die Voreinstellung ist 60 Sekunden.
+
+     -o, --mono
+        Erzwingt Schwarz/Weiß Anzeige.
+
+     -f, --force
+        Wenn diese Option angegeben ist, wird immer der Loginprompt
+        angezeigt, auch dann wenn das Passwort und der Benutzername in
+        '~/.vboxrc' enthalten ist.
+
+     -s, --noledstatus
+        Normalerweise holt sich vbox alle 30 Sekunden den Status der
+        Kontrolldateien vom Server, um die LED's neu anzuzeigen. Ist
+        diese Option angegeben, werden die Kontrolldateien nicht
+        abgefragt.
+
+     -v, --version
+        Zeigt die Programmversion an.
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+  6.4.  vboxbeep
+
+  Mit vboxbeep können mehrere Nachrichten-Verzeichnisse überwacht
+  werden. Wenn sich in einem der Verzeichnisse eine neue Nachricht
+  befindet, macht sich vboxbeep mit einem Signalton bemerkbar. vboxbeep
+  benutzt keinen vboxd, es können nur lokale Verzeichnisse überwacht
+  werden.
+
+     Benutzung:
+        vboxbeep [OPTION] [OPTION] [...]
+
+  Folgende Optionen können angegeben werden:
+
+     -s, --sound HOURS
+        Stunden an denen der Signalton gespielt werden soll. Die Angaben
+        müssen im 24-Stunden-Format - also von 0 - 23 Uhr - gemacht
+        werden. Mehrere Stunden können durch Kommata getrennt angegeben
+        werden. Ein '*' als einzige Angabe steht für immer, ein '-' für
+        nie.
+
+     -m, --messagebox DIR
+        Verzeichnis mit Nachrichten das überwacht werden soll. Diese
+        Option kann mehrmals angegeben werden, sodaß mehrere
+        Verzeichnisse überwacht werden können.
+
+     -p, --pause SECS
+        Pause in Sekunden die zwischen den einzelnen Überprüfungen
+        gemacht werden soll. Voreinstellung ist 5 Sekunden.
+
+     -k, --kill
+        Beendet einen bereits laufenden vboxbeep. Die Option kann nur
+        vom Benutzer root angegeben werden.
+
+     -v, --version
+        Zeigt die Programmversion an.
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+  Wird vboxbeep ohne Argumente aufgerufen, so wird versucht einem
+  bereits laufenden vboxbeep mitzuteilen, daß der Signalton beendet
+  werden soll.
+
+  6.5.  vboxtoau
+
+  Mit vboxtoau können vbox Dateien (vbox audio header) in .au Dateien
+  (sun audio format) gewandelt werden. vboxtoau ist ein Link auf
+  vboxcnvt.
+
+     Benutzung:
+        vboxtoau [OPTION] [OPTION] [...] <INFILE >OUTFILE
+
+  Folgende Optionen können angegeben werden:
+
+     -r, --samplerate RATE
+        Samplerate die in den Header der Datei geschrieben werden soll.
+        Es wird keine Konvertierung vorgenommen! Voreinstellung ist
+        8000.
+
+     -u, --ulaw
+        Datei zu 8-bit ulaw konvertieren.
+
+     -1, --linear8
+        Datei zu 8-bit linear konvertieren.
+
+     -2, --linear16
+        Datei zu 16-bit linear konvertieren (Voreinstellung).
+
+     -v, --version
+        Zeigt die Programmversion an.
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+  Die Datei zum konvertieren wird von Standard Eingabe (stdin) gelesen
+  und nach Standard Ausgabe (stdout) geschrieben.
+
+  6.6.  autovbox
+
+  Mit autovbox können .au Dateien (sun audio format) in vbox Dateien
+  (vbox audio header) gewandelt werden. autovbox ist ein Link auf
+  vboxcnvt.
+
+     Benutzung:
+        autovbox [OPTION] [OPTION] [...] <INFILE >OUTFILE
+
+  Folgende Optionen können angegeben werden:
+
+     -2, --adpcm-2
+        Datei zu ADPCM 2 konvertieren.
+
+     -3, --adpcm-3
+        Datei zu ADPCM 3 konvertieren.
+
+     -4, --adpcm-4
+        Datei zu ADPCM 4 konvertieren (Voreinstellung).
+
+     -u, --ulaw
+        Datei zu ULAW konvertieren.
+
+     -n, --name NAME
+        Name der in den Header geschrieben werden soll.
+
+     -p, --phone PHONE
+        Telefonnummer die in den Header geschrieben werden soll.
+
+     -l, --location LOCATION
+        Wohnort der in den Header geschrieben werden soll.
+
+     -v, --version
+        Zeigt die Programmversion an.
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+  Die Datei zum konvertieren wird von Standard Eingabe (stdin) gelesen
+  und nach Standard Ausgabe (stdout) geschrieben.
+
+  6.7.  vboxmode
+
+  Das Programm vboxmode dient zum ermitteln des Formats einer Audio-
+  Datei. Es werden Dateien von vbox (vbox audio header) und .au Dateien
+  (sun audio format) erkannt.
+
+     Benutzung:
+        vboxmode [OPTION] [OPTION] [...] FILENAME
+
+  Folgende Optionen können angegeben werden:
+
+     -q, --quiet
+        Normalerweise werden noch Informationen über die Datei
+        ausgegeben. Bei Angabe dieser Option werden diese unterdrückt.
+
+     -v, --version
+        Zeigt die Versionsnummer an.
+
+     -h, --help
+        Zeigt den Hilfstext an.
+
+  Das Format der Datei wird immer als Fehlernummer zurückgegeben:
+
+  ·  für .au Dateien ein Wert zwischen 128 und 150,
+
+  ·  für vbox Dateien ein Wert zwischen 2 und 6,
+
+  ·  für unbekannte Formate oder bei einem Fehler der Wert 255.
+
+  7.  Verschiedenes
+
+  7.1.  Format der vbox Dateien
+
+  Ab Version 2.0.0 von vbox enthalten die aufgezeichneten Dateien einen
+  neuen Header, der außer der Kompression und den Verbindungsdaten auch
+  noch Informationen über denjenigen enthält, der die Nachricht erzeugt
+  - sprich gesprochen - hat.
+
+  Zur Zeit enthält der Header folgende Informationen:
+
+  ·  die Aufzeichnungszeit,
+
+  ·  die Kompression,
+
+  ·  die CALLER ID,
+
+  ·  den Namen,
+
+  ·  die Telefonnummer,
+
+  ·  den Wohnort.
+
+  Mit diesen Angaben ist es anderen Programmen (z.B. mam) möglich, ohne
+  zusätzlichen Aufwand (in früheren Versionen mußte die Konfiguration
+  von vbox nach der passenden Telefonnummer durchsucht werden) die Daten
+  einer Nachricht zu ermitteln.
+
+  Das genaue Format des Headers ist in der Datei 'libvbox.h' als
+  Struktur vaheader_t definiert.
+
+  7.2.  Die Library libvbox.a
+
+  Die Library 'libvbox.a' und die dazugehörige Include-Datei 'libvbox.h'
+  enthalten kleinere Funktionen, um es anderen Programmen leichter zu
+  machen, mit vboxd zu kommunizieren.
+
+     int vboxd_connect(char *machine, int port)
+        Die Funktion stellt eine Verbindung zu machine:port her und
+        liest bei Erfolg die Startup-Message vom Server.
+
+        machine
+           Zeiger auf einen String der den Namen oder die IP-Adresse des
+           Rechners enthält, mit dem eine Verbindung aufgebaut werden
+           soll.
+
+        port
+           Portnummer, auf der mit der Gegenstelle kommuniziert werden
+           soll.
+
+        Bei Erfolg wird der Wert 0, bei einem Fehler ein Wert kleiner 0
+        zurückgegeben.  Wenn die Verbindung aufgebaut wurde, stehen die
+        externen Variablen vboxd_r_fd und vboxd_w_fd zum Lesen und
+        Schreiben zur Verfügung.
+
+     void vboxd_disconnect(void)
+        Sendet dem Server die QUIT Message und schließt die Verbindung.
+        Die externen Variablen vboxd_r_fd und vboxd_w_fd sind dann nicht
+        mehr gültig!
+
+     int vboxd_login(char *username, char *password)
+        Die Funktion meldet sich unter username mit password auf dem
+        Server als Benutzer an. Erst nach einem erfolgreichen Einloggen
+        stehen die erweiterten Funktionen vom Server zur Verfügung.
+
+        username
+           Benutzername der Benutzt werden soll.
+
+        password
+           Passwort das benutzt werden soll.
+
+        Bei Erfolg wird der Wert 0, bei einem Fehler ein Wert kleiner 0
+        zurückgegeben.
+
+     void vboxd_put_message(char *fmt, ...)
+        Sendet eine Nachricht an den Server. Der Zeilenabschluß 'CR' und
+        'NL' wird von der Funktion gesendet und braucht nicht angegeben
+        zu werden. Der Aufruf von vboxd_put_message() entspricht der
+        Funktion printf().
+
+     char *vboxd_get_message(void)
+        Versucht eine Antwort vom Server einzulesen. Die Funktion
+        benutzt einen Timeout, der in 'libvbox.h' mit
+        VBOXD_GET_MSG_TIMEOUT definiert ist.
+
+        Bei Erfolg wird ein Zeiger auf den erhaltenen Text
+        zurückgegeben, bei einem Fehler NULL. Die Antwort wird in einen
+        internen Buffer gelesen und bei einem erneuten Aufruf der
+        Funktion überschrieben!
+
+     int vboxd_test_response(char *response)
+        Vergleicht die Kennung response mit der zuletzt von
+        vboxd_get_message() eingelesenen Antwort.
+
+        response
+           String mit der Kennung die verglichen werden soll. Die
+           existierenden Kennungen sind in 'libvbox.h' definiert.
+
+        Die Funktion liefert TRUE (1) wenn die Kennungen gleich waren,
+        oder FALSE (0) falls nicht.
+
+  7.3.  Neue Dokumentation erzeugen
+
+  Wer auf seinem Rechner selbst die sgml-tools installiert hat und die
+  Dokumentation in andere Formate wandeln möchte, kann das z.B. wie
+  folgt tun:
+
+  $ cd doc/de
+  $ sgml2html -l vbox.sgml
+
+  8.  Bezugsquellen
+
+  Bezugsquellen von Programmen die in dieser Dokumentation erwähnt
+  wurden oder die zum Betrieb von vbox nötig sind:
+
+     mgetty
+        <ftp://sunsite.unc.edu/pub/Linux/system/serial/mgetty+sendfax-0.98.tar.gz>
+        Das Archiv enthält u.a. die pfvtools, mit denen die Nachrichten
+        von vbox konvertiert und verändert werden können.
+
+     sgml <ftp://sunsite.unc.edu/pub/Linux/utils/text/sgml-
+        tools-0.99.0.tar.gz>
+        Die Anleitung zu vbox wurde in sgml geschrieben, einer Sprache
+        die es erlaubt Dokumente in verschiedene Formate zu
+        konvertieren.
+
+     tcl <http://www.sunlabs.com/research/tcl/>
+        Auf diesem Server befinden sich u.a. die neusten Versionen vom
+        tcl.
+
+     isdn4linux <ftp://ftp.franken.de/pub/isdn4linux/>
+        Auf diesem Server finden sich die neusten Versionen von
+        isdn4linux, HiSax und einigen anderen sehr nützlichen
+        Programmen.
+
+  9.  Danksagungen
+
+  Ein Dankeschön geht an...
+
+  ·  Fritz Elfert <fritz@isdn4linux.de>,
+
+  ·  Carsten Keil <keil@temic-ech.spacenet.de>,
+
+  ·  Andreas Kool <akool@Kool.f.EUnet.de>,
+
+  ·  Stefan Lüthje <luethje@sl-gw.lake.de>,
+
+  ·  Marc Eberhard <Marc.Eberhard@Uni-Duesseldorf.DE>,
+
+  ·  Gert Doering <gert@greenie.muc.de>,
+
+  und an alle anderen die mich bei der Programmierung von vbox
+  unterstützt habe!
+

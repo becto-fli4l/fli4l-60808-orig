@@ -1,0 +1,130 @@
+#!/bin/sh
+#-----------------------------------------------------------------------------
+# /etc/rc.d/vbox-helper - helper functions for rc900.vbox
+#
+# Creation:     2005-02-10 hh
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+vbox_prepare ()
+{
+    # make some needed symlinks
+    cd /usr/bin
+    ln -s vboxcnvt autovbox
+    ln -s vboxcnvt vboxtoau
+    ln -s vboxcnvt vboxmode
+    cd /
+
+    # convert messages
+    MESSAGEDIR=/etc/vbox/messages
+    if ls -al $MESSAGEDIR | grep ".wav$"
+    then
+        echo "  converting *.wav files to au format - this may take a while ..."
+        for msg in $MESSAGEDIR/*.wav
+        do
+            sox "$msg" -c 1 -r 8000 -t au - >`echo "$msg" | sed s/wav$/au/`
+            rm "$msg"
+        done
+    fi
+    if ls -al $MESSAGEDIR | grep ".au$"
+    then
+        echo "  converting *.au files to vbox format - this may take a while ..."
+        for msg in $MESSAGEDIR/*.au
+        do
+            autovbox <$msg --$VBOX_COMPRESSION >`echo "$msg" | sed s/au$/msg/`
+            rm "$msg"
+        done
+    fi
+
+    # make menu entry for mini_httpd
+    case $OPT_HTTPD in yes) httpd-menu.sh add -p 400 "vbox.cgi" '$_MP_vbox' "" vbox ;; esac
+    # get httpd configfile for the case an OPT changed the environment (like mlnet)
+    . /var/run/mini_httpd.conf
+    # add menu translation to main language file
+    for lang in $HTTPD_AVAIL_LANGS
+    do
+        mk_writable /srv/www/lang/main.$lang
+        grep ^_MP /srv/www/lang/vbox.$lang >> /srv/www/lang/main.$lang
+    done
+
+    # set some constants
+    VBOXGROUP=vboxusers
+    VBOXGROUPID=10
+    CONFDIR=/etc/vbox
+    LOGDIR=/var/log/vbox
+    VBOX_TTYI_MIN=`cat /var/run/next_ttyI`
+    VBOX_TTYI_MAX=15
+
+    # create log- and lock-dirs
+    mkdir -p /var/lock
+    mkdir -p "$VBOX_LOGPATH"
+    case "$VBOX_LOGPATH" in
+        "$LOGDIR") ;;
+        *) ln -sf "$VBOX_LOGPATH" "$LOGDIR" ;;
+    esac
+}
+ 
+value ()
+{   # value () yields value of compound "array" variables like '$VBOX_USER_'$i'_MSN'
+    # filename globbing disabled to prevent interpretation of "*" in some variables
+    set -f
+    eval echo -n $1
+    set +f
+}
+
+vbox_check_spooldir ()
+{
+    case "x$VBOX_SPOOLPATH" in
+        x) install_on="ram" ;;
+        *) install_on="hd"  ;;
+    esac
+
+    # check for valid spoolarea configuration
+    SPOOLDIR=/var/spool/vbox
+    case $install_on in
+    ram)
+        ram_free=$(expr `sed -n 's/ kB//;s/MemFree://p' /proc/meminfo` + `sed -n 's/ kB//;s/^Cached://p' /proc/meminfo`)
+        if [ `expr $VBOX_SPOOLDIR_SPACE + 768` -gt $ram_free ]               # enough ram available?
+        then                                                                 # 768KiB should be left untouched
+            set_error "Not enough memory for spooldirs available!"
+        else
+            mkdir -p "$SPOOLDIR"
+        fi
+    ;;
+    hd)
+        # check if spoolpath is not in ramdisk
+        if ! echo $VBOX_SPOOLPATH | grep -q "\(`echo \`df | grep ^/dev | sed -e 's/.*% //'\`|sed -e 's/ \//\\\|\//g'`\)"
+        then
+            log_error "VBOX_SPOOLPATH $VBOX_SPOOLPATH is not on a harddisk!"
+            set_error "Please check your mount options!"
+        else
+            hd_path=$VBOX_SPOOLPATH/vbox_spooldir
+            if ! mkdir -p "$hd_path"  # create directory if not available and check if spooldir is available or sucessfully created
+            then
+                set_error "Error creating Spooldir: $hd_path"
+            else
+                echo "  spool directory $hd_path created"
+                mountpoint=`df $VBOX_SPOOLPATH | grep ^/dev | sed "s/.*% //"`
+                case $mountpoint in       # check if spoolpath is not in /opt
+                /opt) set_error "VBOX_SPOOLPATH $VBOX_SPOOLPATH must not be in '/opt'" ;;
+                *)
+                    if mount | grep -e " $mountpoint " | grep -q -e "(ro)" -e "vfat" # check if spoolpath is not on ro mounted or vfat partition
+                    then
+                        set_error "VBOX_SPOOLPATH $VBOX_SPOOLPATH mounted readonly or is on vfat partition"
+                    else
+                        kb_available=`df $VBOX_SPOOLPATH |grep ^/dev |sed "s/[^ ]* *[0-9]* *[0-9]* *//;s/[0-9]*%.*//"`
+                        if [ 0$kb_available -lt 0$VBOX_SPOOLDIR_SPACE ]  # check if there is enough space on partition
+                        then
+                            log_error "Insufficient space in VBOX_SPOOLPATH $VBOX_SPOOLPATH"
+                            set_error "Requested: $VBOX_SPOOLDIR_SPACE   Available: $kb_available"
+                        else
+                            # everything's fine, create link
+                            ln -s "$hd_path" $SPOOLDIR
+                        fi
+                    fi
+                ;;
+                esac
+            fi
+        fi
+    ;;
+    esac
+}

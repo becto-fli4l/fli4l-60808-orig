@@ -1,0 +1,268 @@
+#!/bin/sh --------------------------------------------------------------------
+# /etc/rc.d/rc900.vbox - install vbox (vboxgetty)
+#
+# Creation:     2000-12-25 cp
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_VBOX in
+yes)
+    begin_script VBOX "Configuring vbox ..."
+
+    # Handle Auto-Spool or Logpath
+    map2persistent VBOX_LOGPATH
+    map2persistent VBOX_SPOOLPATH /spool
+
+    # get some helper functions
+    . /etc/rc.d/vbox-helper
+
+    vbox_prepare
+    vbox_check_spooldir
+    if is_error
+    then
+        log_error "Vbox not available!"
+    else
+        #-------------------------------------------------------------------------------------
+        # No errors  - create configuration files
+
+        # create vboxgroup:
+        group_add $VBOXGROUP $VBOXGROUPID
+
+        # create global part of $CONFDIR/vboxgetty.conf:
+        echo "  creating $CONFDIR/vboxgetty.conf ..."
+        cat <<-EOF >$CONFDIR/vboxgetty.conf
+	compression    $VBOX_COMPRESSION
+	umask          077
+	badinitsexit   0
+	dropdtrtime    800
+	initpause      1500
+	commandtimeout 4
+	echotimeout    4
+	ringtimeout    6
+	alivetimeout   1800
+	freespace      $VBOX_FREESPACE
+	debuglevel     $VBOX_DEBUGLEVEL
+EOF
+        case "$VBOX_USE_VBOXD" in
+            yes)
+                # create first global part of $CONFDIR/vboxd.conf:
+                echo "  creating $CONFDIR/vboxd.conf ..."
+                # create accesslist for vboxd
+                echo "L:*:N" >$CONFDIR/vboxd.conf # deny all but the following
+                echo "L:127.0.0.1:Y" >>$CONFDIR/vboxd.conf  # always allow localhost
+                for host in $VBOX_VBOXD_ALLOW
+                do
+                    echo "L:$host:Y" >>$CONFDIR/vboxd.conf
+                done
+            ;;
+        esac
+
+        # User specific configuration
+        echo "  creating spooldirs and vbox.conf for all users ..."
+
+        uid=10
+        VBOX_TTYI_N=`expr $VBOX_TTYI_MIN - 1`
+
+        for i in `seq 1 $VBOX_USER_N`
+        do
+            USERNAME="`value '$VBOX_USER_'$i'_USERNAME'`"
+            PASSWD="`value '$VBOX_USER_'$i'_PASSWORD'`"
+            VBOXDPASS="`value '$VBOX_USER_'$i'_VBOXD_PASS'`"
+            USERCONF="$SPOOLDIR/$USERNAME/vbox.conf"
+            USERBEEP="`value '$VBOX_USER_'$i'_BEEP'`"
+            
+            # add vbox users to httpd-users if not already there
+            if ! grep -q ^"$USERNAME:" /etc/httpd/htpasswd && [ "$HTTPD_USER_N" -gt 0 ]
+            then
+                echo "$USERNAME:$PASSWD" >> /etc/httpd/htpasswd
+                echo "$USERNAME=vbox:all" >> /etc/httpd/rights
+            fi
+            
+            # create passwd- and shadow-entries for vboxusers if not already there
+            if ! grep -q ^"$USERNAME:" /etc/passwd
+            then
+                echo "$USERNAME:x:"`expr $uid + $i`":$VBOXGROUPID:vbox user $i:$SPOOLDIR/$USERNAME:/bin/true" >>/etc/passwd
+                echo "$USERNAME:$PASSWD:10855:0:10000::::" >>/etc/shadow
+            fi
+            # create user part of $CONFDIR/vboxgetty.conf:
+            msn_n=`value '$VBOX_USER_'$i'_MSN_N'`
+            for msn_idx in `seq 1 $msn_n` 
+            do
+                msn=`value '$VBOX_USER_'$i'_MSN_'$msn_idx`
+                startmsn=`value '$VBOX_USER_'$i'_MSN_'$msn_idx'_START'`
+                : ${startmsn:=yes}
+                if [ $VBOX_TTYI_N -lt $VBOX_TTYI_MAX ]
+                then
+                    VBOX_TTYI_N=`expr $VBOX_TTYI_N + 1`
+                    {
+                     echo "port /dev/ttyI$VBOX_TTYI_N"
+                     echo "  modeminit  ATZ&B512&E$msn"
+                     echo "  user       $USERNAME"
+                     echo "  group      $VBOXGROUP"
+                     echo "  spooldir   $SPOOLDIR/$USERNAME"
+                    } >>$CONFDIR/vboxgetty.conf
+
+                    export VBOX_TTYI_$VBOX_TTYI_N="$msn $USERNAME $startmsn"
+                else
+                    log_error "No more TTYIs left, Ignoring VBOX for MSN: $msn"
+                fi
+            done
+            echo `expr $VBOX_TTYI_N + 1` > /var/run/next_ttyI
+            export VBOX_TTYI_MIN VBOX_TTYI_MAX VBOX_TTYI_N
+
+            case "$VBOX_USE_VBOXD" in
+                yes)
+                    # create user part of $CONFDIR/vboxd.conf:
+                    echo "A:*:RW:$USERNAME:$VBOXDPASS:$SPOOLDIR/$USERNAME:incoming" >>$CONFDIR/vboxd.conf
+                ;;
+            esac
+
+            # create ramdisk(s) and filesystem(s) for spooldir(s)
+            # create vbox.conf for every user and symlinks for all messages
+            if [ -d "$SPOOLDIR/$USERNAME" ]
+            then
+                echo "  found existing spooldir for user $USERNAME!"
+                rm -r $SPOOLDIR/$USERNAME/messages
+                rm $SPOOLDIR/$USERNAME/* 2>/dev/null
+            fi
+
+            mkdir -p $SPOOLDIR/$USERNAME/incoming
+            mkdir $SPOOLDIR/$USERNAME/messages
+
+            ln -s $CONFDIR/*.tcl $SPOOLDIR/$USERNAME/
+
+            for j in $MESSAGEDIR/*.msg
+            do
+                if [ -f $j ]
+                then
+                    ln -s $j $SPOOLDIR/$USERNAME/messages/`basename $j`
+                fi
+            done
+
+            echo "[CALLERIDS]" >$USERCONF
+            cid_n=`eval echo '$VBOX_USER_'$i'_PROFILE_N'`
+            for cid in `seq 1 $cid_n`
+            do
+                set -f
+                set -- `value '$VBOX_USER_'$i'_PROFILE_'$cid`
+                set +f
+                case $1 in
+                    PHONEBOOK*)
+                        file=`echo $1|sed '/^PHONEBOOK:.*$/!d; s/^PHONEBOOK:\(.*\)/\/etc\/\1/'`
+                        : ${file:=/etc/phonebook}
+                        # Nummern aus dem Telefonbuch in Klasse einsortieren
+                        sed "/^0[0-9]\{2,30\}=.\{3,40\}$/!d;s/^0//;s/\[/(/g;s/\]/)/g;s/=/ $2 /" $file >>$USERCONF 2>/dev/null
+                    ;;
+                    *)
+                        echo "$@" >>$USERCONF
+                    ;;
+                esac
+            done
+           
+            echo "[RINGS]" >>$USERCONF
+            en=`eval echo '$VBOX_USER_'$i'_STD_RINGDEF_N'`
+            for j in `seq 1 $en`
+            do
+                echo "`value '$VBOX_USER_'$i'_STD_RINGDEF_'$j`" >>$USERCONF
+            done
+
+            echo "[STANDARD]" >>$USERCONF
+            en=`eval echo '$VBOX_USER_'$i'_STD_SECDEF_N'`
+            for j in `seq 1 $en`
+            do
+                echo "`value '$VBOX_USER_'$i'_STD_SECDEF_'$j`" >>$USERCONF
+            done
+
+            en=`eval echo '$VBOX_USER_'$i'_SECTION_N'`
+            for j in `seq 1 $en`
+            do
+                echo "`value '[$VBOX_USER_'$i'_SECTION_'$j'_NAME]'`" >>$USERCONF
+                en=`eval echo '$VBOX_USER_'$i'_SECTION_'$j'_SECDEF_N'`
+                for k in `seq 1 $en`
+                do
+                    echo "`value '$VBOX_USER_'$i'_SECTION_'$j'_SECDEF_'$k`" >>$USERCONF
+                done
+            done
+
+            chown -Rh $USERNAME.$VBOXGROUP $SPOOLDIR/$USERNAME
+            chmod 700 $SPOOLDIR/$USERNAME/vbox.conf
+            for f in $SPOOLDIR/$USERNAME/incoming
+            do
+                if [ ! -h $f ]
+                then
+                    chmod 700 $f
+                fi
+            done
+
+            # user specific beep config
+            case "${VBOX_USE_VBOXD}${USERBEEP}" in
+                yesyes) beep_command="${beep_command}-m $SPOOLDIR/$USERNAME/incoming " ;;
+            esac
+        done
+
+        # delete old (unconfigured) spooldirs :
+        case "${install_on}${VBOX_DELETE_OLD_SPOOLDIRS}" in
+        "hdyes")
+            for i in `ls "$SPOOLDIR/"`
+            do
+                if [ "$SPOOLDIR/$USERNAME/vbox.conf" -ot /etc/passwd ]
+                then
+                    echo "  deleting old spooldir of user $USERNAME ..."
+                    rm -rf "$SPOOLDIR/$USERNAME"
+                fi
+            done
+        ;;
+        esac
+
+        case "$VBOX_USE_VBOXD" in
+            yes)
+                # create second global part of $CONFDIR/vboxd.conf:
+                echo "A:*:!:!:!:!:!" >>$CONFDIR/vboxd.conf
+                # create vboxd entry for /etc/inetd.conf:
+                echo "vboxd stream tcp nowait root /sbin/vboxd vboxd" >> /etc/inetd.conf
+                # make vbox entry in /etc/services
+                cat >>/etc/services <<-EOF
+	vboxd 20012/tcp
+EOF
+            ;;
+        esac
+        
+        # set owner and permissions for $CONFDIR and $MESSAGEDIR:
+        chown -Rh root.$VBOXGROUP $CONFDIR
+        chmod -R 770 $CONFDIR
+
+        # save config for later use (httpd..)
+        set | grep -e "^VBOX_" -e "OPT_VBOX" > /var/run/vbox.conf
+
+        #------------------------------------------------------------------------------------
+        # everything's prepared - start vboxbep and vboxgetty
+        
+        case "x$beep_command" in x) ;;
+            *) 
+                echo "  starting vboxbeep ..."
+                set -f
+                : ${VBOX_BEEP_HOURS:="*"}
+                : ${VBOX_BEEP_PAUSE:="60"}
+                beep_command="vboxbeep -s $VBOX_BEEP_HOURS -p $VBOX_BEEP_PAUSE $beep_command &"
+                eval $beep_command 
+                set +f
+                vboxbeep >/dev/null 2>&1
+            ;;
+        esac
+
+        echo "  starting vboxgetty ..."
+        for idx in `seq $VBOX_TTYI_MIN $VBOX_TTYI_N`
+        do
+            script=/usr/local/bin/rcvbox_$idx
+            echo "#!/bin/sh" > $script
+            echo '[ ! -f /var/run/vbox_stop_'$idx' ] && /sbin/vboxgetty -d /dev/ttyI'$idx >> $script
+            chmod 755 $script
+            eval 'set -- $VBOX_TTYI_'$idx
+            # set stop flag if VBOX on this MSN shall not be started
+            [ "$3" != "yes" ] && > /var/run/vbox_stop_$idx
+            service-restart.sh 4 $script &
+        done
+    fi
+    end_script
+;;
+esac

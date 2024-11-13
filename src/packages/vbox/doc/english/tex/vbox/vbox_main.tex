@@ -1,0 +1,541 @@
+% Synchronized to r30451
+\marklabel{sec:opt-vbox}
+{
+\section {OPT\_VBOX - The ISDN-Answering Machine For fli4l}
+}
+
+\subsection{Introduction}
+
+This package integrates the answering machine software VBOX by 
+Michael ’Ghandi’ Herold into the fli4l system.
+
+By using this software the fli4l can take the part of an answering machine with
+a functionality exceeding the possibilities of a normal box by far. You may create
+several voice boxes taking messages for different phone numbers (MSNs) and restrict
+access to defined users. Each user can set the following items depending on daytime,
+weekday and caller ID:
+
+\begin{itemize}
+    \item if a call should be answered at all
+    \item after how many ringtones will the call be answered
+    \item if and what announce will be used
+    \item if and what signaling tone will be used
+    \item if a voice message will be recorded or not
+    \item how long the recorded message is allowed to be
+    \item if and what timeout announce will be used
+\end{itemize}
+
+\subsection{Some Basics About Function And Resources}
+
+The VBOX system is divided into a server taking the messages and a client to
+replay and manage the messages. In OPT\_VBOX messages can be accessed via a web
+interface. A working httpd Package is necessary for this. 
+
+\subsubsection{General Requirements For Installation}
+
+An ISDN card is mandatory, because vbox will not work with modems
+(and not via a DSL line anyway, if someone should come to this thought ...).
+Of course the ISDN package is required for the installation of the appropriate driver
+but no circuit has to be defined if the card is used solely for vbox.
+
+It is highly recommended to use the httpd package, since it is quite convenient
+to manage stored messages.
+
+\wichtig{Teles 16.3c will not work for vbox because the Linux driver is not voice-capable.}
+
+\subsubsection{Conditions For Storing Messages In A RAM Disk Installation}
+
+If the incoming messages should be be stored in a ramdisk the router requires at least
+16MiB of RAM, otherwise no appreciable recording time will be accessible (see: \var{VBOX\_COMPRESSION}).
+It should be clear that messages saved in a ramdisk are lost during a power failure.
+If you want to be able to rely on vbox for a 100\% you should store messages only
+on a hard drive. The advantage of the RAM disk storage is that the disk can remain idle.
+
+\subsubsection{Preconditions For Saving Messages In A HD/CF Installation}
+
+When storing messages on a hard disk you obviously need the package HD with \var{OPT\_MOUNT}='yes'.
+The messages will remain stored during router reboot then. Settings for users will eventually
+be reloaded during reboot with the possibility of users automatically being deleted (optional)
+that are not existing in the reloaded configuration. A harddisk is also of advantage when using
+a lot of different messages or with additional OPT packages due to space limitations on the boot
+medium.
+
+\subsection{Configuration}
+\subsubsection{Common Settings}
+\begin{description}
+
+\config{OPT\_VBOX}{OPT\_VBOX}{OPTVBOX}
+
+        Default Setting: \var{OPT\_VBOX}='no'
+
+        Specifying 'yes' here activates the voicebox.
+
+\config{VBOX\_SPOOLPATH}{VBOX\_SPOOLPATH}{VBOXSPOOLPATH}
+
+    The parameter \var{VBOX\_SPOOLPATH} determines if the recorded messages
+    should be stored on a Ramdisk or on a harddisk.
+
+    Storing to a Ramdisk:
+    \var{VBOX\_SPOOLPATH}=''
+    No path is allowed here in this case!
+
+    Storing to a harddisk:
+
+    \var{VBOX\_SPOOLPATH}='/data/vbox' (i.e.)\\
+    Precondition is an installed HD Package with \var{OPT\_MOUNT}='yes'.
+
+    The path specified here has to point to a writable harddisk partition in ext format mounted
+    to the file system, but not mounted to '/opt' (HD-Install Type B). If one of the preconditions
+    is not met the installation of the vbox package will be stopped with an error message.
+    If all preconditions are met, a directory \var{vbox\_spooldir} will be created in the path
+    specified here to store the vbox data.
+
+    This may be set to 'auto' to use the path defined by \var{FLI4L\_UUID}.
+
+\config{VBOX\_SPOOLDIR\_SPACE}{VBOX\_SPOOLDIR\_SPACE}{VBOXSPOOLDIRSPACE}
+    
+    Specifies how much space in KiB should be estimated for all mailboxes.
+    While creating the spool directory it is checked whether this place is available.
+
+\config{VBOX\_DELETE\_OLD\_SPOOLDIRS}{VBOX\_DELETE\_OLD\_SPOOLDIRS}{VBOXDELETEOLDSPOOLDIRS}
+    
+    Default Setting: \var{VBOX\_DELETE\_OLD\_SPOOLDIRS}='yes'
+    
+    This parameter is only relevant if the incoming messages are stored on a harddisk. Since
+    the spool directories of the individual users are not deleted during system reboot it may
+    happen due to changing configurations with different users that old spool directories
+    from now inactive users take up space unnecessarily. To prevent this, you can set this
+    parameter to 'yes' to automatically clear them at every reboot.
+
+    \wichtig{Even if the name of a once configured user only changes slightly in the configuration
+    file, the automatic deletion at the next reboot will remove all spooled messages of this user
+    because the user with the original name is no longer considered active. You have to be very
+    careful here in order to avoid deleting messages inadvertently with this automatic.}
+
+\config{VBOX\_COMPRESSION}{VBOX\_COMPRESSION}{VBOXCOMPRESSION}
+
+    Default Setting: \var{VBOX\_COMPRESSION}='ulaw'
+
+    This specifies the compression with which the messages are to be recorded.
+    The higher the compression, the lower the memory consumption and the worse the quality.
+    On a hard disk the messages can probably safely use the 'ulaw' mode where no
+    compression will be used. The messages are stored then with the full ISDN bandwidth
+    of 8kHz 8bit * = 64kbit/s. In a pure ramdisk installation without hard disk on a PC
+    with 16MiB memory and about 6MiB available for recording the recording time will
+    only be a little more than ten minutes .
+
+    Those who need to save space should use the format 'adpcm-4' for a compressed recording 
+    (4 bits * = 8kHz 32kbit/s -> half the memory requirement compared to 'ulaw') or
+    'adpcm-3' or 'adpcm-2' with a correspondingly higher compression and poorer quality.
+
+    An overview:
+
+    \begin{table}[htbp]
+      \begin{tabular}{lrrr}
+        Mode     & Resolution       & Compression to  & approx. storage needed for 10 mins.\\
+        \hline \\
+        ulaw     & 8Bit             & 100\%           & 4800 kB       \\
+        adpcm-4  & 4Bit             &  50\%           & 2400 kB       \\
+        adpcm-3  & 3Bit             &  37\%           & 1800 kB       \\
+        adpcm-2  & 2Bit             &  25\%           & 1200 kB       \\
+      \end{tabular}
+      \caption{Comparison of the different compressions}
+    \end{table}
+
+\config{VBOX\_FREESPACE}{VBOX\_FREESPACE}{VBOXFREESPACE}
+
+    Default Setting: \var{VBOX\_FREESPACE}='8192'
+
+    If less than \var{VBOX\_FREESPACE} Bytes is available for storing new messages
+    new calls will not be picked up anymore. A value of '0' disables this check.
+ 
+\config{VBOX\_LOGPATH}{VBOX\_LOGPATH}{VBOXLOGPATH}
+
+    Default Setting: \var{VBOX\_LOGPATH}='/var/log/vbox'
+
+    Specifies the directory where log files should be placed.
+
+    This may be set to 'auto' to use the path defined by \var{FLI4L\_UUID}.
+
+\config{VBOX\_USE\_VBOXD}{VBOX\_USE\_VBOXD}{VBOXUSEVBOXD}
+
+    Default Setting: \var{VBOX\_USE\_VBOXD}='no'
+    
+    Messages can be replayed with other vbox clients. If this is needed specify
+    'yes' in this variable and don't forget to set a password in
+    \var{VBOX\_USER\_x\_VBOXD\_PASSWORD}.
+    
+    \wichtig{vboxd is is a service on the router. You should prefer the WebGUI instead.}
+
+\config{VBOX\_VBOXD\_ALLOW}{VBOX\_VBOXD\_ALLOW}{VBOXVBOXDALLOW}
+
+    Default Setting: \var{VBOX\_VBOXD\_ALLOW}='*.lan.fli4l'
+    
+    By the parameter \var{VBOX\_VBOXD\_ALLOW} it may be defined which computers are allowed
+    to replay or manage messages with a vbox client. The default setting '*.lan.fli4l'
+    stands for all computers in this DNS domain. Restrictions can be made by specifying
+    single IP-addresses, host names or domain names (like *.home.lan). In case of more
+    entries they have to be divided by spaces.
+    
+    \wichtig{When using host names of the own domain do not use use fully qualified DNS names!}
+
+    \wichtig{To minimize the risk of a potential attack on the server vboxd keep this
+    setting as restrictive as possible. If for example only VBOX\_BEEP is needed,\\
+    VBOX\_VBOXD\_ALLOW should stay empty restricting access to vbox to the router itself.}
+
+\config{VBOX\_BEEP\_HOURS}{VBOX\_BEEP\_HOURS}{VBOXBEEPHOURS}
+
+    Default Setting: \var{VBOX\_BEEP\_HOURS}='*'
+    
+    Here you may specify the times in hours where an acoustic signaling should take place.
+    Also ranges can be defined i.e. 8-24, with more ranges separated by spaces. A '*' is
+    defined as 'always'. A detailed description of time formats can be found in the
+    appendix of this documentation.
+    
+    \wichtig{To make VBOX\_BEEP work, VBOX\_USE\_VBOXD='yes' has to be set.}
+
+\config{VBOX\_BEEP\_PAUSE}{VBOX\_BEEP\_PAUSE}{VBOXBEEPPAUSE}
+
+    Default Setting: \var{VBOX\_BEEP\_PAUSE}='60'
+    
+    The length of the break between signals in seconds.
+
+\config{VBOX\_DEBUGLEVEL}{VBOX\_DEBUGLEVEL}{VBOXDEBUGLEVEL}
+
+    Default Setting: \var{VBOX\_DEBUGLEVEL}='FE'
+
+    Specify the events to be logged to the logfiles by setting a combination of characters.
+    From the original documentation:
+    \begin{itemize}
+        \item F - Errors that could not be recovered
+        \item E - Errors that may be recovered eventually
+        \item W - Warnings
+        \item I - Informations
+        \item D - Debugging output
+        \item J - Even more debugging output
+    \end{itemize}
+
+    Logfiles are very helpful for finding errors. In the beginning you may protocol everything
+    and later on when being sure that all is well 'FE' should be sufficient.
+
+\config{VBOX\_ADMIN\_USERNAME}{VBOX\_ADMIN\_USERNAME}{VBOXADMINUSERNAME}
+
+    The user name of the administrator already defined in the httpd configuration
+    (capital letters are taken into account). This user can review all voice boxes
+    in the VBOX WebGUI and thus is able to start, stop and replay messages of all boxes.
+    \wichtig{The user must have the right 'vbox:all'.}
+
+\end{description}
+
+\subsubsection{Common User Specific Settings}
+
+\begin{description}
+
+\config{VBOX\_USER\_N}{VBOX\_USER\_N}{VBOXUSERN}
+
+    The number of users that should get VBOX messages.
+
+\config{VBOX\_USER\_x\_USERNAME}{VBOX\_USER\_x\_USERNAME}{VBOXUSERUSERNAME}
+
+    The username of the specific user. This username is also used for authentification
+    at the WebGUI. If this username already exists in the httpd configuration (capital
+    letters are taken into account) the rights specified there apply (see documentation
+    for the httpd package). If the username is not defined there the user only gets
+    the right to access the VBOX page in the WebGUI.
+
+\config{VBOX\_USER\_x\_PASSWORD}{VBOX\_USER\_x\_PASSWORD}{VBOXUSERPASSWORD}
+
+    The password of the user. If the user in \var{VBOX\_USER\_x\_USER} also exists in
+    the configuration of the httpd package the password specified there is used and
+    the content of \var{VBOX\_USER\_x\_PASS} is meaningless. In all other cases
+    this password is used for authentification at the WebGUI.
+    
+\config{VBOX\_USER\_x\_VBOXD\_PASSWORD}{VBOX\_USER\_x\_VBOXD\_PASSWORD}{VBOXUSERxVBOXDPASSWORD}
+
+    Here you may specify a password for vboxd. It is used only for the login
+    with a vbox client (not with the WebGUI).
+    
+\config{VBOX\_USER\_x\_MSN\_N}{VBOX\_USER\_x\_MSN\_N}{VBOXUSERMSNN}
+
+    Set the number of MSNs to be monitored here. 
+
+\config{VBOX\_USER\_x\_MSN\_x}{VBOX\_USER\_x\_MSN\_x}{VBOXUSERMSNx}
+
+    Set the MSN here on which calls should be picked up.
+
+\config{VBOX\_USER\_x\_MSN\_x\_START}{VBOX\_USER\_x\_MSN\_x\_START}{VBOXUSERMSNxSTART}
+
+    Default Setting: \var{VBOX\_USER\_x\_MSN\_x\_START}='yes'
+
+    Set this variable to specify if VBOX should be activated on boot for this MSN.
+    This variable is optional. If omitted VBOX is activated on boot here. 
+
+\config{VBOX\_USER\_x\_BEEP}{VBOX\_USER\_x\_BEEP}{VBOXUSERxBEEP}
+
+    Default Setting: \var{VBOX\_USER\_x\_BEEP}='no'
+
+    If an acoustic signal should signal new messages for this user this parameter has
+    to be set to 'yes', if not, to 'no'.
+    
+    \wichtig{Note the following for this parameter: If the spool directories are situated
+    on a harddisk, the disk may not enter idle mode with vboxbeep activated even if this
+    is specified in the configuration of package HD because the vboxbeep daemon accesses
+    the disk permanently to check for new messages.}
+
+\config{VBOX\_USER\_x\_STD\_RINGDEF\_N}{VBOX\_USER\_x\_STD\_RINGDEF\_N}{VBOXUSERxSTDRINGDEFN}
+
+    VBOX can pick up calls after a defined number of ringtones depending on the time. This
+    variable defines the number of time ranges to be defined.
+
+\config{VBOX\_USER\_x\_STD\_RINGDEF\_x}{VBOX\_USER\_x\_STD\_RINGDEF\_x}{VBOXUSERxSTDRINGDEFx}
+
+    Syntax: \var{VBOX\_USER\_x\_STD\_RINGDEF\_x}=\\'TIME DAYS RINGS'
+
+    The parameters in \var{VBOX\_USER\_x\_STD\_RINGDEF\_x} are separated by one or more spaces.
+    Time ranges define daytimes (TIME), weekdays (DAYS) and after how may ring tones (RINGS)
+    a call is picked up in the time period. A detailed description of time formats can be found
+    in the appendix of this documentation. By the way, it is not possible to let vbox pick up
+    a call before the first ring. A value of '0' for RINGS disables pick up completely.
+
+    These settings are defaults to be used if no special treatment is defined for a caller (see
+    \var{VBOX\_USER\_PROFILE\_x}), or a special treatment has no definition for RINGS.
+
+    You may define, for example, to pick up a call after the first ring in the night but after
+    the fifth ring at all other times. If callers exist that could be of such importance that
+    you want to be woken at night in any case you may define a specific caller section via
+    \var{VBOX\_USER\_PROFILE\_x} to overwrite the defaults from \var{VBOX\_USER\_x\_STD\_RINGDEF\_x}.
+    
+\end{description}
+
+\subsubsection{User Specific Settings - Time Dependant Programming}
+
+\begin{description}
+
+\config{VBOX\_USER\_x\_STD\_SECDEF\_N}{VBOX\_USER\_x\_STD\_SECDEF\_N}{VBOXUSERxSTDSECDEFN}
+
+    VBOX may not only pick up calls after different ringtone counts depending on time, but also
+    decide which announcement should be played, how long the recording time should be, and so on.
+    This variable specifies the number of time ranges to be defined in the following sections.
+
+\config{VBOX\_USER\_x\_STD\_SECDEF\_x}{VBOX\_USER\_x\_STD\_SECDEF\_x}{VBOXUSERxSTDSECDEFx}
+
+    Syntax: \var{VBOX\_USER\_x\_STD\_SECDEF\_x}=\\'TIME DAYS MESSAGE RECTIME [FLAG] [...]'
+    
+    The parameters in \var{VBOX\_USER\_x\_STD\_SECDEF\_x} are separated by at least one space character.
+    They contain the settings for the 'STANDARD' section that always has to exist to define how
+    callers should be treated for which no caller section exists or that do not transfer their ID.
+    
+    The specific paramenters are explained below.
+
+    
+    \var{TIME}
+    
+    The times when the settings should be used.
+
+    
+    \var{DAYS}
+    
+    The days when the settings should be used.
+
+    
+    \var{MESSAGE}
+    
+    Announcement for the caller. A message by this name has to be copied to
+    /opt/etc/vbox/\\messages resp. config/etc/vbox/messages prior to creation of the archives.
+    Spaces and tabs are not allowed. Even when using a .wav file the entry has to be defined
+    with a .msg suffix. The .wav file is then copied and will be converted to a .msg file
+    at boot time. The program \var{sox} needed for the conversion will be copied to the router
+    automatically. The variable \var{VBOX\_WAV\_FILES} from older vbox versions hence is not
+    needed anymore.
+
+    \var{RECTIME}
+    
+    Maximum number of seconds used for recording. Default is 60 seconds.
+
+
+    \var{FLAG}
+    
+    Additional flags that can be specified:
+    \begin{itemize}
+        \item \var{NOANSWER}: The call should not be answered at all.
+        \item \var{NORECORD}: No message should be recorded.
+        \item \var{NOTIMEOUTMSG}: No timeout announcement should be played.
+        \item \var{NOBEEPMSG}: No Beep should be emerged.
+        \item \var{NOSTDMSG}: No announcement should be played.
+        \item \var{RINGS}= : Specifies the number of RING's before picking the call up. 
+            This flag overwrites the RING's from section [RINGS] and the flag TOLLRINGS.
+        \item \var{TOLLRINGS}= : Specifies the number of RING's before picking the call up 
+            if new messages are present. This flag overwrites the RING's from section
+            [RINGS] and the flag RINGS for new messages.
+    \end{itemize}
+\end{description}
+
+\subsubsection{User Specific Settings - Caller Specific Configuration}
+
+\begin{description}
+
+\config{VBOX\_USER\_x\_PROFILE\_N}{VBOX\_USER\_x\_PROFILE\_N}{VBOXUSERxPROFILEN}
+
+    Specifies the number of caller IDs to be assigned to a specific section.
+
+\config{VBOX\_USER\_x\_PROFILE\_x}{VBOX\_USER\_x\_PROFILE\_x}{VBOXUSERxPROFILEx}
+
+    Syntax: \var{VBOX\_USER\_x\_PROFILE\_x}=\\'CALLERID SECTION\_NAME DESCRIPTION'
+
+    If VBOX recognizes a call with caller Id submission it checks for a specific 
+    treatment defined for the ID. With this variable the caller gets assigned
+    a section\\(see \var{VBOX\_USER\_x\_STD\_SECDEF\_x}).
+    
+    The first entry in each line is the caller ID number [CALLERID] with area code,
+    but without a prefixing zero. Also caller ID ranges may be set here by the help
+    of 'Unix-Patterns'. After some testing I can verify the following Unix-Patterns
+    as operational:
+    
+    i.e. numbers from 55511 up to 55514: '5551[1-4]'
+    
+    Numbers starting with the same digits, i.e. all numbers starting with '555': '555*'
+    
+    You may also use the wildcard \var{PHONEBOOK}. In this case all caller IDs stored in /etc/phonebook
+    are assigned to the section [SECTION\_NAME]. Obviously you will need an installed OPT phonebook on
+    the router. Set \var{OPT\_TELMOND}='yes' in config/isdn.txt in addition.
+
+    The second entry [SECTION\_NAME] is the name of the caller section and can be defined freely.
+    It defines VBOX's behaviour if a call from [CALLERID] is recognized. A '-' stands for the caller
+    section 'STANDARD' (\var{VBOX\_USER\_x\_STD\_SECDEF\_x}), a '*' for a caller section assgned to
+    the name of the caller provided in [DESCRIPTION]. This entry may include spaces and allows that
+    the WEB Gui also displays the name of the caller in the list of calls received and not only its
+    number. Technically, this entry is therefore meaningless.
+
+    \wichtig{For all callers for which no \var{VBOX\_USER\_x\_PROFILE\_x} has been defined or which
+        simply submit no phone number should always the following be entered as a last
+	\var{VBOX\_USER\_x\_PROFILE\_x}-line:}
+        \begin{verbatim}
+            '*    -    --- Unknown ---'
+        \end{verbatim}
+    Only then these calls will be answered on the section 'STANDARD'.
+    (Instead of '--- Unknown ---' anything else may be specified.)
+
+
+
+\config{VBOX\_USER\_x\_SECTION\_N}{VBOX\_USER\_x\_SECTION\_N}{VBOXUSERxSECTIONN}
+
+    Define the number of sections here in which VBOX's behaviour will differ from
+    \jump{VBOXUSERxSTDSECDEFx}{\var{VBOX\_USER\_x\_STD\_SECDEF\_x}} and \jump{VBOXUSERxSTDRINGDEFx}{\var{VBOX\_USER\_x\_STD\_RINGDEF\_x}}.
+    
+\config{VBOX\_USER\_x\_SECTION\_x\_NAME}{VBOX\_USER\_x\_SECTION\_x\_NAME}{VBOXUSERxSECTIONxNAME}
+
+    The name of the section to be matched with\\ \jump{VBOXUSERxPROFILEx}{\var{VBOX\_USER\_x\_PROFILE\_x}}.
+
+\config{VBOX\_USER\_x\_SECTION\_x\_SECDEF\_N}{VBOX\_USER\_x\_SECTION\_x\_SECDEF\_N}{VBOXUSERxSECTIONxSECDEFN}
+
+    Number of time ranges for section definitions (as in \jump{VBOXUSERxSTDSECDEFN}{\var{VBOX\_USER\_x\_STD\_SECDEF\_N}})
+
+\config{VBOX\_USER\_x\_SECTION\_x\_SECDEF\_x}{VBOX\_USER\_x\_SECTION\_x\_SECDEF\_x}{VBOXUSERxSECTIONxSECDEFx}
+
+    Syntax: \var{VBOX\_USER\_x\_SECTION\_x\_SECDEF\_x}=\\'TIME DAYS MESSAGE RECTIME [FLAG] [...]'
+
+    As in \jump{VBOXUSERxSTDSECDEFx}{\var{VBOX\_USER\_x\_STD\_SECDEF\_x}} settings for the behaviour of VBOX may be stored here.
+    Configuration is identical to \jump{VBOXUSERxSTDSECDEFx}{\var{VBOX\_USER\_x\_STD\_SECDEF\_x}}
+    and can be reviewed there.
+
+\end{description}
+
+\subsection{Configuration Example}
+
+\begin{verbatim}
+OPT_VBOX='yes'                           # VBOX is activated
+VBOX_SPOOLPATH=''                        # Messages are stored in Ramdisk
+VBOX_SPOOLDIR_SPACE='4000'               # 4000 KiB are used for the Ramdisk
+VBOX_DELETE_OLD_SPOOLDIRS='yes'          # of no interest for Ramdisk
+VBOX_COMPRESSION='ulaw'                  # ulaw compression is used
+VBOX_FREESPACE='8192'                    # A minimum of 8MiB of free storage has to exist
+                                         # for messages to be recorded
+VBOX_LOGPATH='/var/log/vbox'             # Logfiles are stored in /var/log/vbox
+VBOX_DEBUGLEVEL='FE'                     # Log only errors
+
+VBOX_USER_N='1'                          # Only one user
+VBOX_USER_1_USER='user1'                 # User name
+VBOX_USER_1_PASS='pass1'                 # Password
+VBOX_USER_1_MSN='1234'                   # Only one MSN is monitored
+
+# Pick up calls after four rings at all times.
+VBOX_USER_1_STD_RINGDEF_N     = '1' #TIME         DAYS        RINGS
+VBOX_USER_1_STD_RINGDEF_1     =     '*            *           4'
+
+# Play the standard announcementat all times and allow a recording time of 60 seconds.
+VBOX_USER_1_STD_SECDEF_N  = '1'  #TIME    DAYS    MESSAGE        RECTIME [FLAG] [...]
+VBOX_USER_1_STD_SECDEF_1  =      '*       *       standard.msg   60'
+
+# All callers are assigned to the standard section
+VBOX_USER_1_PROFILE_N  = '1'  #CALLERID    SECTION_NAME     DESCRIPTION
+VBOX_USER_1_PROFILE_1  =      '*           -                -- unkown --'
+
+# No specific sections defined
+VBOX_USER_1_SECTION_N          = '0'  #SECTION for VBOX_USER_x_PROFILE_x
+VBOX_USER_1_SECTION_1_NAME     = ''
+VBOX_USER_1_SECTION_1_SECDEF_N = '0'  #TIME DAYS MESSAGE 	RECTIME [FLAG] [...]
+VBOX_USER_1_SECTION_1_SECDEF_1 = ''
+
+\end{verbatim}    
+
+\subsection{Recording And 'Installing' New Messages}
+
+The messages to be used in vbox-configuration have to be copied to the following directory:
+
+opt/etc/vbox/messages.
+
+As an alternative messages may also be stored in the configuration directory:
+
+config/etc/vbox/messages.
+
+The latter is very convenient, because with a router update to a new version
+only the configuration directory needs to be copied.
+
+In these directories any number of messages may be stored but only those
+are added to the opt archive which are used in the configuration.
+
+In order to operate vbox without problems the package provides a somewhat neutral
+standard message you certainly would like to replace with your own announcements.
+The sounds for 'beep.msg' and 'timeout.msg' may be replaced as well. However, it
+is not recommended to use a tone that differs much from the known normal beeping
+of answering machines, because many callers will be confused and never leave a message.
+
+If the messages in the folders are not in ulaw, but in .au or .wav format, they are
+automatically converted at the start of the router. To convert from .wav format
+a tool is copied to the opt-archive that needs an additional 180KiB.
+
+Finally, also with a computer without a sound card announcements may be recorded
+by installing vbox at first and call yourself. The data stored on the router is a
+message in the correct format and may be used. You may easily load the message
+from the router by the help of a SCP or SFTP program.
+
+If the messages are stored in the Ramdisk they may be found under:
+
+/var/spool/vbox/<username>/incoming
+
+In other cases they can be found in the directory on the harddisk you set above.
+
+The recorded messages are stored as .msg files with rather cryptic names. 
+(To know which message is in which file you should note the sequence in which the
+messages were recorded.) Rename the file to something more intuitive and 
+use them in your VBOX configuration then.
+
+\subsection{For The Future}
+
+basically I only adapted the VBOX package by Christph Peus for fli4l version 3.0.0.
+I did not pay big attention to the size of the binaries which are significantly larger
+than those of older versions. If I find the time and there is a need for it I will take care
+of that. New features planned are sending messages via mail and remote access. (Helmut Hummel)
+
+\subsection{Support}
+
+It is obvious but I mention it nevertheless: 
+If you have problems with the configuration or you believe you found a bug please read 
+the documentation to ensure you did not oversee anything. When using complex parameters
+the danger is great to have produced some errors. Maybe the original documentation
+(Appendix) may be of help.
+
+If you can't find the culprit post your question to the newsgroup spline.fli4l.opt with
+a detailed description of the problem, most efficient is an excerpt from the log file. 
+You  may find it in the directory specified above. 
+Have fun!

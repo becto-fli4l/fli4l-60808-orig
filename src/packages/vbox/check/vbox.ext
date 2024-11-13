@@ -1,0 +1,207 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for vbox
+#
+# Creation:     2005-05-25 Christoph Schulz
+# Last Update:  $Id$
+#
+# Copyright (c) 2005-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_vbox)
+then
+    # Check dependencies
+    depends on fli4l version 4.0
+    depends on isdn version 4.0
+    depends on httpd version 4.0
+    provides vbox version 4.0.0
+
+    # crypt passwords
+    foreach i in vbox_user_n
+    do
+        crypt (VBOX_USER_%_PASSWORD[i])
+    done
+
+    set found_admin="no"
+    if vbox_admin_username != ""
+    then
+        foreach user in httpd_user_n
+        do
+            if (httpd_user_%_username[user] == vbox_admin_username)
+            then
+                if ( httpd_user_%_rights[user] == "all" ) || ( httpd_user_%_rights[user] =~ "vbox:all" )
+                then
+                    set found_admin="yes"
+                fi
+            fi
+        done
+        if (found_admin != "yes")
+        then
+            error "VBOX: Admin user not found. Please set VBOX_ADMIN_USERNAME to a username configured in HTTPD_USER_x_USERNAME or leave it blank. Also make sure you set HTTPD_USER_x_RIGHTS to 'all' or at least to 'vbox:all'."
+        fi
+    fi
+    
+    set found_beep="no"
+    # add message files to opt if available
+    foreach user in vbox_user_n
+    do
+        if ( vbox_user_%_beep[user] == "yes" )
+        then
+            set found_beep="yes"
+        fi
+        set prof=vbox_user_%_profile_n[user]
+        foreach pr_n in prof
+        do
+            set profile=vbox_user_%_profile_%[user][pr_n]
+            split (profile, pr_part_%,' ')
+            set CID_all=pr_part_%[1]
+            split (CID_all, cid_part_%,':')
+            set ph_found="no"
+            foreach CID in cid_part_%
+            do
+                if ( CID == "PHONEBOOK")
+                then
+                    set ph_found="yes"
+                fi
+            done
+            if ( ph_found == "yes" )
+            then
+                if ( CID == "PHONEBOOK" )
+                then
+                    add_to_opt "etc/phonebook" "flags=utxt"
+                else
+                    add_to_opt "etc/$CID" "flags=utxt"
+                fi
+            fi
+        done
+        set num=vbox_user_%_std_secdef_n[user]
+        foreach secdef in num
+        do
+            set spec=vbox_user_%_std_secdef_%[user][secdef]
+            split (spec, specpart_%, ' ')
+            set file=specpart_%[3]
+
+            split (file, filepart_%, '.')
+            set name=filepart_%[1]
+            set ext=filepart_%[2]
+            set found=""
+
+            set msgfile="etc/vbox/messages/${name}.${ext}"
+            stat ("opt/${msgfile}", msg)
+            stat ("$config_dir/${msgfile}", msg_c)
+            if ( (msg_res == "OK") || (msg_c_res == "OK") )
+            then
+                set found
+            else
+                set msgfile="etc/vbox/messages/${name}.wav"
+                stat ("opt/${msgfile}", msg)
+                stat ("$config_dir/${msgfile}", msg_c)
+                if ( (msg_res == "OK") || (msg_c_res == "OK") )
+                then
+                    set found
+                    add_to_opt "usr/bin/sox" "mode=555"
+                else
+                    set msgfile="etc/vbox/messages/${name}.au"
+                    stat ("opt/${msgfile}", msg)
+                    stat ("$config_dir/${msgfile}", msg_c)
+                    if ( (msg_res == "OK") || (msg_c_res == "OK") )
+                    then
+                        set found
+                    fi
+                fi
+            fi
+            if (found)
+            then
+                add_to_opt "$msgfile" "mode=770 uid=root gid=10"
+            else
+                error "Messagefile '$file' not found!"
+            fi
+        done
+        
+        set num=vbox_user_%_section_n[user]
+        foreach section in num
+        do
+            set numsec=vbox_user_%_section_%_secdef_n[user][section]
+            foreach secdef in numsec
+            do
+                set spec=vbox_user_%_section_%_secdef_%[user][section][secdef]
+                split (spec, specpart_%, ' ')
+                set file=specpart_%[3]
+
+                split (file, filepart_%, '.')
+                set name=filepart_%[1]
+                set ext=filepart_%[2]
+                set found=""
+
+                set msgfile="etc/vbox/messages/${name}.${ext}"
+                stat ("opt/${msgfile}", msg)
+                stat ("$config_dir/${msgfile}", msg_c)
+                if ( (msg_res == "OK") || (msg_c_res == "OK") )
+                then
+                    set found
+                else
+                    set msgfile="etc/vbox/messages/${name}.wav"
+                    stat ("opt/${msgfile}", msg)
+                    stat ("$config_dir/${msgfile}", msg_c)
+                    if ( (msg_res == "OK") || (msg_c_res == "OK") )
+                    then
+                        set found
+                        add_to_opt "usr/bin/sox" "mode=555"
+                    else
+                        set msgfile="etc/vbox/messages/${name}.au"
+                        stat ("opt/${msgfile}", msg)
+                        stat ("$config_dir/${msgfile}", msg_c)
+                        if ( (msg_res == "OK") || (msg_c_res == "OK") )
+                        then
+                            set found
+                        fi
+                    fi
+                fi
+                if (found)
+                then
+                    add_to_opt "$msgfile" "mode=770 uid=root gid=10"
+                else
+                    error "Messagefile '$file' not found!"
+                fi
+            done
+        done
+    done
+
+    if defined (httpd_gui_lang) 
+    then
+      if httpd_gui_lang == "auto"
+      then
+        set gui_lang=locale
+      else
+        set gui_lang=httpd_gui_lang    
+      fi
+
+      split (gui_lang, lang_tmp_%, ' ')
+      foreach lang in lang_tmp_%
+      do
+        stat("opt/srv/www/lang/vbox.$lang", langfile)
+        if(langfile_res == "OK")
+        then
+          add_to_opt "srv/www/lang/vbox.$lang" "mode=444 flags=sh"
+        else
+          warning "could not find 'srv/www/lang/vbox.$lang', perhaps this file isn't translated yet. Falling back to English."
+          add_to_opt "srv/www/lang/vbox.en" "mode=444 flags=sh"
+        fi    
+      done    
+    fi
+
+    # add vboxbeep and pc_speaker module if needed
+    if ( found_beep == "yes" )
+    then
+        add_to_opt "usr/bin/vboxbeep" "mode=555"
+
+        stat("opt/lib/modules/${KERNEL_VERSION}/kernel/drivers/input/misc/pcspkr.ko", tmpspkr)
+        if ( tmpspkr_res == "OK" )
+        then
+            add_to_opt "rootfs:lib/modules/${KERNEL_VERSION}/kernel/drivers/input/misc/pcspkr.ko"
+        else
+            warning "Your kernel ($kernel_version) is missing the speaker module (kernel/drivers/input/misc/pcspkr.ko). Therefore vbox will not beep."
+        fi
+    fi
+
+fi
