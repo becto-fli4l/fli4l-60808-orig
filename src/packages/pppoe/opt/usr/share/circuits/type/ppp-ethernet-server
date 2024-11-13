@@ -1,0 +1,74 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-ethernet-server - PPPoE circuits (server-side)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# PPPoE, see RFC 2516 for details
+DSL_PPPOE_MTU=1492     # 1500 (Ethernet MTU) - 6 (PPPoE header)
+                       # - 2 (PPP header without address/control bytes)
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_ethernet_server_circuit_add()
+{
+    # keep this synchronized with check/pppoe.ext
+    local circ_ppp_ethernet_server_type=${circ_ppp_ethernet_server_type:-kernel}
+    local circ_ppp_ethernet_server_sessions=${circ_ppp_ethernet_server_sessions:-64}
+    : ${circ_ppp_mtu:=$DSL_PPPOE_MTU}
+    : ${circ_ppp_mru:=$DSL_PPPOE_MTU}
+
+    ip link set dev $circ_ppp_ethernet_server_dev mtu 1500 up # set mtu to 1500
+
+    case "$circ_ppp_ethernet_server_type" in
+    daemon)
+        do_modprobe ppp_async
+        ;;
+    kernel)
+        do_modprobe pppoe
+        ;;
+    esac
+
+    cat >> $2 <<EOF
+noaccomp
+nopcomp
+default-asyncmap
+EOF
+
+    cat >> $1 <<EOF
+circ_ppp_ethernet_server_dev=$circ_ppp_ethernet_server_dev
+circ_ppp_ethernet_server_type=$circ_ppp_ethernet_server_type
+circ_ppp_ethernet_server_sessions=$circ_ppp_ethernet_server_sessions
+EOF
+
+    return 0
+}
+
+# clone adaptor for PPP-over-Ethernet server instance circuits
+ppp_ethernet_server_clone_adaptor()
+{
+    ppp_server_clone_adaptor
+    local param i=1
+    for param
+    do
+        eval circ_ppp_ethernet_server_arg_${i}=\$param
+        i=$((i+1))
+    done
+    circ_ppp_ethernet_server_arg_n=$((i-1))
+}
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_ethernet_server_instance_circuit_add()
+{
+    local i
+    for i in $(seq 1 ${circ_ppp_ethernet_server_arg_n:-0})
+    do
+        eval local value=\$circ_ppp_ethernet_server_arg_${i}
+        printf "%s\n" "$value"
+    done >> "$2"
+    return 0
+}

@@ -1,0 +1,92 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for pppoe
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_ppp_ethernet)
+then
+    provides pppoe version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_ETHERNET='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+if (opt_ppp_ethernet_server)
+then
+    provides pppoe_server version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_ETHERNET_SERVER='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+#
+# Circuits
+#
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set type=CIRC_%_TYPE[i]
+        if (type == "ppp")
+        then
+            set ppptype=CIRC_%_PPP_TYPE[i]
+            if (ppptype == "ethernet")
+            then
+                if (!opt_ppp_ethernet)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP_ETHERNET='yes'"
+                fi
+                if (!defined(CIRC_%_PPP_ETHERNET_DEV[i]))
+                then
+                    error "CIRC_${i}_PPP_ETHERNET_DEV must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+                if (CIRC_%_PPP_ETHERNET_TYPE[i] ?: "kernel" == "kernel")
+                then
+                    add_to_opt "usr/lib/pppd/${PPPD_VERSION}/rp-pppoe.so"
+                    add_to_opt "pppoe.ko"
+                else
+                    add_to_opt "usr/sbin/pppoe" "mode=555"
+                    add_to_opt "ppp_async.ko"
+                fi
+            fi
+            if (ppptype == "ethernet-server")
+            then
+                set dev=circ_%_ppp_ethernet_server_dev[i]
+                foreach j in circ_n
+                do
+                    if (j > i)
+                    then
+                        if (CIRC_%_ENABLED[j] == "yes")
+                        then
+                            set othertype=circ_%_type[j]
+                            set otherppptype=circ_%_ppp_type[j] ?: ""
+                            if (othertype == "ppp" && otherppptype == "ethernet-server")
+                            then
+                                set otherdev=circ_%_ppp_ethernet_server_dev[j]
+                                if (dev == otherdev)
+                                then
+                                    set name=circ_%_name[i]
+                                    set othername=circ_%_name[j]
+                                    error "You cannot run the ethernet-server circuits circ${i} (${name}) and circ${j} (${othername}) over the same network interface $dev"
+                                fi
+                            fi
+                        fi
+                    fi
+                done
+            fi
+        fi
+    fi
+done

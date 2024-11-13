@@ -1,0 +1,246 @@
+% Last Update: $Id$
+\section{PPPOE - PPP über Ethernet}
+
+Dieses Paket erlaubt es, PPP-Verbindungen über ein Ethernet-Netzwerk aufzubauen.
+Dies wird in Deutschland vor allem für die Internet-Anbindung via DSL genutzt,
+wobei ein externes, über Ethernet angeschlossenes DSL-Modem genutzt wird.
+Zwischen dem fli4l-Router und dem DSL-Modem wird das Protokoll PPP benutzt,
+jedoch hier speziell über Ethernet (PPPoE\footnote{``Point-to-Point Protocol
+over Ethernet'', siehe RFC 2516}).
+
+\subsection{Ausgehende PPPoE-Verbindungen}
+
+Ein DSL-Zugang via PPPoE oder auch beliebige andere ausgehende
+PPPoE-Verbindungen werden generell als PPP-Circuit konfiguriert
+(siehe \jump{sect:ppp-circuits}{Circuits vom Typ ``ppp''}), d.\,h. es gilt:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+\end{verbatim}
+\end{example}
+
+Zusätzlich muss das \verb+OPT_PPP_ETHERNET+ aktiviert werden:
+
+\begin{description}
+\config{OPT\_PPP\_ETHERNET}{OPT\_PPP\_ETHERNET}{OPTPPPETHERNET}
+
+Diese Variable aktiviert die Unterstützung für ausgehende PPPoE-Verbindungen.
+Damit auch tatsächlich eine PPPoE-Verbindung genutzt werden kann, muss
+mindestens ein PPP-Circuit den Typ ``ethernet'' besitzen, d.\,h. es muss
+zusätzlich gelten
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+    CIRC_x_PPP_TYPE='ethernet'
+\end{verbatim}
+\end{example}
+
+(wobei ``x'' einen gültigen Circuit-Index darstellt).
+
+Standard-Einstellung: \verb+OPT_PPP_ETHERNET='no'+
+
+Beispiel: \verb+OPT_PPP_ETHERNET='yes'+
+\end{description}
+
+Zu den allgemeinen Circuit-Variablen kommen die folgenden, für PPP-Circuits des
+Typs ``ethernet'' spezifischen Variablen hinzu:
+
+\begin{description}
+\config{CIRC\_x\_PPP\_ETHERNET\_DEV}{CIRC\_x\_PPP\_ETHERNET\_DEV}{CIRCxPPPETHERNETDEV}
+
+Diese Variable enthält den Namen der Netzwerk-Schnitt\-stelle, über die PPPoE
+genutzt werden soll. Dabei entspricht \texttt{eth0} der ersten Ethernet-Karte,
+\texttt{eth1} der zweiten Ethernet-Karte u.\,s.\,w.
+
+Hat man nur eine Netzwerkkarte im Router, kann man das DSL-Modem ins LAN
+hängen, etwa indem man das DSL-Modem an den LAN-Switch mit anschließt.
+Dies ist jedoch nur die zweitbeste Lösung, weil die normalen IP-Pakete
+dann zusammen mit den PPPoE-Paketen im selben Netzsegment auftauchen und dies
+die maximale Übertragungsgeschwindigkeit negativ beeinflussen kann. Die beste
+Lösung ist die Nutzung einer separaten Netzwerkkarte für die Kommunikation mit
+dem DSL-Modem.
+
+Beispiel: \verb+CIRC_1_PPP_ETHERNET_DEV='eth1'+
+
+\config{CIRC\_x\_PPP\_ETHERNET\_TYPE}{CIRC\_x\_PPP\_ETHERNET\_TYPE}{CIRCxPPPETHERNETTYPE}
+
+PPPoE steht für die Übertragung von PPP-Paketen über
+Ethernet-Leitungen. Das bedeutet, dass die zu übertragenden Daten im ersten
+Schritt vom ppp-Dämon in PPP-Pakete und dann in einem zweiten Schritt für die
+Übertragung übers Ethernet nochmals in PPPoE-Pakete verpackt werden, um dann
+ans DSL-Modem geschickt zu werden. Das zweite Verpacken kann durch den
+pppoe-Dämon oder durch den Kern erfolgen. Mittels
+\var{CIRC\_x\_PPP\_ETHERNET\_TYPE} wird die Art und Weise der
+PPPoE-Paketerzeugung definiert, siehe hierzu Tabelle \ref{tab:pppoe-type}.
+
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{|l|p{10cm}|}
+    \hline
+    Wert & Beschreibung \\
+    \hline
+    kernel & Die PPP-Pakete werden direkt an den Linux-Kern
+    gereicht, der daraus PPPoE-Pakete macht. Dadurch entfällt die
+    Kommunikation mit einem zweiten Prozess und damit eine Menge
+    Kopier- und Scheduling-Aufwand, was wiederum zu geringerer Prozessorlast
+    führt. Dies ist die Standard-Methode, wenn nichts angegeben wurde.\\
+    daemon & Die Pakete werden durch den \texttt{pppoe}-Dämon erzeugt; die
+    Kommunikation zwischen \texttt{pppd} und \texttt{pppoe} erfolgt asynchron.
+    Das bedeutet, dass der Datenstrom mit Anfang- und Ende-Markern versehen
+    wird, damit der \texttt{pppoe}-Dämon die einzelnen Pakete auseinanderhalten
+    kann. Aufgrund des zweiten Prozesses und der zusätzlichen Markierungen ist
+    diese Methode aufwändiger als die Methode ``kernel'' und sollte in der
+    Regel nicht verwendet werden.\\
+    \hline
+  \end{tabular}
+  \caption{Arten der PPPoE-Paketerzeugung}
+  \label{tab:pppoe-type}
+\end{table}
+
+Standard-Einstellung: \verb+CIRC_x_PPP_ETHERNET_TYPE='kernel'+
+
+Beispiel: \verb+CIRC_1_PPP_ETHERNET_TYPE='daemon'+
+
+\end{description}
+
+\subsection{Eingehende PPPoE-Verbindungen}
+
+Der fli4l kann auch konfiguriert werden, \emph{eingehende} PPPoE-Verbindungen
+anzunehmen, also als ein Server zu fungieren. Solche PPPoE-Verbindungen werden
+ebenfalls als PPP-Circuit konfiguriert (siehe
+\jump{sect:ppp-circuits}{Circuits vom Typ ``ppp''}), d.\,h. es gilt:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+\end{verbatim}
+\end{example}
+
+Zusätzlich muss das \verb+OPT_PPP_ETHERNET_SERVER+ aktiviert werden:
+
+\begin{description}
+\config{OPT\_PPP\_ETHERNET\_SERVER}{OPT\_PPP\_ETHERNET\_SERVER}{OPTPPPETHERNETSERVER}
+
+Diese Variable aktiviert die Unterstützung für eingehende PPPoE-Verbindungen.
+Damit auch tatsächlich PPPoE-Verbindungen angenommen werden können, muss
+mindestens ein PPP-Circuit den Typ ``ethernet-server'' besitzen, d.\,h. es muss
+zusätzlich gelten
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+    CIRC_x_PPP_TYPE='ethernet-server'
+\end{verbatim}
+\end{example}
+
+(wobei ``x'' einen gültigen Circuit-Index darstellt).
+
+Standard-Einstellung: \verb+OPT_PPP_ETHERNET_SERVER='no'+
+
+Beispiel: \verb+OPT_PPP_ETHERNET_SERVER='yes'+
+\end{description}
+
+Zu den allgemeinen Circuit-Variablen kommen die folgenden, für PPP-Circuits
+des Typs ``ethernet-server'' spezifischen Variablen hinzu:
+
+\begin{description}
+\config{CIRC\_x\_PPP\_ETHERNET\_SERVER\_DEV}{CIRC\_x\_PPP\_ETHERNET\_SERVER\_DEV}{CIRCxPPPETHERNETSERVERDEV}
+
+Diese Variable enthält den Namen der Netz\-werk-Schnittstelle, über die PPPoE
+genutzt werden soll. Dabei entspricht \texttt{eth0} der ersten Ethernet-Karte,
+\texttt{eth1} der zweiten Ethernet-Karte u.\,s.\,w.
+
+Beispiel: \verb+CIRC_1_PPP_ETHERNET_SERVER_DEV='eth1'+
+
+\config{CIRC\_x\_PPP\_ETHERNET\_SERVER\_TYPE}{CIRC\_x\_PPP\_ETHERNET\_SERVER\_TYPE}{CIRCxPPPETHERNETSERVERTYPE}
+
+PPPoE steht für die Übertragung von PPP-Paketen über Ethernet-Leitungen. Das
+bedeutet, dass die zu übertragenden Daten im ersten Schritt vom ppp-Dämon in
+PPP-Pakete und dann in einem zweiten Schritt für die Übertragung übers Ethernet
+nochmals in PPPoE-Pakete verpackt werden. Das zweite Verpacken kann durch den
+pppoe-Dämon oder durch den Kern erfolgen. Mittels
+\var{CIRC\_x\_PPP\_ETHERNET\_SERVER\_TYPE} wird die Art und Weise der
+PPPoE-Paketerzeugung definiert, siehe hierzu Tabelle \ref{tab:pppoe-type}.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_ETHERNET_SERVER_TYPE='kernel'+
+
+Beispiel: \verb+CIRC_1_PPP_ETHERNET_SERVER_TYPE='daemon'+
+
+\config{CIRC\_x\_PPP\_ETHERNET\_SERVER\_SESSIONS}{CIRC\_x\_PPP\_ETHERNET\_SERVER\_SESSIONS}{CIRCxPPPETHERNETSERVERSESSIONS}
+
+Diese Variable enthält die Anzahl der Verbindungen, die dieser PPPoE-Server
+maximal gleichzeitig verwalten kann.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_ETHERNET_SERVER_SESSIONS='64'+
+
+Beispiel: \verb+CIRC_1_PPP_ETHERNET_SERVER_SESSIONS='100'+
+
+\end{description}
+
+\subsection{Beispiele}
+
+\noindent
+Beispiel 1 (Internet-Zugang über PPPoE):
+
+\begin{example}
+\begin{verbatim}
+    OPT_PPP='yes'                       # PPP-Circuits aktivieren
+    OPT_PPP_ETHERNET='yes'              # PPPoE-Client-Circuits aktivieren
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='DSL-Telekom'           # beliebig, aber eindeutig
+    CIRC_1_TYPE='ppp'                   # das ist ein PPP-Circuit
+    CIRC_1_ENABLED='yes'
+    CIRC_1_NETS_IPV4_N='1'
+    CIRC_1_NETS_IPV4_1='0.0.0.0/0'      # Default-Route ins Internet
+    CIRC_1_CLASS_N='1'
+    CIRC_1_CLASS_1='internet'           # Klasse für Internet-Anbindung
+    CIRC_1_UP='yes'                     # beim Booten aktivieren
+    CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_1_USEPEERDNS='yes'             # DNS-Server des Providers nutzen
+    CIRC_1_PPP_TYPE='ethernet'          # PPPoE-Client
+    CIRC_1_PPP_USERID='anonymer'        # Benutzername zur Authentifizierung
+    CIRC_1_PPP_PASSWORD='surfer'        # Passwort zur Authentifizierung
+    CIRC_1_PPP_ETHERNET_TYPE='kernel'   # Kernel soll PPPoE-Pakete packen
+    CIRC_1_PPP_ETHERNET_DEV='eth1'      # Karte, an der das DSL-Modem hängt
+    #
+    CIRC_CLASS_N='1'
+    CIRC_CLASS_1='internet'             # Klasse aller Internet-Circuits
+\end{verbatim}
+\end{example}
+
+\noindent
+Beispiel 2 (PPPoE-Server):
+
+\begin{example}
+\begin{verbatim}
+    OPT_PPP='yes'                       # PPP-Circuits aktivieren
+    OPT_PPP_ETHERNET_SERVER='yes'       # PPPoE-Server-Circuits aktivieren
+    OPT_PPP_PEERS='yes'                 # zum Speichern der Anmeldedaten
+    PPP_PEER_N='1'                      # 1x Anmeldedaten hinterlegen
+    PPP_PEER_1_USERID='user'            # Benutzername vom Client
+    PPP_PEER_1_PASSWORD='pass'          # Passwort vom Client
+    PPP_PEER_1_CIRCUITS='pppoe-eth1'    # Anmeldedaten gelten für PPPoE-Circuit
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='pppoe-eth1'            # beliebig, aber eindeutig
+    CIRC_1_TYPE='ppp'                   # das ist ein PPP-Circuit
+    CIRC_1_ENABLED='yes'
+    CIRC_1_UP='yes'                     # beim Booten aktivieren
+    CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_1_PROTOCOLS='ipv4'             # IPv4 soll über die Verbindung laufen
+    CIRC_1_PPP_TYPE='ethernet-server'   # PPPoE-Server
+    CIRC_1_PPP_PEER_AUTH='yes'          # Client-Authentifizierung ist Pflicht
+    CIRC_1_PPP_LOCALIP='192.168.222.1'  # IP-Adresse des Servers
+    CIRC_1_PPP_REMOTEIP='192.168.222.2' # Start-IP-Adresse der Clients
+    CIRC_1_PPP_ETHERNET_SERVER_TYPE='kernel'  # Kernel soll PPPoE-Pakete packen
+    CIRC_1_PPP_ETHERNET_SERVER_DEV='eth1'     # Ethernet-Karte für PPPoE
+    CIRC_1_PPP_ETHERNET_SERVER_SESSIONS='10'  # max. 10 Clients
+\end{verbatim}
+\end{example}
+
+In der Dokumentation des PPP-Pakets im Abschnitt
+\jump{sect:multilink-ppp}{``Multilink PPP''} finden Sie ein Beispiel gebündelter
+PPPoE-Server-Verbindungen.

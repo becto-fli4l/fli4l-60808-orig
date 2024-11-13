@@ -1,0 +1,52 @@
+% Synchronized to r29817
+\marklabel{sec:PPPDACTIVE}
+{
+\section {DSL - PPPD and Active Filter}
+}
+
+
+fli4l uses the expression:
+\begin{example}
+\begin{verbatim}
+        'outbound and not icmp[0] != 8 and not tcp[13] & 4 != 0'
+\end{verbatim}
+\end{example}
+and accomplishes that generally only packets sent from the local 
+network to the internet keep the connection open, with a few
+exceptions:
+\begin{itemize}
+\item \emph{TCP-RST}: Answers to rejected connection from outside do
+  not reset the timeout,
+\item \emph{ICMP}: ICMP messages sent do not reset the timeout
+  unless an echo request is sent.
+\end{itemize}
+
+This expression is converted by the PPPD into a packet-filter 
+usable by the kernel. In this example it looks like this:
+
+\begin{example}
+\begin{verbatim}
+#
+# Expression: outbound and not icmp[0] != 8 and not tcp[13] & 4 != 0
+#
+(000) ldb      [0]
+(001) jeq      #0x0             jt 17   jf 2
+(002) ldh      [2]
+(003) jeq      #0x21            jt 4    jf 18
+(004) ldb      [13]
+(005) jeq      #0x1             jt 6    jf 11
+(006) ldh      [10]
+(007) jset     #0x1fff          jt 18   jf 8
+(008) ldxb     4*([4]&0xf)
+(009) ldb      [x + 4]
+(010) jeq      #0x8             jt 18   jf 17
+(011) jeq      #0x6             jt 12   jf 18
+(012) ldh      [10]
+(013) jset     #0x1fff          jt 18   jf 14
+(014) ldxb     4*([4]&0xf)
+(015) ldb      [x + 17]
+(016) jset     #0x4             jt 17   jf 18
+(017) ret      #0
+(018) ret      #4
+\end{verbatim}
+\end{example}

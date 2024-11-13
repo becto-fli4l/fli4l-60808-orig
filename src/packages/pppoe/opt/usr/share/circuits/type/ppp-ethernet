@@ -1,0 +1,79 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-ethernet - PPP over Ethernet
+#
+# Creation:     09.09.2000 fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# PPPoE, see RFC 2516 for details
+DSL_PPPOE_MTU=1492     # 1500 (Ethernet MTU) - 6 (PPPoE header)
+                       # - 2 (PPP header without address/control bytes)
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_ethernet_circuit_add()
+{
+    # keep this synchronized with check/pppoe.ext
+    local circ_ppp_ethernet_type=${circ_ppp_ethernet_type:-kernel}
+    : ${circ_ppp_mtu:=$DSL_PPPOE_MTU}
+    : ${circ_ppp_mru:=$DSL_PPPOE_MTU}
+
+    case $circ_ppp_ethernet_type in
+    kernel)
+        cat << EOF
+plugin rp-pppoe.so
+$circ_ppp_ethernet_dev
+noaccomp
+nopcomp
+default-asyncmap
+EOF
+        do_modprobe pppoe
+        ;;
+    daemon)
+        # From the pppoe documentation:
+        # "You should set the PPPoE timeout to be about four times the LCP echo
+        # interval."
+        # We don't use "four" but ($circ_ppp_lcp_echo_max_failures + 1).
+        local pppoe_timeout=$((${circ_ppp_lcp_echo_interval:-PPP_LCP_ECHO_INTERVAL} *
+                                (${circ_ppp_lcp_echo_max_failures:-PPP_LCP_ECHO_MAX_FAILURES} + 1)))
+
+        # the command that pppd shall execute
+        local pppoe_cmd="exec /usr/sbin/pppoe -U -I $circ_ppp_ethernet_dev -T $pppoe_timeout"
+
+        do_modprobe ppp_async
+
+        cat << EOF
+pty "$pppoe_cmd"
+local
+noaccomp
+nopcomp
+default-asyncmap
+EOF
+        ;;
+    esac >> $2
+
+    cat >> $1 << EOF
+circ_ppp_ethernet_dev="$circ_ppp_ethernet_dev"
+circ_ppp_ethernet_type="$circ_ppp_ethernet_type"
+EOF
+
+    # our Ethernet device always uses the largest MTU possible (1500)
+    ip link set dev $circ_ppp_ethernet_dev mtu 1500
+    ip link set dev $circ_ppp_ethernet_dev up
+
+    # for compatibility, map pppoe to the first configured PPPoE circuit
+    local pppoe_circ=$(circuit_lookup_alias pppoe)
+    if [ -z "$pppoe_circ" ]
+    then
+        # map pppoe circuit to be able to use 'pppoe' as a circuit name
+        # in fli4lctrl invocations
+        circuit_register_alias pppoe $circ_id
+        # map pppoe interface to be able to use 'pppoe' in firewall
+        # rules
+        net_alias_add pppoe $circ_dev TID_
+    fi
+
+    return 0
+}

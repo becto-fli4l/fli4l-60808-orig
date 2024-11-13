@@ -1,0 +1,55 @@
+% Do not remove the next line
+% Synchronized to r29817
+
+\marklabel{sec:PPPDACTIVE}
+{
+\section {DSL - PPPD et Filtre-Actif}
+}
+
+
+Nous mettons à disposition dans fli4l l'expression suivant~:
+\begin{example}
+\begin{verbatim}
+        'outbound and not icmp[0] != 8 and not tcp[13] & 4 != 0'
+\end{verbatim}
+\end{example}
+Pour obtenir, en partant du principe, d'envoyer uniquement les paquets 
+du réseau local à Internet, et de garder la connexion ouverte, avec 
+quelques exceptions~:
+\begin{itemize}
+\item \emph{TCP-RST}~: Réponses aux demandes de connexion qui on été refusées 
+  venant de l'extérieur, et ne pas mettre de Timeout (ou temps d'arrêt) derrière 
+\item \emph{ICMP}~: Pour l'envoi de messages ICMP ne pas mettre également 
+  de Timeout derrière, à moins que vous envoyez une écho-requête.
+\end{itemize}
+
+Cette expression est généralement réalisé en PPPD, dans le filtrage de paquet par
+le Kernel. Cela ressemble à l'exemple ci-dessous~:
+
+\begin{example}
+\begin{verbatim}
+#
+# Expression: outbound and not icmp[0] != 8 and not tcp[13] & 4 != 0
+#
+(000) ldb      [0]
+(001) jeq      #0x0             jt 17   jf 2
+(002) ldh      [2]
+(003) jeq      #0x21            jt 4    jf 18
+(004) ldb      [13]
+(005) jeq      #0x1             jt 6    jf 11
+(006) ldh      [10]
+(007) jset     #0x1fff          jt 18   jf 8
+(008) ldxb     4*([4]&0xf)
+(009) ldb      [x + 4]
+(010) jeq      #0x8             jt 18   jf 17
+(011) jeq      #0x6             jt 12   jf 18
+(012) ldh      [10]
+(013) jset     #0x1fff          jt 18   jf 14
+(014) ldxb     4*([4]&0xf)
+(015) ldb      [x + 17]
+(016) jset     #0x4             jt 17   jf 18
+(017) ret      #0
+(018) ret      #4
+\end{verbatim}
+\end{example}
+

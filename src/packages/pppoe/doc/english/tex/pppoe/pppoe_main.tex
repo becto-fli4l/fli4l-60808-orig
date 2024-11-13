@@ -1,0 +1,619 @@
+% Synchronized to r29817
+\section{DSL - DSL over PPPoE, Fritz!DSL and PPTP}
+
+fli4l supports DSL in three different variants:
+
+\begin{itemize}
+\item PPPoE (external DSL-modems connected over ethernet using pppoe)
+\item PPTP (external DSL-modems connected over ethernet using pptp)
+\item Fritz!DSL (DSL over DSL-adapters manufactured by AVM)
+\end{itemize}
+
+You can choose only one of these options, simultaneous operation 
+isn't possible yet.
+The configuration for all variants is similar, so the
+general parameters are described at first and then the
+special options for the individual variants will be discussed. 
+DSL-access is handled by imond as a circuit. Therefore 
+it is necessary to activate imond by setting 
+(\jump{OPTIMOND}{see \var{OPT\_IMOND}})
+to \verb*?'yes'?.
+
+\subsection {General Configuration Variables}
+
+The packages all use the same configuration variables, they
+differ only by the package name prefixes. As an example: 
+in all packages the user name is required. The variable is named 
+\verb*?PPPOE_USER?, \verb*?PPTP_USER? or \verb*?FRITZDSL_USER? 
+depending on the package. The variables are described indicating
+the missing prefix by an asterisk. In concrete examples PPPOE is 
+assumed but these are valid with any other prefix too.
+
+\begin{description}
+\configlabel{PPPOE\_NAME}{PPPOENAME}
+\configlabel{PPTP\_NAME}{PPTPNAME}
+\configlabel{FRITZDSL\_NAME}{FRITZDSLNAME}
+\item[*\_NAME]
+ 
+Set a name for the circuit - max. 15 digits long. This will be 
+shown in the imon client imonc. Spaces (blanks) are not allowed. 
+ 
+Example: \verb*?PPPOE_NAME='DSL'?
+
+\configlabel{PPPOE\_USEPEERDNS}{PPPOEUSEPEERDNS}
+\configlabel{PPTP\_USEPEERDNS}{PPTPUSEPEERDNS}
+\configlabel{FRITZDSL\_USEPEERDNS}{FRITZDSLUSEPEERDNS}
+\item[*\_USEPEERDNS]
+ 
+This specifies whether the address of the name servers given by 
+the internet service provider at dial-in will be added to the
+configuration file of the local name server for the duration of 
+the online connection or not.
+
+It only makes sense to use this option for internet access circuits. 
+Almost all providers support these type of transfer by now.
+
+After the name server IP addresses have been transferred, name 
+servers in \verb*?DNS_FORWARDERS? will be used as 
+forwarders. Afterwards the local nameserver is forced to 
+reread its configuration. Previously resolved names will 
+not be lost from the name server cache.
+
+This option has the advantage of always using the nearest name 
+servers (given the provider transmits the correct IP addresses) 
+thus accelerating the name resolution process.
+
+In case of failure of a provider's DNS server in most cases the 
+incorrect DNS server addresses are rapidly corrected by the provider.
+
+Nevertheless it is necessary to specify a valid name server in 
+\verb*?DNS_FORWARDERS?. Otherwise the first name request can not 
+be resolved correctly. In addition the original configuration of 
+the local nameservers will be restored when terminating the connection.
+
+Default-setting: \verb*?*_USEPEERDNS='yes'?
+
+\configlabel{PPPOE\_DEBUG}{PPPOEDEBUG}
+\configlabel{PPTP\_DEBUG}{PPTPDEBUG}
+\configlabel{FRITZDSL\_DEBUG}{FRITZDSLDEBUG}
+\item[*\_DEBUG]
+ 
+If you want pppd to be more verbose set \verb*?*_DEBUG? to
+\verb*?'yes'?. In this case pppd will write additional informations
+to syslog.
+
+Attention: In order to get this to work syslogd has to activated by 
+setting \verb*?OPT_SYSLOGD? to \verb*?'yes'? in base.txt.
+
+\configlabel{PPPOE\_USER}{PPPOEUSER}
+\configlabel{PPTP\_USER}{PPTPUSER}
+\configlabel{FRITZDSL\_USER}{FRITZDSLUSER}
+\configlabel{PPPOE\_PASS}{PPPOEPASS}
+\configlabel{PPTP\_PASS}{PPTPPASS}
+\configlabel{FRITZDSL\_PASS}{FRITZDSLPASS}
+\item[*\_USER, *\_PASS]
+ 
+Provide user ID an passwort for the provider used. 
+\verb*?*_USER? is used for the user id
+\verb*?*_PASS? is the password.
+
+\emph{Attention:} For T-Online-access consider this:
+
+Username AAAAAAAAAAAATTTTTT\#MMMM is put together from a 12 digit 'Anschlußkennung', 
+T-Online-number and 'Mitbenutzernummer'. Behind the T-Online-number follows a
+'\#' (only if its length is shorter than 12 digits).
+
+If this does not work in rare cases put another '\#' between 
+'Anschlußkennung' and T-Online-number.
+
+User ID for T-Online has to have an additional '@t-online.de' at the end!
+
+Example:
+
+\begin{example}
+\begin{verbatim}
+        PPPOE_USER='111111111111222222#0001@t-online.de'
+\end{verbatim}
+\end{example}
+
+Infos on user ID's for other providers are found in the FAQ:
+\begin{itemize}
+\item \altlink{http://extern.fli4l.de/fli4l_faqengine/faq.php?list=category&catnr=3&prog=1}
+\end{itemize}
+
+\configlabel{PPPOE\_HUP\_TIMEOUT}{PPPOEHUPTIMEOUT}
+\configlabel{PPTP\_HUP\_TIMEOUT}{PPTPHUPTIMEOUT}
+\configlabel{FRITZDSL\_HUP\_TIMEOUT}{FRITZDSLHUPTIMEOUT}
+\item[*\_HUP\_TIMEOUT]
+ 
+Specify the time in seconds after which the connection will be terminated 
+when no more traffic is detected over the DSL line. A timeout of '0' or 
+'never' stands for no timeout. Using 'never' the router immedeately 
+reconnects after a disconnection. Changing dialmodes is not 
+possible then - it has to stay 'auto'. 'Never' is
+currently only available for PPPOE and FritzDSL.
+
+\configlabel{PPPOE\_CHARGEINT}{PPPOECHARGEINT}
+\configlabel{PPTP\_CHARGEINT}{PPTPCHARGEINT}
+\configlabel{FRITZDSL\_CHARGEINT}{FRITZDSLCHARGEINT}
+\item[*\_CHARGEINT]
+
+Charge-interval: Time interval in seconds which will be used 
+for calculating online costs.
+ 
+Most provider calculate their charges per minute. In this case put in '60'. 
+For providers that charge per second set \verb*?*_CHARGEINT='1'?.
+
+Unfortunately for DSL the timing is not fully utilized, as it is the 
+case for ISDN. In our case a hangup will be triggered after the time 
+specified in \verb*?*_HUP_TIMEOUT?.
+
+Hence \verb*?*_Chargeint? is only significant for the calculation of
+charges.
+
+\configlabel{PPPOE\_TIMES}{PPPOETIMES}
+\configlabel{PPTP\_TIMES}{PPTPTIMES}
+\configlabel{FRITZDSL\_TIMES}{FRITZDSLTIMES}
+\item[*\_TIMES]
+
+This times determine when to enable the circuit and how much 
+it will cost. This makes it possible to have different default 
+routes at different times for a circuit (Least Cost Routing). 
+The imond daemon controls route assignment then.
+
+Composition of variables:
+
+\begin{example}
+\begin{verbatim}
+        PPPOE_TIMES='times-1-info [times-2-info] ...'
+\end{verbatim}
+\end{example}
+
+Each field times-?-info consists of 4 parts divided by colons (':').
+\begin{enumerate}
+\item Field: W1-W2
+  
+  Weekday-period, i.e. Mo-Fr or Sa-Su aso. English and german 
+  notations are both valid.
+  For a single weekday write W1-W1 (i.e. Su-Su).
+
+ 
+\item Field: hh-hh
+  
+  Hours, i.e. 09-18 or 18-09 too. 18-09 is equivalent to 
+  18-24 plus 00-09. 00-24 means the complete day.
+
+        
+\item Field: Charge
+  
+  Currency-values as costs per minute, i.e. 0.032 for 3.2 Cent 
+  per minute. They are used to calculate the actual costs incurred, 
+  taking into account the cycle time. They will be displayed in the imon client.
+    
+\item Field: LC-Default-Route
+  
+  Content can be Y or N, which means:
+
+  \begin{tabular}[h!]{lp{11cm}}
+    Y: & The specified time range will be used as default route
+    for LC-routing.\\
+
+    N: & The specified time range is only used for calculating
+    costs but it won't be used for automatic LC-routing. \\
+  \end{tabular}
+
+\end{enumerate}
+
+Example (read as one long line):
+
+\begin{example}
+\begin{verbatim}
+        PPPOE_TIMES='Mo-Fr:09-18:0.049:N
+                     Mo-Fr:18-09:0.044:Y
+                     Sa-Su:00-24:0.039:Y'
+\end{verbatim}
+\end{example}
+
+        \wichtig{Times used in \var{*\_TIMES} have to cover the whole week.
+          If that is not the case a valid configuration can't be build.}
+
+        \emph{If the time ranges off all LC-default-route-circuits
+          (``Y'') togethter don't contain the complete week there 
+          will be no default route in these gaps. There will be no
+          internet access possible at these times!}
+
+
+One more simple example:
+
+\begin{example}
+\begin{verbatim}
+        PPPOE_TIMES='Mo-Su:00-24:0.0:Y'
+\end{verbatim}
+\end{example}
+
+for those using a flatrate.
+
+One last comment to LC-routing: \emph{holidays are
+   treated as Sundays.}
+
+\configlabel{PPPOE\_FILTER}{PPPOEFILTER}
+\configlabel{PPTP\_FILTER}{PPTPFILTER}
+\configlabel{FRITZDSL\_FILTER}{FRITZDSLFILTER}
+\item[*\_FILTER]
+
+fli4l hangs up automatically if there is no traffic over the pppoe 
+interface in the time specified in hangup timeout. Unfortunately also 
+traffic from the outside counts here, for example connection attempts 
+by a P2P client such as eDonkey. Since you will be contacted almost 
+permanently from outside nowadays, it can happen that fli4l never 
+terminates the DSL connection.
+
+Option \verb*?*_FILTER? comes to help here. Setting it to yes will only
+consider traffic that is generated from your own machine and
+external traffic will be completely ignored. Since incoming traffic 
+usually means that the router or computers behind it respond by i.e 
+rejecting requests additionally some outgoing packets are ignored. 
+Read here how this exactly works:
+\begin{itemize}
+\item \altlink{http://www.fli4l.de/hilfe/howtos/basteleien/hangup-problem-loesen/} and
+\item \altlink{http://web.archive.org/web/20061107225118/http://www.linux-bayreuth.de/dcforum/DCForumID2/46.html}.
+\end{itemize}
+A more detailed description of the expression and its usage is to be 
+found in the appendix but is only interesting if you want to make 
+changes.
+
+\configlabel{PPPOE\_FILTER\_EXPR}{PPPOEFILTEREXPR}
+\configlabel{PPTP\_FILTER\_EXPR}{PPTPFILTEREXPR}
+\configlabel{FRITZDSL\_FILTER\_EXPR}{FRITZDSLFILTEREXPR}
+\item[*\_FILTER\_EXPR]
+
+Filter to use if \verb*?*_FILTER? is set to \verb*?'yes'?.
+
+\configlabel{FRITZDSL\_MTU}{FRITZDSLMTU}
+\configlabel{FRITZDSL\_MRU}{FRITZDSLMRU}
+\configlabel{PPPOE\_MTU}{PPPOEMTU}
+\config{*\_MTU *\_MRU}{PPPOE\_MRU}{PPPOEMRU}
+  
+  These variables are optional and can be completely omitted.
+  
+  With these optional variables the so-called \textbf{MTU} (maximum
+  transmission unit) and the \textbf{MRU} (maximum receive unit) can be
+  set. By default MTU and MRU are set to 1492. This setting should only be 
+  changed in special cases!
+  These variables don't exist for OPT\_PPTP.
+
+\configlabel{FRITZDSL\_NF\_MSS}{FRITZDSLNFMSS}
+\config{*\_NF\_MSS}{PPPOE\_NF\_MSS}{PPPOENFMSS}
+
+  For some providern these effects can occur:
+  \begin{itemize}
+  \item Webbrowser gets a connection but is unresponsive after that,
+  \item small mails can be sent but big mails can't,
+  \item ssh works, scp hangs after initial connecting.
+  \end{itemize}
+
+  To work around this problems fli4l manipulates the MTU as a default.
+  In some cases this is not enough so fli4l explicitely permits setting 
+  of the MSS (message segment size) to a value given by the provider. 
+  If the provider does not give any values 1412 is a good start to try.
+  If a MTU is given by the provider, subtract 40 Byte here ($mss = mtu - 40$).
+  These variables are optional and can be completely omitted.
+  These variable doesn't exist for OPT\_PPTP.
+
+\end{description}
+\marklabel{sec:pppoe}
+{
+\subsection {OPT\_PPPOE - DSL over PPPoE}
+}
+
+For communication via a DSL connection usually the PPPoE package 
+is necessary because the provider does not provide a full blown router,
+but only a DSL modem. Between the fli4l router and the modem the 
+PPP protocol is used, but in this case specifically over Ethernet.
+
+One or two ethernet cards can be used in fli4l:
+\begin{itemize}
+\item only one card with IP for the LAN and PPP towards the DSL-modem
+\item two cards: one with IP for the LAN, the other for PPP towards the DSL-modem
+\end{itemize}
+
+The better choice is to use two ethernet cards. This way both protocols 
+- IP and PPPoE - are clearly separated from each other.
+
+But the method with one ethernet cards works as well. In this case 
+the DSL-modem has to be connected to the network hub like all other 
+clients. The maximum transfer speed can be slightly affected this way.
+
+If experiencing communication problems between the modem and the 
+network card you can try to slow down the speed of the NIC, eventually
+even switching it to half-duplex mode. All PCI cards but only a few 
+PCI-ISA network cards can be configured to run in various speed modes.
+Either use ethtool from the package advanced\_networking or create a 
+DOS boot media and include the native configuration tool there. Start 
+fli4l with this media and execute the card's native tool to choose 
+and save the slower operation mode to the card. The configuration 
+tool usually is available on the driver media or can be downloaded 
+from the website of the card manufacturer.
+You may also find it in a search in the wiki:
+\begin{itemize}
+\item \altlink{https://ssl.nettworks.org/wiki/display/f/Netzwerkkarten}
+\end{itemize}
+
+If using two network cards you should use the first for the LAN and 
+the second for the connection to the DSL modem.
+
+Only the first card does need an IP address.
+
+This means:
+
+\begin{example}
+\begin{verbatim}
+        IP_NET_N='1'                # Only *one* card with IP-address!
+        IP_NET_1xxx='...'              # Usual parameters
+\end{verbatim}
+\end{example}
+
+For \verb*?PPPOE_ETH? set the second ethernet card to 'eth1' and
+define *no* \verb*?IP_NET_2-xxx?-variables.
+
+\begin{description}
+\config{OPT\_PPPOE}{OPT\_PPPOE}{OPTPPPOE} \sloppypar{activates support
+  for PPPoE. Default setting: \verb*?OPT_PPPOE='no'?.}
+
+\config{PPPOE\_ETH}{PPPOE\_ETH}{PPPOEETH}
+
+Name of the ethernet interface
+
+\begin{tabular}[h!]{ll}
+  'eth0' & first ethernet card\\
+  'eth1' & second ethernet card\\
+  ...   &  ...\\
+\end{tabular}
+            
+Default setting: \verb*?PPPOE_ETH='eth1'?
+
+\config{PPPOE\_TYPE}{PPPOE\_TYPE}{PPPOETYPE}
+
+\emph{PPPOE} stands for transmission of PPP-packets over
+ethernet lines. Data to be transmitted is transformed to ppp-packets
+in a first step and then in a second step wrapped in pppoe-packets 
+to be transmitted over ethernet to the DSL-modem. The second 
+step can be done by the pppoe-daemon or by the kernel. 
+\var{PPPOE\_TYPE} defines the way of pppoe packet generation.
+
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{|l|p{10cm}|}
+    \hline
+    Values & Description \\
+    \hline
+    async & Packets are genereated by the pppoe-daemon; 
+    asynchronous communication between \emph{pppd} and \emph{pppoed}. \\
+    sync & Packets are genereated by the pppoe-daemon; 
+    synchronous communication between \emph{pppd} and \emph{pppoed}. 
+    This way communication is more efficient and thus leads to
+    lower processor load. \\
+    in\_kernel & Packets are genereated by the linux kernel. This way 
+    communication with a second daemon is omitted saving a lot of
+    in-memory copying thus leading to even lower processor load. \\
+    \hline
+  \end{tabular}
+  \caption{Ways of generating pppoe packets}
+  \label{tab:pppoe-type}
+\end{table}
+
+Somebody did a comparison between the various variants 
+on a Fujitsu Siemens PCD-H, P75 the results are shown in table
+\ref{tab:pppoe-type-load} \footnote{Values
+  were taken from a posting on spline.fli4l and have not been evaluated
+  further. Message ID of the article:
+  $<$caf9fk\$ala\$1@bla.spline.inf.fu-berlin.de$>$.}.
+\begin{table}[h!]
+  \centering
+  \begin{tabular}[h]{|l|l|l|l|}
+    \hline
+    fli4l & NIC & Bandwidth (downstream) & CPU-load \\
+    \hline
+    2.0.8 & rtl8029 + rtl8139 & 310 kB/s  &100\% \\
+    2.0.8 & 2x 3Com Etherlink III & 305 kB/s & 100\% \\
+    2.0.8 & SMC + 3Com Etherlink III & 300 kB/s & 100\% \\
+    2.1.7 & SMC + 3Com Etherlink III & 375 kB/s & 40\%\\
+    \hline
+  \end{tabular}
+  \caption{Bandwidth und CPU-load with pppoe}
+  \label{tab:pppoe-type-load}
+\end{table}
+
+\config{PPPOE\_HUP\_TIMEOUT}{PPPOE\_HUP\_TIMEOUT}{PPPOEHUPTIMEOUT2}
+
+Using PPPoE-type in\_kernel and dialmode auto, timeout can be set 
+to 'never'. The router then no longer hangs up and after a forced 
+disconnection by the provider dials again automatically. Subsequent
+changing of the dialmode is not possible anymore.
+
+\end{description}
+
+\subsection {OPT\_FRITZDSL - DSL via Fritz!Card DSL}
+
+Internet connection by Fritz! Card DSL is activated here. A 
+Fritz! Card DSL by AVM is used for the internet connection. 
+Since the drivers for these cards are not subject to the GPL
+it is not possible to provide them with the DSL package. It is
+essential to download these drivers before from 
+\altlink{http://www.fli4l.de/download/stabile-version/avm-treiber/} 
+and to extract them into the fli4l directory.\\
+      
+
+Circuit-support for Fritz!Card DSL was realised 
+with friendly help from Stefan Uterhardt
+(\email{zer0@onlinehome.de}).
+
+
+\begin{description}
+  
+  \config{OPT\_FRITZDSL}{OPT\_FRITZDSL}{OPTFRITZDSL}
+  \sloppypar{activates support for Fritz!DSL.
+    Default setting: \verb*?OPT_FRITZDSL='no'?}.
+
+\config{FRITZDSL\_TYPE}{FRITZDSL\_TYPE}{FRITZDSLTYPE}
+
+Several Fritz!-cards exist for a DSL connection. 
+The card used will be specified by
+\var{FRITZDSL\_TYPE}, have a look at table
+\ref{tab:fritz-karten} for enumerating the supported cards.
+
+\begin{table}[htb]
+  \centering
+  \begin{tabular}{l|l}
+    Card Type & Usage \\
+    \hline
+    fcdsl & Fritz!Card DSL \\
+    fcdsl2 & Fritz!Card DSLv2\\
+    fcdslsl & Fritz!Card DSL SL\\
+    fcdslusb & Fritz!Card DSL USB\\
+    fcdslslusb & Fritz!Card DSL SL USB\\
+    fcdslusb2 & Fritz!Card DSL USBv2
+  \end{tabular}
+  \caption{Fritz-Cards}
+  \label{tab:fritz-karten}
+\end{table}
+
+        Default setting:
+
+\begin{example}
+\begin{verbatim}
+        FRITZDSL_TYPE='fcdsl'
+\end{verbatim}
+\end{example}
+
+\config{FRITZDSL\_PROVIDER}{FRITZDSL\_PROVIDER}{FRITZDSLPROVIDER}
+
+With this option the type of the remote station is set. Possible options are:\\
+U-R2, ECI, Siemens, Netcologne, oldArcor, Switzerland, Belgium, Austria1, Austria2, Austria3, Austria4
+
+In Germany almost always UR-2 i used. Siemens and ECI are only used with very old ports.\\
+For Switzerland and Belgium, the options are self-explanatory and in Austria you 
+have to try what works for you.\\
+If anyone has a better description for the options in Austria please tell.
+
+        Default setting:
+
+\begin{example}
+\begin{verbatim}
+        FRITZDSL_PROVIDER='U-R2'
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection {OPT\_PPTP - DSL over PPTP in Austria/the Netherlands}
+
+In Austria (and other european countries) PPTP-protocol is used 
+instead of PPPoE. A separate ethernet card is connected to a PPTP-Modem 
+in this case.
+
+As of version 2.0 connecting via PPTP is realised as a Circuit - with 
+the friendly help of Rudolf Hämmerle
+(\email{rudolf.haemmerle@aon.at}).
+
+PPTP uses two cards. The first card should be used for connecting the 
+LAN and the second for connecting to the DSL-modem.
+
+Only the first card can have an IP-address.
+
+This means:
+
+\begin{example}
+\begin{verbatim}
+        IP_NET_N='1'                   # Only *one* card with IP-address!
+        IP_NET_1xxx='...'              # the usual parameters
+\end{verbatim}
+\end{example}
+
+\var{PPTP\_\-ETH} is set to 'eth1' for the second ethernet card and
+*no* \var{IP\_\-NET\_\-2-xxx}-variables are defined.
+
+\begin{description}
+ 
+  \config{OPT\_PPTP}{OPT\_PPTP}{OPTPPTP} \sloppypar{activates 
+    support for PPTP. Default setting:
+    \verb*?OPT_PPTP='no'?.}
+
+\config{PPTP\_ETH}{PPTP\_ETH}{PPTPETH}
+
+Name of the ethernet interfaces
+
+\begin{tabular}[h!]{ll}
+  'eth0' & first ethernet card\\
+  'eth1' & second ethernet card\\
+  ...   &  ...\\
+\end{tabular}
+        
+Default setting: \verb*?PPTP_ETH='eth1'?
+
+\config{PPTP\_MODEM\_TYPE}{PPTP\_MODEM\_TYPE}{PPTPMODEMTYPE}
+
+There are several PPTP modem types to realise a pptp connection. 
+Define \verb*?PPTP_MODEM_TYPE? to define the modem type. Possible 
+types are shown in table \ref{tab:pptp-modemtypen}.
+
+\begin{table}[htb]
+  \centering
+  \begin{tabular}{l|l}
+    Modem Type & Usage\\
+    \hline
+    telekom & Austria (Telekom Austria) \\
+    xdsl & Austria (Inode xDSL@home) \\
+    mxstream & the Netherlands, Danmark
+  \end{tabular}
+  \caption{PPTP Modem Types}
+  \label{tab:pptp-modemtypen}
+\end{table}
+
+        Default setting:
+
+\begin{example}
+\begin{verbatim}
+        PPTP_MODEM_TYPE='telekom'
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsubsection{Inode xDSL@home}
+
+Support for Inode xDSL@home was implemented using information 
+found on Inode's support pages\footnote{See
+  \altlink{http://www6.inode.at/support/internetzugang/xdsl_home/konfiguration_ethernet_linux.html}}.
+
+At the moment there are sometimes problems with renewing of leases for
+the interface (the IP for the interface is delivered by dhcp and
+has to be renewed in regular periods). Hanging up and reconnecting 
+via imonc does not work well by now. Help by providing patches 
+or as a tester is highly appreciated.
+
+With xdsl two further options exist for pptp:
+
+\begin{description}
+\config{PPTP\_CLIENT\_REORDER\_TO}{PPTP\_CLIENT\_REORDER\_TO}{PPTPCLIENTREORDERTO}
+
+The pptp-client which is used for xdsl under certain circumstances must 
+rearrange and buffer packets. It usually waits 0.3 seconds for a packet. 
+By setting this variable you can vary the timeout between 0.00 (no buffer) 
+and 10.00. Times always must be provided with two decimales.
+
+\config{PPTP\_CLIENT\_LOGLEVEL}{PPTP\_CLIENT\_LOGLEVEL}{PPTPCLIENTLOGLEVEL}
+
+Here you can define how much debug output will be produced by the 
+pptp-client. Values are 0 (little), 1 (default) und 2 (much).
+
+\end{description}
+
+\subsection {OPT\_POESTATUS - PPPoE-Status-Monitor On fli4l-Console}
+\configlabel{OPT\_POESTATUS}{OPTPOESTATUS}
+
+    PPPoE-Status-Monitor for DSL Connections was developed by Thorsten Pohlmann.
+
+    With setting \verb*?OPT_POESTATUS='yes'? dsl status can be watched 
+    on the third fli4l console at any time. Switch to the third console 
+    by pressing ALT-F3 and back to the first console with ALT-F1.

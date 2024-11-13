@@ -1,0 +1,82 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/local/bin/pppoe_pppd_wrapper                              __FLI4LVER__
+#
+# called by pppoe-server, creates and launches the proper circuit of type
+# "ethernet-server-instance" (and its bundle circuit if necessary)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+exec >>/var/log/pppoe-server 2>&1
+
+. /etc/boot.d/string.inc
+. /usr/share/circuits/api
+
+script="$(basename $0)[$$]"
+facility=$circuit_logfacility
+. /usr/share/logfunc.sh
+
+exit_wrapper()
+{
+    log_info "exiting PPPoE server wrapper for $circ_id [$clone_id]"
+    if [ -n "$clone_id" ]
+    then
+        circuit_usable $clone_id && fli4lctrl hangup $clone_id
+    fi
+}
+
+circ_id=
+clone_id=
+exit_trap_add exit_wrapper
+
+commands_with_param="pty plugin rp_pppoe_sess rp_pppoe_service file unit mtu mru"
+ppp_ethernet_server_args=
+
+num=$#
+i=1
+while [ $i -le $num ]
+do
+    eval arg=\$\{$i\}
+    if echo "$commands_with_param" | grep -q "\<$arg\>"
+    then
+        i=$((i+1))
+        eval value=\$\{$i\}
+        case $arg in
+        mtu|mru|unit)
+            ;;
+        file)
+            circ_id=${value#$ppp_peers_dir/*.}
+            circ_id=${circ_id%.*}
+            ;;
+        *)
+            pack_args arg "$arg \"$value\""
+            ppp_ethernet_server_args="$ppp_ethernet_server_args $arg"
+            ;;
+        esac
+    else
+        pack_args arg "$arg"
+        ppp_ethernet_server_args="$ppp_ethernet_server_args $arg"
+    fi
+    i=$((i+1))
+done
+
+if [ -z "$circ_id" ]
+then
+    log_error "circuit identifier is missing"
+    exit 1
+fi
+
+log_info "starting PPPoE server wrapper for $circ_id"
+
+if ! circuit_clone $circ_id ppp_ethernet_server_clone_adaptor "${ppp_ethernet_server_args# }" clone_id errmsg
+then
+    log_error "error while cloning circuit $circ_id: $errmsg"
+    exit 2
+fi
+
+while circuit_usable $clone_id
+do
+    sleep 1
+done
+exit 0
