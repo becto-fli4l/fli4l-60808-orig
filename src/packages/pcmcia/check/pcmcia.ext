@@ -1,0 +1,59 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for pcmcia
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_pcmcia)
+then
+  provides pcmcia version 4.0.0
+  depends on fli4l version 4.0
+fi
+
+foreach i in pcmcia_misc_%
+do
+    if (copy_pending("%i"))
+    then
+	if( i == "ide-cs")
+	then
+	  error "ide-cs does no longer exist as PCMCIA_MISC_% Driver"
+	  error "Use pcmcia-hd or pcmcia-cd in hd.txt, package HD"
+	else
+	  error "No PCMCIA Driver found for %i='$i', check config/pcmcia.txt"
+	fi
+    fi
+done
+
+if (opt_hddrv)
+then
+  foreach n in hddrv_n
+  do
+    set i=hddrv_%[n]
+    if (i =~ "pcmcia-.*")
+    then
+      add_to_opt "rootfs:pata_pcmcia.ko"
+      if (i =~ ".*-cd")
+      then
+        add_to_opt "rootfs:sr_mod.ko"
+      else
+        add_to_opt "rootfs:sd_mod.ko"
+      fi
+    fi
+  done
+fi
+
+if (!opt_pcmcia)
+then
+    foreach i in net_drv_%
+    do
+	if (i =~ "^(RE:PCMCIA_NET_DRV)$")
+	then
+	    error "If you want to use a pcmcia ethernet driver you have to set OPT_PCMCIA to yes"
+	fi	
+    done
+else
+  add_to_opt "${pcmcia_pcic}.ko"
+fi

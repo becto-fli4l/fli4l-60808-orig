@@ -1,0 +1,33 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc010.pcmcia - configure pcmcia devices
+# was file /etc/rc.d/pcmcia
+#
+# Creation:	    03.12.2000  fm
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_PCMCIA" = yes ]
+then
+    begin_script PCMCIA "configuring pcmcia ..."
+
+    mkdir -p /etc/pcmcia
+    echo include port 0x100-0x3ff, port 0xa00-0xaff, port 0xc00-0xcff >/etc/pcmcia/config.opts
+    echo include memory 0xc0000-0xfffff >>/etc/pcmcia/config.opts
+    echo include memory 0xa0000000-0xa0ffffff, memory 0x60000000-0x60ffffff >>/etc/pcmcia/config.opts
+    echo exclude irq 4 >>/etc/pcmcia/config.opts
+    echo exclude irq 3 >>/etc/pcmcia/config.opts
+
+    do_modprobe $PCMCIA_PCIC $PCMCIA_PCIC_OPTS
+    do_modprobe_if_exists kernel/lib crc32
+    do_modprobe_if_exists kernel/drivers/base firmware_class
+    do_modprobe pcmcia
+    sleep 1
+    pcmcia-socket-startup
+    for i in `seq $PCMCIA_MISC_N`
+    do
+      eval j=\$PCMCIA_MISC_${i}
+      do_modprobe $j
+    done
+    end_script
+fi
