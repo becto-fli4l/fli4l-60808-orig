@@ -1,0 +1,234 @@
+% Synchronized to r29817
+\marklabel{sec:accounting}
+{
+\section {ACCOUNTING - Detailed Traffic Logging}
+}
+
+This OPT aims at detecting and analyzing each client's traffic as accurately as possible:
+\begin{itemize}
+\item Data will be stored byte by byte daily.
+\item Traffic will be logged on all interfaces.
+\item Queries will be shown as daily or monthly reports by the Webinterface. 
+Even freely defined time periods are possible.
+\item In- and outgoing traffic will be displayed seperately or as a sum.
+\item Values can be shown in bytes, kilobytes, megabytes or gigabytes.
+\end{itemize}
+
+\subsection{Configuration (Standard)}
+The following variables should be configured in accounting.txt:
+
+\begin{description}
+\config{OPT\_ACCOUNTING}{OPT\_ACCOUNTING}{OPTACCOUNTING}
+Default setting is \verb*?'no'?.
+\verb*?'yes'? activates the package.
+
+\config{ACCOUNTING\_DIR}{ACCOUNTING\_DIR}{ACCOUNTINGDIR}
+Default setting is \verb*?'/boot/data/accounting'?.
+This specifies the data directory. It should not be in a RAM disk.
+In case you want to collect the data in a RAM disk (maybe to save hard 
+disk accesses) take a closer look at OPT\_SARFILE or OPT\_CPMVRMLOG 
+to save and restore your precious data.\newline
+The directory \verb*?'/var/run/accounting'? may NOT be specified as a 
+data directory or used as a target for save and restore operations.
+
+\config{ACCOUNTING\_INT}{ACCOUNTING\_INT}{ACCOUNTINGINT}
+Default setting is \verb*?'pppoe'?.
+Specify the interfaces fli4l uses to route to the internet. Multiple
+interfaces can be separated with spaces.
+Example:
+\begin{example}
+\begin{verbatim}
+    ACCOUNTING_INT='pppoe'                 # DSL
+    ACCOUNTING_INT='circuit-1 circuit-2'   # ISDN
+    ACCOUNTING_INT='IP_NET_x_DEV'          # Ethernet
+\end{verbatim}
+\end{example}
+
+\config{ACCOUNTING\_CRON}{ACCOUNTING\_CRON}{ACCOUNTINGCRON}
+Default setting is \verb*?'55 * * * *'?.
+This setting is optional and can be omitted completely.
+With this setting accounting.sh will be executed at defined time 
+intervals. For further information on the syntax please 
+read the documentation for package easycron.
+It should be ensured that the traffic between two updates
+does not exceed 4GB. An update shortly before the end of day is useful in order
+to assign the traffic to the correct day. The default should be sufficient 
+for a bandwidth up to 9Mbit/s. This option requires an installed package easycron.
+
+\config{ACCOUNTING\_LEARNIPS}{ACCOUNTING\_LEARNIPS}{ACCOUNTINGLEARNIPS}
+Default setting is \verb*?'no'?.
+This setting is optional and can be omitted completely. \verb*?'yes'? will copy 
+the script acclearnips.sh to the fli4l router and ececute it every 
+\smalljump{ACCOUNTINGLEARNIPSINTERVAL}{\var{ACCOUNTING\_LEARNIPS\_INTERVAL}}
+minutes. The ARP cache of the router will be monitored and accounting 
+rules for new IP addresses will be created. This option requires an 
+installed package easycron. 
+\end{description}
+
+\subsection{Configuration (Experts)}
+The following variables in accounting.txt are only needed as an exception.
+
+\begin{description}
+
+\config{ACCOUNTING\_VPNINT}{ACCOUNTING\_VPNINT}{ACCOUNTINGVPNINT}
+Default setting is \verb*?''?.
+This setting is optional and can be omitted completely. 
+Specify VPN-interfaces (tun0, tun1, ...) to be monitored. Multiple
+interfaces can be separated with spaces.
+
+\config{ACCOUNTING\_LEARNIPS\_INTERVAL}{ACCOUNTING\_LEARNIPS\_INTERVAL}{ACCOUNTINGLEARNIPSINTERVAL}
+Default setting is \verb*?'5'?.
+This setting is optional and can be omitted completely. 
+Specify the time interval for  execution of acclearnips.sh (see
+\smalljump{ACCOUNTINGLEARNIPS}{\var{ACCOUNTING\_LEARNIPS?}}).
+If this setting is empty a default of 5 minutes will be used.
+
+\config{ACCOUNTING\_LEARNFROMINT}{ACCOUNTING\_LEARNFROMINT}{ACCOUNTINGLEARNFROMINT}
+This setting is optional and can be omitted completely. 
+By using this setting you can specify the interfaces from which ip-addresses will 
+be learned. By default all interfaces are monitored. This may be useful if fli4l 
+is used as an ethernet router and ip-adresses of your provider's net are recognized.
+Multiple interfaces can be separated with spaces.
+
+\config{ACCOUNTING\_METHOD}{ACCOUNTING\_METHOD}{ACCOUNTINGMETHOD}
+Default setting is \verb*?'new'?.
+This setting is optional and can be omitted completely. 
+With the previous accounting method (\verb*?'old'?) all traffic will be 
+checked by the accounting rules and additional rules will be applied to exclude
+traffic between masked networks. Postrouting rules will be read in order 
+to achieve this. This will work as expected with
+\begin{example}
+\begin{verbatim}
+    POSTROUTING_LIST_1='IP_NET_1 MASQUERADE'
+\end{verbatim}
+\end{example}
+in base.txt but not with
+\begin{example}
+\begin{verbatim}
+    POSTROUTING_LIST_1='if:any:pppoe MASQUERADE'.
+\end{verbatim}
+\end{example}
+The new method (\verb*?'new'?) only directs traffic in interfaces defined in
+\smalljump{ACCOUNTINGINT}{\var{ACCOUNTING\_INT}}
+into the accounting rules chain. By using this 
+\begin{example}
+\begin{verbatim}
+    POSTROUTING_LIST_1='if:any:pppoe MASQUERADE'
+\end{verbatim}
+\end{example}
+is not a problem anymore.
+
+\config{ACCOUNTING\_LOCALTRAF}{ACCOUNTING\_LOCALTRAF}{ACCOUNTINGLOCALTRAF}
+Default setting is \verb*?'no'?.
+This setting is optional and can be omitted completely.
+Normally only routed traffic is counted by Accounting. If a proxy is 
+installed on the fli4l traffic won't be routed and Accounting's values will stay zero.
+You can set \verb*?ACCOUNTING_LOCALTRAF? to \verb*?'yes'? to avoid that. All traffic 
+from fli4l to the client and back will be routed through the accounting rules 
+chain then. The backdraw is that all traffic between router and client 
+will be counted as internet traffic. This encloses updates, SSH, SCP, FTP, httpd, 
+and so on. The difference can become negative very fast.
+
+\config{ACCOUNTING\_MAXINT}{ACCOUNTING\_MAXINT}{ACCOUNTINGMAXINT}
+Default setting is \verb*?'4294967296'?.
+This setting is optional and should only be specified in rare special cases.
+The value gives the maximum amount of bytes an interface can have before 
+overflow is reached. This variable must be specified only if the
+interface maximum is NOT 4294967296 bytes (4GB).
+If you are not sure don't touch this parameter.
+
+\config{ACCOUNTING\_DEBUG\_INT}{ACCOUNTING\_DEBUG\_INT}{ACCOUNTINGDEBUGINT}
+Default setting is \verb*?'no'?.
+This setting is optional and can be omitted completely. 
+With setting this to \verb*?'yes'? a file named int.log will be 
+created to record the calculation of the interface data.
+\end{description}
+
+\subsection{Rights in Httpd}
+Accounting supports the assignment of rights in httpd.
+Example for httpd.txt:
+\begin{example}
+\begin{verbatim}
+    ...
+    HTTPD_USER_N='2'
+    HTTPD_USER_1_USERNAME='admin'
+    HTTPD_USER_1_PASSWORD='secret'
+    HTTPD_USER_1_RIGHTS='all'
+    HTTPD_USER_2_USERNAME='accounting'
+    HTTPD_USER_2_PASSWORD='0815'
+    HTTPD_USER_2_RIGHTS='accounting:view'
+    ...
+\end{verbatim}
+\end{example}
+User admin has all rights including accounting, user accounting has only
+rights to use Accounting.
+
+\subsection{Using The Browser}
+Using the web-interface (httpd) should be self-explanatory. I would like 
+to comment briefly on it.
+In the left column month name, host name, IP
+addresses, interface names and day numbers can be clicked to navigate.
+Clicking on refresh runs accounting.sh.
+
+\subsection{Data and Index}
+In the data directory a directory is created for each year and the data is
+stored in monthly files. A file index.acc will be created too. 
+The acquired IP addresses and interfaces get a unique number 
+and will be registered in index.acc.
+
+Example:
+\begin{example}
+\begin{verbatim}
+    ACCOUNTING_HOST_n='3'
+    ACCOUNTING_HOST_1_IP='192.168.6.1'
+    ACCOUNTING_HOST_1_NAME='client1'
+    ACCOUNTING_HOST_2_IP='192.168.6.2'
+    ACCOUNTING_HOST_2_NAME='client2'
+    ACCOUNTING_HOST_3_IP='192.168.6.3'
+    ACCOUNTING_HOST_3_NAME='client3'
+    ACCOUNTING_INT_n='3'
+    ACCOUNTING_INT_1_NAME='ppp0'
+    ACCOUNTING_INT_2_NAME='eth0'
+    ACCOUNTING_INT_3_NAME='lo'
+\end{verbatim}
+\end{example}
+Variables \verb*?ACCOUNTING_HOST_x_NAME? are optional. This names 
+will be shown by the web-interface if name resolution is set to index.
+The file index.acc can be edited directly on the router. As an editor 
+choose one you like from the tools-package.
+
+\begin{description}
+\item[Attention]Data will be saved by its index number. Changing 
+assignment of index number to IP or interface-name will lead to 
+invalid data.
+\end{description}
+
+\subsection{FAQ}
+\begin{description}
+\item[Question] What means difference?
+\item[Answer] Only routed traffic of the registered clients is detected by the 
+accounting rules. The internet interface captures all traffic to / from the Internet. 
+The difference can be e.g. traffic from non-registered clients, proxy, 
+mail server, download tools on the router and TCP/IP overhead.
+
+\end{description}
+
+\begin{description}
+\item[Question] Since I installed OPT\_ACCOUNTING the router itself dials an 
+internet connection  on a regular basis even if no client is running.
+How can I avoid that?
+\item[Answer] Set \verb*?DNS_BOGUS_PRIV? in base.txt to 'yes'.
+(This is the default setting.)
+\end{description}
+
+\begin{description}
+\item[Question] Traffic for ppp0 is several gigabytes too high and the difference
+is too.
+\item[Answer] Problems can arise by using \verb*?DIALMODE='auto'? in
+base.txt and \verb*?PPPOE_HUP_TIMEOUT='0'? in dsl.txt at the same time.
+To be online 24/7 set \verb*?PPPOE_HUP_TIMEOUT? to a high value
+(for example 86400) and regularly provide queries.
+As of fli4l-2.1.12 you can set \verb*?PPPOE_HUP_TIMEOUT='never'? to
+prevent fli4l from closing a connection. I would rather avoid this setting and use 
+the method mentioned before.
+\end{description}

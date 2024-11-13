@@ -1,0 +1,174 @@
+#!/bin/sh
+##-----------------------------------------------------------------------------
+## /etc/rc.d/rc461.accounting - insert accounting-rules            __FLI4LVER__
+##
+## Creation:     05.06.2002  Michael Knipping <fli4l@knibo.de>
+## Last Update:  $Id$
+##
+## Copyright (c) 2002-2009 - Michael Knipping <fli4l@knibo.de>
+## Copyright (c) 2009-2016 - fli4l-Team <team@fli4l.de>
+##-----------------------------------------------------------------------------
+
+if [ "$OPT_ACCOUNTING" = yes ]; then
+    begin_script ACCOUNTING "inserting accounting rules ..."
+
+    iplist=''
+    workdir="/var/run/accounting"
+    mkdir -p $workdir
+
+    # Chains erzeugen
+    for i in accin accout accinlive accoutlive
+    do
+        fw_add_chain filter $i
+    done
+
+    fw_add_chain filter fw-accounting
+    if [ "$ACCOUNTING_METHOD" = old ]; then
+        fw_append_rule filter fw-accounting "accin"      "Accounting in"
+        fw_append_rule filter fw-accounting "accout"     "Accounting out"
+        fw_append_rule filter fw-accounting "accinlive"  "Accounting in LiveTraf"
+        fw_append_rule filter fw-accounting "accoutlive" "Accounting out LiveTraf"
+        if [ "$ACCOUNTING_LOCALTRAF" != yes ]; then
+            # Ausschließen von Traffic zwischen maskierten Netzen
+            masq=$(for chain in head middle tail; do iptables -t nat -nL POSTROUTING-$chain | sed -ne '/^MASQUERADE/s/[[:space:]]\+/ /gp'; done | cut -d' ' -f 4 | sort -u)
+            [ "$masq" ] && for m in $masq; do
+                fw_append_rule filter accin      "$m any RETURN" "exclude traffic between masquerade networks"
+                fw_append_rule filter accinlive  "$m any RETURN" "exclude traffic between masquerade networks"
+                fw_append_rule filter accout     "any $m RETURN" "exclude traffic between masquerade networks"
+                fw_append_rule filter accoutlive "any $m RETURN" "exclude traffic between masquerade networks"
+            done
+        fi
+    else
+        acc_ifs=
+        for i in $ACCOUNTING_INT
+        do
+            if translate_net_if $i netif 1
+            then
+                acc_ifs="$acc_ifs $netif"
+                fw_append_rule filter fw-accounting "if:$netif:any accin"      "Accounting in $i"
+                fw_append_rule filter fw-accounting "if:any:$netif accout"     "Accounting out $i"
+                fw_append_rule filter fw-accounting "if:$netif:any accinlive"  "Accounting in LiveTraf $i"
+                fw_append_rule filter fw-accounting "if:any:$netif accoutlive" "Accounting out LiveTraf $i"
+            else
+                log_error "OPT_ACCOUNTING: unknown interface '$i', not monitoring traffic for it"
+            fi
+        done
+        for i in $ACCOUNTING_VPNINT
+        do
+            fw_append_rule filter fw-accounting "if:$i!:any accin"      "Accounting in $i"
+            fw_append_rule filter fw-accounting "if:any:$i! accout"     "Accounting out $i"
+            fw_append_rule filter fw-accounting "if:$i!:any accinlive"  "Accounting in LiveTraf $i"
+            fw_append_rule filter fw-accounting "if:any:$i! accoutlive" "Accounting out LiveTraf $i"
+        done
+    fi
+    fw_prepend_rule filter FORWARD-head "fw-accounting" "Accounting"
+
+    # Traffic von/zum Router erfassen z.B.: Proxy
+    if [ "$ACCOUNTING_LOCALTRAF" = yes ]; then
+        fw_add_chain filter in-accounting
+        fw_append_rule filter in-accounting "accin"      "Accounting in"
+        fw_append_rule filter in-accounting "accout"     "Accounting out"
+        fw_append_rule filter in-accounting "accinlive"  "Accounting in  LiveTraf"
+        fw_append_rule filter in-accounting "accoutlive" "Accounting out LiveTraf"
+        fw_prepend_rule filter INPUT-head "in-accounting" "Accounting"
+    fi
+
+    # Regeln aus den IPs in der dns_dhcp.txt erzeugen
+    [ 0$HOST_N -eq 0 ] || for i in `seq 1 $HOST_N`
+    do
+        eval acc_ip="\$HOST_"$i"_IP4"
+        case $iplist in
+            *$acc_ip*) continue ;; # already present
+        esac
+        iplist="$iplist $acc_ip"
+        for acc_c  in "" live; do
+            fw_append_rule filter accin$acc_c  "any $acc_ip RETURN" "added from hosts_$i"
+            fw_append_rule filter accout$acc_c "$acc_ip any RETURN" "added from hosts_$i"
+        done
+    done
+
+    # Regeln aus den IPs in der index.acc erzeugen
+    if [ -f $ACCOUNTING_DIR/index.acc  ]; then
+        . $ACCOUNTING_DIR/index.acc
+        # XXXX we really mean lower case 'n' at the end
+        [ 0$ACCOUNTING_HOST_n -eq 0 ] || for idx in `seq 1 $ACCOUNTING_HOST_n`
+        do
+            eval acc_ip='$ACCOUNTING_HOST_'${idx}'_IP'
+            if [ "$acc_ip" ]; then
+                case $iplist in
+                    *$acc_ip*) continue ;; # already present
+                esac
+                iplist="$iplist $acc_ip"
+                for c  in "" live; do
+                    fw_append_rule filter accin$c  "any $acc_ip RETURN" "add from index.acc"
+                    fw_append_rule filter accout$c "$acc_ip any RETURN" "add from index.acc"
+                done
+            fi
+        done
+    fi
+
+    # save iplist
+    if [ "$iplist" ]; then
+        for acc_ip in $iplist; do
+            echo $acc_ip
+        done > "$workdir/iplist"
+    fi
+
+    # CRON Einstellungen für accounting.sh
+    if [ "$ACCOUNTING_CRON" ]; then
+        add_crontab_entry "$ACCOUNTING_CRON" "/usr/local/bin/accounting.sh"
+    fi
+
+    # ARP & CRON Einstellungen für automatische IP Erkennung
+    if [ "$ACCOUNTING_LEARNIPS" = yes ]; then
+        : ${ACCOUNTING_LEARNIPS_INTERVAL:=5}
+        if [ "$ACCOUNTING_LEARNIPS_INTERVAL" != 0 ]; then
+            arptimeout=`expr $ACCOUNTING_LEARNIPS_INTERVAL \* 60`
+            [ 0$IP_NET_N -eq 0 ] || for idx in `seq 1 $IP_NET_N`
+            do
+                eval interface="\$IP_NET_"$idx"_DEV"
+                case $interface in
+                    {*}*)  ;;
+                    *:*)   ;; # XXX do we actually still support virtual devices like eth0:0?
+                    *)
+                        echo $arptimeout > /proc/sys/net/ipv4/neigh/$interface/gc_stale_time
+                        ;;
+                esac
+            done
+            add_crontab_entry "*/$ACCOUNTING_LEARNIPS_INTERVAL * * * *" "/usr/local/bin/acclearnips.sh"
+        fi
+    fi
+
+    # check accounting dir
+    acc_dir="$ACCOUNTING_DIR"
+    [ -d $acc_dir ] || mkdir -p $acc_dir 2> /tmp/acc.$$
+    [ -d $acc_dir ] && > $acc_dir/.test.$$ 2> /tmp/acc.$$
+    if [ ! -f $acc_dir/.test.$$ ]; then
+        log_error "invalid accounting dir '$acc_dir'"
+        log_error < /tmp/acc.$$
+        log_error "using /var/db/accounting ..."
+        acc_dir=/var/db/accounting
+        mkdir -p $acc_dir
+    fi
+    rm -f /tmp/acc.$$ $acc_dir/.test.$$
+
+    # accounting.conf schreiben
+    : ${ACCOUNTING_MAXINT:=4294967296}
+    cat <<EOF > /etc/accounting.conf
+ACCOUNTING_DIR='$acc_dir'
+ACCOUNTING_INT='$acc_ifs'
+ACCOUNTING_MAXINT='$ACCOUNTING_MAXINT'
+ACCOUNTING_DEBUG_INT='$ACCOUNTING_DEBUG_INT'
+ACCOUNTING_LEARNFROMINT='$ACCOUNTING_LEARNFROMINT'
+workdir='$workdir'
+EOF
+
+    # Link im Web Interface erzeugen
+    if [ -f /srv/www/admin/accounting.cgi -a -f /usr/local/bin/httpd-menu.sh ]; then
+        /usr/local/bin/httpd-menu.sh add "accounting.cgi" "Accounting" "" accounting
+    fi
+
+    # acc.sh
+
+    end_script
+fi
