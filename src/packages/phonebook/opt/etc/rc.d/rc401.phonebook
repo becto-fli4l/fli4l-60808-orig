@@ -1,0 +1,121 @@
+#!/bin/sh
+#-----------------------------------------------------------------------------
+# /etc/rc.d/rc401.phonebook - opt_phonebook                       __FLI4LVER__
+#
+# Creation:     10.04.2008 jk
+# Last Update:  $Id$
+#-----------------------------------------------------------------------------
+
+RestartTelmond="NO"
+
+if [ "$OPT_PHONEBOOK" = "yes" ]
+then
+  begin_script Phonebook "setting up phonebook ..."
+
+  # create phonebook.conf
+  echo "OPT_PHONEBOOK=\"$OPT_PHONEBOOK\""   >  /var/run/phonebook.conf
+  echo "PHONEBOOK_LOG=\"$PHONEBOOK_LOG\""   >>  /var/run/phonebook.conf
+  if [ "$OPT_PHONEBOOK_SR" = "yes" ]
+  then
+    if [ "$PHONEBOOK_SR_RESTORE" != "" ]
+    then
+      if [ -f "$PHONEBOOK_SR_RESTORE/phonebook" ]
+        then cp "$PHONEBOOK_SR_RESTORE/phonebook" /etc/
+      fi
+    fi
+    echo "PHONEBOOK_SR_SAVE=\"$PHONEBOOK_SR_SAVE\""   >>  /var/run/phonebook.conf
+  fi
+  
+  if [ "$OPT_PHONEBOOKSEARCH" = "yes" ]
+  then
+    echo "OPT_PHONEBOOKSEARCH=\"$OPT_PHONEBOOKSEARCH\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_DIALAUTO=\"$PHONEBOOKSEARCH_DIALAUTO\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_ADDNUMBER=\"$PHONEBOOKSEARCH_ADDNUMBER\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_ADDNUMBERSTYLE=\"$PHONEBOOKSEARCH_ADDNUMBERSTYLE\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_SEMIKOLON=\"$PHONEBOOKSEARCH_SEMIKOLON\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_AGAIN=\"$PHONEBOOKSEARCH_AGAIN\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_ADVANCE=\"$PHONEBOOKSEARCH_ADVANCE\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSEARCH_ADDNUMBERSTYLE=\"$PHONEBOOKSEARCH_ADDNUMBERSTYLE\""     >> /var/run/phonebook.conf
+    if [ "$PHONEBOOKSEARCH_MSN" != "" ]
+    then
+      RestartTelmond="Yes"
+      echo "$PHONEBOOKSEARCH_MSN" | sed "s/,/\n/g" |
+      while read line
+      do
+        msn=$( echo "$line" | sed "s/[^0-9]//g;/^[ ]*$/d" )
+        echo "exec $msn * /usr/local/bin/phonebooksearch.sh %p" >> /etc/telmond.conf
+        echo "Add $msn to telmond.conf file for Phonebooksearch" #`date +%d.%m.%Y-%H:%M:%S:` 
+      done
+    fi
+  fi
+  
+  # erzeuge phonebook.cgi.option
+  if [ "$OPT_PHONEBOOKWEBGUI" = "yes" ]
+  then
+    echo "Setting up /var/run/phonebook.cgi.option for OPT_PHONEBOOKWEBGUI"
+    /usr/local/bin/httpd-menu.sh add "phonebook.cgi" "Phonebook"
+    PWGstring="&action=opt_nr2name&sort=Unsortiert&ansicht=komfort&grep=.*"
+    idx=1
+    while [  "$idx" -le "$PHONEBOOKWEBGUI_OPTION_N" ]
+    do
+      eval PWGname='$PHONEBOOKWEBGUI_OPTION_'$idx'_NAME'
+      eval PWGwert='$PHONEBOOKWEBGUI_OPTION_'$idx'_WERT'
+      PWGstring="$PWGstring&$PWGname=$PWGwert"
+      echo "$PWGstring"
+      idx=`/usr/bin/expr $idx + 1`
+    done
+    echo "$PWGstring" > /var/run/phonebook.cgi.option
+    echo "'$PWGstring' to /var/run/phonebook.cgi.option."
+  fi
+  
+
+  # erweitere phonebook.conf und implementiere Script Aufruf in die telmond.conf
+  if [ "$OPT_PHONEBOOKSERV" = "yes" ]
+  then
+    echo "OPT_PHONEBOOKSERV=\"$OPT_PHONEBOOKSERV\""     >> /var/run/phonebook.conf
+    echo "PHONEBOOKSERV_N=\"$PHONEBOOKSERV_N\""     >> /var/run/phonebook.conf
+    idx=1
+    while [  "$idx" -le "$PHONEBOOKSERV_N" ]
+    do
+      eval Hostname='$PHONEBOOKSERV_'$idx'_HOST'
+      echo "PHONEBOOKSERV_"$idx"_HOST=\"$Hostname\"" >> /var/run/phonebook.conf
+      eval msn='$PHONEBOOKSERV_'$idx'_MSN'
+      echo "PHONEBOOKSERV_"$idx"_MSN=\"$msn\"" >> /var/run/phonebook.conf
+      # Einf黦en des Script Aufrufes in die telmond.conf
+      echo "exec $msn * /usr/local/bin/phonebookserv.sh %p %m " >> /etc/telmond.conf
+      RestartTelmond="Yes"   # Und den Telmond-Restart ausl鰏en (siehe unten)
+      eval mode='$PHONEBOOKSERV_'$idx'_MODE'
+      echo "PHONEBOOKSERV_"$idx"_MODE=\"$mode\"" >> /var/run/phonebook.conf
+      idx=`/usr/bin/expr $idx + 1`
+    done
+  fi
+
+  if [ "$PHONEBOOK_MAPSANRUFE" = "yes" ]
+  then
+    cp /srv/www/lang/calls.de /srv/www/lang/phonebook_calls.de
+    httpd-menu.sh add phonebook_calls.cgi '$_MP_calls' '$_MT_log'
+    httpd-menu.sh rem calls.cgi
+    #leider kommt das erst in rc430.httpd und wir befinden uns in rc401.phonebook
+  fi
+
+  #if [ "$OPT_PHONEBOOK_PIMPCALLS" = "yes" ]
+  #then
+  # # wie bekommt man mit sed den "\" hin???
+  # sed "s#cat \$tmp.out#sed \"s|\([a-zA-Z咪能謁[a-zA-Z咪能謀\\._-]* [0-9][0-9]*[;,] [0-9][0-9][0-9][0-9][0-9] [a-zA-Z咪能謁[a-zA-Z咪能謃 -]*\)|<a href='http://maps.google.de/maps?f=q\\\&hl=de\\\&q=\\1\\&btnG=Adressen+suchen'>\\1</a>|\" \$tmp.out#" /srv/www/admin/calls.cgi > /tmp/calls.new-$$
+  # cat /tmp/calls.new-$$ > /srv/www/admin/calls.cgi
+  # rm /tmp/calls.new-$$
+  #fi
+
+  echo "RestartTelmond=$RestartTelmond"
+
+  if [ "$RestartTelmond" = "Yes" ]
+  then
+    #Restart is needed for this reason, that the extended telmond.conf will be loaded
+    telmondcmdline=$( cat /proc/`cat /var/run/telmond.pid`/cmdline | tr "\0" " " )
+    kill `cat /var/run/telmond.pid`
+    sleep 1  # see FFL-340
+    $telmondcmdline
+  fi
+  end_script
+fi
+

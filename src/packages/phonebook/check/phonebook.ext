@@ -1,0 +1,75 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for phonebook
+#
+# Creation:     10.04.2008 jk
+# Last Update:  $Id$
+#
+# Copyright (c) 2011-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_phonebook)
+then
+    provides phonebook version 4.0.0
+    depends on fli4l version 4.0
+    depends on httpd version 4.0
+  
+  if (OPT_PHONEBOOKWEBGUI && !OPT_HTTPD) 
+  then
+    error "opt_phonebook: If you use OPT_PHONEBOOKWEBGUI, you must set OPT_HTTPD='yes'"
+  fi
+
+  if (PHONEBOOK_MAPSANRUFE == "yes") 
+  then
+    if ( !OPT_HTTPD )
+    then
+      error "opt_phonebook: If you use PHONEBOOK_MAPSANRUFE, you must set OPT_HTTPD='yes'"
+    fi
+    if ( !OPT_TELMOND || !TELMOND_LOG )
+    then
+      error "opt_phonebook: If you use PHONEBOOK_MAPSANRUFE, you must set OPT_TELMOND='yes' and TELMOND_LOG='yes'"
+    fi
+  fi
+  if (OPT_PHONEBOOKSEARCH)
+  then
+    if (!opt_telmond || !opt_isdn)
+    then
+      error "opt_phonebook: If you use OPT_PHONEBOOKSEARCH, you must set OPT_TELMOND='yes' and OPT_ISDN='yes'"
+    fi
+  fi
+  if (PHONEBOOKSEARCH_DIALAUTO == "yes" && !opt_imond)
+  then
+    error "opt_phonebook: If you use PHONEBOOKSEARCH_DIALAUTO, you must set OPT_IMOND='yes'"
+  fi
+  if (OPT_PHONEBOOKSERV == "yes")
+  then
+   if (!opt_telmond || !opt_isdn)
+   then
+     error "opt_phonebook: If you use OPT_PHONEBOOKSEARCH, you must set OPT_TELMOND='yes' and OPT_ISDN='yes'"
+   fi
+   foreach n in PHONEBOOKSERV_%_MODE
+   do
+    if ("$n" == "sclient")
+    then
+      add_to_opt "usr/bin/netcat" "mode=555"
+    fi
+    if ("$n" == "phonebookserv")
+    then
+      add_to_opt "usr/bin/netcat" "mode=555"
+    fi
+    if ("$n" == "netsend")
+    then
+     if (!opt_samba || !opt_sambatools)
+     then
+       error "opt_phonebook: If you use PHONEBOOKSERV_x_MODE='netsend', you must install OPT_SAMBA_LPD and set OPT_SAMBA='yes' and OPT_SAMBATOOLS='yes'"
+     fi
+     #stat("opt/bin/smbclient", test)
+     #if (test_res != "OK")
+     #then
+     # error "opt_phonebook: If you use PHONEBOOKSERV_x_MODE='netsend', you must install OPT_SAMBA_LPD (but not necessary set OPT_SAMBA='yes')"
+     #fi
+     #add_to_opt "bin/smbclient" "mode=555"
+    fi
+   done
+  fi
+fi
