@@ -1,0 +1,95 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc405.imond-dev - startup of imond
+# was file /etc/rc.d/imond
+#
+# Creation:     10.10.2000 fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_IMOND" = yes ]
+then
+    begin_script IMOND "starting imond ..."
+
+    if [ "$MOUNT_BOOT" != 'rw' -a "$IMOND_LOGDIR" = '/boot' ]
+    then
+        log_warn "*** /boot not mounted writeable ***"
+        sleep 10
+    fi
+
+    echo $IMOND_PORT >/var/run/imond.port
+
+    opt="-beep $IMOND_BEEP -port $IMOND_PORT  -enable $IMOND_ENABLE \
+        -dial $IMOND_DIAL -route $IMOND_ROUTE  -reboot $IMOND_REBOOT \
+        -dialmode auto"
+
+    if [ "$OPT_PPPOE_CIRC" ]
+    then
+        opt="$opt -circ yes"
+    fi
+
+    if [ "$IMOND_LED" ]
+    then
+        opt="$opt -led /dev/$IMOND_LED"
+    fi
+
+    if [ -f /etc/rc.d/rc325.syslogd ]
+    then
+        opt="$opt -log-to-syslog"
+    fi
+
+    if [ "$IMOND_LOG" = "yes" ]
+    then
+        opt="$opt -imond-log-dir $IMOND_LOGDIR"
+    fi
+
+    if [ "$OPT_TELMOND" = "yes" -a "$TELMOND_LOG" = "yes" ]
+    then
+        opt="$opt -telmond-log-dir $TELMOND_LOGDIR"
+    fi
+
+    mgetty_logdir=''
+    case "$OPT_MGETTY" in
+        yes)
+            mgetty_logdir="$MGETTY_FAXDIR"
+        ;;
+        *)
+            case "$OPT_FAXRCV" in
+                yes)
+                    case "$FAXRCV_IMONC_LIST" in
+                        0) ;;
+                        *)
+                            if echo "$FAXRCV_IMONC_LIST" | grep -q " "
+                            then
+                                mgetty_logdir="$FAXRCV_IMONC_DIR"
+                            else
+                                eval mgetty_logdir='$FAXRCV_'$FAXRCV_IMONC_LIST'_DIRECTORY'
+                            fi
+                        ;;
+                    esac
+                ;;
+            esac
+        ;;
+    esac
+
+    if [ "$mgetty_logdir" ]
+    then
+        opt="$opt -mgetty-log-dir $mgetty_logdir"
+    fi
+
+    for idx in `seq 1 $IP_NET_N`
+    do
+      eval ipaddr=\$IP_NET_$idx
+      [ $ipaddr = dhcp ] || opt="$opt -ip `echo $ipaddr | sed -e 's/\/.*//'`"
+    done
+
+    ( /usr/local/bin/imond-dev $opt \
+        -pass "$IMOND_PASS" -admin-pass "$IMOND_ADMIN_PASS" 
+	logger "imond terminated"
+    ) &
+
+    sleep 2                                            # wait for output
+    cat /etc/imond.conf
+
+    end_script
+fi

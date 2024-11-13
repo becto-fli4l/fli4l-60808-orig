@@ -1,0 +1,49 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc980.ifconfig - shut down all network interfaces
+#
+# Creation:     12.05.2002    rr
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script IFCONFIG "Shutting down network interfaces ..."
+
+INTERFACES=`ip link show | sed -n -e 's/^[0-9]\+:\([-[:space:]a-z0-9.]*\).*/\1/p' | sort -r`
+rc=0
+for i in $INTERFACES
+do
+    case $i in
+        # vlan-devices
+        eth*.*)
+            log_info "Shutting down $i ..."
+            ip link set dev $i down || rc=1
+            ;;
+    esac
+done
+
+for i in $INTERFACES
+do
+    case $i in
+        # bridge- or bonding-devices
+        br*|bond*)
+            log_info "Shutting down $i ..."
+            ip link set dev $i down || rc=1
+            ;;
+    esac
+done
+
+for i in $INTERFACES
+do
+    case $i in
+        eth*.*|br*|bond*)
+            ;;
+        # all other devices
+        *)
+            log_info "Shutting down $i ..."
+            ip link set dev $i down || rc=1
+            ;;
+    esac
+done
+
+SCRIPT_RESULT=$rc
+end_script

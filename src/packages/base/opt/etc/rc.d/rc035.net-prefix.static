@@ -1,0 +1,39 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc035.net-prefix.static
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_NET_PREFIX" = "yes" ]
+then
+
+begin_script NET_PREFIX_STATIC "registration of static network prefixes..."
+
+#----------------------------------------------------------------------------
+# register static network prefixes
+#----------------------------------------------------------------------------
+for i in $(seq 1 ${NET_PREFIX_N:-0})
+do
+    eval type=\$NET_PREFIX_${i}_TYPE
+    if [ "$type" = "static" ]
+    then
+        eval name=\$NET_PREFIX_${i}_NAME
+        eval ipv4=\$NET_PREFIX_${i}_STATIC_IPV4
+        eval ipv6=\$NET_PREFIX_${i}_STATIC_IPV6
+        if [ -n "$ipv4" -a "$OPT_IPV4" = "yes" ]
+        then
+            log_info "  $name --> $ipv4"
+            circuit_register_prefix "$name" ipv4 "$ipv4" forever forever
+        fi
+        if [ -n "$ipv6" -a "$OPT_IPV6" = "yes" ]
+        then
+            log_info "  $name --> $ipv6"
+            circuit_register_prefix "$name" ipv6 "$ipv6" forever forever
+        fi
+    fi
+done
+
+end_script
+
+fi

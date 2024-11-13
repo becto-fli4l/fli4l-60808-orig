@@ -1,0 +1,45 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc005.mom.init - message-oriented middleware         __FLI4LVER__
+#
+#
+# Creation:     2012-02-02 kristov
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script RC005_MOM "initializing MOM (Message-Oriented Middleware) ..."
+
+. /usr/share/mom/core
+
+mkdir -p "$mom_run_dir"
+mkdir -p "$mom_endpoints_dir"
+# FFL-1377: this allows clients running under non-root accounts to create MOM endpoints
+chmod -R 777 "$mom_endpoints_dir"
+> "$mom_types"
+echo 1 > "$mom_next_message_id"
+# FFL-2066: this allows clients running under non-root accounts to send and receive MOM endpoints
+chmod 777 "$mom_next_message_id"
+
+# register root message type
+mom_register_message_type message "" \
+	id \
+	type \
+	sender
+
+# register type for message replies
+mom_register_message_type reply_message message \
+	for
+
+# register root event type which is a special message type
+#
+# NOTE: events are technically not different from messages; however, we use
+# events for publishing information where one does not expect a reply and does
+# not rely on the receiver's reaction (typically events are broadcast without
+# even knowing who receives them), and (non-event) messages when expecting the
+# receiver(s) to act upon the message in a certain way and possibly providing a
+# (or multiple) reply/replies meaningful to the sender
+mom_register_message_type event message
+
+[ -n "$mom_ep" ]
+
+end_script

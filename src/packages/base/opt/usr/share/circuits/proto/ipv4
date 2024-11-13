@@ -1,0 +1,48 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/share/circuits/proto/ipv4 - generic circuits (IPv4 specific)
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+circuit_protocols="$circuit_protocols ipv4"
+
+# Handles the IPv4-specific parts when adding a circuit.
+# Input:
+#   $1 = circuit information file
+#   $2 = variable receiving an error message (if any)
+# Side effects:
+#   - circ_default_route is set to 'yes' if a default IPv4 route is associated
+#     with this circuit.
+# Exit code:
+#   0 if network has been successfully handled by this function
+#   1 if an error occurred (in this case, $2 is set to an error message)
+circuit_add_ipv4()
+{
+    local circ_nets_ipv4_n=${circ_nets_ipv4_n:-0}
+    circuit_write_field $circ_id circ_nets_ipv4_n $circ_nets_ipv4_n
+
+    local i
+    for i in $(seq 1 $circ_nets_ipv4_n)
+    do
+        eval local net=\$circ_nets_ipv4_$i gateway=\$circ_nets_ipv4_${i}_gateway
+        local canon_net=$(circuit_resolve_address "$net" ipv4)
+        local canon_gw=$(circuit_resolve_address "$gateway" ipv4 addr)
+        if [ -z "$canon_net" ]
+        then
+            eval $2=\"invalid IPv4 network \'\$net\'\"
+            return 2
+        elif [ -z "$canon_gw" -a -n "$gateway" ]
+        then
+            eval $2=\"invalid IPv4 gateway \'\$gateway\'\"
+            return 2
+        else
+            eval circ_nets_ipv4_$i=\$canon_net
+            circuit_write_field $circ_id circ_nets_ipv4_$i $canon_net
+            circuit_write_field $circ_id circ_nets_ipv4_${i}_gateway $canon_gw
+            [ "$canon_net" = "0.0.0.0/0" ] && circ_default_route=yes
+        fi
+    done
+
+    [ $circ_nets_ipv4_n -gt 0 ]
+}

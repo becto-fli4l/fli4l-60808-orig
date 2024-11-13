@@ -1,0 +1,292 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc015.mom.types.circuit - circuit message types      __FLI4LVER__
+#
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# circuit messages and message replies
+mom_register_message_type circuit_message message
+mom_register_message_type circuit_reply_message reply_message
+
+# circuit queue messages
+mom_register_message_type circuit_queue_message message
+
+# circuit events
+mom_register_message_type circuit_event event \
+	id
+
+# router events
+mom_register_message_type router_event event
+
+# internal circd events
+mom_register_message_type circd_event event
+
+###################
+# PROCESS MESSAGES
+###################
+
+mom_register_message_type child_exited_circd_event circd_event
+
+####################
+# LIFETIME MESSAGES
+####################
+
+#### ACTIONS ####
+
+# create circuit
+# if not part of a creation group (field "creation_group"), post processing is
+# done immediately after the circuit's creation has been completed
+# if part of a creation group, post processing is deferred to the moment when
+# the creation group ends
+mom_register_message_type create_circuit_message circuit_message \
+	name \
+	type \
+	up \
+	%chargeint \
+	%debug \
+	%dialmode \
+	%active \
+	%priority \
+	%times \
+	%wait \
+	%hup_timeout \
+	%protocols \
+	%usepeerdns \
+	%class_% \
+	%deps \
+	%bundle \
+	%origin \
+	%creation_group
+mom_register_message_type create_circuit_reply_message circuit_reply_message
+mom_register_message_type ack_create_circuit_reply_message create_circuit_reply_message \
+	id
+mom_register_message_type nak_create_circuit_reply_message create_circuit_reply_message \
+	errmsg
+
+# clone circuit
+mom_register_message_type clone_circuit_message circuit_message \
+	id \
+	%adaptor \
+	%adaptor_arg
+mom_register_message_type clone_circuit_reply_message circuit_reply_message
+mom_register_message_type ack_clone_circuit_reply_message clone_circuit_reply_message \
+	id
+mom_register_message_type nak_clone_circuit_reply_message clone_circuit_reply_message \
+	errmsg
+
+# destroy circuit
+mom_register_message_type destroy_circuit_message circuit_message \
+	id
+
+# start a new circuit creation group
+mom_register_message_type start_creation_group_circuit_message circuit_message
+mom_register_message_type start_creation_group_circuit_reply_message circuit_reply_message \
+	id
+
+# end a circuit creation group
+mom_register_message_type end_creation_group_circuit_message circuit_message \
+	id
+
+#### EVENTS ####
+
+# circuit has been created
+mom_register_message_type created_circuit_event circuit_event
+
+# circuit has been destroyed
+mom_register_message_type destroyed_circuit_event circuit_event
+
+#################
+# STATE MESSAGES
+#################
+
+#### ACTIONS <*> --> circd ####
+
+# activate circuit
+mom_register_message_type activate_circuit_message circuit_message \
+	id
+# dialup circuit
+mom_register_message_type dialup_circuit_message circuit_message \
+	id
+# hangup circuit
+mom_register_message_type hangup_circuit_message circuit_message \
+	id
+# deactivate circuit
+mom_register_message_type deactivate_circuit_message circuit_message \
+	id
+# fail circuit
+mom_register_message_type fail_circuit_message circuit_message \
+	id
+# start daemon
+mom_register_message_type start_daemon_circuit_message circuit_message \
+	id \
+	daemon \
+	%daemon_args \
+	%cleanup_func
+# stop daemon
+mom_register_message_type stop_daemon_circuit_message circuit_message \
+	id \
+	%signal
+# attach to bundle
+mom_register_message_type attach_to_bundle_circuit_message circuit_message \
+	idchild \
+	idbundle
+
+# messages for state retrieval
+mom_register_message_type state_circuit_message circuit_message
+mom_register_message_type state_circuit_reply_message circuit_reply_message
+
+# get circuits by state
+mom_register_message_type get_by_state_circuit_message state_circuit_message \
+	states
+mom_register_message_type get_by_state_circuit_reply_message state_circuit_reply_message \
+	states \
+	circuits
+
+# get circuit state
+mom_register_message_type get_state_circuit_message state_circuit_message \
+	id
+mom_register_message_type get_state_circuit_reply_message circuit_reply_message \
+	id \
+	state
+
+# get circuit state + dialmode + some important properties for all circuits
+mom_register_message_type get_all_states_circuit_message state_circuit_message
+mom_register_message_type get_all_states_circuit_reply_message circuit_reply_message \
+	circuit_%_id \
+	circuit_%_name \
+	circuit_%_alias \
+	circuit_%_type \
+	circuit_%_dev \
+	%circuit_%_class_% \
+	%circuit_%_deps \
+	circuit_%_state \
+	circuit_%_local_dialmode \
+	circuit_%_effective_dialmode
+
+# is circuit online?
+mom_register_message_type is_online_circuit_message state_circuit_message \
+	id \
+	%l3prot
+mom_register_message_type is_online_circuit_reply_message circuit_reply_message \
+	id \
+	%l3prot
+mom_register_message_type ack_is_online_circuit_reply_message is_online_circuit_reply_message
+mom_register_message_type nak_is_online_circuit_reply_message is_online_circuit_reply_message
+
+#### BROADCAST EVENTS circd --> <*> ####
+
+# circuit changes state
+mom_register_message_type state_changed_circuit_event circuit_event \
+	old_state \
+	new_state
+
+# router changes state
+mom_register_message_type state_changed_router_event router_event \
+	old_state \
+	new_state
+
+#### UNICAST EVENTS <circuit> --> circd ####
+
+# circuit events specific to a layer-3 protocol
+mom_register_message_type l3prot_circuit_event circuit_event \
+	l3prot
+# a layer-3 protocol comes up
+mom_register_message_type up_l3prot_circuit_event l3prot_circuit_event
+# a layer-3 protocol goes down
+mom_register_message_type down_l3prot_circuit_event l3prot_circuit_event
+
+# link events
+mom_register_message_type link_circuit_event circuit_event
+# a link (part of a bundle circuit) has just come up
+mom_register_message_type up_link_circuit_event link_circuit_event
+# a link (part of a bundle circuit) has just gone down
+#  force_hangup: If empty and this link is daemon-controlled, hanging up the
+#       circuit is delayed until the controlling daemon terminates. If
+#       nonempty, the circuit is hung up immediately.
+mom_register_message_type down_link_circuit_event link_circuit_event \
+	%force_hangup
+
+# control events
+mom_register_message_type control_circuit_event circuit_event \
+	status_code
+# dialling up a circuit initiated
+mom_register_message_type dialup_control_circuit_event control_circuit_event
+# hanging up a circuit initiated
+mom_register_message_type hangup_control_circuit_event control_circuit_event
+
+# daemon events
+mom_register_message_type daemon_circuit_event circuit_event \
+	pid
+mom_register_message_type daemon_exited_circuit_event daemon_circuit_event \
+	status_code
+
+#####################
+# DIAL MODE MESSAGES
+#####################
+
+#### ACTIONS ####
+
+# dialmode messages
+mom_register_message_type dialmode_message message
+# dialmode reply messages
+mom_register_message_type dialmode_reply_message reply_message
+
+# ---- getters ----
+
+# get global dialmode
+mom_register_message_type get_global_dialmode_message dialmode_message
+mom_register_message_type get_global_dialmode_reply_message dialmode_reply_message \
+	mode
+# get local dialmode
+mom_register_message_type get_local_dialmode_message dialmode_message \
+	id
+mom_register_message_type get_local_dialmode_reply_message dialmode_reply_message \
+	id \
+	mode
+# get effective dialmode
+mom_register_message_type get_effective_dialmode_message dialmode_message \
+	id
+mom_register_message_type get_effective_dialmode_reply_message dialmode_reply_message \
+	id \
+	mode
+
+# ---- setters ----
+
+# set global dialmode
+mom_register_message_type set_global_dialmode_message dialmode_message \
+	mode
+# set local dialmode
+mom_register_message_type set_local_dialmode_message dialmode_message \
+	id \
+	mode
+
+#### EVENTS ####
+
+# dialmode events
+mom_register_message_type dialmode_event event \
+	old_mode \
+	new_mode
+
+# global dialmode changed
+mom_register_message_type global_dialmode_changed_event dialmode_event
+
+# local dialmode changed
+mom_register_message_type local_dialmode_changed_event dialmode_event \
+	id
+
+# effective dialmode changed
+mom_register_message_type effective_dialmode_changed_event dialmode_event \
+	id
+
+#################
+# QUEUE MESSAGES
+#################
+
+# dialup circuit
+mom_register_message_type dialup_circuit_queue_message circuit_queue_message
+# hangup circuit
+mom_register_message_type hangup_circuit_queue_message circuit_queue_message
+# quit
+mom_register_message_type quit_circuit_queue_message circuit_queue_message

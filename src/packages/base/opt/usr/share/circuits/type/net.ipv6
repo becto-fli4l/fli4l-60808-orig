@@ -1,0 +1,112 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/net.ipv6 - net circuits (IPv6 specific)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /usr/share/radvd.api
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+net_circuit_add_ipv6()
+{
+    [ -n "$circ_net_ipv6_address" ] || return 1
+    circuit_write_field $circ_id circ_net_ipv6_address "$circ_net_ipv6_address"
+    circuit_write_field $circ_id circ_net_ipv6_address_resolved ""
+    circuit_write_field $circ_id circ_net_ipv6_advertise_prefix "$circ_net_ipv6_advertise_prefix"
+    circuit_write_field $circ_id circ_net_ipv6_advertise_prefix_valid_lifetime "$circ_net_ipv6_advertise_prefix_valid_lifetime"
+    circuit_write_field $circ_id circ_net_ipv6_advertise_prefix_preferred_lifetime "$circ_net_ipv6_advertise_prefix_preferred_lifetime"
+    circuit_write_field $circ_id circ_net_ipv6_advertise_prefix_on_link "$circ_net_ipv6_advertise_prefix_on_link"
+}
+
+# $1 = circuit identifier
+# $2 = circuit device
+# $3 = IPv6 address to add
+net_circuit_add_address_ipv6()
+{
+    local id=$1 dev=$2 addr=$3
+    ip -6 addr add $addr dev $dev
+    /etc/ppp/addrv6-up $dev $id "$addr" &
+}
+
+# $1 = circuit identifier
+# $2 = circuit device
+# $3 = IPv6 address to remove
+net_circuit_remove_address_ipv6()
+{
+    local id=$1 dev=$2 addr=$3
+    ip -6 addr del $addr dev $dev
+    /etc/ppp/addrv6-down $dev $id "$addr" &
+}
+
+# $1 = circuit identifier
+# $2 = circuit device
+# $3 = event ("up", "change", or "down")
+net_circuit_pre_change_ipv6()
+{
+    return 0
+}
+
+# $1 = circuit identifier
+# $2 = circuit device
+# $3 = event:
+#      "up": addresses have been installed
+#         $5 = list of installed addresses
+#      "change": addresses have been changed
+#         $5 = list of removed addresses
+#         $6 = list of installed addresses
+#      "down": addresses have been removed
+#         $5 = list of removed addresses
+net_circuit_post_change_ipv6()
+{
+    local id=$1 event=$3 old_addresses new_addresses advertise
+
+    case $event in
+    up)
+        new_addresses=$4
+        ;;
+    change)
+        old_addresses=$4
+        new_addresses=$5
+        ;;
+    down)
+        old_addresses=$4
+        ;;
+    esac
+
+    circuit_read_field $id circ_net_ipv6_advertise_prefix advertise
+    if [ "$advertise" = "yes" -a -n "${old_addresses}${new_addresses}" ]
+    then
+        local prefix adv_valid_lft adv_pref_lft adv_on_link
+
+        circuit_read_field $id circ_net_ipv6_advertise_prefix_valid_lifetime adv_valid_lft
+        circuit_read_field $id circ_net_ipv6_advertise_prefix_preferred_lifetime adv_pref_lft
+        circuit_read_field $id circ_net_ipv6_advertise_prefix_on_link adv_on_link
+
+        lazy_begin
+        radvd_remove_configuration $id
+
+        old_prefixes=$(list_foreach "echo \$(netcalc network "\$1")/\${1##*/}" $old_addresses)
+        new_prefixes=$(list_foreach "echo \$(netcalc network "\$1")/\${1##*/}" $new_addresses)
+
+        # if a prefix is both in the list of removed and the list of added
+        # prefixes, we have to ignore it here because we want to advertise it
+        # only once with the correct non-zero lifetimes
+        for prefix in $(list_unique $(list_sub "$old_prefixes" $new_prefixes))
+        do
+            radvd_advertise_prefix $id $prefix 0 0 ${adv_on_link//no}
+        done
+
+        for prefix in $(list_unique $new_prefixes)
+        do
+            set -- $(circuit_get_address_lifetimes "${prefix%%/*}" ipv6 "$adv_valid_lft" "$adv_pref_lft")
+            local validlft=$1
+            local preflft=$2
+            radvd_advertise_prefix $id $prefix $validlft $preflft ${adv_on_link//no} yes
+        done
+        lazy_end
+    fi
+
+    return 0
+}

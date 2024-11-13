@@ -1,0 +1,55 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc335.logip - log ip of wan-interface
+#
+# Creation:     2007-10-12 lanspezi
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_LOGIP" = yes ]
+then
+    begin_script LOGIP "configure logip ..."
+
+    map2persistent LOGIP_LOGDIR
+
+    mkdir -p $LOGIP_LOGDIR
+
+    if [ ! -f ${LOGIP_LOGDIR}/logip.log ]
+    then
+        log_warn "${LOGIP_LOGDIR}/logip.log does not exist!"
+        log_warn "If this is your first boot with OPT_LOGIP enabled you can"
+        log_warn "ignore this message. Otherwise your logip-logfile is not"
+        log_warn "saved permanently. In this case you should read the documentation again!"
+    fi
+
+    # check for writeable directory
+    if [ -d ${LOGIP_LOGDIR} ]
+    then
+        if : > ${LOGIP_LOGDIR}/test.$$ 2> /dev/null
+        then
+            rm ${LOGIP_LOGDIR}/test.$$
+            logdir_ok=true
+        else
+            log_error "cannot write to LOGIP_LOGDIR"
+        fi
+    else
+        mkdir -p ${LOGIP_LOGDIR}
+        if [ -d ${LOGIP_LOGDIR} ]
+        then
+            logdir_ok=true
+        else
+            log_error "could not create directory for LOGIP"
+        fi
+    fi
+
+    if [ "$logdir_ok" = "true" ]
+    then
+        cat > /var/run/logip.conf <<EOF
+LOGIP_FORMAT="%-26s | %-10s | %-43s | %-10s | %-32s | %3s"
+LOGIP_LOGDIR=$LOGIP_LOGDIR
+EOF
+        >> ${LOGIP_LOGDIR}/logip.log
+    fi
+
+    end_script
+fi

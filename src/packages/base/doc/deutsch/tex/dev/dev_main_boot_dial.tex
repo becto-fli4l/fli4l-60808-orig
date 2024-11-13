@@ -1,0 +1,669 @@
+% Last Update: $Id$
+
+\section{Hochfahren, Herunterfahren, Einwählen und Auflegen unter fli4l}
+
+\subsection{Bootkonzept}
+
+fli4l 2.0 sollte eine saubere Installation auf eine Festplatte oder ein
+CompactFlash(TM)-Medium bieten, aber auch eine Installation auf ein
+Zip-Medium oder die Erstellung einer bootfähigen CD-ROM sollte möglich
+sein. Zusätzlich sollte die Festplattenversion sich nicht grundlegend von
+einer Installation auf Diskette\footnote{Ursprünglich konnte fli4l auch
+von einer Diskette betrieben werden. Da fli4l inzwischen dafür zu groß geworden
+ist, wird dies nicht mehr unterstützt.} unterscheiden.
+
+Diese Anforderungen wurden realisiert, indem die Dateien des
+\texttt{opt.img}-Archivs aus der
+bisherigen RAM-Disk auf eine anderes Medium verlagert werden können. Dies
+kann eine Partition auf einer Festplatte bzw.\ einem CF-Medium sein. Dieses
+zweite Volume wird unter \texttt{/opt} eingehängt, und dort liegende Programme
+werden nur noch über symbolische Links in das RootFS integriert. Das entstehende Layout im
+RootFS-Dateisystem entspricht dann dem im \texttt{opt}-Verzeichnis der
+ausgepackten fli4l-Distribution mit einer Ausnahme~-- das \texttt{files}-Präfix
+entfällt. Die Datei \texttt{opt/etc/rc} ist dann also direkt unter \texttt{/etc/rc} zu
+finden, \texttt{opt/bin/busybox} unter
+\texttt{/bin/busybox}. Dass diese Dateien unter Umständen nur symbolische Verknüpfungen
+auf ein im Nur-Lese-Modus eingehängtes Volume sind, kann man ignorieren,
+solange man die Dateien nicht modifizieren möchte. Will man dies tun,
+muss man die Dateien vorher mit \texttt{mk\_writable} (s.\,u.) schreibbar machen.
+
+\subsection{Start- und Stopp-Skripte}
+
+Skripte, die beim Hochfahren des Systems ausgeführt werden sollen, befinden
+sich in den Verzeichnissen \texttt{opt/etc/boot.d/} und \texttt{opt/etc/rc.d/}
+und werden auch in dieser Reihenfolge ausgeführt. Des Weiteren befinden sich in
+\texttt{opt/etc/rc0.d/} Skripte, die beim Herunterfahren des Systems ausgefühlt
+werden.
+
+\wichtig{Da zum Ausführen dieser Skripte kein separater Prozess
+erzeugt wird, dürfen sie nicht mit "`exit"' abgeschlossen
+werden. Ein solcher Befehl führt zum vorzeitigen Abbruch des Bootvorgangs!}
+
+\subsubsection{Start-Skripte in \texttt{opt/etc/boot.d/}}
+
+Skripte, die in diesem Verzeichnis liegen, werden als erstes
+ausgeführt. Ihre Aufgabe ist es, das Boot-Volume einzuhängen, die
+auf dem Boot-Medium liegende Konfigurationsdatei \texttt{rc.cfg} einzulesen und
+das Opt-Archiv zu entpacken. Je nach \jump{BOOTTYPE}{Boot-Typ}
+sind diese Skripte mehr oder weniger kompliziert und tun die folgenden
+Dinge:
+
+\begin{itemize}
+\item Laden von Hardware-Treibern (optional)
+\item Boot-Volume einhängen (optional)
+\item Konfigurationsdatei \texttt{rc.cfg} vom Boot-Volume einlesen und
+      in die Datei \texttt{/etc/rc.cfg} schreiben
+\item Einhängen des Opt-Volumes (optional)
+\item Extrahieren des Opt-Archivs (optional)
+\end{itemize}
+
+Damit die Skripte überhaupt eine Chance haben, etwas über die
+fli4l-Konfiguration zu erfahren, wird die Konfigurationsdatei auch ins
+RootFS-Archiv unter \texttt{/etc/rc.cfg} eingebunden; die
+Konfigurationsvariablen in dieser Datei stehen den Start-Skripten in
+\texttt{opt/etc/boot.d/} direkt zur Verfügung. Nach dem Einhängen des
+Boot-Volumes wird die \texttt{/etc/rc.cfg} durch die Konfigurationsdatei
+vom Boot-Volume ersetzt, so dass den Start-Skripten in \texttt{opt/etc/rc.d/}
+(s.\,u.) die aktuelle Konfiguration vom Boot-Volume zur Verfügung steht.
+\footnote{Normalerweise sind diese beiden Dateien identisch. Eine Abweichung
+entsteht nur, wenn die Konfigurationsdatei auf dem Boot-Volume händisch
+editiert wird, etwa um die Konfiguration nachträglich abzuändern, ohne die
+fli4l-Archive neu zu bauen.}
+
+\subsubsection{Start-Skripte in \texttt{opt/etc/rc.d/}}
+
+Befehle, die immer beim Starten des Routers ausgeführt werden müssen,
+können in Skripten im Verzeichnis \texttt{opt/etc/rc.d/} abgelegt werden. Hierbei
+gelten folgende Konventionen:
+
+\begin{enumerate}
+  \item Es gilt folgende Namenskonvention:
+
+\begin{example}
+\begin{verbatim}
+    rc<dreistellige Zahl>.<Name des OPTs>
+\end{verbatim}
+\end{example}
+      
+    Die Skripte werden in aufsteigender Reihenfolge der Zahlen
+    gestartet. Ist mehreren Skripten dieselbe Zahl zugeordnet,
+    entscheidet die alphabetische Sortierung nach dem Punkt. Falls
+    der Start eines Pakets erst nach einem anderen erfolgen darf,
+    wird das durch die Zahl festgelegt.
+
+    Hier eine ungefähre Richtlinie, welche Nummern für welche Aufgaben
+    verwendet werden sollten:
+
+    \begin{table}[htbp]
+    \centering
+    \begin{tabular}{lp{0.8\textwidth}}
+            \hline
+            Nummer        &       Aufgabe         \\
+            \hline
+            \hline
+            000-099       &       Grundsystem (Hardware, Zeitzone, Dateisystem) \\
+            100-199       &       Kernel-Module (Treiber) \\
+            200-299       &       externe Verbindungen (PPPoE, ISDN4Linux, PPtP) \\
+            300-399       &       Netzwerk (Routing, Interfaces, Paketfilter) \\
+            400-497       &       Server (DHCP, HTTPD, Proxy, etc.) \\
+            498-499       &       reserviert (Aktivierung des Circuit-Systems) \\
+            500-997       &       nach Belieben (ab hier können Skripte von Circuits
+                                  kontrollierte Verbindungen nutzen und laufen
+                                  möglicherweise parallel zu einer Einwahl) \\
+            998-999       &       reserviert (bitte nicht benutzen!) \\
+            \hline
+    \end{tabular}
+    \end{table}
+
+  \item In diesen Skripten \emph{müssen} alle Funktionen, die das RootFS
+    verändern, hinterlegt werden, etwa das Anlegen eines
+    Verzeichnisses \texttt{/var/log/lpd}.
+
+  \item In diesen Skripten dürfen \emph{keine} Schreibzugriffe auf
+    Dateien erfolgen, die Teil des Opt-Archivs sein können, da diese Dateien
+    auf einem im Nur-Lese-Modus eingehängten Volume liegen können.
+    Muss man eine solche Datei modifizieren, muss man sie
+    vorher mit Hilfe der Funktion \texttt{mk\_writable} (s.\,u.) beschreibbar
+    machen. Durch den Aufruf der Funktion wird die Datei (wenn nötig) als
+    beschreibbare Kopie im RootFS abgelegt. Ist die Datei bereits beschreibbar,
+    bewirkt der \texttt{mk\_writable}-Aufruf nichts.
+    
+    \wichtig{\texttt{mk\_writable} muss direkt auf Dateien im RootFS angewandt
+    werden, nicht über den Umweg des \texttt{opt}-Verzeichnisses. Will man
+    also \texttt{/usr/local/bin/foo} modifizieren, ruft man
+    \texttt{mk\_writable} mit dem Argument \texttt{/usr/local/bin/foo} auf.}
+
+  \item Diese Skripte müssen vor der Ausführung der eigentlichen
+    Befehle prüfen, ob das dazugehörige OPT auch aktiv ist. Das ist
+    normalerweise durch eine einfache Fallunterscheidung erledigt:
+
+\begin{example}
+\begin{verbatim}
+    if [ "$OPT_<OPT-Name>" = "yes" ]
+    then
+        ...
+        # Hier OPT starten!
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+  \item Um die Fehlersuche zu erleichtern, sollten die Skripte mit
+    \texttt{begin\_script} und \texttt{end\_script} geklammert werden:
+
+\begin{example}
+\begin{verbatim}
+    if [ "$OPT_<OPT-Name>" = "yes" ]
+    then
+        begin_script FOO "configuring foo ..."
+        ...
+        end_script
+    fi
+\end{verbatim}
+\end{example}
+
+    Die Fehlersuche einzelner Start-Skripte kann man dann einfach via
+    \verb+FOO_DO_DEBUG='yes'+ aktivieren.
+
+  \item Den Skripten stehen alle Konfigurationsvariablen
+    direkt zur Verfügung. Im Abschnitt \jump{dev:sec:config-variables}{"`Umgang
+    mit Konfigurationsvariablen"'} wird erklärt, wie man von anderen Skripten
+    aus auf die Konfigurationsvariablen zugreifen kann.
+
+  \item Der Pfad \texttt{/opt} darf auch nicht als Speicherplatz für
+    Datenbestände der OPTs benutzt werden. Falls zusätzlicher
+    Speicherplatz benötigt wird, sollte dem Benutzer über eine
+    Konfigurationsvariable die Möglichkeit gegeben werden, einen geeigneten
+    Pfad auszuwählen. Je nach Art der zu speichernden Daten (persistente oder
+    transiente Daten) sind verschiedene Standard-Belegungen sinnvoll. So bieten
+    sich für transiente Daten etwa Pfade unterhalb von \texttt{/var/run/} an;
+    für persistente Daten sollte die Funktion
+    \jump{dev:sec:persistent-data}{map2persistent} in Kombination mit einer
+    geeigneten Konfigurationsvariable verwendet werden.
+
+\end{enumerate}
+
+\subsubsection{Stopp-Skripte in \texttt{opt/etc/rc0.d/}}
+
+Jeder Rechner muss mal heruntergefahren oder neu gestartet werden. Nun kann
+es vorkommen, dass man Vorgänge ausführen muss, bevor der Rechner
+heruntergefahren oder neu gestartet wird. Zum Herunterfahren und Neustarten
+sind die Befehle "`halt"' bzw.\ "`reboot"' zuständig. Diese Befehle werden auch
+aufgerufen, wenn man im IMONC oder in der Web-GUI auf die entsprechenden
+Schaltflächen klickt.
+
+Alle Stopp-Skripte liegen im Verzeichnis \texttt{opt/etc/rc0.d/}. Ihre Dateinamen
+werden analog zu den Start-Skripten gebildet. Sie werden ebenfalls in
+\emph{auf}steigender Reihenfolge der Zahlen ausgeführt.
+
+\subsection{Hilfsfunktionen}
+
+In \texttt{/etc/boot.d/base-helper} werden verschiedene Funktionen
+bereitgestellt, die von den Start- und anderen Skripten verwendet werden
+können. Das betrifft Dinge wie Unterstützung zur Fehlersuche, Laden von
+Kernel-Modulen oder Ausgabe von Meldungen.
+Die einzelnen Funktionen werden im Folgenden aufgelistet und kurz beschrieben.
+
+\subsubsection{Skript-Steuerung}
+
+\begin{description}
+
+\item[\texttt{begin\_script <Symbol> <Meldung>}:]
+Gibt eine Meldung aus und aktiviert die Fehlersuche im Skript mittels
+\texttt{set -x}, falls \var{<Symbol>\_DO\_DEBUG} auf "`yes"' steht.
+
+\item[\texttt{end\_script}:]
+Gibt eine Abschluss-Meldung aus und deaktiviert
+die Fehlersuche, falls sie mit \texttt{begin\_script} aktiviert wurde. Für
+jeden \texttt{begin\_script}-Aufruf muss es einen zugehörigen
+\texttt{end\_script}-Aufruf geben (und umgekehrt).
+
+\end{description}
+
+\subsubsection{Laden von Kernel-Modulen}
+
+\begin{description}
+
+\item[\texttt{do\_modprobe [-q] <Modul> <Parameter>*}:]
+Lädt ein Kernel-Modul inkl.
+eventueller Parameter bei gleichzeitiger Auflösung der Modulabhängigkeiten.
+Der Parameter "`-q"' verhindert, dass im Fehlerfall eine Meldung auf der Konsole
+ausgegeben und ins Boot-Protokoll geschrieben wird.
+Die Funktion liefert im Erfolgsfall den Rückgabewert null zurück und im
+Fehlerfall einen Wert ungleich null. Damit lässt sich Code schreiben, der
+ein Fehlschlagen des Ladens eines Kernel-Moduls geeignet behandelt:
+
+\begin{example}
+\begin{verbatim}
+    if do_modprobe -q acpi-cpufreq
+    then
+        # kein CPU-Frequenzsteuerung via ACPI
+        log_error "CPU-Frequenzsteuerung via ACPI nicht verfügbar!"
+        # [...]
+    else
+        log_info "CPU-Frequenzsteuerung via ACPI aktiviert."
+        # [...]
+    fi
+\end{verbatim}
+\end{example}
+
+\item[\texttt{do\_modrobe\_if\_exists [-q] <Modulpfad> <Modul> <Parameter>*}:]\mbox{}\\
+Prüft, ob das Modul \texttt{/lib/modules/<Kernel-Version>/<Modulpfad>/<Modul>}
+existiert und ruft bei Vorhandensein die Funktion \texttt{do\_modprobe} auf.
+
+\wichtig{Das Modul muss tatsächlich unter dem angegebenen Modulnamen existieren,
+der Modulname darf kein Alias sein. Bei einem Alias wird direkt
+\texttt{do\_modprobe} aufgerufen.}
+
+\end{description}
+
+\subsubsection{Meldungen und Fehlerbehandlung}
+
+\begin{description}
+
+\item[\texttt{log\_info <Meldung>}:] Schreibt eine Meldung auf
+die Konsole und nach \texttt{/bootmsg.txt}. Wird keine Meldung als
+Parameter übergeben, liest \texttt{log\_info} von der Standard-Eingabe. Die
+Funktion liefert als Rückgabewert immer null zurück.
+
+\item[\texttt{log\_warn <Meldung>}:] Schreibt eine Warnmeldung auf
+die Konsole und nach \texttt{/bootmsg.txt}, wobei vor die Meldung die
+Zeichenkette \texttt{WARN:} gesetzt wird. Wird keine Meldung als
+Parameter übergeben, liest \texttt{log\_warn} von der Standard-Eingabe.
+Die Funktion liefert als Rückgabewert immer null zurück.
+
+\item[\texttt{log\_error <Meldung>}:] Schreibt eine Fehlermeldung auf
+die Konsole und nach \texttt{/bootmsg.txt}, wobei vor die Meldung die
+Zeichenkette \texttt{ERR:} gesetzt wird. Wird keine Meldung als
+Parameter übergeben, liest \texttt{log\_error} von der Standard-Eingabe.
+Die Funktion liefert als Rückgabewert immer einen Wert ungleich null zurück.
+
+\item[\texttt{set\_error <Meldung>}:] Gibt die Fehlermeldung aus und setzt
+eine interne Fehlervariable, das später via \texttt{is\_error} geprüft werden
+kann.
+
+\item[\texttt{is\_error}:] Setzt die interne Fehlervariable zurück und liefert
+wahr zurück, falls sie vorher durch \texttt{set\_error} gesetzt wurde.
+
+\end{description}
+
+\subsubsection{Netzwerk-Funktionen}
+
+\begin{description}
+
+\item[\texttt{translate\_ip\_net <Wert> <Variablenname> [<Ergebnisvariable>]}:]
+Ersetzt symbolische Referenzen in
+Parametern. Momentan finden folgende Übersetzungen statt:
+\begin{description}
+\item[Host- oder Netzwerk-Adressen] werden nicht übersetzt
+\item[\texttt{any}] wird durch \texttt{0.0.0.0/0} ersetzt
+\item[\texttt{dynamic}] wird durch die dynamische IPv4-Adresse des Routers
+ersetzt; das ist die IPv4-Adresse, die der Router beim Einwählen über einen
+Circuit mit einer Default-Route zugewiesen bekommt
+\item[\var{IP\_NET\_x}] wird durch das in der Konfiguration stehende
+Netzwerk ersetzt; referenziert die Variable einen Circuit, so wird das dem
+Circuit zugewiesene IPv4-Netz zurückgegeben
+\item[\var{IP\_NET\_x\_IPADDR}] wird durch die in der Konfiguration stehende
+IP-Adresse ersetzt; referenziert die Variable einen Circuit, so wird die dem
+Circuit zugewiesene IPv4-Adresse zurückgegeben
+\item[\var{IP\_ROUTE\_x}] wird durch das in der Konfiguration stehende
+geroutete Netzwerk ersetzt
+\item[\texttt{@<Hostname>}] wird durch die in der Konfiguration für den
+angegeben Host spezifizierte IP-Adresse ersetzt
+\item[\texttt{\{<circuit>\}}] wird durch das dem Circuit zugewiesene IPv4-Netz
+ersetzt
+\end{description}
+
+Das Ergebnis der Übersetzung wird in der Variable gespeichert, deren Name im
+dritten Parameter übergeben wird; fehlt dieser Parameter, wird das Ergebnis in
+der Variable \var{res} gespeichert. Der Variablenname, der im zweiten Parameter
+übergeben wird, wird nur für Fehlermeldungen benutzt, falls die Übersetzung
+fehlschlägt; hier kann also vom Aufrufer die Quelle des zu übersetzenden Wertes
+angegeben werden. Im Fehlerfall wird dann eine Meldung wie
+
+\begin{example}
+\begin{verbatim}
+    Unable to translate value '<Wert>' contained in <Variablenname>.
+\end{verbatim}
+\end{example}
+
+ausgegeben.
+
+Der Rückgabewert ist null, falls die Übersetzung erfolgreich war, und ungleich
+null, falls ein Fehler aufgetreten ist.
+
+\end{description}
+
+\subsubsection{Diverses}
+
+\begin{description}
+
+\item[\texttt{mk\_writable <Datei>}:]
+Stellt sicher, dass die übergebene Datei beschreibbar ist. Befindet sich die
+Datei auf einem im Nur-Lese-Modus eingehängten Volume und ist lediglich über
+eine symbolische Verknüpfung ins Dateisystem eingebunden, wird eine lokale Kopie
+angelegt, die dann beschreibbar ist.
+
+\item[\texttt{list\_unique <Liste>}:]
+Entfernt Duplikate aus der übergebenen Liste. Das Resultat wird in die
+Standard-Ausgabe geschrieben.
+
+\end{description}
+
+\subsection{mdev-Regeln}
+
+Für OPTs ist es möglich, zusätzliche mdev-Regeln zu etablieren, die spezielle
+Aktionen beim Erscheinen oder Verschwinden bestimmter Geräte vornehmen. Das
+\var{OPT\_AUTOMOUNT} im hd-Paket verwendet beispielsweise eine solche Regel,
+um auftauchende Speichermedien automatisch einzuhängen. Will man eine
+zusätzliche mdev-Regel integrieren, muss man ein Skript der Form
+
+\begin{verbatim}
+    /etc/mdev.d/mdev<Nummer>.<Name>
+\end{verbatim}
+
+ins RootFS einbauen, wobei die Nummer ähnlich den Start- und Stopp-Skripten aus
+drei Ziffern bestehen muss und der Name beliebig gewählt werden kann. Innerhalb
+dieses Skriptes werden sämtliche Ausgaben an die Standardausgabe in die
+resultierende \texttt{/etc/mdev.conf} integriert. Ein Beispiel aus dem oben
+erwähnten \var{OPT\_AUTOMOUNT}:
+
+\begin{small}
+\begin{verbatim}
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/mdev.d/mdev500.automount - mdev HD automounting rules     __FLI4LVER__
+#
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+cat <<"EOF"
+#
+# mdev500.automount
+#
+
+-SUBSYSTEM=block;DEVTYPE=partition;.+       0:0 660 */lib/mdev/automount
+
+EOF
+\end{verbatim}
+\end{small}
+
+Zu der Syntax der Regeln sei auf den Dateikopf der \texttt{/etc/mdev.conf}
+sowie auf die mdev-Dokumentation unter
+\altlink{http://git.busybox.net/busybox/plain/docs/mdev.txt} verwiesen. Falls
+eine Regel ein Skript aufruft (wie \texttt{/lib/mdev/automount} im obigen
+Beispiel), dann hat es Zugriff auf alle Variablen des auslösenden
+Kernel-``uevent''s, insbesondere auf:
+
+\begin{itemize}
+\item \var{ACTION} (typischerweise \texttt{add} oder \texttt{remove}, seltener
+\texttt{change})
+\item \var{DEVPATH} (sysfs-Pfad zu der betroffenen Komponente)
+\item \var{SUBSYSTEM} (das betroffene Kernel-Subsystem, siehe unten)
+\item \var{DEVNAME} (die betroffene Gerätedatei unter \texttt{/dev}; fehlt, wenn
+es nicht um zu erstellende oder löschende Geräte geht, sondern z.B. um Module)
+\item \var{MDEV} (wird von mdev auf den Namen der letzlich erzeugten Gerätedatei
+gesetzt)
+\end{itemize}
+
+Beispiele für Kernel-Subsysteme:
+
+\begin{description}
+\item[block] Blockgeräte (Speichermedien) wie \texttt{sda} (erste Festplatte),
+             \texttt{sr0} (erstes CD-Laufwerk) oder \texttt{ram1} (zweite
+             RAM-Disk)
+\item[input] Geräte für Eingaben von Tastatur, Maus etc. wie
+             \texttt{input/event0}; welche Gerätedateien welchen Geräten
+             zugeordnet sind, ist nicht festgelegt und muss im sysfs ermittelt
+             werden
+\item[mem]   Geräte zum Zugriff auf den Speicher und Hardware-Ports wie
+             \texttt{mem} und \texttt{ports}; hier fallen auch Pseudo-Geräte wie
+             \texttt{zero} (liefert ununterbrochen das ASCII-Zeichen mit Wert
+             null) und \texttt{null} (liefert nichts, verschluckt alles)
+             darunter
+\item[sound] diverse Geräte für die Tonausgabe, Benennung uneinheitlich
+\item[tty]   Geräte zum Zugriff auf physische und virtuelle Konsolen wie
+             \texttt{tty1} (erste virtuelle Konsole) oder \texttt{ttyS0} (erste
+             serielle Konsole)
+\end{description}
+
+Ein Beispiel für die ersten beiden seriellen Schnittstellen:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[42]: 30.050644 add@/devices/pnp0/00:04/tty/ttyS0
+mdev[42]:   ACTION=add
+mdev[42]:   DEVPATH=/devices/pnp0/00:04/tty/ttyS0
+mdev[42]:   SUBSYSTEM=tty
+mdev[42]:   MAJOR=4
+mdev[42]:   MINOR=64
+mdev[42]:   DEVNAME=ttyS0
+mdev[42]:   SEQNUM=613
+
+mdev[42]: 30.051477 add@/devices/platform/serial8250/tty/ttyS1
+mdev[42]:   ACTION=add
+mdev[42]:   DEVPATH=/devices/platform/serial8250/tty/ttyS1
+mdev[42]:   SUBSYSTEM=tty
+mdev[42]:   MAJOR=4
+mdev[42]:   MINOR=65
+mdev[42]:   DEVNAME=ttyS1
+mdev[42]:   SEQNUM=614
+\end{verbatim}
+\end{scriptsize}
+
+Ein Beispiel für eine angeschlossene MF II-Tastatur:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[41]: 4.030653 add@/devices/platform/i8042/serio0/input/input0
+mdev[41]:   ACTION=add
+mdev[41]:   DEVPATH=/devices/platform/i8042/serio0/input/input0
+mdev[41]:   SUBSYSTEM=input
+mdev[41]:   PRODUCT=11/1/1/ab41
+mdev[41]:   NAME="AT Translated Set 2 keyboard"
+mdev[41]:   PHYS="isa0060/serio0/input0"
+mdev[41]:   PROP=0
+mdev[41]:   EV=120013
+mdev[41]:   KEY=4 2000000 3803078 f800d001 feffffdf ffefffff ffffffff fffffffe
+mdev[41]:   MSC=10
+mdev[41]:   LED=7
+mdev[41]:   MODALIAS=input:b0011v0001p0001eAB41-e0,1,4,11,14,k71,72,73,74,75,76,77,79,
+7A,7B,7C,7D,7E,7F,80,8C,8E,8F,9B,9C,9D,9E,9F,A3,A4,A5,A6,AC,AD,B7,B8,B9,D9,E2,ram4,l0,
+1,2,sfw
+mdev[41]:   SEQNUM=604
+\end{verbatim}
+\end{scriptsize}
+
+Ein Beispiel für ein geladenes USB-Kernelmodul (\texttt{uhci\_hcd}):
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[41]: 6.537506 add@/module/uhci_hcd
+mdev[41]:   ACTION=add
+mdev[41]:   DEVPATH=/module/uhci_hcd
+mdev[41]:   SUBSYSTEM=module
+mdev[41]:   SEQNUM=633
+\end{verbatim}
+\end{scriptsize}
+
+Ein Beispiel für eine angeschlossene Festplatte:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[41]: 7.267527 add@/devices/pci0000:00/0000:00:07.1/ata1/host0/target0:0:0/0:0:0:0/block/sda
+mdev[41]:   ACTION=add
+mdev[41]:   DEVPATH=/devices/pci0000:00/0000:00:07.1/ata1/host0/target0:0:0/0:0:0:0/block/sda
+mdev[41]:   SUBSYSTEM=block
+mdev[41]:   MAJOR=8
+mdev[41]:   MINOR=0
+mdev[41]:   DEVNAME=sda
+mdev[41]:   DEVTYPE=disk
+mdev[41]:   SEQNUM=688
+\end{verbatim}
+\end{scriptsize}
+
+Dies ist eine ATA/IDE-Festplatte (ata1), die über den Gerätenamen \texttt{sda}
+angesprochen werden sollte.
+
+Ein Beispiel für ein entferntes Blockgerät (die Zuordnung einer Image-Datei zu
+einer fli4l-VM wurde via \texttt{virsh detach-device} gelöst):
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[42]: 52.600646 remove@/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1
+mdev[42]:   SUBSYSTEM=block
+mdev[42]:   MAJOR=254
+mdev[42]:   MINOR=17
+mdev[42]:   DEVNAME=vdb1
+mdev[42]:   DEVTYPE=partition
+mdev[42]:   SEQNUM=776
+
+mdev[42]: 52.644642 remove@/devices/virtual/bdi/254:16
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/virtual/bdi/254:16
+mdev[42]:   SUBSYSTEM=bdi
+mdev[42]:   SEQNUM=777
+
+mdev[42]: 52.644718 remove@/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb
+mdev[42]:   SUBSYSTEM=block
+mdev[42]:   MAJOR=254
+mdev[42]:   MINOR=16
+mdev[42]:   DEVNAME=vdb
+mdev[42]:   DEVTYPE=disk
+mdev[42]:   SEQNUM=778
+
+mdev[42]: 52.644777 remove@/devices/pci0000:00/0000:00:0a.0/virtio5
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5
+mdev[42]:   SUBSYSTEM=virtio
+mdev[42]:   MODALIAS=virtio:d00000002v00001AF4
+mdev[42]:   SEQNUM=779
+
+mdev[42]: 52.644973 remove@/devices/pci0000:00/0000:00:0a.0
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0
+mdev[42]:   SUBSYSTEM=pci
+mdev[42]:   PCI_CLASS=10000
+mdev[42]:   PCI_ID=1AF4:1001
+mdev[42]:   PCI_SUBSYS_ID=1AF4:0002
+mdev[42]:   PCI_SLOT_NAME=0000:00:0a.0
+mdev[42]:   MODALIAS=pci:v00001AF4d00001001sv00001AF4sd00000002bc01sc00i00
+mdev[42]:   SEQNUM=780
+\end{verbatim}
+\end{scriptsize}
+
+Wie man sehen kann, sind bei einer solchen Entfernung diverse Kernel-Subsysteme
+involviert (hier \texttt{block}, \texttt{bdi}, \texttt{virtio} und
+\texttt{pci}).
+
+\subsection{ttyI-Geräte}
+
+Für die ttyI-Geräte (\texttt{/dev/ttyI0} \ldots \texttt{/dev/ttyI15}), über
+welche die "`Modem-Emulation"' der ISDN-Karte genutzt werden kann, existiert
+ein Zähler, um Konflikte zwischen verschiedenen Paketen, die diese Geräte
+nutzen, zu vermeiden.
+Hierzu wird beim Start des Routers die Datei \texttt{/var/run/next\_ttyI}
+angelegt, die von den verschiedenen OPTs abgefragt und fortgezählt werden kann.
+Mit dem folgenden Beispielskript kann dieser Wert abgefragt, um eins
+erhöht und wieder für das nächste OPT exportiert werden.
+
+\begin{example}
+\begin{verbatim}
+    ttydev_error=
+    ttydev=$(cat /var/run/next_ttyI)
+    if [ $ttydev -le 16 ]
+    then                                    # ttyI device available? yes
+        ttydev=$((ttydev + 1))              # ttyI device + 1
+        echo $ttydev >/var/run/next_ttyI    # save it
+    else                                    # ttyI device available? no
+        log_error "No ttyI device for <Name deines OPTs> available!"
+        ttydev_error=true                   # set error for later use
+    fi
+
+    if [ -z "$ttydev_error" ]               # start OPT only if next tty device
+    then                                    # was available to minimize error
+        ...                                 # messages and minimize the
+                                            # risk of uncomplete boot
+    fi
+\end{verbatim}
+\end{example}
+
+\subsection{Skripte beim Einwählen und Auflegen}
+
+\subsubsection{Allgemeines}
+
+Nach dem Herstellen bzw.\ Trennen einer Circuit-Verbindung werden die Skripte
+in \texttt{/etc/ppp/} abgearbeitet. Hier können OPTs Aktionen hinterlegen,
+die nach dem Herstellen bzw.\ Auflegen der Verbindung nötig
+sind. Benannt werden die Dateien wie folgt:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{l}
+    \texttt{ip-up<dreistellige Zahl>.<OPT-Name>}\\
+    \texttt{ip-down<dreistellige Zahl>.<OPT-Name>}\\
+\end{tabular}
+\end{table}
+
+Dabei werden die \texttt{ip-up}-Skripte nach dem \emph{Aufbau} und die
+\texttt{ip-down}-Skripte nach dem \emph{Abbau} der Verbindung ausgeführt.
+
+\wichtig{In den \texttt{ip-down}-Skripten dürfen keine Aktionen ausgeführt
+werden, die zu einer erneuten Einwahl führen, da dadurch nur ein
+Dauer-Online-Zustand erreicht wird, was für Nicht-Flatrate-Benutzer
+ein teures Unterfangen ist.}
+
+\wichtig{Da für die einzelnen Skripte kein eigener Prozess erzeugt wird, dürfen
+auch diese Skripte \emph{nicht} mit "`exit"' abgeschlossen werden!}
+
+\subsubsection{Variablen}
+
+Durch das spezielle Aufrufkonzept stehen die folgenden Variablen den
+\texttt{ip-up}- und \texttt{ip-down}-Skripten zur Verfügung:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lp{10cm}}
+
+    \var{real\_interface}    & die aktuelle Schnittstelle, also z.\,B.
+                               \texttt{ppp0}, \texttt{ippp0}, \ldots\\
+    \var{interface}          & das IMOND-Interface, also \texttt{pppoe},
+                               \texttt{ippp0}, \ldots\\
+    \var{tty}                & verbundenes Terminal, möglicherweise leer!\\
+    \var{speed}              & die Verbindunggeschwindigkeit, bei ISDN z.\,B.
+                               64000\\
+    \var{local}              & die eigene IP-Adresse\\
+    \var{remote}             & die IP-Adresse des Point-To-Point-Partners\\
+    \var{is\_default\_route} & gibt an, ob das aktuelle
+                               \texttt{ip-up}/\texttt{ip-down} für die
+                               Schnittstelle durchgeführt wird, über welche die
+                               Default-Route geht (kann "`yes"' oder "`no"'
+                               sein)\\
+\end{tabular}
+\end{table}
+
+\subsubsection{Default-Route}
+
+Seit Version 2.1.0 werden die \texttt{ip-up}/\texttt{ip-down}-Skripte nicht nur
+für die Schnittstelle ausgeführt, über welche die Default-Route geht, sondern
+für alle Verbindungen, welche die \texttt{ip-up}- und \texttt{ip-down}-Skripte
+aufrufen. Um das alte Verhalten zu simulieren, muss in \texttt{ip-up}- und
+\texttt{ip-down}-Skripten die folgende Abfrage eingefügt werden:
+
+\begin{example}
+\begin{verbatim}
+    # is a default-route-interface going up?
+    if [ "$is_default_route" = "yes" ]
+    then
+        # die eigentlichen Aktionen
+    fi
+\end{verbatim}
+\end{example}
+
+Natürlich darf das neue Verhalten auch für spezielle Aktionen
+ausgenutzt werden.

@@ -1,0 +1,240 @@
+% Synchronized to r30469
+
+\chapter{Setup and Configuration}
+
+\section{Unpacking the archives}
+
+Under Linux:
+
+\begin{verse}\texttt{tar xvfz fli4l-\version.tar.gz}\end{verse}
+
+\noindent If this does not work, try the following:
+
+\begin{verse}\texttt{gzip -d < fli4l-\version.tar.gz | tar xvf -}\end{verse}
+
+If you unpack the current version into a directory which already contains fli4l
+files from a previous installation, you should execute \texttt{mkfli4l.sh -c}:
+
+\begin{verse}
+    \texttt{cd fli4l-\version}\\
+    \texttt{sh mkfli4l.sh -c}
+\end{verse}
+
+However, we recommend to use a fresh directory for a new version as you can
+easily take over the configuration with a file comparing tool.
+
+If you use a MS~Windows system, you can extract the compressed tar archive e.g.
+with WinZip. You have to check, however, that all files are extracted together
+\emph{with} their corresponding directories (there is a WinZip setting to
+achieve this). Also, you have to disable the so-called ``Smart TAR CR
+conversion''  under \emph{Settings \pfeil Configuration}, as some
+important files are corrupted during extraction otherwise.
+
+Alternatively, we recommend using the OpenSource application 7-Zip
+(\altlink{http://www.7-zip.org/}) which is as powerful as WinZip.
+
+The following files are installed in the subdirectory \texttt{fli4l-\version/}:
+
+\begin{itemize}
+\item Documentation:
+  \begin{itemize}
+  \item doc/deutsch/* German documentation
+  \item doc/english/* English documentation
+  \item doc/french/*  French documentation
+  \end{itemize}
+
+\item Configuration:
+  \begin{itemize}
+  \item config/*.txt Configuration files, these ones have to be edited to suit your needs
+  \end{itemize}
+
+\item Scripts/Procedures:
+  \begin{itemize}
+  \item mkfli4l.sh Creates boot media or files: Linux/Unix version
+  \item mkfli4l.bat Creates boot media: Windows version
+  \end{itemize}
+
+\item Kernel/Boot files:
+  \begin{itemize}
+  \item img/kernel Linux kernel
+  \item img/boot*.msg bootscreen texts
+  \end{itemize}
+
+\item Additional packages:
+  \begin{itemize}
+  \item opt/*.txt These ones describe which files will be included in the opt.img archive.
+  \item opt/... Optional kernel modules, files, and programs
+  \end{itemize}
+
+\item Source code:
+  \begin{itemize}
+  \item src/* Source code/tools for Linux, see src/README
+  \end{itemize}
+
+\item Programs:
+  \begin{itemize}
+  \item unix/mkfli4l* Creates boot medium: Linux/Unix version
+  \item windows/* Creates boot medium: Windows version
+  \item unix/imonc* imond client for Unix/Linux
+  \item windows/imonc/* imond client for Windows
+  \end{itemize}
+\end{itemize}
+
+\section{Configuration}
+\subsection{Editing the configuration files}
+
+To configurate fli4l, you only have to adapt the files config/*.txt.
+We recommend to make a copy of the ``config'' directory and perform
+the adaption within this copy. So you will be able to compare your own
+configuration with the distributed one later and you are also
+able to manage multiple configurations. Comparing two configurations
+is relatively simple by using an adequate tool (i.e. ``diff'' under *nix).
+Let's assume that your own config files reside in a directory named
+my\_config under the fli4l directory. In this case you could execute:
+\begin{example}
+\begin{verbatim}
+    ~/src/fli4l> diff -u {config,my_config}/build/rc.cfg | grep '^[+-]'
+    --- config/build/rc.cfg    2014-02-18 15:34:39.085103706 +0100
+    +++ my_config/build/rc.cfg        2014-02-18 15:34:31.094317441 +0100
+    -PASSWORD='/P6h4iOIN5Bbc'
+    +PASSWORD='3P8F3KbjYgzUc'
+    -NET_DRV_1='ne2k-pci'
+    +NET_DRV_1='pcnet32'
+    -START_IMOND='no'
+    +START_IMOND='yes'
+    -OPT_PPPOE='no'
+    +OPT_PPPOE='yes'
+    -PPPOE_USER='anonymous'
+    -PPPOE_PASS='surfer'
+    +PPPOE_USER='me'
+    +PPPOE_PASS='my-passwd'
+    -OPT_SSHD='no'
+    +OPT_SSHD='yes'
+\end{verbatim}
+\end{example}
+
+You can also see by this example that a simple DSL router can be configured
+without much effort, even if you feel at first overwhelmed by the sheer amount of
+possible settings.
+
+\subsection{Configuration via a special configuration file}
+
+Due to the module concept of fli4l, the configuration is distributed across
+different files. As editing these separate files may become tedious, it is
+possible to store the configuration into a single file called
+\emph{$<$config~directory$>$/\_fli4l.txt}. This file is read in addition to the
+other configuration files and its contents override any settings
+found in the other configuration files. Recall the example above: In order to
+configure a simple DSL router, we could simply write the following lines into
+this file:
+
+\begin{example}
+\begin{verbatim}
+    PASSWORD='3P8F3KbjYgzUc'
+    NET_DRV_N='1'
+    NET_DRV_1='pcnet32'
+    START_IMOND='yes'
+    OPT_PPPOE='yes'
+    PPPOE_USER='me'
+    PPPOE_PASS='my-passwd'
+    OPT_SSHD='yes'
+\end{verbatim}
+\end{example}
+
+You should avoid to mix both flavours of configuration.
+
+\subsection{Variables}
+
+  You will notice that teh lines of some variables are prefixed with a '\#'.
+  and thus are commented. If this is the case a reasonable default setting is 
+  already in effect. Those defaults are documented for each variable. If you wish
+  to set another value delete the '\#' at the beginning of the line and 
+  put your value between the apostrophs.
+
+\marklabel{VARIANTEN}{\section{Setup flavours}}
+
+Previous versions of fli4l only supported booting from a floppy disk
+which is not possible anymore due to causes already described. There
+are many alternative possible nowadays, amongst them using an USB stick.
+
+Many other boot media (CD, HD, network, Compact-Flash, DoC, \ldots)
+exist and fli4l may also be installed permanently on some of them
+(obviously only the read-write ones). fli4l may be booted in three
+different ways:
+
+\begin{description}
+\item [Single Image] The boot loader loads the linux kernel and then fli4l
+in a single image. After that, fli4l is able to continue the boot process
+without the need to access other boot media. Examples are the boot types
+\emph{integrated}, \emph{attached}, \emph{netboot}, and \emph{cd}.
+\item [Split Image] The boot loader loads the linux kernel and then a
+rudimental fli4l image which mounts the boot medium in a first step, then
+loads the configuration and the remaining files from an archive residing
+on that mounted medium. Examples for this are the boot types \emph{hd (Type A)},
+\emph{ls120}, \emph{attached}, and \emph{cd-emul}.
+\item [Installation on a Medium] The boot loader loads the linux kernel and
+then a rudimental fli4l image which mounts an existing fli4l installation
+without the need to extract any further archives. An example for this is a
+type B hard disk installation.
+\end{description}
+
+Before you try the more advanced installation procedures you should make yourself
+comfortable with fli4l by setting up a minimal version. If you want to use your fli4l
+as an answering machine or a HTTP-proxy later on, you already feel confident and have
+the experience of setting up a basic running system.
+
+That said, four variants of installations are possible:
+
+\begin{description}
+\item[USB-Stick] Router on an USB stick
+\item[CD-router] Router on a CD
+\item[Netzwerk] Network boot
+\item[HD-Installation Typ A] Router on a hard disk, CF, DoC~-- only one FAT-Partition
+\item[HD-Installation Typ B] Router on a hard disk, CF, DoC~-- one FAT- and one ext3-Partition
+\end{description}
+
+\marklabel{INSTALLTYP0}{\subsection{Router on a USB-Stick}}
+
+USB-Sticks are addressed as harddisks by Linux hence the same explanations
+as for the harddisk installation are valid here. Please note that the
+according drivers for the USB port have to be loaded via \var{OPT\_\-USB}
+in order to access the stick with \var{OPT\_\-HDINSTALL}.
+
+\marklabel{INSTALLTYP0}{\subsection{Router on a CD, or network boot}}
+
+All necessary files are on the boot medium and are extracted to a dynamically
+sized RAM disk while booting. Using a minimalistic configuration, it is
+possible to run the router with only 64 MiB of RAM. The maximum setup
+is only limited by the capacity of the boot medium and available RAM.
+
+\marklabel{INSTALLTYPA}{\subsection{Type A: Router on hard disk---only one FAT partition}}
+
+This corresponds to the CD version, with the only difference of the
+files residing on a hard disk instead, the term ``hard disk''
+also enclosing Compact Flash from 8 MiB upwards and other devices which are
+accessed like hard disks under Linux. As of fli4l 2.1.4, you can also use
+DiskOnChip Flash memory from M-Sys or SCSI hard disks.
+
+The limit for the archive opt.img is removed by disk capacity, but all these files
+have to be installed into a RAM disk of suitable size during the boot process.
+This increases the necessary amount of RAM if you use many software packages.
+
+In order to update software packages (i.e. the archive opt.img and the
+configuration rc.cfg over the network), the FAT partition has to provide
+enough space for the kernel, the RootFS and TWICE the size of the opt.img
+archive! If you also want to enable the recovery option, the required space
+is increased one more time by the size of the opt.img archive.
+
+\marklabel{INSTALLTYPB}{\subsection{Type B: Router on hard disk---one FAT and one ext3 partition}}
+
+In contrast to type A, most of the files are not put into the RAM disk.
+Instead, they are copied from the opt.img archive to the ext3 partition
+on the hard disk at the very first start after the initial installation or an
+update. On successive reboots they are loaded from the ext3 partition.
+Using this type of installation, the amount of RAM needed for running the
+router is the smallest, such that running the router with very low memory is
+possible in the majority of cases.
+
+You can find further information on the hard disk installation in the
+documentation of the HD package (a separate download) starting
+at the description of the configuration variable \var{OPT\_\-HDINSTALL}.

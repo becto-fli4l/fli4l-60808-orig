@@ -1,0 +1,92 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc405.imond - startup of imond
+# was file /etc/rc.d/imond
+#
+# Creation:     10.10.2000 fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_IMOND" = yes ]
+then
+    begin_script IMOND "starting imond ..."
+
+    #------------------------------------------------------------------------
+    # export some config variables for imond
+    #------------------------------------------------------------------------
+    export OPT_IMOND IMOND_PASS IMOND_ADMIN_PASS IMOND_ENABLE IMOND_DIAL
+    export IMOND_ROUTE IMOND_REBOOT DIALMODE
+
+    if [ "$MOUNT_BOOT" != 'rw' -a "$IMOND_LOGDIR" = '/boot' ]
+    then
+        log_warn "*** /boot not mounted writeable ***"
+        sleep 10
+    fi
+
+    if [ -n "$IMOND_LED" ]
+    then
+        opt="-port $IMOND_PORT -led /dev/$IMOND_LED"
+    else
+        opt="-port $IMOND_PORT"
+    fi
+
+    [ "$IMOND_BEEP" = yes ] && opt="$opt -beep"
+
+    echo $IMOND_PORT >/var/run/imond.port
+
+    syslog_opt=''
+    [ -f /etc/rc.d/rc325.syslogd ] &&  syslog_opt='-log-to-syslog'
+
+    telmond_logdir=''
+    [ "$OPT_TELMOND" = yes -a "$TELMOND_LOG" = yes ] && telmond_logdir="$TELMOND_LOGDIR"
+
+    mgetty_logdir=''
+    case "$OPT_MGETTY" in
+        yes)
+            mgetty_logdir="$MGETTY_FAXDIR"
+        ;;
+        *)
+            case "$OPT_FAXRCV" in
+                yes)
+                    case "$FAXRCV_IMONC_LIST" in
+                        0) ;;
+                        *)
+                            if echo "$FAXRCV_IMONC_LIST" | grep -q " "
+                            then
+                                mgetty_logdir="$FAXRCV_IMONC_DIR"
+                            else
+                                eval mgetty_logdir='$FAXRCV_'$FAXRCV_IMONC_LIST'_DIRECTORY'
+                            fi
+                        ;;
+                    esac
+                ;;
+            esac
+        ;;
+    esac
+
+    imond=/usr/local/bin/imond
+    ipopt=''
+
+    if [ "$IMOND_LOG" = yes ]
+    then
+        map2persistent IMOND_LOGDIR
+        if [ ! -d $IMOND_LOGDIR ]
+        then
+            mkdir -p $IMOND_LOGDIR
+        fi
+        if [ ! -d $telmond_logdir ]
+        then
+            mkdir -p $telmond_logdir
+        fi
+        $imond    $ipopt $syslog_opt $opt "$IMOND_LOGDIR"  \
+                  "$telmond_logdir" "$mgetty_logdir"
+    else
+        $imond    $ipopt $syslog_opt $opt ""             \
+                  "$telmond_logdir" "$mgetty_logdir"
+    fi
+
+    sleep 2                                            # wait for output
+    cat /etc/imond.conf
+
+    end_script
+fi

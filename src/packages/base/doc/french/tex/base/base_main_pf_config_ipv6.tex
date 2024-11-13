@@ -1,0 +1,443 @@
+% Do not remove the next line
+% Synchronized to r34546
+
+\section{Filtrage de paquets (IPv6)}
+
+Comme pour le filtrage IPv4 il est également nécessaire de filtrer le réseau
+IPv6 avec un pare-feu, donc le monde extérieur ne pourra pas atteindre chaque
+ordinateur du réseau local. Cela est d'autant plus important, car chaque ordinateur
+reçoit normalement une adresse IPv6 unique au monde, cette adresse sera affecté
+en permanence à l'ordinateur, elle est basée sur l'adresse MAC de la carte réseau
+utilisée.\footnote{Une exception existe, si les hôtes du LAN sont dits "Privacy
+Extensions" (extension de la vie privée) alors, une partie de l'adresse IPv6
+sera générée de façon aléatoire et temporaire. Par définition, ces adresses ne sont
+pas connus du monde extérieur et donc elles ne sont partiellement ou pas du tout
+pertinentes pour la configuration du pare-feu.} Par conséquent, le pare-feu interdira
+en une seule fois tout accès externe et ensuite, il ouvrira un par un des ordinateurs
+configurés selon les besoins.
+
+La configuration du pare-feu IPv6 correspond globalement à la configuration du
+pare-feu IPv4. Les particularités et les différences seront examinées séparément.
+
+\begin{description}
+\config{PF6\_LOG\_LEVEL}{PF6\_LOG\_LEVEL}{PF6LOGLEVEL} Dans la variable
+\var{PF6\_LOG\_LEVEL} vous pouvez régler le niveau de journalisation de l'ensemble
+des chaînes suivantes, vous pouvez indiquer les valeurs~: debug, info, notice,
+warning, err, crit, alert, emerg.
+
+\config{PF6\_INPUT\_POLICY}{PF6\_INPUT\_POLICY}{PF6INPUTPOLICY}{
+Cette variable spécifie la stratégie par défaut pour les paquets entrants sur le routeur
+en utilisant la (chaîne INPUT). Les valeurs possibles sont "REJECT" (par défaut, pour tous
+les paquets), "DROP" (jeter secrètement tous les paquets) et "ACCEPT" (accepte tous
+les paquets). Pour une description plus détaillée, voir la documentation de la variable
+\var{PF\_INPUT\_POLICY}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_POLICY='REJECT'?
+
+\config{PF6\_INPUT\_ACCEPT\_DEF}{PF6\_INPUT\_ACCEPT\_DEF}{PF6INPUTACCEPTDEF}{
+Cette variable permet d'utiliser les règles prédéfinies pour la chaîne INPUT du pare-feu
+IPv6. Les valeurs possibles sont "yes" ou "no".
+
+Elle ouvre la présélection des règles du pare-feu pour les pings ICMPv6 entrant
+(un ping par seconde comme limite) ainsi que pour les paquets NDP (Neighbor Discovery
+Protocol), qui sont nécessaires pour la configuration automatique sans état des réseaux IPv6.
+La connexions localhost ainsi que la réponse des paquets locaux des connexions initiées
+sont également autorisés. Enfin, le pare-feu IPv4 sera ajusté à cette effet, pour que chaque
+tunnel qui encapsule les paquets IPv6-in-IPv4 seront acceptées à l'extrémité du tunnel.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_ACCEPT_DEF='yes'?
+
+\config{PF6\_INPUT\_LOG}{PF6\_INPUT\_LOG}{PF6INPUTLOG}{
+Cette variable vous permet d'enregistrer dans un fichier jounal tous les paquets entrants
+rejetés. Les valeurs possibles sont "yes" ou "no". Pour une description plus détaillée, voir
+la documentation de la variable \var{PF\_INPUT\_LOG}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_LOG='no'?
+
+\config{PF6\_INPUT\_LOG\_LIMIT}{PF6\_INPUT\_LOG\_LIMIT}{PF6INPUTLOGLIMIT}{
+Dans cette variable vous configurez la limite du fichier journal de la chaîne INPUT du pare-feu
+IPv6, ainsi, le fichier journal sera lisible un certain temps. Pour une description
+plus détaillée, voir la documentation de la variable \var{PF\_INPUT\_LOG\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_LOG_LIMIT='3/minute:5'?
+
+\config{PF6\_INPUT\_REJ\_LIMIT}{PF6\_INPUT\_REJ\_LIMIT}{PF6INPUTREJLIMIT}{
+Dans cette variable vous définissez la limite du rejet des paquets TCP entrants. Si le paquet TCP
+dépasse cette limite, ce paquet sera tranquillement écarté (DROP). Pour une description plus
+détaillée, voir la documentation de la variable \var{PF\_INPUT\_REJ\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_INPUT\_UDP\_REJ\_LIMIT}{PF6\_INPUT\_UDP\_REJ\_LIMIT}{PF6INPUTUDPREJLIMIT}{
+Dans cette variable vous définissez la limite du rejet des paquets UDP entrants. Si le paquet
+UDP dépasse cette limite, ce paquet sera tranquillement écarté (DROP). Pour une description plus
+détaillée, voir la documentation de la variable \var{PF\_INPUT\_UDP\_REJ\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_UDP_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_INPUT\_ICMP\_ECHO\_REQ\_LIMIT}{PF6\_INPUT\_ICMP\_ECHO\_REQ\_LIMIT}{PFI6NPUTICMPECHOREQLIMIT}{
+Dans cette variable vous définissez le nombre de fois que vous voulez répondre à une demande
+écho ICMPv6. La fréquence de restriction avec une période définie, est décrite selon la
+fonction 'n/temps\-période' par exemple '3/minute:5'. Si la limite est dépassée, le paquet
+est tout simplement ignoré (DROP). Si cette variable est vide, la valeur par défaut utilisée
+est '1/second:5', si vous indiquez 'none' aucune limite n'est affectée.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_ICMP_ECHO_REQ_LIMIT='1/second:5'?
+
+\config{PF6\_INPUT\_ICMP\_ECHO\_REQ\_SIZE}{PF6\_INPUT\_ICMP\_ECHO\_REQ\_SIZE}{PF6INPUTICMPECHOREQSIZE}{
+Vous pouvez indiquer dans cette variable la taille (en octets) d'une demande d'écho ICMPv6.
+Vous devez pendre en considération pour indiquer cette valeur l'en-tête du paquet. La valeur
+par défaut est de 150 octets.
+
+Configuration par défaut~:
+}
+\verb*?PF6_INPUT_ICMP_ECHO_REQ_SIZE='150'?
+
+\config{PF6\_INPUT\_N}{PF6\_INPUT\_N}{PF6INPUTN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 pour les paquets
+entrants (chaîne INPUT). Par défaut, deux règles sont activées~: la première permet à tous
+les hôtes du réseau locaux d'accéder au routeur via la dite adresse du niveau du lien,
+la seconde permet aux hôtes du réseau local de communiquer sur le premier sous-réseau
+IPv6 défini.
+
+Si vous indiquez plusieurs sous-réseaux IPv6 locaux, les règles suivantes doivent être reproduites
+autant de fois. Voir le fichier de configuration.
+
+Exemple~:
+}
+\verb*?PF6_INPUT_N='2'?
+
+\config{PF6\_INPUT\_x}{PF6\_INPUT\_x}{PF6INPUTx}{
+Dans cette variable vous indiquez la règle pour la chaîne INPUT du pare-feu IPv6. Pour
+une description plus détaillée, voir la documentation de la variable \var{PF\_INPUT\_x}.
+
+Différence avec le pare-feu IPv4~:
+\begin{itemize}
+\item Au lieu de \var{IP\_NET\_x} vous indiquez ici \var{IPV6\_NET\_x}.
+\item Au lieu de \var{IP\_ROUTE\_x} vous indiquez ici \var{IPV6\_ROUTE\_x}.
+\item Les adresses IPv6 doivent être placées entre des crochets (y compris le masque
+	de sous-réseau, si disponible).
+\item Toutes les informations de l'adresse IPv6 (y compris \var{IPV6\_NET\_x} etc.)
+	doivent être placées entre des crochets, si vous indiquez un port ou une plage
+	de ports.
+\end{itemize}
+
+Exemple~:
+}
+
+\begin{example}
+\begin{verbatim}
+PF6_INPUT_1='[fe80::0/10] ACCEPT'
+PF6_INPUT_2='IPV6_NET_1 ACCEPT'
+PF6_INPUT_3='tmpl:samba DROP NOLOG'
+\end{verbatim}
+\end{example}
+
+\config{PF6\_INPUT\_x\_COMMENT}{PF6\_INPUT\_x\_COMMENT}{PF6INPUTxCOMMENT}{
+Dans cette variable vous pouvez faire une description ou un commentaire sur la règle
+INPUT correspondante.
+
+Exemple~:
+}
+\verb*?PF6_INPUT_3_COMMENT='no samba traffic allowed'?
+
+\config{PF6\_FORWARD\_POLICY}{PF6\_FORWARD\_POLICY}{PF6FORWARDPOLICY}{
+Cette variable détermine la stratégie par défaut de la (chaîne FORWARD) pour les paquets
+redirigés par le routeur. Les valeurs possibles sont "REJECT" (par défaut, pour tous les
+paquets), "DROP" (jeter secrètement tous les paquets) et "ACCEPT" (accepte tous les paquets).
+Pour une description plus détaillée, voir la documentation de la variable \var{PF\_FORWARD\_POLICY}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_FORWARD_POLICY='REJECT'?
+
+\config{PF6\_FORWARD\_ACCEPT\_DEF}{PF6\_FORWARD\_ACCEPT\_DEF}{PF6FORWARDACCEPTDEF}{
+Cette variable permet d'utiliser les règles prédéfinies pour la chaîne FORWARD du pare-feu
+IPv6. Les valeurs possibles sont "yes" ou "no".
+
+Les règles prédéfinies ouvrent également le pare-feu pour les pings ICMPv6 sortants (un ping
+par seconde comme limite). Une répondre aux paquets avec une connexion déjà accepté est également
+autorisée.
+
+Configuration par défaut~:
+}
+\verb*?PF6_FORWARD_ACCEPT_DEF='yes'?
+
+\config{PF6\_FORWARD\_LOG}{PF6\_FORWARD\_LOG}{PF6FORWARDLOG}{
+Cette variable vous permet d'enregistrer dans un fichier jounal tous les paquets redirigés rejetés.
+Les valeurs possibles sont "yes" ou "no". Pour une description plus détaillée, voir la documentation
+de la variable \var{PF\_FORWARD\_LOG}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_FORWARD_LOG='no'?
+
+\config{PF6\_FORWARD\_LOG\_LIMIT}{PF6\_FORWARD\_LOG\_LIMIT}{PF6FORWARDLOGLIMIT}{
+Dans cette variable vous configurez la limite du fichier journal de la chaîne FORWARD du
+pare-feu IPv6, ainsi, le fichier journal sera lisible un certain temps. Pour une description
+plus détaillée, voir la documentation de la variable \var{PF\_FORWARD\_LOG\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_FORWARD_LOG_LIMIT='3/minute:5'?
+
+\config{PF6\_FORWARD\_REJ\_LIMIT}{PF6\_FORWARD\_REJ\_LIMIT}{PF6FORWARDREJLIMIT}{
+Dans cette variable vous définissez la limite du rejet des paquets TCP redirigés. Si le paquet
+TCP dépasse cette limite, ce paquet sera tranquillement écarté (DROP). Pour une description plus
+détaillée, voir la documentation de la variable \var{PF\_FORWARD\_REJ\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_FORWARD_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_FORWARD\_UDP\_REJ\_LIMIT}{PF6\_FORWARD\_UDP\_REJ\_LIMIT}{PF6FORWARDUDPREJLIMIT}{
+Dans cette variable vous définissez la limite du rejet des paquets UDP redirigés. Si le paquet
+UDP dépasse cette limite, ce paquet sera tranquillement écarté (DROP). Pour une description plus
+détaillée, voir la documentation de la variable \var{PF\_FORWARD\_UDP\_REJ\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_FORWARD_UDP_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_FORWARD\_N}{PF6\_FORWARD\_N}{PF6FORWARDN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 pour les paquets redirigés
+(chaîne FORWARD). Par défaut, deux règles sont activées~: la première empêche la redirection
+de tous les paquets Samba du réseau local vers un réseau non local, la seconde permet la redirection
+de tous les autres paquets du réseau local sur le premier sous-réseau IPv6 défini.
+
+Si vous indiquez plusieurs sous-réseaux IPv6 locaux, les règles suivantes doivent être reproduites
+autant de fois. Voir le fichier de configuration.
+
+Exemple~:
+}
+\verb*?PF6_FORWARD_N='2'?
+
+\config{PF6\_FORWARD\_x}{PF6\_FORWARD\_x}{PF6FORWARDx}{
+Dans cette variable vous indiquez la règle pour la chaîne FORWARD du pare-feu IPv6. Pour
+une description plus détaillée, voir la documentation de la variable \var{PF\_FORWARD\_x}.
+
+Différence avec le pare-feu IPv4~:
+\begin{itemize}
+\item Au lieu de \var{IP\_NET\_x} vous indiquez ici \var{IPV6\_NET\_x}.
+\item Au lieu de \var{IP\_ROUTE\_x} vous indiquez ici \var{IPV6\_ROUTE\_x}.
+\item Les adresses IPv6 doivent être placées entre des crochets (y compris le masque
+	de sous-réseau, si disponible).
+\item Toutes les informations de l'adresse IPv6 (y compris \var{IPV6\_NET\_x} etc.)
+	doivent être placées entre des crochets, si vous indiquez un port ou une plage
+	de ports.
+\end{itemize}
+
+Exemple~:
+}
+
+\begin{example}
+\begin{verbatim}
+PF6_FORWARD_1='tmpl:samba DROP'
+PF6_FORWARD_2='IPV6_NET_1 ACCEPT'
+\end{verbatim}
+\end{example}
+
+\config{PF6\_FORWARD\_x\_COMMENT}{PF6\_FORWARD\_x\_COMMENT}{PF6FORWARDxCOMMENT}{
+Dans cette variable vous pouvez faire une description ou un commentaire sur la règle
+FORWARD correspondante.
+
+Exemple~:
+}
+\verb*?PF6_FORWARD_1_COMMENT='no samba traffic allowed'?
+
+\config{PF6\_OUTPUT\_POLICY}{PF6\_OUTPUT\_POLICY}{PF6OUTPUTPOLICY}{
+Cette variable spécifie la stratégie par défaut pour les paquets sortants du routeur
+en utilisant la (chaîne OUTPUT). Les valeurs possibles sont "REJECT" (par défaut, pour tous
+les paquets), "DROP" (jeter secrètement tous les paquets) et "ACCEPT" (accepte tous
+les paquets). Pour une description plus détaillée, voir la documentation de la variable
+\var{PF\_OUTPUT\_POLICY}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_OUTPUT_POLICY='REJECT'?
+
+\config{PF6\_OUTPUT\_ACCEPT\_DEF}{PF6\_OUTPUT\_ACCEPT\_DEF}{PF6OUTPUTACCEPTDEF}{
+Cette variable permet d'utiliser les règles prédéfinies pour la chaîne OUTPUT du pare-feu
+IPv6. Les valeurs possibles sont "yes" ou "no". Actuellement, il y a une règle prédéfinie.
+
+Configuration par défaut~:
+}
+\verb*?PF6_OUTPUT_ACCEPT_DEF='yes'?
+
+\config{PF6\_OUTPUT\_LOG}{PF6\_OUTPUT\_LOG}{PF6OUTPUTLOG}{
+Cette variable vous permet d'enregistrer dans un fichier jounal tous les paquets sortants rejetés.
+Les valeurs possibles sont "yes" ou "no". Pour une description plus détaillée, voir la documentation
+de la variable \var{PF\_OUTPUT\_LOG}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_OUTPUT_LOG='no'?
+
+\config{PF6\_OUTPUT\_LOG\_LIMIT}{PF6\_OUTPUT\_LOG\_LIMIT}{PF6OUTPUTLOGLIMIT}{
+Dans cette variable vous configurez la limite du fichier journal de la chaîne OUTPUT du
+pare-feu IPv6, ainsi, le fichier journal sera lisible un certain temps. Pour une description
+plus détaillée, voir la documentation de la variable \var{PF\_OUTPUT\_LOG\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_OUTPUT_LOG_LIMIT='3/minute:5'?
+
+\config{PF6\_OUTPUT\_REJ\_LIMIT}{PF6\_OUTPUT\_REJ\_LIMIT}{PF6OUTPUTREJLIMIT}{
+Dans cette variable vous définissez la limite du rejet des paquets TCP sortants. Si le paquet
+TCP dépasse cette limite, ce paquet sera tranquillement écarté (DROP). Pour une description plus
+détaillée, voir la documentation de la variable \var{PF\_OUTPUT\_REJ\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_OUTPUT_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_OUTPUT\_UDP\_REJ\_LIMIT}{PF6\_OUTPUT\_UDP\_REJ\_LIMIT}{PF6OUTPUTUDPREJLIMIT}{
+Dans cette variable vous définissez la limite du rejet des paquets UDP sortants. Si le paquet
+UDP dépasse cette limite, ce paquet sera tranquillement écarté (DROP). Pour une description plus
+détaillée, voir la documentation de la variable \var{PF\_OUTPUT\_UDP\_REJ\_LIMIT}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_OUTPUT_UDP_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_OUTPUT\_N}{PF6\_OUTPUT\_N}{PF6OUTPUTN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 pour les paquets sortants
+(chaîne OUTPUT). Par défaut, aucune régle n'est définie.
+
+Si vous indiquez plusieurs sous-réseaux IPv6 locaux, les règles suivantes doivent être reproduites
+autant de fois. Voir le fichier de configuration.
+
+Exemple~:
+}
+\verb*?PF6_OUTPUT_N='1'?
+
+\config{PF6\_OUTPUT\_x}{PF6\_OUTPUT\_x}{PF6OUTPUTx}{
+Dans cette variable vous indiquez la règle pour la chaîne OUTPUT du pare-feu IPv6. Pour
+une description plus détaillée, voir la documentation de la variable \var{PF\_OUTPUT\_x}.
+
+Différence avec le pare-feu IPv4~:
+\begin{itemize}
+\item Au lieu de \var{IP\_NET\_x} vous indiquez ici \var{IPV6\_NET\_x}.
+\item Au lieu de \var{IP\_ROUTE\_x} vous indiquez ici \var{IPV6\_ROUTE\_x}.
+\item Les adresses IPv6 doivent être placées entre des crochets (y compris le masque
+	de sous-réseau, si disponible).
+\item Toutes les informations de l'adresse IPv6 (y compris \var{IPV6\_NET\_x} etc.)
+	doivent être placées entre des crochets, si vous indiquez un port ou une plage
+	de ports.
+\end{itemize}
+
+Exemple~:
+}
+
+\begin{example}
+\begin{verbatim}
+PF6_OUTPUT_1='tmpl:ftp IPV6_NET_1 ACCEPT HELPER:ftp'
+\end{verbatim}
+\end{example}
+
+\config{PF6\_OUTPUT\_x\_COMMENT}{PF6\_OUTPUT\_x\_COMMENT}{PF6OUTPUTxCOMMENT}{
+Dans cette variable vous pouvez faire une description ou un commentaire sur la règle
+OUTPUT correspondante.
+
+Exemple~:
+}
+\verb*?PF6_OUTPUT_3_COMMENT='no samba traffic allowed'?
+
+\config{PF6\_USR\_CHAIN\_N}{PF6\_USR\_CHAIN\_N}{PF6USRCHAINN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 définie par l'utilisateur.
+Pour une description plus détaillée, voir la documentation de la variable \var{PF\_USR\_CHAIN\_N}.
+
+Configuration par défaut~:
+}
+\verb*?PF6_USR_CHAIN_N='0'?
+
+\config{PF6\_USR\_CHAIN\_x\_NAME}{PF6\_USR\_CHAIN\_x\_NAME}{PF6USRCHAINxNAME}{
+Vous indiquez dans cette variable le nom de la règle du pare-feu IPv6 définie par l'utilisateur.
+Pour une description plus détaillée, voir la documentation de la variable \var{PF\_USR\_CHAIN\_x\_NAME}.
+
+Exemple~:
+}
+\verb*?PF6_USR_CHAIN_1_NAME='usr-myvpn'?
+
+\config{PF6\_USR\_CHAIN\_x\_RULE\_N}{PF6\_USR\_CHAIN\_x\_RULE\_N}{PF6USRCHAINxRULEN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 qui est associè au nom
+de la règle définie par l'utilisateur. Pour une description plus détaillée, voir la
+documentation de la variable \var{PF\_USR\_CHAIN\_x\_RULE\_N}.
+
+Exemple~:
+}
+\verb*?PF6_USR_CHAIN_1_RULE_N='0'?
+
+\config{PF6\_USR\_CHAIN\_x\_RULE\_x}{PF6\_USR\_CHAIN\_x\_RULE\_x}{PF6USRCHAINxRULEx}{
+Dans cette variable vous indiquez la règle définie par l'utilisateur pour le pare-feu IPv6.
+Pour une description plus détaillée, voir la documentation de la variable \var{PF\_USR\_CHAIN\_x\_RULE\_x}.
+
+Différence avec le pare-feu IPv4~:
+\begin{itemize}
+\item Au lieu de \var{IP\_NET\_x} vous indiquez ici \var{IPV6\_NET\_x}.
+\item Au lieu de \var{IP\_ROUTE\_x} vous indiquez ici \var{IPV6\_ROUTE\_x}.
+\item Les adresses IPv6 doivent être placées entre des crochets (y compris le masque
+	de sous-réseau, si disponible).
+\item Toutes les informations de l'adresse IPv6 (y compris \var{IPV6\_NET\_x} etc.)
+	doivent être placées entre des crochets, si vous indiquez un port ou une plage
+	de ports.
+\end{itemize}
+}
+
+\config{PF6\_USR\_CHAIN\_x\_RULE\_x\_COMMENT}{PF6\_USR\_CHAIN\_x\_RULE\_x\_COMMENT}{PF6USRCHAINxRULExCOMMENT}{
+Dans cette variable vous pouvez faire une description ou un commentaire sur la règle 
+définie par l'utilisateur correspondante.
+
+Exemple~:
+}
+\verb*?PF6_USR_CHAIN_1_RULE_1_COMMENT='some user-defined rule'?
+
+\config{PF6\_POSTROUTING\_N}{PF6\_POSTROUTING\_N}{PF6POSTROUTINGN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 pour masquer
+le réseau (chaîne POSTROUTING). Pour une description plus détaillée, voir la documentation
+de la variable \var{PF\_POSTROUTING\_N}.
+
+Exemple~:
+}
+\verb*?PF6_POSTROUTING_N='2'?
+
+\configlabel{PF6\_POSTROUTING\_x\_COMMENT}{PF6POSTROUTINGxCOMMENT}
+\config{PF6\_POSTROUTING\_x PF6\_POSTROUTING\_x\_COMMENT}{PF6\_POSTROUTING\_x}{PF6POSTROUTINGx}
+\mbox{}\newline
+Dans ces variables vous indiquez les règles pour masquer par le routeur les paquets IPv6
+(ou les transmettre non masqué) et aussi faire une description ou un commentaire sur la règle
+POSTROUTING correspondante. Pour une description plus détaillée, voir la documentation
+de la variable \var{PF\_POSTROUTING\_x}.
+
+\config{PF6\_PREROUTING\_N}{PF6\_PREROUTING\_N}{PF6PREROUTINGN}{
+Vous indiquez dans cette variable le nombre de règles du pare-feu IPv6 pour le transférer le
+paquet vers une autre destination (chaîne PREROUTING). Pour une description plus détaillée,
+voir la documentation de la variable \var{PF\_PREROUTING\_N}.
+
+Exemple~:
+}
+\verb*?PF6_PREROUTING_N='2'?
+
+\configlabel{PF6\_PREROUTING\_x\_COMMENT}{PF6PREROUTINGxCOMMENT}
+\config{PF6\_PREROUTING\_x PF6\_PREROUTING\_x\_COMMENT}{PF6\_PREROUTING\_x}{PF6PREROUTINGx}
+\mbox{}\newline
+Dans ces variables vous indiquez les règles pour transférer par le routeur les paquets IPv6
+vers une autre destination et aussi faire une description ou un commentaire sur la règle
+PREROUTING correspondante. Pour une description plus détaillée, voir la documentation de
+la variable \var{PF\_PREROUTING\_x}.
+
+\end{description}

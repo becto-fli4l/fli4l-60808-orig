@@ -1,0 +1,296 @@
+% Last Update: $Id$
+
+\section{Allgemeine Skript-Erstellung auf fli4l}
+
+
+Hier folgt jetzt \emph{keine} allgemeine Einführung in Shell-Skripte, das
+kann jeder im Internet selber nachlesen, es wird nur auf die spezielle
+Gegebenheiten bei fli4l eingegangen. Informationen dazu gibt es in den diversen
+Unix-/Linux-Hilfeseiten. Folgende Links können als Einstiegspunkte zu
+diesem Thema dienen:
+\begin{itemize}
+\item Einführung in Shell-Skripte:
+  \begin{itemize}
+  \item \altlink{http://cip.physik.uni-freiburg.de/main/howtos/sh.php}
+  \end{itemize}
+ \item
+   Hilfeseiten online:
+   \begin{itemize}
+   \item \altlink{http://linux.die.net/}
+   \item \altlink{http://heapsort.de/man2web}
+   \item \altlink{http://man.he.net/}
+   \item \altlink{http://www.linuxcommand.org/superman_pages.php}
+   \end{itemize}
+\end{itemize}
+
+\subsection{Aufbau}
+
+    In der Unix-Welt ist es nötig, ein Skript mit dem Namen des Interpreters
+    zu beginnen, daher steht in der ersten Zeile:
+\begin{example}
+\begin{verbatim}
+      #!/bin/sh
+\end{verbatim}
+\end{example}
+
+    Damit man später leichter erkennen kann, was ein Skript macht und wer es
+    geschrieben hat, sollte jetzt ein kurzer Header folgen, in etwa so:
+
+\begin{example}
+\begin{verbatim}
+      #--------------------------------------------------------------------
+      # /etc/rc.d/rc500.dummy - start my cool dummy server
+      #
+      # Creation:     19.07.2001  Toller Hecht <toller-hecht@example.net>
+      # Last Update:  11.11.2001  Süße Maus <suesse-maus@example.net>
+      #--------------------------------------------------------------------
+\end{verbatim}
+\end{example}
+
+    Nun kann das eigentliche Skript folgen...
+
+
+\marklabel{dev:sec:config-variables}{
+\subsection{Umgang mit Konfigurationsvariablen}
+}
+
+
+    Pakete werden über die Datei \texttt{config/<PACKAGE>.txt}
+    konfiguriert. Die darin enthaltenen und
+    \jump{subsec:dev:var-check}{aktiven Variablen} werden beim Erzeugen
+    des Boot-Mediums in die Datei \texttt{rc.cfg} übernommen. Beim Booten des
+    Routers wird diese Datei eingelesen, bevor irgend ein rc-Skript
+    (Skripte unter \texttt{/etc/rc.d/}) gestartet wird. Diese Skripte können
+    dadurch auf alle Konfigurationsvariablen einfach durch
+    \var{\$<Variablenname>} zugreifen.
+
+    Benötigt man Werte von Konfigurationsvariablen auch noch nach dem
+    Booten, dann kann man sie aus der \texttt{/etc/rc.cfg} extrahieren, in
+    welche während des Bootens die Konfiguration des Boot-Mediums geschrieben
+    wurde. Möchte man beispielsweise den Wert der Variable \texttt{OPT\_DNS}
+    in einem Skript auslesen, so kann man dies folgendermaßen tun:
+
+\begin{example}
+\begin{verbatim}
+    eval $(grep "^OPT_DNS=" /etc/rc.cfg)
+\end{verbatim}
+\end{example}
+
+    Das funktioniert auch mit mehreren Variablen effizient (d.\,h.\ mit nur
+    einem Aufruf des \texttt{grep}-Programms):
+
+\begin{example}
+\begin{verbatim}
+    eval $(grep "^\(HOSTNAME\|DOMAIN_NAME\|OPT_DNS\|DNS_LISTEN_N\)=" /etc/rc.cfg)
+\end{verbatim}
+\end{example}
+
+\marklabel{dev:sec:persistent-data}{
+\subsection{Persistente Speicherung von Daten}
+}
+
+Gelegentlich benötigt ein Paket die Möglichkeit, Daten persistent abzulegen,
+die also einen Neustart des Routers überleben. Dazu existiert die Funktion
+\texttt{map2persistent}, die von einem Skript in \texttt{/etc/rc.d/}
+aufgerufen werden kann. Sie erwartet eine Variable, die einen Pfad enthält,
+und ein Unterverzeichnis. Die Idee ist, dass die Variable entweder einen
+tatsächlichen Pfad beschreibt~-- dann wird dieser Pfad auch genommen, denn der
+Nutzer hat ihn so gewünscht, oder die Zeichenkette "`auto"'~-- dann wird
+unterhalb eines Verzeichnisses auf einem persistenten Medium ein entsprechendes
+Unterverzeichnis gemäß dem zweiten Parameter erzeugt. Die Funktion liefert
+das Resultat in eben der Variable zurück, deren Name im ersten Parameter
+übergeben wurde.
+
+Ein Beispiel soll dies verdeutlichen. Sei \var{VBOX\_SPOOLPATH} eine Variable,
+die einen Pfad oder die Zeichenkette "`auto"' enthält. Dann führt der Aufruf
+
+\begin{example}
+\begin{verbatim}
+    begin_script VBOX "Configuring vbox ..."
+    [...]
+    map2persistent VBOX_SPOOLPATH /spool
+    [...]
+    end_script
+\end{verbatim}
+\end{example}
+
+dazu, dass die Variable \var{VBOX\_SPOOLPATH} entweder gar nicht verändert
+wird (falls sie einen Pfad enthält), oder dass sie durch den Pfad
+\texttt{/var/lib/persistent/vbox/spool} ersetzt wird (falls sie die Zeichenkette
+"`auto"' enthält). Dabei verweist\footnote{mit Hilfe eines so genannten
+"`bind"'-Mounts} \texttt{/var/lib/persistent} auf ein
+Verzeichnis auf einem beschreibbaren und nicht flüchtigen Speichermedium, und
+\var{<SCRIPT>} stellt das aufrufende Skript in Kleinbuchstaben dar (dieser Name
+wird vom ersten Argument des
+\jump{subsec:dev:bug-searching}{\texttt{begin\_script}-Aufrufs} abgeleitet).
+Falls kein geeignetes Medium existieren sollte (was durchaus sein kann),
+ist \texttt{/var/lib/persistent} ein Verzeichnis in der RAM-Disk.
+
+Zu beachten ist, dass der Pfad, der von \texttt{map2persistent} zurückgegeben
+wird, \emph{nicht} automatisch erzeugt wird~-- das muss der Aufrufer selbst
+erledigen (etwa durch einen Aufruf von \texttt{mkdir -p <Pfad>}).
+
+In der Datei \texttt{/var/run/persistent.conf} kann nachgeschaut werden, ob
+die persistente Speicherung von Daten möglich ist. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    . /var/run/persistent.conf
+    case $SAVETYPE in
+    persistent)
+        echo "Persistente Speicherung möglich!"
+        ;;
+    transient)
+        echo "Persistente Speicherung NICHT möglich!"
+        ;;
+    esac
+\end{verbatim}
+\end{example}
+
+\marklabel{subsec:dev:bug-searching}{
+\subsection{Fehlersuche}
+}
+
+    Bei Start-Skripten ist es oft sinnvoll, diese bei Bedarf im Debug-Modus
+    der Shell laufen zu lassen, um festzustellen, wo "`der Wurm drin ist"'.
+    Dazu wird am Anfang und am Ende folgendes eingefügt:
+
+\begin{example}
+\begin{verbatim}
+      begin_script <OPT-Name> "start message"
+      <script code>
+      end_script
+\end{verbatim}
+\end{example}
+
+Im normalen Betrieb erscheint jetzt beim Start des Skriptes der
+angegebene Text und am Ende der gleiche Text mit einem vorangestellten
+"`finished"'.
+
+Will man die Skripte debuggen, muss man zwei Dinge tun:
+
+\begin{enumerate}
+
+\item Man muss \jump{DEBUGSTARTUP}{\var{DEBUG\_\-STARTUP}} auf "`yes"'
+  setzen.
+\item Man muss das Debuggen für dieses OPT aktivieren. Das tut man in
+  der Regel durch den Eintrag
+\begin{example}
+\begin{verbatim}
+      <OPT-Name>_DO_DEBUG='yes'
+\end{verbatim}
+\end{example}
+in der Konfigurationsdatei.\footnote{Manchmal werden mehrere
+  Start-Skripte verwendet, die dann auch verschiedene Namen für ihre
+  Debug-Variablen haben. Hier hilft ein kurzer Blick in die Skripte.}
+    Jetzt wird während der Ausführung am Bildschirm genau dargestellt, was
+    passiert.
+\end{enumerate}
+
+
+\subsubsection{Weitere beim Debuggen hilfreiche Variablen}
+
+\begin{description}
+
+  \config{DEBUG\_ENABLE\_CORE}{DEBUG\_ENABLE\_CORE}{DEBUGENABLECORE}
+
+  Diese Variable gestattet das Erzeugen von "`Core-Dumps"' (Speicherauszügen).
+  Stürzt ein Programm aufgrund eines Fehlers ab, wird ein Abbild des aktuellen
+  Zustandes im Dateisystem abgelegt, der hinterher zur Analyse des
+  Problems verwendet werden kann. Die Core-Dumps werden unter
+  \texttt{/var/log/dumps/} abgelegt.
+
+  \config{DEBUG\_IP}{DEBUG\_IP}{DEBUGIP}
+
+  Wird diese Variable gesetzt, werden alle Aufrufe des Programms \texttt{ip}
+  protokolliert.
+
+  \config{DEBUG\_IPUP}{DEBUG\_IPUP}{DEBUGIPUP}
+
+  Wird diese Variable auf "`yes"' gesetzt, werden während der
+  Ausführung der \texttt{ip-up}/\texttt{ip-down}-Skripte die ausgeführten
+  Anweisungen mitgezeichnet und im System-Protokoll gespeichert.
+
+  \config{LOG\_BOOT\_SEQ}{LOG\_BOOT\_SEQ}{LOGBOOTSEQ}
+
+  Wird diese Variable auf "`yes"' gesetzt, protokolliert der \texttt{bootlogd}
+  während des Bootens alle auf der Konsole getätigten Ausgaben in der Datei
+  \texttt{/var/tmp/boot.log}. Diese Variable hat standardmäßig den Wert "`yes"'.
+
+  \config{DEBUG\_KEEP\_BOOTLOGD}{DEBUG\_KEEP\_BOOTLOGD}{DEBUGKEEPBOOTLOGD}
+
+  Normalerweise wird der \texttt{bootlogd} am Ende des Bootvorganges
+  beendet. Ein Setzen dieser Variable unterbindet das und erlaubt ein
+  Protokollieren der Konsolenausgaben über den Bootvorgang hinaus.
+
+  \config{DEBUG\_MDEV}{DEBUG\_MDEV}{DEBUGMDEV}
+
+  Ein Setzen dieser Variable generiert ein Protokoll des \texttt{mdev}-Daemons,
+  der für das Anlegen der Geräte-Dateien unter \texttt{/dev} zuständig ist.
+
+\end{description}
+\subsection{Hinweise}
+\begin{itemize}
+\item  Es ist \emph{immer} besser, geschweifte Klammern "`\{\ldots\}"' an Stelle von runden
+      Klammern "`(\ldots)"' zu benutzen. Allerdings muss dabei darauf geachtet werden,
+      dass nach der öffnenden Klammer ein Leerzeichen oder eine neue Zeile vor
+      dem nächsten Befehl kommt und vor der schließenden Klammer ein
+      Semikolon oder auch eine neue Zeile kommt. Beispielsweise ist
+
+\begin{example}
+\begin{verbatim}
+        { echo "cpu"; echo "quit"; } | ...
+\end{verbatim}
+\end{example}
+
+      \noindent gleichbedeutend mit:
+
+\begin{example}
+\begin{verbatim}
+        {
+                echo "cpu"
+                echo "quit"
+        } | ...
+\end{verbatim}
+\end{example}
+
+
+      \item Ein Skript kann mit "`exit"' vorzeitig beendet
+        werden. Dies ist aber bei den Start-Skripten (\texttt{opt/etc/boot.d/...},
+        \texttt{opt/etc/rc.d/...}), den Stopp-Skripten (\texttt{opt/etc/rc0.d/...}) und den
+        \texttt{ip-up}/\texttt{ip-down}-Skripten (\texttt{opt/etc/ppp/...}) geradezu tödlich, da
+        auch nachfolgende Skripte nicht mehr ausgeführt werden. Im
+        Zweifelsfall immer weglassen.
+
+
+      \item KISS~-- Keep it small and simple. Du willst Perl als
+        Skript-Sprache verwenden? Dir reichen die
+        Skripting-Möglichkeiten von fli4l nicht?  Überdenke deine
+        Einstellung! Ist dein OPT wirklich nötig? fli4l ist immer noch
+        "`nur"' ein Router, ein Router sollte eigentlich keine
+        Serverdienste anbieten.
+
+
+      \item Die Fehlermeldung "`: not found"' heißt meistens, dass das
+        Skript noch im DOS-Format vorliegt. Weitere Fehlerquelle: Das
+        Skript ist nicht ausführbar. In beiden Fällen sollte die
+\texttt{opt/<PACKAGE>.txt}-Datei daraufhin geprüft werden, ob sie die
+korrekten Optionen (in Bezug auf "`mode"', "`gid"', "`uid"' und Flags) enthält. Wenn das Skript erst
+bem Booten erzeugt wird, sollte ein "`chmod +x <Skriptname>"' ausgeführt
+werden.
+
+      \item Für temporäre Dateien sollte der Pfad \texttt{/tmp} genutzt werden.
+        Es ist aber unbedingt darauf zu achten, dass hier nur wenig
+        Platz ist, weil dies in der RootFS-RAM-Disk liegt! Wenn mehr
+        Platz benötigt wird, muss man sich eine eigene RAM-Disk
+        erstellen und mounten. Details dazu verrät der Abschnitt "`RAM-Disks"'
+        in dieser Dokumentation.
+
+    \item Damit temporäre Dateien eindeutige Namen erhalten, sollte man
+      grundsätzlich die aktuelle Prozess-ID, die in der Shell-Variable "`\$"'
+      gespeichert ist, an den Dateiname anhängen.
+      \texttt{/tmp/<OPT-Name>.\$\$} stellt somit einen guten Dateinamen dar,
+      \texttt{/tmp/<OPT-Name>} eher weniger, wobei \texttt{<OPT-Name>} natürlich
+      nicht so stehen bleiben soll, sondern geeignet ersetzt werden muss.
+
+\end{itemize}

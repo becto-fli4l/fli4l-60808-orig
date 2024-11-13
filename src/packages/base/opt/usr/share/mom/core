@@ -1,0 +1,1128 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/mom/core - message-oriented middleware (core)        _FLI4LVER__
+#
+#
+# Creation:     2012-02-02 kristov
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$mom_core" != yes ]; then
+
+. /etc/boot.d/string.inc
+. /etc/boot.d/forking.inc
+. /etc/boot.d/exittrap.inc
+. /etc/boot.d/locking.inc
+
+: ${mom_run_dir:=/var/run/mom}
+: ${mom_wakeup_timeout:=30}
+mom_endpoints_dir=$mom_run_dir/endpoints
+mom_types=$mom_run_dir/type.list
+mom_next_message_id=$mom_run_dir/next-message-id
+
+# you may set these before including this file
+: ${mom_process:=${0##*/}}
+: ${mom_id:=$PID}
+: ${mom_id:=$$}
+# you may change the file descriptors to be used for MOM communication by
+# setting the variables below to other values before including this file if
+# your script already uses the default ones (8 and 9)
+: ${mom_fd_recv:=8}
+: ${mom_fd_send:=9}
+
+# Logs a message. If "process" is non-empty, "logger" is used to write to the
+# syslog. Otherwise, it is assumed that logging is done during the boot
+# process, and log_* functions are used.
+#
+# $1 = level (info, warn, error)
+# $2 = message
+mom_log()
+{
+	if [ -n "$mom_process" ]; then
+		logger -t "$mom_process" -p "local3.$1" "$2"
+	else
+		eval log_$1 \"$2\"
+	fi
+}
+
+###############################################################################
+#                             P U B L I C   A P I                             #
+###############################################################################
+
+###############################################################################
+#                          M E S S A G E   T Y P E S                          #
+###############################################################################
+# A message type describes a class of messages expressing some request,
+# respone, or event. It has a name and an optional number of parameters.
+# When a message is sent, all parameters belonging to the type of the message
+# have to be set to a non-empty value. The parameters are then copied to the
+# endpoint(s) the message is sent to, such that the receiving process(es) can
+# process the message (and possibly send a reply to the sender).
+###############################################################################
+
+# Registers a message type. The message type must not have been already
+# registered.
+#
+# $1     = unique name of message type
+# $2     = message supertype (use "message" for the root message type)
+# $3,... = parameter names; optional parameters are prefixed with "%"
+# Returns: 0 on success and non-zero on failure
+mom_register_message_type()
+{
+	local type=$1
+	local supertype=${2:--}
+	shift 2
+
+	if [ ! -n "$type" ]; then
+		mom_log error "mom_register_message_type: missing message type"
+		return 1
+	fi
+	if [ "$supertype" = "-" -a "$type" != "message" ]; then
+		mom_log error "mom_register_message_type: missing message supertype"
+		return 2
+	fi
+	if mom_is_message_type_registered $type; then
+		mom_log error "mom_register_message_type: type $type already registered"
+		return 3
+	fi
+	if [ "$supertype" != "-" ] && ! mom_is_message_type_registered $supertype; then
+		mom_log error "mom_register_message_type: supertype $supertype not registered"
+		return 4
+	fi
+	echo "$type $supertype $*" >> "$mom_types"
+	return 0
+}
+
+# Extends an already registered message type by optional parameters.
+#
+# $1     = name of message type to extend
+# $2,... = names of additional optional parameters; a "%" is required at the
+#          beginning of each name
+# Returns: 0 on success and non-zero on failure
+mom_extend_message_type()
+{
+	local type=$1
+	shift
+
+	if [ ! -n "$type" ]; then
+		mom_log error "mom_extend_message_type: missing message type"
+		return 1
+	fi
+	if ! mom_is_message_type_registered $type; then
+		mom_log error "mom_extend_message_type: type $type not registered"
+		return 2
+	fi
+
+	local params= param
+	for param; do
+		case $param in
+		%*)
+			params="$params $param"
+			;;
+		*)
+			mom_log error "mom_extend_message_type: non-optional parameter $param"
+			return 3
+			;;
+		esac
+	done
+
+	sed -i "s/^\($type .*\)$/\1$params/" "$mom_types"
+	return 0
+}
+
+# Checks if a message type has already been registered.
+#
+# $1 = message type
+# Returns: 0 when registered and non-zero otherwise
+mom_is_message_type_registered()
+{
+	local type=$1
+	grep -q "^$type\>" "$mom_types"
+}
+
+# Determines all supertypes of a message type, including the message type
+# itself. The message types returned are partially ordered such that if "t2"
+# follows "t1" then "t2" is a subtype of "t1".
+#
+# $1 = message type
+# $2 = name of variable receiving the message supertypes, including $1
+# Returns: 0 on success and non-zero otherwise; an error can only occur if the
+#          type passed is invalid
+mom_get_message_type_supertypes()
+{
+	local _type=$1 _resvar=$2 _result=
+	mom_is_message_type_registered $_type || return 1
+
+	while [ "$_type" != "-" ]; do
+		_result="$_type $_result"
+		set -- $(grep "^$_type\>" "$mom_types")
+		_type=$2
+	done
+	eval $_resvar=\$_result
+	return 0
+}
+
+# Determines all parameters of a message type, including the parameters of
+# supertypes.
+#
+# $1 = message type
+# $2 = name of variable receiving the message parameters
+# Returns: 0 on success and non-zero otherwise; an error can only occur if the
+#          type passed is invalid
+mom_get_message_type_parameters()
+{
+	local _type=$1 _resvar=$2 _result=
+	mom_is_message_type_registered $_type || return 1
+
+	while [ "$_type" != "-" ]; do
+		set -- $(grep "^$_type\>" "$mom_types")
+		local _supertype=$2 _param
+		shift 2
+		for _param; do
+			case $_param in
+			%*)
+				_result="$_result %${_type}_${_param#%}"
+				;;
+			*)
+				_result="$_result ${_type}_${_param}"
+				;;
+			esac
+		done
+		_type=$_supertype
+	done
+	eval $_resvar=\$_result
+	return 0
+}
+
+###############################################################################
+#                          C O M M U N I C A T I O N                          #
+###############################################################################
+# There are two types of message-driven communication being implemented. The
+# first one is unicast: A message is sent to a single endpoint. The second one
+# is broadcast: A message is sent to all endpoints accepting that type of
+# message. On the other side, it is possible to receive and process an
+# incoming message.
+#
+# Typically, sending messages is asynchronous, i.e. the process sending a
+# message can continue running without waiting for the receiver for handling
+# the message. On the contrary, the receiver processes incoming messages
+# serially, i.e. one message after another. In the simplest form, it starts a
+# message loop which extracts one message from the message queue and passes it
+# to the best suited message handler for further processing. If no message
+# exists in the queue, the receiver blocks, i.e. it performs passive waiting
+# without consuming CPU time.
+###############################################################################
+
+# Sends a message to an endpoint. The arguments of the message are expected to
+# be found in suitably named variables.
+#
+# If this message should be a reply for another message, it has to be of type
+# message_reply (or a subtype thereof), and it consequently needs to have
+# reply_message_for set appropriately.
+#
+# $1 = endpoint to receive the message
+# $2 = type of message to be queued
+# Returns: 0 on success and non-zero otherwise
+mom_unicast_message()
+{
+	local ep_dst=$1 message_type=$2
+
+	if [ ! -n "$message_type" ]; then
+		mom_log error "mom_unicast_message: missing message type"
+		return 1
+	fi
+	if [ ! -n "$ep_dst" ]; then
+		mom_log error "mom_unicast_message: missing destination endpoint"
+		return 2
+	fi
+	if [ -z "$mom_ep" ]; then
+		mom_log error "mom_unicast_message: no endpoint"
+		return 3
+	fi
+	if ! mom_is_message_type_registered $message_type; then
+		mom_log error "mom_unicast_message: message type $message_type not registered"
+		return 4
+	fi
+	if ! mom_is_endpoint_registered $ep_dst; then
+		mom_log error "mom_unicast_message: destination endpoint $ep_dst not registered"
+		return 5
+	fi
+
+	local message_sender=$mom_ep message_id
+	mom_get_next_message_id message_id
+	if ! mom_check_message_arguments $message_type mom_unicast_message; then
+		# error message has already been displayed
+		return 6
+	fi
+
+	if mom_queue_message $ep_dst $message_type; then
+		echo $message_id
+		return 0
+	else
+		return 7
+	fi
+}
+
+# Sends a message to an endpoint. The arguments of the message are expected to
+# be found in suitably named variables.
+#
+# If this message should be a reply for another message, it has to be of type
+# message_reply (or a subtype thereof), and it consequently needs to have
+# reply_message_for set appropriately.
+#
+# $1 = endpoint to receive the message
+# $2 = type of message to be queued
+# $3 = type of message to be received as a reply
+# $4 = (optional) timeout for waiting for the reply; if no timeout is passed,
+#      the function waits infinitely
+# Returns: 0 on success and non-zero otherwise
+mom_unicast_message_and_receive_reply()
+{
+	local ep=$1 type=$2 reply_type=$3 timeout=$4
+
+	if [ ! -n "$reply_type" ]; then
+		mom_log error "mom_unicast_message_and_receive_reply: missing reply type"
+		return 8
+	fi
+
+	local id=
+
+	mom_unicast_message_handle_reply() {
+		if [ "$reply_message_for" = "$id" ]; then
+			local _var
+			for _var; do
+				eval local _value=\$$_var __value
+				pack_args __value "$_value"
+				echo "$_var=$__value"
+			done
+			mom_quit_message_loop 0
+		fi
+	}
+
+	mom_register_handler mom_unicast_message_handle_reply $reply_type
+	id=$(mom_unicast_message "$ep" "$type")
+	local rc=$?
+	if [ $rc -ne 0 ]; then
+		mom_unregister_handler mom_unicast_message_handle_reply $reply_type
+		return $rc
+	fi
+
+	local old_quit=$mom_quit
+	mom_run_message_loop $timeout
+	rc=$?
+	mom_quit=$old_quit
+	mom_unregister_handler mom_unicast_message_handle_reply $reply_type
+
+	[ $rc -eq 0 ] && return $rc || return $((rc+8))
+}
+
+# Sends a message to all suitable endpoints. The arguments of the message are
+# expected to be found in suitably named variables.
+#
+# $1 = type of message to be queued
+# Returns: 0 on success and non-zero otherwise. Note that this function even
+# succeeds if no endpoint can handle this type of message.
+mom_broadcast_message()
+{
+	local message_type=$1
+
+	if [ ! -n "$message_type" ]; then
+		mom_log error "mom_broadcast_message: missing message type"
+		return 1
+	fi
+	if [ -z "$mom_ep" ]; then
+		mom_log error "mom_broadcast_message: no endpoint"
+		return 2
+	fi
+	if ! mom_is_message_type_registered $message_type; then
+		mom_log error "mom_broadcast_message: message type $message_type not registered"
+		return 3
+	fi
+
+	local message_sender=$mom_ep message_id
+	mom_get_next_message_id message_id
+	if ! mom_check_message_arguments $message_type mom_unicast_message; then
+		# error message has already been displayed
+		return 4
+	fi
+
+	local ep count=0
+	for ep in "$mom_endpoints_dir"/*; do
+		[ -d "$ep" ] || continue
+		mom_queue_message ${ep##*/} $message_type &&
+			count=$((count+1))
+	done
+
+	echo "$message_id $count"
+	return 0
+}
+
+# Sends a message to all suitable endpoints. The arguments of the message are
+# expected to be found in suitably named variables.
+#
+# $1 = type of message to be queued
+# $2 = type of message to be received as a reply
+# $3 = (optional) timeout for waiting for the reply; if no timeout is passed,
+#      the function waits infinitely
+# Returns: 0 on success and non-zero otherwise. Note that this function even
+# succeeds if no endpoint can handle this type of message.
+mom_broadcast_message_and_receive_reply()
+{
+	local type=$1 reply_type=$2 timeout=$3
+
+	if [ ! -n "$reply_type" ]; then
+		mom_log error "mom_broadcast_message_and_receive_reply: missing reply type"
+		return 5
+	fi
+
+	local _id=
+
+	mom_broadcast_message_handle_reply() {
+		if [ "$reply_message_for" = "$_id" ]; then
+			local _var
+			for _var; do
+				eval local _value=\$$_var __value
+				pack_args __value "$_value"
+				echo "${_var}_${_index}=$__value"
+			done
+			_index=$((_index+1))
+			if [ $_index -gt $_count ]; then
+				mom_quit_message_loop 0
+			fi
+		fi
+	}
+
+	mom_register_handler mom_broadcast_message_handle_reply $reply_type
+	local result=$(mom_broadcast_message "$type")
+	local rc=$?
+	if [ $rc -ne 0 ]; then
+		mom_unregister_handler mom_broadcast_message_handle_reply $reply_type
+		return $rc
+	fi
+
+	set -- $result
+	_id=$1
+	local _count=$2 _index=1
+	echo "expected_count=$_count"
+
+	if [ $_count -gt 0 ]; then
+		local old_quit=$mom_quit
+		mom_run_message_loop $timeout
+		rc=$?
+		mom_quit=$old_quit
+	fi
+
+	mom_unregister_handler mom_broadcast_message_handle_reply $reply_type
+
+	echo "actual_count=$((_index-1))"
+
+	[ $rc -eq 0 ] && return $rc || return $((rc+5))
+}
+
+# Registers an message handler with an endpoint. A handler processes messages
+# of a given type.
+#
+# $1 = name of function representing the message handler
+# $2 = type of the messages to be handled
+# Returns: 0 on success and non-zero on failure
+mom_register_handler()
+{
+	local handler=$1
+	local type=$2
+
+	if [ ! -n "$handler" ]; then
+		mom_log error "mom_register_handler: missing handler"
+		return 1
+	fi
+	if [ -z "$mom_ep" ]; then
+		mom_log error "mom_register_handler: no endpoint"
+		return 2
+	fi
+	if mom_is_handler_registered $handler; then
+		mom_log error "mom_register_handler: handler $handler already registered"
+		return 3
+	fi
+	if ! type $handler >/dev/null 2>&1; then
+		mom_log error "mom_register_handler: handler $handler does not exist"
+		return 4
+	fi
+
+	# insert the new handler at the correct position in the handler list;
+	# to make polymorphism work, it has to be guaranteed that handlers for
+	# more specific types are listed before handlers of more general types
+	local types
+	if ! mom_get_message_type_supertypes $type types; then
+		mom_log error "mom_register_handler: message type $type not registered"
+		return 4
+	fi
+
+	local inserted= new_handlers= entry
+	for entry in $mom_handlers; do
+		if [ -z "$inserted" ]; then
+			local t=${entry%%:*}
+			if echo "$types" | grep -q "\<$t\>"; then
+				new_handlers="$new_handlers $type:$handler"
+				inserted=1
+			fi
+		fi
+
+		new_handlers="$new_handlers $entry"
+	done
+	if [ -z "$inserted" ]; then
+		new_handlers="$new_handlers $type:$handler"
+	fi
+
+	local interface="$mom_endpoints_dir/$mom_ep/interface"
+	mom_lock_interface $mom_ep mom_register_handler
+	echo "$type" >> "$interface"
+	mom_unlock_interface $mom_ep mom_register_handler
+
+	mom_handlers="$new_handlers"
+	return 0
+}
+
+# Unregisters an message handler with an endpoint previously registered by
+# mom_register_handler().
+#
+# $1 = name of function representing the message handler
+# $2 = type of the messages to be handled
+# Returns: 0 on success and non-zero on failure
+mom_unregister_handler()
+{
+	local handler=$1
+	local type=$2
+
+	if [ ! -n "$handler" ]; then
+		mom_log error "mom_unregister_handler: missing handler"
+		return 1
+	fi
+	if [ -z "$mom_ep" ]; then
+		mom_log error "mom_unregister_handler: no endpoint"
+		return 2
+	fi
+	if ! mom_is_handler_registered $handler; then
+		mom_log error "mom_unregister_handler: handler $handler not registered"
+		return 3
+	fi
+
+	# insert the new handler at the correct position in the handler list;
+	# to make polymorphism work, it has to be guaranteed that handlers for
+	# more specific types are listed before handlers of more general types
+	local removed= new_handlers= entry
+	for entry in $mom_handlers; do
+		if [ -z "$removed" ]; then
+			local h=${entry#*:}
+			if [ "$h" = "$handler" ]; then
+				removed=1
+				continue
+			fi
+		fi
+
+		new_handlers="$new_handlers $entry"
+	done
+
+	local interface="$mom_endpoints_dir/$mom_ep/interface"
+	mom_lock_interface $mom_ep mom_unregister_handler
+	# delete first occurrence of $type in $interface
+	sed -i "/^$type$/{x;/Y/!{s/^/Y/;h;d;};x;}" "$interface"
+	mom_unlock_interface $mom_ep mom_unregister_handler
+
+	mom_handlers="$new_handlers"
+	[ -n "$removed" ]
+}
+
+# Unqueues an message and calls an appropriate message handler. For an message
+# of type "t", the variables "t_<param1>", "t_<param2>" etc. are set to the
+# data passed with the message. The actual type of the message can be found in
+# $message_type, which may be more special than the type the handler was
+# registered for, due to polymorphism. The return code of the message handler
+# is ignored.
+#
+# $1 = (optional) timeout in seconds; if left empty,
+#      mom_unqueue_message_and_call_handler() waits indefinitely
+# Returns: 0 on success and non-zero otherwise
+mom_unqueue_message_and_call_handler()
+{
+	local timeout=$1
+
+	if [ -z "$mom_ep" ]; then
+		mom_log error "mom_unqueue_message_and_call_handler: no endpoint"
+		return 1
+	fi
+
+	mom_wait $timeout || return 2
+
+	local queue="$mom_endpoints_dir/$mom_ep/queue"
+	mom_lock_interface $mom_ep mom_unqueue_message_and_call_handler
+	local begin
+	read begin < "$queue.begin"
+	local vars=$(cat "$queue.$begin" | extract_variable_names)
+	eval "$(cat "$queue.$begin")"
+	echo $((begin+1)) > "$queue.begin"
+	rm -f "$queue.$begin"
+	mom_unlock_interface $mom_ep mom_unqueue_message_and_call_handler
+
+	[ -n "$message_type" ] || return 3
+
+	local handler=$(mom_find_handler $message_type)
+	local rc
+	if [ -z "$handler" ]; then
+		mom_log error "mom_unqueue_message_and_call_handler: endpoint $mom_ep has no handler for message of type $message_type${message_sender:+, sent by $message_sender}"
+		return 4
+	else
+		$handler $vars
+		return 0
+	fi
+}
+
+# Tells the main message loop to quit.
+#
+# $1 = exit code
+mom_quit_message_loop()
+{
+	mom_quit=$1
+}
+
+# Starts the message loop. Does not return.
+#
+# $1 = (optional) maximum time in seconds the loop shall run; if left empty,
+#      the loop runs indefinitely (until a handler processing a message calls
+#      mom_quit_message_loop())
+# Returns: 0 on success and non-zero otherwise (e.g. if the timeout has been
+# reached)
+mom_run_message_loop()
+{
+	local timeout=${1:-0}
+
+	if [ -z "$mom_ep" ]; then
+		mom_log error "mom_run_message_loop: no endpoint"
+		return 1
+	fi
+
+	local start=$(date +%s)
+	while [ -z "$mom_quit" ]; do
+		if [ $timeout -eq 0 ]; then
+			mom_unqueue_message_and_call_handler
+		else
+			local now=$(date +%s)
+			local passed=$((now-start))
+			if [ $passed -ge $timeout ]; then
+				return 2
+			else
+				mom_unqueue_message_and_call_handler $((timeout-passed))
+			fi
+		fi
+	done
+
+	return $mom_quit
+}
+
+###############################################################################
+#                            P R I V A T E   A P I                            #
+###############################################################################
+
+###############################################################################
+#                              E N D P O I N T S                              #
+###############################################################################
+# An endpoint is a starting point for any message-based communication. An
+# endpoint has a unique identifier and is able to receive messages which are
+# properly typed, i.e. the endpoint filters out messages that do not conform
+# to a list of types specified when the endpoint was created.
+#
+# There are two flavours of endpoints: anynomous endpoints and named endpoints.
+# Anonymous endpoints use the ID of the process as the endpoint identifier.
+# Named endpoints can use any identifier as long as it is unique. This allows
+# clients to send events to services known by name without having to learn the
+# service's process ID.
+#
+# Each process can control at most one endpoint, regardless whether it is
+# anonymous or named. An endpoint's lifetime is bound to the lifetime of the
+# process creating it, i.e. it ceases to exist when the process exits.
+###############################################################################
+
+# Creates an endpoint.
+#
+# $1 = endpoint name
+# Returns: 0 on success and non-zero on failure
+mom_create_endpoint()
+{
+	local ep=$1
+
+	if [ ! -n "$ep" ]; then
+		mom_log error "mom_create_endpoint: missing endpoint name"
+		return 1
+	fi
+
+	mom_lock_interface $ep mom_create_endpoint
+	if mom_is_endpoint_registered $ep; then
+		mom_unlock_interface $ep mom_create_endpoint
+		mom_log error "mom_create_endpoint: endpoint $ep already registered"
+		return 2
+	fi
+
+	local ep_dir="$mom_endpoints_dir/$ep"
+	exit_trap_add mom_destroy_endpoint $ep
+	mkdir -p "$ep_dir"
+
+	local iface="$ep_dir/interface"
+	> "$iface"
+
+	# Note: We use a normal file for queuing the messages _as well as_ a
+	# named pipe (FIFO) for blocking/waking up processes. Although one
+	# could think that writing the messages directly into the named pipe
+	# also works well, this is highly dependent on the PIPE_BUF value. If
+	# writing a line longer than PIPE_BUF characters to a pipe, this line
+	# may be split into multiple chunks and be written non-atomically, such
+	# that different messages are interleaved with each other. To avoid
+	# this, we use locking around writes to a simple file, and named pipes
+	# are used only to block/wake up processes.
+
+	local fifo="$ep_dir/fifo"
+	mknod "$fifo" p
+	eval exec "$mom_fd_recv<>\$fifo"
+
+	local queue="$ep_dir/queue"
+	echo 0 > "$queue.begin"
+	echo 0 > "$queue.end"
+
+	# FFL-1377: allow clients to send us messages
+	chmod -R 777 "$ep_dir"
+
+	mom_unlock_interface $ep mom_create_endpoint
+
+	mom_ep=$ep
+	return 0
+}
+
+# Destroys the endpoint for this process.
+#
+# $1 = endpoint
+# Returns: 0 on success and non-zero on failure
+mom_destroy_endpoint()
+{
+	if [ -z "$1" ]; then
+		return 1
+	fi
+
+	eval exec "$mom_fd_recv>&-"
+
+	local ep_dir="$mom_endpoints_dir/$1"
+	mom_lock_interface $mom_ep mom_destroy_endpoint
+	rm -rf "$ep_dir"
+	mom_unlock_interface $mom_ep mom_destroy_endpoint
+
+	return 0
+}
+
+# Checks if an endpoint has already been registered.
+#
+# $1 = endpoint
+# Returns: 0 when registered and non-zero otherwise
+mom_is_endpoint_registered()
+{
+	local ep=$1
+	[ -d "$mom_endpoints_dir/$ep" ]
+}
+
+# Locks an endpoint's interface.
+#
+# $1 = endpoint
+# #2 = name of caller
+# Returns: 0 on success and non-zero on failure
+mom_lock_interface()
+{
+	local ep="$1" caller="$2"
+	sync_lock_resource "mom-interface-$ep" "$caller"
+}
+
+# Unlocks an endpoint's interface.
+#
+# $1 = endpoint
+# #2 = name of caller
+# Returns: always 0
+mom_unlock_interface()
+{
+	local ep="$1" caller="$2"
+	sync_unlock_resource "mom-interface-$ep" "$caller"
+}
+
+# Returns a suitable message handler given an message type.
+#
+# $1 = type
+# Output: the handler best suited to process messages of this type,
+#         or an empty string if no handler is eligible
+# Returns: 0 on success and non-zero on failure
+mom_find_handler()
+{
+	local type=$1 types
+
+	mom_get_message_type_supertypes $type types || return 1
+
+	local entry
+	for entry in $mom_handlers; do
+		local param_type=${entry%%:*}
+		local handler=${entry#*:}
+		if echo "$types" | grep -q "\<$param_type\>"; then
+			echo "$handler"
+			return 0
+		fi
+	done
+
+	# no handler found
+	return 1
+}
+
+# Checks if a handler has already been registered with this process.
+#
+# $1 = handler
+# Returns: 0 when registered and non-zero otherwise
+mom_is_handler_registered()
+{
+	local handler=$1
+
+	local entry
+	for entry in $mom_handlers; do
+		local h=${entry#*:}
+		[ "$h" = "$handler" ] && return 0
+	done
+
+	return 1
+}
+
+###############################################################################
+#                        M E S S A G E   P A S S I N G                        #
+###############################################################################
+
+# Returns the next available message ID.
+#
+# $1 = name of variable receiving the message ID
+mom_get_next_message_id()
+{
+	sync_lock_resource mom_next_message_id mom_get_next_message_id
+	local _message_id
+	read _message_id < "$mom_next_message_id"
+	echo $((_message_id+1)) > "$mom_next_message_id"
+	sync_unlock_resource mom_next_message_id mom_get_next_message_id
+	eval $1=\$_message_id
+}
+
+# Checks whether there is an argument for some message parameter.
+#
+# $1 = fully qualified parameter name
+# Returns: 0 on success and non-zero otherwise
+mom_check_message_argument()
+{
+	local param=$1
+
+	case $param in
+	*%*)
+		local param_prefix=${param%%\%*}
+		local param_suffix=${param#*%}
+
+		local param_n=${param_prefix}n
+		mom_check_message_argument "$param_n" || return 1
+
+		eval local value=\$${param_n} i
+		for i in $(seq 1 ${value:-0}); do
+			local param_i=${param_prefix}${i}${param_suffix}
+			mom_check_message_argument "$param_i" || return 1
+		done
+		;;
+	*)
+		eval local defined=\$\{${param}+defined\}
+		if [ ! -n "$defined" ]; then
+			return 1
+		fi
+		;;
+	esac
+
+	return 0
+}
+
+# Checks whether there is an argument for each message parameter.
+#
+# $1 = message type
+# $2 = caller
+# Output: a string containing the arguments
+# Returns: 0 on success and non-zero otherwise
+mom_check_message_arguments()
+{
+	local type=$1 caller=$2 rc=0 param params
+	mom_get_message_type_parameters $type params || return 1
+
+	for param in $params; do
+		case $param in
+		%*)
+			;;
+		*)
+			if ! mom_check_message_argument "$param"; then
+				mom_log error "$caller: missing argument for parameter $param in message of type $type"
+				rc=1
+			fi
+			;;
+		esac
+	done
+	return $rc
+}
+
+# Wakes up a process blocked on a FIFO.
+#
+# $1 = endpoint to wake up
+# $2 = type of message sent
+# $3 = timeout in seconds
+# Returns: always 0
+mom_wakeup()
+{
+	mom_do_wakeup "$@" &
+	return 0
+}
+
+# Wakes up a process blocked on a FIFO (internal helper function).
+#
+# $1 = endpoint to wake up
+# $2 = type of message sent
+# $3 = timeout in seconds
+# Returns: always 0
+mom_do_wakeup()
+{
+	local ep=$1 type=$2 timeout=$3
+	local fifo="$mom_endpoints_dir/$ep/fifo" rest
+	read -r PID rest < /proc/self/stat
+
+	(
+		sleep $timeout >/dev/null 2>&1 &
+		sleeppid=$!
+		trap "kill $sleeppid; exit 0" 1 2 3 4 6 8 10 11 12 13 14 15
+		wait $sleeppid
+		kill $PID
+		mom_log error "mom_do_wakeup: failed to wake up endpoint $ep within $timeout seconds while sending message of type $type"
+	) >/dev/null 2>&1 &
+	local killer=$!
+
+	eval exec "$mom_fd_send<>\$fifo"
+	echo -n "X" >&$mom_fd_send
+	eval exec "$mom_fd_send>&-"
+
+	kill $killer 2>/dev/null
+	return 0
+}
+
+# Waits for a wakeup signal arriving at our endpoint.
+#
+# $1 = (optional) timeout in seconds; if left empty, mom_wait() waits
+#      indefinitely
+# Returns: always 0
+mom_wait()
+{
+	mom_do_wait "$@" &
+	local child=$!
+
+	# OK, this gets rather complicated. A successful invocation of the wait
+	# builtin may terminate because of two reasons:
+	#
+	# (1) The process waited for terminates, either normally or due to the
+	#     reception of a signal. In the latter case, the return code is
+	#     128+<signum>.
+	# (2) The waiting process receives a signal for which a trap has been
+	#     installed. In this case the wait builtin exits with 128+<signum>
+	#     and then immediately executes the trap.
+	#
+	# So if the wait builtin exits we need to distinguish both cases. We
+	# know that if a result code less than 128 is returned, we obviously
+	# encountered case (1), so we can return immediately. If a result code
+	# greater than 128 is returned, we do not know whether we or our child
+	# process received the signal. Unfortunately, we cannot simply wait a
+	# second time as the shell caches the exit code of the terminated child
+	# process and we don't know when the shell throws the exit code away.
+	# So we check via "kill -0" whether the child process exists. Now we
+	# have three choices:
+	#
+	# (3) The signal was targetted at the child and no other process has
+	#     stolen the child's PID in between. Then the "kill -0" fails.
+	#     Fine for us, we simply return some non-zero value to our caller.
+	# (4) The signal was targetted at the child and some other process has
+	#     stolen the child's PID in between. Then the "kill -0" succeeds
+	#     but the wait builtin fails with result code 127 as the other
+	#     process is not our child, and the wait builtin can only wait for
+	#     child processes. Also fine for us, see case (3) above why.
+	# (5) The signal was targetted at us. As we (= the MOM core) did not
+	#     install any trap for SIGTERM, if must have been the code calling
+	#     us. In this case, we simply restart waiting for our child process
+	#     which should still be alive. If it has terminated in between,
+	#     this is not much of a problem as this reduces to the cases (1),
+	#     (3) or (4) above when restarting the wait builtin.
+	while true
+	do
+		wait $child
+		local rc=$?
+		[ $rc -lt 128 ] && return $rc
+		kill -0 $child 2>/dev/null || return 127
+	done
+}
+
+# Waits for a wakeup signal arriving at our endpoint (internal helper function).
+#
+# $1 = timeout in seconds
+# Returns: always 0
+mom_do_wait()
+{
+	local timeout=${1:-0} rest
+	read -r PID rest < /proc/self/stat
+
+	if [ $timeout -gt 0 ]; then
+		(
+			sleep $timeout &
+			sleeppid=$!
+			trap "kill $sleeppid; exit 0" 1 2 3 4 6 8 10 11 12 13 14 15
+			wait $sleeppid
+			kill -9 $PID
+		) >/dev/null 2>&1 &
+		local killer=$!
+	fi
+
+	# There is a time window between having successfully read a character
+	# from the FIFO and returning success to the caller. If within this
+	# window the script gets killed by a signal we effectively lose a
+	# message, which makes the event handling hang. So don't allow a signal
+	# (except SIGKILL, of course) to disturb us. Note that we ignore the
+	# signals not already from the start of the script in order to be able
+	# to kill the sleep subshell invoked above for non-zero timeouts, as
+	# a signal being ignored in a shell cannot be trapped in a subshell.
+	trap "" 1 2 3 4 6 8 10 11 12 13 14 15
+	local signal
+	read -n 1 signal <&$mom_fd_recv
+
+	[ $timeout -gt 0 ] && kill $killer 2>/dev/null
+	return 0
+}
+
+# Checks whether there is an argument for some message parameter.
+#
+# $1 = fully qualified parameter name
+# Returns: 0 on success and non-zero otherwise
+mom_queue_message_argument()
+{
+	local _param=${1#%}
+
+	case $_param in
+	*%*)
+		local _param_prefix=${_param%%\%*}
+		local _param_suffix=${_param#*%}
+
+		local _param_n=${_param_prefix}n
+		mom_queue_message_argument "$_param_n"
+
+		eval local _value=\$${_param_n} _i
+		for _i in $(seq 1 ${_value:-0}); do
+			local _param_i=${_param_prefix}${_i}${_param_suffix}
+			mom_queue_message_argument "$_param_i"
+		done
+		;;
+	*)
+		eval local _defined=\$\{${_param}+defined\}
+		if [ -n "$_defined" ]; then
+			eval local _value=\$${_param} __value
+			pack_args __value "$_value"
+			echo "local $_param=$__value"
+		fi
+		;;
+	esac
+
+	return 0
+}
+
+# Puts a message into an endpoint's message queue. The arguments for the
+# message are expected to  be found in suitably named variables. However, this
+# function does not check whether the arguments match the parameter declaration
+# of the message type. This has to be done by the caller (using
+# mom_check_message_arguments()).
+#
+# $1 = endpoint to receive the message
+# $2 = type of message to be queued
+# Returns: 0 on success and non-zero otherwise
+mom_queue_message()
+{
+	local ep=$1 type=$2
+
+	mom_lock_interface "$ep" mom_queue_message
+	local interface="$mom_endpoints_dir/$ep/interface"
+	if [ ! -f "$interface" ]; then
+		# endpoint has been destroyed
+		mom_unlock_interface "$ep" mom_queue_message
+		return 1
+	fi
+
+	local t types regex=
+	if ! mom_get_message_type_supertypes $type types; then
+		mom_unlock_interface "$ep" mom_queue_message
+		return 2
+	fi
+	for t in $types; do
+		[ -n "$regex" ] && regex="$regex\\|"
+		regex="$regex$t"
+	done
+	if ! grep -q "^\\($regex\\)$" "$interface"; then
+		# endpoint $ep does not handle messages of type $type
+		mom_unlock_interface "$ep" mom_queue_message
+		return 3
+	fi
+
+	local index queue="$mom_endpoints_dir/$ep/queue" param params
+	read index < "$queue.end"
+	mom_get_message_type_parameters $type params
+	for param in $params; do
+		mom_queue_message_argument "$param"
+	done >> "$queue.$index"
+	echo $((index+1)) > "$queue.end"
+
+	mom_unlock_interface "$ep" mom_queue_message
+
+	mom_wakeup "$ep" $type $mom_wakeup_timeout
+	return 0
+}
+
+# Makes the MOM usable by the current process.
+mom_init()
+{
+	# registered handlers
+	mom_handlers=
+	# exit code of current message loop (if any)
+	mom_quit=
+
+	# create endpoint
+	mom_create_endpoint $mom_id
+}
+
+# Makes the MOM usable after a background fork.
+mom_fork_init()
+{
+	# A forked child forgets all handlers and running message loops. As the
+	# endpoint needs to be recreated (see below), the new endpoint's interface
+	# will be initially empty, so remembering associated handlers is not
+	# helpful anyway.
+	mom_handlers=
+	mom_quit=
+
+	# When forking off a MOM process with a named (= non-PID) endpoint, the
+	# forked child may not use the same endpoint name, so we have to use a
+	# PID-based endpoint name anyway. Note that the PID variable is set by
+	# sync_set_subshell_pid which is called by the synchronization library's
+	# fork handler.
+	local ppid
+	read -r dummy dummy dummy ppid dummy < /proc/self/stat
+	[ "$mom_id" = "$ppid" ] && mom_id=${PID:-$$}
+
+	eval exec "$mom_fd_recv>&-"
+	eval exec "$mom_fd_send>&-"
+
+	# Create a new endpoint as sharing the endpoint between processes running
+	# parallel causes headaches, especially when receiving messages.
+	mom_create_endpoint $mom_id
+}
+
+mom_core=yes
+
+fork_add_handler mom_fork_init
+mom_init
+
+fi # mom_core != yes

@@ -1,0 +1,78 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc340.circuits - setup circuits
+#
+# Creation:     17.11.2000  fm
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+begin_script CIRCUITS "setting up circuits ..."
+
+if [ "$OPT_IMOND" = yes ]
+then
+    log_error "OPT_IMOND='yes' is currently unsupported, ignoring for now"
+    OPT_IMOND='no'
+fi
+
+# start creation group; the creation group is ended in rc370.circuits, after
+# the firewall has been set up
+rc340_creation_group=
+circuit_start_creation_group rc340_creation_group
+log_info "using creation group $rc340_creation_group"
+
+if [ -n "$CIRC_ONLINE" ]
+then
+    for circ in $CIRC_ONLINE
+    do
+        echo "$circ"
+    done > $when_online_file
+    > "$when_online_file.fixed"
+fi
+
+vars=$(set | extract_variable_names)
+# used by rc498.circd
+boot_circ_wait_args=
+
+[ 0$CIRC_N -eq 0 ] || for i in $(seq 1 $CIRC_N)
+do
+    # transform CIRC_%_... to create_circuit_message_...
+    used=
+    for var in $vars
+    do
+        case $var in
+        CIRC_${i}_*)
+            newvar=create_circuit_message_$(echo "${var#CIRC_${i}_}" | tr "[:upper:]" "[:lower:]")
+            used="$used $newvar"
+            eval $newvar=\$$var
+            ;;
+        esac
+    done
+    create_circuit_message_creation_group=$rc340_creation_group
+
+    # ignore disabled circuits
+    if [ "$create_circuit_message_enabled" = "yes" ]
+    then
+        log_info "setting up circuit $i ($create_circuit_message_name) of type $create_circuit_message_type ..."
+
+        # defaults
+        : ${create_circuit_message_times:="Mo-Su:00-24:0.0:Y"} # circuit is 24/7 online
+        : ${create_circuit_message_up:=yes}                    # circuit is 24/7 online
+
+        circ_id=
+        error=
+        if ! circuit_add circ_id error
+        then
+            log_error "circuit $i ($create_circuit_message_name): $error"
+        else
+            if [ -n "$create_circuit_message_wait" ] && [ $create_circuit_message_wait -gt 0 ]
+            then
+                boot_circ_wait_args="$boot_circ_wait_args $circ_id:online:$create_circuit_message_wait"
+            fi
+        fi
+    fi
+
+    # clean all circuit variables
+    unset $used
+done
+
+end_script

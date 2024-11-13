@@ -1,0 +1,646 @@
+% Synchronized to r38663
+
+\section{Démarrer, arrêter, se connecter et se déconnecter avec fli4l}
+
+\subsection{Concept de Boot}
+
+fli4l 2.0 peut être installé sur différent média, disque-dur ou
+carte-Compact-Flash(TM), il est aussi possible de l’installer sur un support
+Zip ou sur un CD-ROM amorçable. En outre, l’installation d’une version sur un
+disque-dur n'est pas fondamentalement différente que sur une disquette.
+\footnote{ À l'origine fli4l pouvait s'exécuter à partir d'une disquette. Depuis
+fli4l est devenue trop volumineux, la disquette ne peut plus est utilisée.}
+
+Ces exigences ont été réalisé grâce à l’archive \texttt{opt.img}, jusqu'ici il était
+installé sur un disque-RAM maintenant il peut être placé sur d’autre média.
+Il peut s'agir d'une partition sur un disque dur ou une carte-CF. Pour ce second
+volume, le répertoire \texttt{/opt} sera monté et les programmes auront des liens symboliques
+et seront intégrés dans le rootfs. La structure apparaissant dans le système de fichier
+RootFS correspond au répertoire \texttt{opt} de la distribution fli4l à une exception prète~--
+le préfixe des \texttt{fichiers} seront omis. Le fichier \texttt{opt/etc/rc} se trouve
+directement dans \texttt{/etc/rc} et pour le fichier \texttt{opt/bin/busybox} il est
+dans \texttt{/bin/busybox}. Ces fichiers sont seulement des liens dans le média monté en
+lecture seule, on peut les ignorer, tant que les fichiers ne sont pas modifiés. Si vous
+voulez les modifier, il faut d'abord rendre ces fichiers accessibles en écriture
+avec la commande \texttt{mk\_writable} (voir ci-dessous).
+
+
+\subsection{Scripts de démarrage et d'arrêt}
+
+Les Scripts qui sont exécutés lors du boot système, sont dans les répertoires
+\texttt{opt/etc/boot.d} et \texttt{opt/etc/rc.d} ils sont également exécutés
+dans l'ordre.
+
+\wichtig{Quand ces scripts sont exécutés aucun processus particulier
+n'est produit, ils ne peuvent pas être arrêtés avec la commande \og{}exit\fg{}.
+Cette commande conduirait à une rupture du processus de Boot~!}
+
+
+\subsubsection{Scripts de démarrage dans \texttt{opt/etc/boot.d/}}
+
+    Les scripts de ce répertoire sont exécutés les premiers. Ils ont pour mission,
+	de monter le périphérique de boot, le fichier de configuration \texttt{rc.cfg}
+	se trouve sur le support de boot et décompresse l'archive \texttt{opt.img}. Selon
+	le \jump{BOOTTYPE}{type de Boot} il est plus ou moins complexe et font les choses
+	suivantes~:
+
+\begin{itemize}
+\item Charge les pilotes du matériels (optionnel)
+\item Monte le volume de boot (optionnel)
+\item Le fichier de configuration \texttt{rc.cfg} est lu depuis le volume de boot
+  et sera écrit dans \texttt{/etc/rc.cfg}
+\item Monte le volume Opt (optionnel)
+\item Extrait les archives Opt (optionnel)
+\end{itemize}
+
+Lors de la construction des scripts, vous avez la chance d'en apprendre davantage sur
+la configuration de fli4l, le fichier de configuration est également intégré dans
+l'archive rootfs, dans ce fichier \texttt{/etc/rc.cfg} vous trouverez les variables
+de configuration qui seront analysées puis les scripts de démarrage seront exécutés
+depuis le répertoire \texttt{opt/etc/boot.d/}. Après le montage du volume de boot,
+le fichier \texttt{/etc/rc.cfg} est remplacé par le fichier de configuration dans le
+volume de boot, de sorte que les scripts de démarrage dans \texttt{opt/etc/rc.d/} soit
+disponible pour l'actuel configutation du volume de boot (voir ci-dessous).
+\footnote{Normalement, ces deux fichiers sont identiques. Un changement n'est possible
+que si le fichier de configuration sur le volume de démarrage a été modifié manuellement,
+par exemple pour modifier une configuration qui sera utilisé plus tard, sans avoir à
+reconstruire l'archive fli4l.}
+
+
+\subsubsection{Scripts de démarrage dans \texttt{opt/etc/rc.d/}}
+
+    C'est les commandes qui sont exécutées à chaque démarrage du routeur, elles peuvent
+	être stockés dans le répertoire \texttt{opt/etc/rc.d/}. Les conventions suivantes
+	s'appliquent~:
+
+    \begin{enumerate}
+    \item Il faut classer les noms de script comme ceci~:
+
+\begin{example}
+\begin{verbatim}
+    rc<nombre à trois chiffres>.<nom de l'OPT>
+\end{verbatim}
+\end{example}
+
+    Les scripts sont démarrés dans l'ordre croissant des numéros.
+    Si plusieurs scripts ont le même numéro attribué, c’est le caractère
+    alphabétique après le point qui détermine l'ordre. L’installation des
+    paquetages s’effectue les uns après les autres, ils sont définis par un numéro.
+
+          Voici une estimation approximative, des numéros pouvant être utilisé
+          pour une installation~:
+
+          \begin{table}[htbp]
+          \centering
+          \begin{tabular}{ll}
+                  \hline
+                  Numéro        &       Fonction \\
+                  \hline
+                  \hline
+                  000-099       &       Système de base (hardware, fuseau horaire, système de fichiers) \\
+                  100-199       &       Module Kernel (drivers) \\
+                  200-299       &       Connexions externe (PPPoE, ISDN4Linux, PPtP) \\
+                  300-399       &       Réseau (routage, interface, filtrage de paquet) \\
+                  400-499       &       Serveur (DHCP, HTTPD, Proxy, etc.) \\
+                  500-900       &       Tout le reste \\
+                  900-997       &       Tout ce qui peut générer un dial-up \\
+                  998-999       &       Réservé (ne pas utiliser!) \\
+                  \hline
+          \end{tabular}
+          \end{table}
+
+    \item Vous devez \emph{placer} dans ces scripts, toutes les fonctions
+    nécessaires pour changer le RootFS. (par ex. pour la création d'un
+    répertoire \texttt{/var/log/lpd}).
+
+    \item Vous ne \emph{devez} pas effectuer d'écriture dans les fichiers
+    scripts qui font partie de l'archive-opt, car ces fichiers sont en
+    lecture seule sur le média. Pour modifier de tel fichier, il faut, au
+    préalable rendre accessible ce fichier en écriture via \texttt{mk\_writable}
+	(voir ci-dessous). En exécutant cette fonction, le fichier si nécessaire,
+	sera copié et sera accessible en écriture sur le RootFS. Si le fichier est
+	déjà en écriture, rien ne se passera lors de l’exécution de la fonction \texttt{mk\_writable}.
+
+    \wichtig{\texttt{mk\_writable} doit être utilisé sur les fichiers qui sont dans le
+    rootfs et non pas par le biais du dossier \texttt{/opt}. Si vous voulez modifier
+    \texttt{/usr/local/bin/foo} vous exécutez \texttt{mk\_writable /usr/local/bin/foo}.}
+
+    \item Ces scripts ont besoin de vérifiés, avant d'exécuter les commandes
+    réelles, si l'OPT correspondant est actif. Cela se fait habituellement par
+	une simple distinction de cas~:
+
+\begin{example}
+\begin{verbatim}
+    if [ "$OPT_<OPT-Name>" = "yes" ]
+    then
+        ...
+        # ici OPT start!
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+    \item Pour pouvoir déboguer plus facile, vous devez inséter dans le script
+      les fonctions \texttt{begin\_script} et \texttt{end\_script}~:
+
+\begin{example}
+\begin{verbatim}
+    if [ "$OPT_<OPT-Name>" = "yes" ]
+    then
+        begin_script FOO "configuring foo ..."
+        ...
+        end_script
+    fi
+\end{verbatim}
+\end{example}
+
+    Pour juste déboguer de script au démarrage, vous devez simplement activer
+    la variable \verb+FOO_DO_DEBUG='yes'+.
+
+  \item Toutes les variables de configuration sont directement disponible par les scripts.
+	Des explications pour accéder à d'autres scripts à partir des variables de configuration
+	peuvent être trouvés dans la section \jump{dev:sec:config-variables}{\og{}Gestion
+    des variables de configuration\fg{}}
+
+  \item Le dossier \texttt{/opt} ne doit pas être utilisé comme stocker des données OPTs.
+	Si de l'espace supplémentaire est nécessaire, l'utilisateur doit de définir un chemin
+	approprié en utilisant la variable de configuration. Selon le type de données à stocker
+	(données persistante ou transitoire) vous devez utiliser différentes affectations par défaut.
+	Le chemin \texttt{/var/run/} est logique pour les données transitoires, tandis que pour
+	les données persistant, il est conseillé d'utiliser la fonction
+	\jump{dev:sec:persistent-data}{map2persistent} combiné avec une variable de configuration
+	appropriée.
+    \end{enumerate}
+
+
+\subsubsection{Scripts d'arrêt dans \texttt{opt/etc/rc0.d/}}
+
+Chaque ordinateur a besoin d’un temps pour s’arrêter ou redémarrer. Il se
+pourrait bien que vous pouvez avoir à effectuer des opérations avant que
+l'ordinateur s'éteigne ou redémarre. Les commandes officielles sont
+\og{}halt\fg{} et \og{}reboot\fg{}. Ces commandes sont également placées
+dans IMONC ou dans le Web-GUI si vous l’avez installé, un clique sur
+le bouton suffira pour arrêter ou redémarrer le routeur.
+
+Tous les scripts d'arrêt se trouvent dans le répertoire \texttt{opt/etc/rc0.d/}.
+Le nom du fichier est analogue à celui du script de démarrage. Ils sont également exécutées
+dans ordre \emph{croissant} des numéros.
+
+
+\subsection{Fonctions auxiliaires}
+
+Dans \texttt{/etc/boot.d/base-helper} différentes fonctions sont mises à disposition,
+elles peuvent être utilisées pour les scripts de démarrage. Cela se applique pour
+certaines choses comme pour un support de débogage, pour le chargement des modules
+du Kernel ou pour la sortie des messages.
+
+Les différentes fonctions sont les suivantes et brièvement décrites.
+
+
+\subsubsection{Contrôle des scripts}
+
+\begin{description}
+
+\item[\texttt{begin\_script <Symbol> <Message>}~:] envoie un message et active
+le débogueur de script en utilisant \texttt{set -x}, si \var{<Symbol>\_DO\_DEBUG}
+est sur \og{}yes\fg{}.
+
+\item[\texttt{end\_script}~:] envoie un message final et fournit l'état de débogage
+si vous avez activé le \texttt{begin\_script}. Pour chaque activation du \texttt{begin\_script}
+un \texttt{end\_script} sera associé et activé (et vice versa).
+
+\end{description}
+
+
+\subsubsection{Chargement des modules du Kernel}
+
+\begin{description}
+
+\item[\texttt{do\_modprobe [-q] <Module> <Paramètre>*}:]
+Charge le module du Kernel, y compris ses paramètres, en résolvant en même temp
+les dépendances du module. Le paramètre \og{}-q\fg{} empêche qu'un message erreur
+soit mis. La fonction retourne en cas de succès une valeur nulle, dans le cas
+d'une erreur une valeur non nulle. Cela permet décrire un code pour gérer les échecs
+lors du chargement les modules du Kernel~:
+
+\begin{example}
+\begin{verbatim}
+    if do_modprobe -q acpi-cpufreq
+    then
+        # pas de contrôle de fréquence du CPU via ACPI
+        log_error "le contrôle de fréquence du CPU via ACPI n'est pas disponible."
+        # [...]
+    else
+        log_info "le contrôle de fréquence du CPU via ACPI est activé."
+        # [...]
+    fi
+\end{verbatim}
+\end{example}
+
+\item[\texttt{do\_modrobe\_if\_exists [-q] <Chemin> <Module> <Paramètre>*}~:]\mbox{}\\
+vérifie d'abord si le module \texttt{/lib/modules/<version du kernel>/<Chemin>/<Module>}
+existe et ensuite exécute \texttt{do\_modprobe}.
+
+\wichtig{Le module doit exister précisément par ce nom, aucun alias ne peuvent être utilisé.
+Lorsque vous utilisez un alias \texttt{do\_modprobe} sera exécuté immédiatement.}
+
+\end{description}
+
+
+\subsubsection{Messages et gestion des erreurs}
+
+\begin{description}
+
+\item[\texttt{log\_info <Message>}~:] envoi un message sur la console
+et dans \texttt{/bootmsg.txt}. Si aucun message n'est enregistré dans ce paramètre
+le fichier \texttt{log\_info} sera lu depuis l'entrée par défaut. La fonction renvoie
+toujours en retour une valeur nulle.
+
+\item[\texttt{log\_warn <Message>}~:] envoi un message d'avertissement sur la console
+et dans \texttt{/bootmsg.txt}, la chaîne \texttt{WARN:} sera utilisée comme préfixe.
+Si aucun message n'est enregistré dans ce paramètre le fichier \texttt{log\_warn}
+sera lu depuis l'entrée par défaut. La fonction renvoie toujours en retour une valeur null.
+
+\item[\texttt{log\_error <Message>}~:] envoi un message d'erreur sur la console
+et dans \texttt{/bootmsg.txt}, la chaîne \texttt{ERR:} sera utilisée comme préfixe.
+Si aucun message n'est enregistré dans ce paramètre le fichier \texttt{log\_error}
+sera lu depuis l'entrée par défaut. La fonction renvoie toujours en retour une valeur null.
+
+\item[\texttt{set\_error <Message>}~:] envoi un message d'erreur qui sera définit dans
+  une variable d'erreur interne, ensuite elle pourra être examiné via \texttt{is\_error}.
+
+\item[\texttt{is\_error}~:] réinitialise la variable d'erreur interne et renvoie true,
+si elle a été précédemment défini par \texttt{set\_error}.
+
+\end{description}
+
+
+\subsubsection{Fonctions réseau}
+
+\begin{description}
+
+\item[\texttt{translate\_ip\_net <Valeur> <Nom de Variable> [<Variable de Résultat>]}~:]\mbox{}\\
+remplace les références symboliques par des paramètres. Actuellement les traductions
+suivantes ont lieu~:
+\begin{description}
+\item[*.*.*.*, \texttt{none}, \texttt{default}, \texttt{pppoe}] ne sont pas remplacé
+\item[\texttt{any}] sera remplacé par \texttt{0.0.0.0/0}
+\item[\texttt{dynamic}] sera remplacée par une adresse IP du routeur, à travers laquel
+il existe une connexion Internet.
+\item[\var{IP\_NET\_x}] sera remplacé par le réseau se trouvant dans la configuration.
+\item[\var{IP\_NET\_x\_IPADDR}] sera remplacé par l'adresse IP se trouvant dans
+la configuration.
+\item[\var{IP\_ROUTE\_x}] sera remplacé par le réseau routé se trouvant dans la configuration
+\item[\texttt{@<Hostname>}] sera remplacé par l'hôte ou par l'adresse IP se trouvant dans
+la configuration.
+\end{description}
+
+Le résultat de la traduction est mémorisée dans la variable dont le nom est transmis dans
+le troisième paramètre, si ce paramètre est manquant, le résultat sera stocké dans la variable 
+\var{res}. Le nom de la variable qui est transmis dans le second paramètre est utilisé
+uniquement pour les messages d'erreur si la traduction échoue, cela permet d'appeler la source
+de la valeur à traduire. Si une erreur se produit, un message est alors exécuté.
+
+\begin{example}
+\begin{verbatim}
+    Unable to translate value '<Valeur>' contained in <Nom de Variable>.
+\end{verbatim}
+\end{example}
+
+La valeur nulle est retourée si la traduction a réussie et une valeur non nulle sera retounée
+si une erreur s'est produite.
+
+\end{description}
+
+
+\subsubsection{Divers}
+
+\begin{description}
+
+\item[\texttt{mk\_writable <Fichier>}~:] pour vous assurer que le fichier transmis
+sera accessible en écriture. Seulement si le fichier est en lecture seule dans
+le fichier-système et juste monté par un lien symbolique, une copie locale
+sera alors crée pour avoir le fichier en écrit.
+
+\item[\texttt{list\_unique <Liste>}~:] supprime les doublons dans la liste transmise.
+Le résultat est écrit dans la sortie standard.
+
+\end{description}
+
+\subsection{Règles mdev}
+
+Il est possible d'établir des règles mdev supplémentaires qui exécutent des
+actions spécifiques pour l'apparition ou la disparition de certains dispositifs
+dans les paquetages OPT. Par exemple la variable \var{OPT\_AUTOMOUNT} dans le
+paquetage hd, utilise une telle règle pour monter automatiquement un nouveau
+support de stockage émergentes. Si vous souhaitez intégrer une règle mdev
+supplémentaire, vous pouvez utiliser le script sous la forme~:
+
+\begin{verbatim}
+    /etc/mdev.d/mdev<Nummer>.<Name>
+\end{verbatim}
+
+Installation du rootFS, le nombre doit être similaire au début et à la fin du script
+et constitué de trois chiffres, le nom peut être choisi arbitrairement. Dans ce
+scénario, toutes les sorties sont intégrés dans le fichier standard
+\texttt{/etc/mdev.conf}. Exemple avec \var{OPT\_AUTOMOUNT} mentionné ci-dessus~:
+
+\begin{small}
+\begin{verbatim}
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/mdev.d/mdev500.automount - mdev HD automounting rules     __FLI4LVER__
+#
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+cat <<"EOF"
+#
+# mdev500.automount
+#
+
+-SUBSYSTEM=block;DEVTYPE=partition;.+       0:0 660 */lib/mdev/automount
+
+EOF
+\end{verbatim}
+\end{small}
+
+L'en-tête de la syntaxe des règles du fichier \texttt{/etc/mdev.conf}
+et la documentation mdev, se trouve sur la page Web
+\altlink{http://git.busybox.net/busybox/plain/docs/mdev.txt} tout y est référencées.
+Si le script invoque une règle (comme dans l'exemple ci-dessus \texttt{/lib/mdev/automount}),
+il déclenchera un accès à toutes les variables "événements" du kernel et en particulier~:
+
+\begin{itemize}
+\item \var{ACTION} (Typiquement \texttt{add} ou \texttt{remove}, plus rarement \texttt{change})
+\item \var{DEVPATH} (le chemin sysfs pour le composant concerné)
+\item \var{SUBSYSTEM} (le sous-système du kernel affecté, voir ci-dessous)
+\item \var{DEVNAME} (le fichier de périphérique affecté dans \texttt{/dev}, si manquant,
+					le périphérique ne sera pas créé ou supprimé, mais par exemple un module)
+\item \var{MDEV} (est fixé par mdev le nom du fichier du périphérique sera finalement généré)
+\end{itemize}
+
+Exemple de sous-systèmes du Kernel~:
+
+\begin{description}
+\item[block] Bloque les périphériques (carte mémoire) comme \texttt{sda} pour le (premier
+			 disque dur), \texttt{sr0} pour le (premier lecteur de CD) ou \texttt{ram1}
+			 pour le (deuxième disque RAM)
+\item[input] Périphériques d'entrée de clavier, de la souris, etc., comme le fichier
+			 \texttt{input/event0} qui correspond à un périphérique, il doit être défini
+			 avec sysfs c'est un système de fichiers virtuel.
+\item[mem]   Périphériques pour accéder aux ports de la mémoire et du matériel, comme
+			 \texttt{mem} et \texttt{ports}, il peut également comprendre les pseudo-périphériques
+			 comme \texttt{zero} (délivre en permanence le caractère ASCII par la valeur null)
+			 et \texttt{null} (pas de retours, tout sera absorbé)
+\item[sound] Divers Périphériques pour les sorties audio, appellation hétérogène
+\item[tty]   Périphériques pour l'accès aux consoles physiques ou virtuels, comme \texttt{tty1}
+			 (première console virtuelle) ou \texttt{ttyS0} (première console série)
+\end{description}
+
+Un exemple pour les deux premiers ports série~:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[42]: 30.050644 add@/devices/pnp0/00:04/tty/ttyS0
+mdev[42]:   ACTION=add
+mdev[42]:   DEVPATH=/devices/pnp0/00:04/tty/ttyS0
+mdev[42]:   SUBSYSTEM=tty
+mdev[42]:   MAJOR=4
+mdev[42]:   MINOR=64
+mdev[42]:   DEVNAME=ttyS0
+mdev[42]:   SEQNUM=613
+
+mdev[42]: 30.051477 add@/devices/platform/serial8250/tty/ttyS1
+mdev[42]:   ACTION=add
+mdev[42]:   DEVPATH=/devices/platform/serial8250/tty/ttyS1
+mdev[42]:   SUBSYSTEM=tty
+mdev[42]:   MAJOR=4
+mdev[42]:   MINOR=65
+mdev[42]:   DEVNAME=ttyS1
+mdev[42]:   SEQNUM=614
+\end{verbatim}
+\end{scriptsize}
+
+Un exemple pour connecter un clavier MF II~:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[41]: 4.030653 add@/devices/platform/i8042/serio0/input/input0
+mdev[41]:   ACTION=add
+mdev[41]:   DEVPATH=/devices/platform/i8042/serio0/input/input0
+mdev[41]:   SUBSYSTEM=input
+mdev[41]:   PRODUCT=11/1/1/ab41
+mdev[41]:   NAME="AT Translated Set 2 keyboard"
+mdev[41]:   PHYS="isa0060/serio0/input0"
+mdev[41]:   PROP=0
+mdev[41]:   EV=120013
+mdev[41]:   KEY=4 2000000 3803078 f800d001 feffffdf ffefffff ffffffff fffffffe
+mdev[41]:   MSC=10
+mdev[41]:   LED=7
+mdev[41]:   MODALIAS=input:b0011v0001p0001eAB41-e0,1,4,11,14,k71,72,73,74,75,76,77,79,
+7A,7B,7C,7D,7E,7F,80,8C,8E,8F,9B,9C,9D,9E,9F,A3,A4,A5,A6,AC,AD,B7,B8,B9,D9,E2,ram4,l0,
+1,2,sfw
+mdev[41]:   SEQNUM=604
+\end{verbatim}
+\end{scriptsize}
+
+Un exemple pour charger un module kernel USB (\texttt{uhci\_hcd})~:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[41]: 6.537506 add@/module/uhci_hcd
+mdev[41]:   ACTION=add
+mdev[41]:   DEVPATH=/module/uhci_hcd
+mdev[41]:   SUBSYSTEM=module
+mdev[41]:   SEQNUM=633
+\end{verbatim}
+\end{scriptsize}
+
+Un exemple pour connecter un disque dur~:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[41]: 7.267527 add@/devices/pci0000:00/0000:00:07.1/ata1/host0/target0:0:0/0:0:0:0/block/sda
+mdev[41]:   ACTION=add
+mdev[41]:   DEVPATH=/devices/pci0000:00/0000:00:07.1/ata1/host0/target0:0:0/0:0:0:0/block/sda
+mdev[41]:   SUBSYSTEM=block
+mdev[41]:   MAJOR=8
+mdev[41]:   MINOR=0
+mdev[41]:   DEVNAME=sda
+mdev[41]:   DEVTYPE=disk
+mdev[41]:   SEQNUM=688
+\end{verbatim}
+\end{scriptsize}
+
+Ci-dessus est un disque dur ATA/IDE (ata1), le nom du périphérique \texttt{sda} sera utilisé
+pour le traitement.
+
+Un exemple pour un périphérique de blocage à distance (affecte le marquage d'un fichier d'image
+de VM-fli4l et a été résolu via \texttt{virsh detach-device})~:
+
+\begin{scriptsize}
+\begin{verbatim}
+mdev[42]: 52.600646 remove@/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1
+mdev[42]:   SUBSYSTEM=block
+mdev[42]:   MAJOR=254
+mdev[42]:   MINOR=17
+mdev[42]:   DEVNAME=vdb1
+mdev[42]:   DEVTYPE=partition
+mdev[42]:   SEQNUM=776
+
+mdev[42]: 52.644642 remove@/devices/virtual/bdi/254:16
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/virtual/bdi/254:16
+mdev[42]:   SUBSYSTEM=bdi
+mdev[42]:   SEQNUM=777
+
+mdev[42]: 52.644718 remove@/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb
+mdev[42]:   SUBSYSTEM=block
+mdev[42]:   MAJOR=254
+mdev[42]:   MINOR=16
+mdev[42]:   DEVNAME=vdb
+mdev[42]:   DEVTYPE=disk
+mdev[42]:   SEQNUM=778
+
+mdev[42]: 52.644777 remove@/devices/pci0000:00/0000:00:0a.0/virtio5
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5
+mdev[42]:   SUBSYSTEM=virtio
+mdev[42]:   MODALIAS=virtio:d00000002v00001AF4
+mdev[42]:   SEQNUM=779
+
+mdev[42]: 52.644973 remove@/devices/pci0000:00/0000:00:0a.0
+mdev[42]:   ACTION=remove
+mdev[42]:   DEVPATH=/devices/pci0000:00/0000:00:0a.0
+mdev[42]:   SUBSYSTEM=pci
+mdev[42]:   PCI_CLASS=10000
+mdev[42]:   PCI_ID=1AF4:1001
+mdev[42]:   PCI_SUBSYS_ID=1AF4:0002
+mdev[42]:   PCI_SLOT_NAME=0000:00:0a.0
+mdev[42]:   MODALIAS=pci:v00001AF4d00001001sv00001AF4sd00000002bc01sc00i00
+mdev[42]:   SEQNUM=780
+\end{verbatim}
+\end{scriptsize}
+
+Comme vous pouvez le voir, plusiers extration du sous-système du kernel ont été impliquès
+(avec \texttt{block}, \texttt{bdi}, \texttt{virtio} et \texttt{pci}).
+
+\subsection{Périphériques ttyI}
+
+Au sujet les périphériques ttyI, vous pouvez utiliser (\texttt{/dev/ttyI0} \ldots \texttt{/dev/ttyI15}),
+pour la création d’un \og{}émulateur de modem\fg{} avec plusieurs cartes ISDN (ou RNIS),
+il existe un compteur pour les conflits entre les différents OPTs et les utilisations
+de ces périphériques, c'est un dispositif à éviter. Ces émulateur seront créés lors
+du démarrage du routeur, dans le fichier \texttt{/var/run/next\_ttyI}, avec l'utilisation
+un compteur. Dans l'exemple de script suivant, la valeur est interrogé et peut être augmentée
+de un, il sera exporté de nouveau dans le prochain OPT.
+
+\begin{example}
+\begin{verbatim}
+    ttydev_error=
+    ttydev=$(cat /var/run/next_ttyI)
+    if [ $ttydev -le 16 ]
+    then                                    # ttyI device available? yes
+        ttydev=$((ttydev + 1))              # ttyI device + 1
+        echo $ttydev >/var/run/next_ttyI    # save it
+    else                                    # ttyI device available? no
+        log_error "No ttyI device for <Nom de votre OPT> available!"
+        ttydev_error=true                   # set error for later use
+    fi
+
+    if [ -z "$ttydev_error" ]               # start OPT only if next tty device
+    then                                    # was available to minimize error
+        ...                                 # messages and minimize the
+                                            # risk of uncomplete boot
+    fi
+\end{verbatim}
+\end{example}
+
+\subsection{Scripts de connexion et de déconnexion par modem}
+
+
+\subsubsection{Généralités}
+
+Après avoir établi ou coupé une connexion par modem, les scripts \texttt{/etc/ppp/} sont
+traitées. Voici les actions qui sont nécessaires pour activer ou déactiver une connexion,
+qui seront stocker dans l'OPT. Le schéma des noms de fichier est le suivant~:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{l}
+    \texttt{ip-up<numéro à trois chiffres>.<nom d'OPT>}\\
+    \texttt{ip-down<numéro à trois chiffres>.<nom d'OPT>}\\
+\end{tabular}
+\end{table}
+
+Le script \texttt{ip-up} est exécuté après la \emph{connexion} et le script
+\texttt{ip-down} est exécuté après la \emph{déconnexion}
+
+\wichtig{Dans le script \texttt{ip-down} aucune intervention ne doit être réalisé,
+autrement cela conduirait à une nouvelle connexion Internet, avec uniquement un accès
+à l’état online permanent, pour les utilisateurs qui non pas de forfait illimité,
+cela peut couter très cher.}
+
+\wichtig{Car pour ce script, il n’y a aucun processus qui est généré, en plus, ce
+script ne peut \emph{pas} être arrêté avec la commande \og{}exit\fg{}!}
+
+\textbf{Remarque~:} le scripts \texttt{ip-up} peut être examiné lors qu'il est exécuté,
+pour cela le fichier \texttt{rc400} sera vérifier avec la variable \var{ip\_up\_events}.
+Si c'est réglé sur "yes", une connexion par modem existe et le script \texttt{ip-up} sera
+exécuté. Si c'est réglé sur "no", une connexion par modem n'existe pas et le script
+\texttt{ip-up} ne sera pas exécuté. Il y a une exception pour cette règle~: Si un
+routeur Ethernet pur n'est pas configuré pour des connexions commutées, mais configuré
+pour une route par défaut (\texttt{0.0.0.0/0}), le script \texttt{ip-up} sera exécuté qu'une
+fois, exactement à la fin du processus de boot. (De même le script \texttt{ip-down} sera
+exécuté qu'une fois avant l'arrêt du routeur).
+
+
+\subsubsection{Les variables}
+
+Grâce au concept d'appel spécial les scripts \texttt{ip-up} et \texttt{ip-down} sont exécutés
+et les variables suivantes sont utilisées~:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lp{10cm}}
+    \var{real\_interface}    & L'interface actuelle, par ex.
+                               \texttt{ppp0}, \texttt{ippp0}, \ldots\\
+    \var{interface}          & Interface-IMOND, avec \texttt{pppoe},
+                               \texttt{ippp0}, \ldots\\
+    \var{tty}                & Terminal de connexion, peut-être vide~!\\
+    \var{speed}              & Vitesse de connexion, par ex. avec ISDN 64000\\
+    \var{local}              & Adresse-IP spécifique\\
+    \var{remote}             & Adresse-IP d'ordinatuer auquel vous êtes connecté\\
+    \var{is\_default\_route} & Indique si l'actuel \texttt{ip-up}/\texttt{ip-down}
+								est utilisé pour l'interface de la route par défaut
+								peut-être \og{}yes\fg{} ou \og{}no\fg{})\\
+\end{tabular}
+\end{table}
+
+
+\subsubsection{Route par défaut}
+
+Depuis la version 2.1.0, les scripts \texttt{ip-up} et \texttt{ip-down} sont exécutés
+non seulement pour l'interface sur laquelle la route par défaut est configurée, mais
+aussi pour toutes les connexions qui ont besoin les scripts \texttt{ip-up} et \texttt{ip-down}.
+Pour émuler des comportements anciens, vous devez inclure les éléments à déclencher
+dans les scripts \texttt{ip-up} et \texttt{ip-down} la requête suivante doit être insérée~:
+
+\begin{example}
+\begin{verbatim}
+    # is a default-route-interface going up?
+    if [ "$is_default_route" = "yes" ]
+    then
+        # Les actions à déclencher
+    fi
+\end{verbatim}
+\end{example}
+
+Naturellement, les nouveaux comportements doivent être utilisés, pour des actions spécifiques.
+

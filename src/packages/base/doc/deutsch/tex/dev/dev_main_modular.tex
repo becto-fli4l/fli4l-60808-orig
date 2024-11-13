@@ -1,0 +1,2461 @@
+% Last Update: $Id$
+
+\section{Modulkonzept}
+
+fli4l wird in Module (Pakete) aufgeteilt, u.\,a. in:
+\begin{itemize}
+    \item \emph{fli4l-\version}~~\(\longleftarrow\) Das Basis-Paket
+    \item \emph{dns\_dhcp}
+    \item \emph{dsl}
+    \item \emph{isdn}
+    \item \emph{sshd}
+    \item und viele weitere\ldots
+\end{itemize}
+
+Mit dem Basis-Paket ist fli4l ein reiner Ethernet-Router. Für ISDN
+und/oder DSL ist das Paket \emph{isdn} und/oder \emph{dsl} in dem
+fli4l-Verzeichnis auszupacken. Entsprechendes gilt für die anderen Pakete.
+
+\marklabel{mkfli4l}{\subsection{mkfli4l}}
+
+Aus den Paketen werden in Abhängigkeit von der konkreten Konfiguration
+eine Konfigurationsdatei namens \texttt{rc.cfg} und zwei Archive namens
+\texttt{rootfs.img} und \texttt{opt.img} erstellt, die alle
+Konfigurationsinformationen und alle benötigten Dateien enthalten. Diese Dateien
+werden mit Hilfe von \texttt{mkfli4l} erzeugt, welches die einzelnen Pakete
+einliest und auf Fehler in der Konfiguration prüft.
+
+\texttt{mkfli4l} akzeptiert die in Tabelle \ref{tab:mkfli4l} angegebenen
+Parameter. Fehlen sie, werden die in Klammern angegebenen Werte angenommen.
+Eine vollständige Liste der Optionen (Tabelle \ref{tab:mkfli4l}) erhält man,
+wenn man
+\begin{verbatim}
+    mkfli4l -h
+\end{verbatim}
+aufruft.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Parameter für \texttt{mkfli4l}}
+  \begin{tabular}{|lp{2cm}|p{8cm}|}
+    \hline
+    \multicolumn{1}{|c|}{\textbf{Option}} & \multicolumn{2}{c|} \textbf{{Bedeutung}} \\
+    \hline
+    -c, -\,-config    & \multicolumn{2}{|p{11cm}|} { Setzen des
+      Verzeichnisses, in dem \texttt{mkfli4l} die config-Dateien der Pakete
+      sucht (Standard: config)} \\
+    -x, -\,-check     & \multicolumn{2}{|p{11cm}|} { Setzen des
+      Verzeichnisses, in dem \texttt{mkfli4l} die zum Prüfen der Pakete
+      benötigten Dateien sucht (\texttt{<package>.txt}, \texttt{<package>.exp} und
+      \texttt{<package>.ext}; Standard: check)} \\
+    -l, -\,-log       & \multicolumn{2}{|p{11cm}|} { Setzen der Logdatei;
+      \texttt{mkfli4l} protokolliert Fehlermeldungen und Warnungen in
+      dieser Datei (Standard: \texttt{img/mkfli4l.log})} \\
+    -p, -\,-package   & \multicolumn{2}{|p{11cm}|} { Angabe der Pakete,
+      die geprüft werden sollen. Diese Option kann mehrmals angegeben
+      werden, wenn man mehrere Pakete im Zusammenhang prüfen will. Bei
+      Verwendung von -p wird allerdings grundsätzlich zuerst die Datei
+      \texttt{<check\_dir>/base.exp} eingelesen, um die allgemeinen
+      regulären Ausdrücke, die vom Basis-Paket bereitgestellt werden,
+      zur Verfügung zu stellen. Diese Datei muss also existieren.} \\
+    -i, -\,-info       & \multicolumn{2}{|p{11cm}|} { Gibt Auskunft über
+      den Verlauf der Prüfung (welche Dateien werden gelesen, welche
+      Prüfungen werden durchgeführt, welche besonderen Dinge traten
+      während des Prüfprozesses auf)} \\
+    -v, -\,-verbose    & \multicolumn{2}{|p{11cm}|} { Ausführlichere
+      Variante von -i} \\
+    -h, -\,-help       & \multicolumn{2}{|p{11cm}|} { Zeigt die Hilfe an} \\
+    \html{\multirow{8}{*}{top}} \latex{\multirow{8}{*}{}}{-d, -\,-debug} &
+      \multicolumn{2}{|p{11cm}|} { Erleichtert die Fehlersuche im Prüfprozess.
+      Dies ist als Hilfe für Paketentwickler gedacht, die etwas genauer wissen
+      möchten, wie die Prüfung des Paketes abläuft.} \\
+    \cline{2-3}
+    \latex{&} \multicolumn{1}{|c|}{\textbf{Debugoption}} & \multicolumn{1}{c|}{\textbf{Bedeutung}} \\
+    \cline{2-3}
+    \latex{&} \multicolumn{1}{|l|}{check} & show check process \\
+    \latex{&} \multicolumn{1}{|l|}{zip-list} & show generation of zip list \\
+    \latex{&} \multicolumn{1}{|l|}{zip-list-skipped} & show skipped files \\
+    \latex{&} \multicolumn{1}{|l|}{zip-list-regexp} & show regular expressions for ziplist \\
+    \latex{&} \multicolumn{1}{|l|}{opt-files} & check all files in \texttt{opt/<package>.txt} \\
+    \latex{&} \multicolumn{1}{|l|}{ext-trace} & show trace of extended checks \\
+    \hline
+  \end{tabular}
+  \label{tab:mkfli4l}
+\end{table}
+
+\subsection{Aufbau}
+
+Ein Paket kann mehrere OPTs enthalten, wenn es aber nur eins enthält, ist
+es allerdings zweckmäßig, das Paket genauso wie das OPT zu nennen. Im
+Folgenden ist \texttt{<PAKET>} durch den jeweiligen Paket-Namen zu ersetzen.
+Ein Paket besteht aus folgenden Teilen:
+
+\begin{itemize}
+\item Verwaltungsdateien
+\item Dokumentation
+\item Entwickler-Dokumentation
+\item Client-Programme
+\item Quellcode
+\item Weitere Dateien
+\end{itemize}
+
+Die einzelnen Teile sind im Folgenden näher beschrieben.
+
+\subsection{Die Konfiguration der Pakete}
+
+In der Datei \texttt{config/<PAKET>.txt} werden vom Benutzer Änderungen an der
+Konfiguration des Pakets vorgenommen. Alle Variablen eines OPTs
+sollten einheitlich mit dem Namen des OPTs beginnen, also zum
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    #-------------------------------------------------------------------
+    # Optional package: TELNETD
+    #-------------------------------------------------------------------
+    OPT_TELNETD='no'        # install telnetd: yes or no
+    TELNETD_PORT='23'       # telnet port
+\end{verbatim}
+\end{example}
+
+Ein OPT sollte in der Konfigurationsdatei durch einen Header (siehe
+oben) entsprechend abgegrenzt werden. Dies erhöht die Übersichtlichkeit,
+zumal ein Paket ja auch mehrere OPTs enthalten kann. Die dem OPT
+zugehörigen Variablen sollten~--- ebenfalls im Interesse der
+Übersichtlichkeit~--- nicht weiter eingerückt werden. Kommentare und
+Leerzeilen sind erlaubt, wobei Kommentare einheitlich in Spalte 33
+beginnen sollen. Ist eine Variable inklusive ihrer Belegung länger als
+32 Zeichen, ist der Kommentar eine Zeile versetzt ab Spalte 33 einzufügen.
+Längere Kommentare werden jeweils ab Spalte 33 beginnend auf mehrere Zeilen
+aufgeteilt. Diese Maßnahmen sollen die Lesbarkeit der Konfigurationsdatei
+erhöhen.
+
+Alle Werte hinter
+dem Gleichheitszeichen müssen in Hochkommata\footnote{Es können sowohl
+einfache Hochkommata als auch doppelte Hochkommata verwendet werden.
+Man kann also \texttt{FOO='bar'} oder auch \texttt{FOO="bar"}
+schreiben.  Die Verwendung von doppelten Hochkommata sollte
+allerdings die Ausnahme sein und man sollte sich vorher
+unbedingt darüber informieren, wie eine Unix-Shell mit einfachen und
+doppelten Hochkommata umgeht.} eingefasst werden, da es sonst beim
+Booten zu Problemen kommen kann.
+
+    Variablen, die aktiv sind (s.\,u.), werden in die \texttt{rc.cfg} übernommen,
+    alles andere wird ignoriert. Einzige Ausnahme sind Variablen mit
+    dem Namen \var{<PAKET>\_DO\_DEBUG}. Diese dienen zur Fehlersuche in
+    Paketen und werden pauschal übernommen.
+
+\marklabel{sec:opt_txt}{
+  \subsection{Die Liste der zu kopierenden Dateien}
+}
+
+    Die Datei \texttt{opt/<PAKET>.txt} enthält Anweisungen, die beschreiben
+\begin{itemize}
+\item welche Dateien zu welchem OPT gehören,
+\item wann sie in das zu generierende \texttt{opt}- bzw. \texttt{rootfs}-Archiv
+    übernommen werden sollen,
+\item welche UID\footnote{User ID: Eigentümer der Datei}, GID\footnote{Group ID:
+Gruppe der Datei} und Rechte\footnote{Darf die Datei gelesen,
+beschrieben oder ausgeführt werden?} jede Datei bekommen soll,
+\item welche Konvertierungen vor Aufnahme ins Archiv erfolgen sollen.
+\end{itemize}
+
+\texttt{mkfli4l} generiert darauf basierend die erforderlichen Archive.
+
+    Leere Zeilen und Zeilen, die mit \texttt{\#} anfangen, werden
+ignoriert. In einer der ersten Zeilen sollte die Version des
+Paket-Dateiformats wie folgt stehen:
+
+\begin{example}
+\begin{verbatim}
+    <erste Spalte>      <zweite Spalte> <dritte Spalte>
+    opt_format_version  1                    -
+\end{verbatim}
+\end{example}
+
+    Die restlichen Zeilen haben folgende Syntax:
+
+\begin{example}
+\begin{verbatim}
+    <erste Spalte>  <zweite Spalte> <dritte Spalte> <folgende spalten>
+    Variable        Wert            Datei           Optionen
+\end{verbatim}
+\end{example}
+
+    \begin{enumerate}
+    \item
+        In der ersten Spalte steht der Name einer Variable, von
+        deren Wert das Übernehmen der in der dritten Spalte stehenden
+        Datei abhängt. Der Name einer Variable kann beliebig oft in
+        der ersten Spalte auftauchen, falls mehrere Dateien von ihr
+        abhängen. Jede Variable, die in der Datei \texttt{opt/<PAKET>.txt}
+        auftaucht, wird von \texttt{mkfli4l} markiert.
+
+        Falls mehrere Variablen auf denselben Wert geprüft werden sollen, kann
+        auch eine Liste von Variablen (durch Kommata getrennt) verwendet werden.
+        In diesem Falle reicht es aus, wenn mindestens \emph{eine} Variable
+        den in der zweiten Spalte geforderten Wert enthält. Wichtig ist dabei,
+        dass zwischen den einzelnen Variablen \emph{keine} Leerzeichen stehen!
+
+        Bei OPT-Variablen (also Variablen, die mit \var{OPT\_} beginnen und
+        typischerweise den Typ \var{YESNO} haben) kann das Präfix
+        "`\var{OPT\_}"' weggelassen werden. Des Weiteren ist es unwichtig, ob
+        Variablen in Groß- oder in Kleinbuchstaben (oder beliebig gemischt)
+        notiert werden.
+
+      \item In der zweiten Spalte steht ein Wert. Stimmt die in der
+        ersten Spalte stehende Variable mit diesem Wert überein und
+        ist die Variable aktiv (s.\,u.), wird die
+        Datei in der dritten Spalte übernommen. Steht eine \%-Variable
+        in der ersten Spalte, wird über alle Indizes iteriert und
+        geprüft, ob irgendein Element des Arrays mit dem Wert übereinstimmt.
+        Ist das der Fall, wird kopiert. Zusätzlich wird vermerkt, dass
+        aufgrund des aktuellen Wertes der Variable eine Datei kopiert
+        wurde.
+
+        Es ist möglich, vor den Wert ein "`!"' zu schreiben. In diesem Falle
+        wird die Prüfung negiert, d.\,h.\ die Datei wird genau dann kopiert,
+        wenn die Variable diesen Wert \emph{nicht} enthält.
+
+      \item  In der dritten Spalte steht der Name einer Datei. Die
+        Pfadangabe erfolgt relativ zum \texttt{opt}-Verzeichnis. Die Datei muss
+        existieren und lesbar sein, sonst gibt es beim Generieren der
+        Archive einen Fehler und die Generierung wird abgebrochen.
+
+        Beginnt der Dateiname mit \texttt{rootfs:}, wird die Datei in die Liste
+        der ins \texttt{rootfs}-Archiv aufzunehmenden Dateien übernommen. Der
+        Präfix wird vorher entfernt. Taucht dieselbe Datei sowohl mit als auch
+        ohne \texttt{rootfs:}-Präfix auf, wird sie nur ins
+        \texttt{rootfs}-Archiv übernommen.
+
+        Liegt die Datei unterhalb des verwendeten Konfigurationsverzeichnisses,
+        wird sie in die Liste der aus dem Konfigurationsverzeichnis zu
+        übernehmenden Dateien aufgenommen, andernfalls wird die unter
+        \texttt{opt/} liegende Datei genommen.
+
+        Ist die zu kopierende Datei ein Kernel-Modul, kann man die
+        konkrete Kernel-Version durch \texttt{\$\{KERNEL\_VERSION\}} ersetzen.
+        \texttt{mkfli4l} nimmt dann die Version aus der Konfiguration und setzt
+        sie hier ein. Dadurch kann man einem Paket Module für verschiedene
+        Kern-Versionen mitgeben und es wird immer die für den Kern richtige
+        Version mit auf den Router kopiert.
+        Für Kernel-Module kann der Pfad auch vollkommen entfallen.
+        \texttt{mkfli4l} findet das Modul anhand der Dateien
+        \texttt{modules.dep} und \texttt{modules.alias}, siehe Abschnitt
+        \jump{subsec:automatic-dependencies}{"`Automatische Auflösung von
+        Abhängigkeiten für Kernel-Module"'}.
+
+        \begin{table}[ht!]
+          \centering
+          \small
+          \caption{Optionen für Dateien}
+          \label{table:options}
+          \begin{tabular}{|p{2.5cm}|p{7.5cm}|p{3.5cm}|}
+            \hline
+            Option & Bedeutung & Standardwert \\
+            \hline
+            type= & Der Typ des Eintrags:\newline\newline
+            \begin{tabular}{ll}
+            \emph{local} & Dateisystem-Objekt\\
+            \emph{file} & Datei\\
+            \emph{dir} & Verzeichnis\\
+            \emph{node} & Gerät\\
+            \emph{symlink} & (symbolische) Verknüpfung
+            \end{tabular}\newline\newline
+            Wenn vorhanden, muss diese
+            Option an erster Stelle stehen. Der Typ "`local"' steht hierbei
+            für den Typ eines im Dateisystem existierenden Objekts und
+            entspricht somit "`file"', "`dir"', "`node"' oder "`symlink"' (je
+            nachdem). Die anderen Typen mit Ausnahme von "`file"' können
+            Einträge im Archiv erzeugen, die nicht im lokalen Dateisystem
+            vorliegen müssen. Das wird z.\,B. benutzt, um Gerätedateien im
+            \texttt{rootfs}-Archiv anzulegen. & local \\
+            uid= & Der Eigentümer der Datei, entweder numerisch oder
+            als Name aus passwd & root \\
+            gid= & Die Gruppe der Datei, entweder numerisch oder als
+            Name aus group & root \\
+            mode= & Die Zugriffsrechte &
+            Dateien und Geräte:\newline\verb?rw-r--r--? (644)\newline
+            Verzeichnisse:\newline\verb?rwxr-xr-x? (755)\newline
+            Verknüpfungen:\newline
+            \verb?rwxrwxrwx? (777)\newline\\
+            flags=\newline
+            (type=file) & Konvertierungen vor der Aufnahme ins Archiv:\newline\newline
+            \begin{tabular}{lp{6cm}}
+            \emph{utxt} & Konvertierung ins Unix-Format\\
+            \emph{dtxt} & Konvertierung ins DOS-Format\\
+            \emph{sh}   & Shell-Skript: Konvertierung ins Unix-Format, Entfernen überflüssiger Zeichen\\
+            \emph{luac} & Lua-Skript: Übersetzung in Bytecode der Lua-VM
+            \end{tabular}
+            & \\
+            name= & Alternativer Name, unter dem der Eintrag ins Archiv
+aufgenommen wird  &  \\
+            devtype=\newline
+            (type=node) & Beschreibt den Typ des
+            Geräts ("`c"' für zeichenorientierte und "`b"' für blockorientierte
+            Geräte). Muss an zweiter Stelle stehen. & \\
+            major=\newline
+            (type=node) & Beschreibt die so genannte
+            "`Major"'-Nummer der Gerätedatei. Muss an dritter Stelle stehen. & \\
+            minor=\newline
+            (type=node) & Beschreibt die so genannte
+            "`Minor"'-Nummer der Gerätedatei. Muss an vierter Stelle stehen. & \\
+            linktarget=\newline
+            (type=symlink) & Beschreibt das Ziel der
+            symbolischen Verknüpfung. Muss an zweiter Stelle stehen. & \\
+            \hline
+
+          \end{tabular}
+        \end{table}
+
+      \item In den anderen Spalten können die in Tabelle~\ref{table:options}
+        aufgeführten Optionen für den Eigentümer, die Gruppe, die Rechte der Dateien
+        und Konvertierungen stehen.
+
+    \end{enumerate}
+
+    Einige Beispiele:
+    \begin{itemize}
+    \item kopiere Datei, wenn \verb+OPT_TELNETD='yes'+, setze
+UID/GID auf root und die Rechte auf 755 (\verb?rwxr-xr-x?):
+
+\begin{example}
+\begin{verbatim}
+    telnetd     yes    usr/sbin/in.telnetd mode=755
+\end{verbatim}
+\end{example}
+
+    \item kopiere Datei (\texttt{OPT\_BASE='yes'} gilt implizit immer); setze
+UID/GID auf root, die Rechte auf 555 (\verb?r-xr-xr-x?) und konvertiere die
+Datei ins Unix-Format bei gleichzeitigem Entfernen aller überflüssigen
+Zeichen:
+
+\begin{example}
+\begin{verbatim}
+    base    yes     etc/rc0.d/rc500.killall mode=555 flags=sh
+\end{verbatim}
+\end{example}
+
+    \item kopiere Kernel-Modul, wenn \verb+PCMCIA_PCIC='i82365'+; setze
+UID/GID auf root und die Rechte auf 644 (\verb?rw-r--r--?):
+
+\begin{example}
+\begin{verbatim}
+    pcmcia_pcic i82365 lib/modules/${KERNEL_VERSION}/pcmcia/i82365.ko
+\end{verbatim}
+\end{example}
+
+    \item kopiere Kernel-Modul, wenn \texttt{PCMCIA\_\-PCIC='i82365'}; setze
+UID/GID auf root und die Rechte auf 644 (\verb?rw-r--r--?) (alternative Form):
+
+\begin{example}
+\begin{verbatim}
+    pcmcia_pcic i82365 i82365.ko
+\end{verbatim}
+\end{example}
+
+    \item kopiere Kernel-Modul, wenn mindestens einer der Einträge in
+\var{NET\_DRV\_\%} den Wert \texttt{3c503} besitzt; setze
+UID/GID auf root und die Rechte auf 644 (\verb?rw-r--r--?):
+\begin{example}
+\begin{verbatim}
+    net_drv_%   3c503  3c503.ko
+\end{verbatim}
+\end{example}
+
+    \item kopiere Datei, wenn die Variable \var{POWERMANAGEMENT} \emph{nicht}
+    den Wert "`none"' enthält:
+
+\begin{example}
+\begin{verbatim}
+    powermanagement !none etc/rc.d/rc100.pm mode=555 flags=sh
+\end{verbatim}
+\end{example}
+
+    \item kopiere Datei, wenn irgendeine der OPT-Variablen \var{OPT\_MYOPTA}
+    oder \var{OPT\_MYOPTB} den Wert "`yes"' enthält:
+
+\begin{example}
+\begin{verbatim}
+    myopta,myoptb yes usr/local/bin/myopt-common.sh mode=555 flags=sh
+\end{verbatim}
+\end{example}
+
+    Dieses Beispiel ist letztlich nur eine Kurzschreibweise für:
+
+\begin{example}
+\begin{verbatim}
+    myopta yes usr/local/bin/myopt-common.sh mode=555 flags=sh
+    myoptb yes usr/local/bin/myopt-common.sh mode=555 flags=sh
+\end{verbatim}
+\end{example}
+
+    Und letzteres ist eine Kurzschreibweise für:
+
+\begin{example}
+\begin{verbatim}
+    opt_myopta yes usr/local/bin/myopt-common.sh mode=555 flags=sh
+    opt_myoptb yes usr/local/bin/myopt-common.sh mode=555 flags=sh
+\end{verbatim}
+\end{example}
+
+    \item kopiere Datei \texttt{opt/usr/bin/beep.sh} ins \texttt{rootfs}-Archiv,
+    aber benenne sie vorher in \texttt{bin/beep} um:
+
+\begin{example}
+\begin{verbatim}
+    base yes rootfs:usr/bin/beep.sh mode=555 flags=sh name=bin/beep
+\end{verbatim}
+\end{example}
+
+    \end{itemize}
+
+    Wenn im Paket eine Variable referenziert wird, die nicht vom Paket
+    selbst definiert wird, kann es passieren, dass das entsprechende
+    Paket nicht installiert ist. Das führt für gewöhnlich zu einer Fehlermeldung
+    in \texttt{mkfli4l}, da \texttt{mkfli4l} erwartet, dass alle von \texttt{opt/<PAKET>.txt}
+    referenzierten Variablen definiert sind.
+
+    Um diese Situation korrekt handhaben zu können, wurde die
+    "`weak"'-Deklaration eingeführt. Sie hat das folgende Format:
+
+\begin{example}
+\begin{verbatim}
+    weak        <Variable>    -
+\end{verbatim}
+\end{example}
+
+    Dadurch wird die Variable definiert und ihr Wert intern auf
+    "`undefiniert"' gesetzt, wenn sie nicht bereits definiert worden ist. Dabei ist
+    jedoch zu beachten, dass hier das "`\var{OPT\_}"'-Präfix \emph{nicht} weggelassen
+    werden darf (falls es existiert), weil sonst eine Variable \emph{ohne}
+    dieses Präfix definiert wird.
+    
+    Ein Beispiel aus der \texttt{opt/rrdtool.txt}:
+\begin{example}
+\begin{verbatim}
+    weak opt_openvpn -
+    [...]
+    openvpn    yes    usr/lib/collectd/openvpn.so
+\end{verbatim}
+\end{example}
+
+    Ohne die \texttt{weak}-Definition würde \var{mkfli4l} bei der Nutzung des
+    Pakets "`rrdtool"' eine Fehlermeldung anzeigen, wenn das "`openvpn"'-Paket
+    nicht ebenfalls vorliegt. Mit Hilfe der \texttt{weak}-Definition kommt auch
+    in dem Fall, dass das "`openvpn"'-Paket nicht vorliegt, keine Fehlermeldung.
+
+\marklabel{subsec:konfigspezdatei}{
+\subsubsection{Konfigurations-spezifische Dateien}
+}
+
+In manchen Situationen möchte man originale Dateien im \texttt{opt}- oder
+\texttt{rootfs}-Archiv durch Konfigurations-spezifische Dateien 
+wie z.\,B. Host-Keys, eigene Firewall-Scripte, \ldots{} ersetzen.
+\texttt{mkfli4l} unterstützt dieses Szenario, indem es prüft, ob eine zu
+kopierende Datei im Konfigurationsverzeichnis zu finden ist, und übernimmt in
+diesem Falle diese Datei in die Liste der ins Archiv aufzunehmenden
+Dateien.
+
+Eine weitere Möglichkeit, Konfigurations-spezifische Dateien ins Archiv
+aufzunehmen, wird im Abschnitt
+\jump{subsec:addtoopt}{"`Erweiterte Prüfungen der Konfiguration"'} beschrieben.
+
+
+\marklabel{subsec:automatic-dependencies}{
+\subsubsection{Automatische Auflösung von Abhängigkeiten für Kernel-Module}}
+Kernel-Module bauen unter Umständen auf anderen Kernel-Modulen
+auf. Diese müssen vor ihnen geladen werden und daher gleichfalls in
+das Archiv aufgenommen werden. \texttt{mkfli4l} bestimmt diese
+Abhängigkeiten anhand von \texttt{modules.dep} und \texttt{modules.alias},
+zweier beim Kernel-Bauen generierter Dateien, und nimmt automatisch
+alle benötigten Module in die Archive auf. So führt z.\,B. folgender
+Eintrag
+
+\begin{example}
+\begin{verbatim}
+    net_drv_%   ne2k-pci    ne2k-pci.ko
+\end{verbatim}
+\end{example}
+
+dazu, dass auch \texttt{8390.ko} ins Archiv aufgenommen wird, da
+\texttt{ne2k-pci.ko} davon abhängt.
+
+Die notwendigen Einträge in \texttt{modules.dep} und \texttt{modules.alias}
+werden in das \texttt{rootfs}-Archiv mit aufgenommen und können von
+\texttt{modprobe} zum Laden der Treiber genutzt werden.
+
+\marklabel{subsec:dev:var-check}{
+\subsection{Die Prüfung der Konfiguration-Variablen}
+}
+
+Mit Hilfe der Datei \texttt{check/<PAKET>.txt} können die Inhalte der Variablen auf Gültigkeit
+überprüft werden. Diese Überprüfung war in früheren Versionen fest im
+Programm \var{mkfli4l} eingebaut, wurde aber im Zuge der Modularisierung von
+fli4l in die Check-Dateien ausgelagert. In dieser Datei ist für jede
+Variable aus den Konfigurationsdateien eine Zeile vorhanden. Diese Zeilen
+bestehen aus vier bis fünf Spalten, welche folgende Funktionen haben:
+
+\begin{enumerate}
+
+\item Variable: Diese Spalte gibt den Namen der zu überprüfenden
+  Variable aus der Konfigurationsdatei an. Wenn es sich dabei um eine so
+  genannte \emph{Array-Variable} handelt, die mehrmals mit verschiedenen Indizes auftauchen
+  kann, wird an Stelle der Nummer ein Prozentzeichen (\%) in den
+  Variablenname eingefügt. Dieses wird immer als "`\var{\_\%\_}"' in der Mitte
+  eines Namens bzw.\ "`\var{\_\%}"' am Ende eines Namens verwendet. Der Name
+  kann dabei mehrere Prozentzeichen
+  enthalten, so dass man auch mehrdimensionale Arrays realisieren
+  kann. Dann sollte zwischen den Prozentzeichen allerdings etwas
+  stehen, muss aber nicht, was dann allerdings zu so seltsamen
+  Namen wie "`\var{FOO\_\%\_\_\%}"' führt.
+
+  Oftmals hat man das Problem, dass bestimmte Variablen Optionen
+  beschreiben, die man nur in bestimmten Situationen benötigt. Deshalb
+  können Variablen als optional markiert werden. Optionale Variablen
+  werden mit einem vorangestellten "`+"' gekennzeichnet. Sie können dann
+  da sein, müssen aber nicht. Arrays können auch mit einem "`++"' Präfix
+  versehen werden. Steht ein "`+"' davor, kann das Array da sein oder
+  ganz fehlen. Steht "`++"' davor, können zusätzlich auch noch einzelne
+  Elemente des Arrays fehlen.
+
+
+\item \var{OPT\_\-VARIABLE}: Diese Spalte teilt die Variable einem bestimmten
+  OPT zu. Die Variable wird nur auf Gültigkeit überprüft, wenn die
+  hier angegebene Variable auf "`yes"' steht.  Gibt es keine
+  OPT-Variable, ist hier ein "`-"' anzugeben. In diesem Fall muss die Variable
+  in der Konfigurationsdatei definiert werden, es sei denn, es wird eine
+  Standard-Belegung definiert (s.\,u.). Der Name der OPT-Variable kann beliebig
+  sein, er sollte jedoch mit dem Präfix "`\var{OPT\_}"' beginnen.
+
+  Falls eine Variable von keiner OPT-Variablen abhängt, gilt sie als
+  \emph{aktiv}. Falls sie von einer OPT-Variablen abhängig ist, ist sie genau
+  dann aktiv, wenn
+
+  \begin{itemize}
+  \item ihre OPT-Variable aktiv ist und
+  \item ihre OPT-Variable den Wert "`yes"' enthält.
+  \end{itemize}
+
+  Andernfalls ist die Variable inaktiv.
+
+  \textbf{Hinweis:} Inaktive OPT-Variablen werden, wenn sie in der Konfiguration
+  mit "`yes"' belegt werden, auf den Wert "`no"' zurückgesetzt; dies wird von
+  \var{mkfli4l} auch mit einer entsprechenden Warnmeldung
+  (bspw.\ "`\verb+OPT_Y='yes' ignored, because OPT_X='no'+"') kommentiert. Bei
+  transitiven Abhängigkeitsketten (\var{OPT\_Z} hängt von \var{OPT\_Y} ab, das
+  wiederum von \var{OPT\_X} abhängt) funktioniert dies aber nur dann
+  zuverlässig, wenn die Namen aller OPT-Variablen mit "`\var{OPT\_}"' beginnen.
+
+\item \var{VARIABLE\_\-N}: Steht in der ersten Spalte eine Variable mit einem
+  \% im Namen, wird hier die Variable angegeben, die die Häufigkeit des
+  Auftretens der Variable beschreibt (die so genannte \emph{N-Variable}). Ist
+  die Variable mehrdimensional, wird die Häufigkeit des letzten Index
+  beschrieben. Hängt die Variable von einem OPT ab, muss die N-Variable vom
+  selben OPT oder von keinem OPT abhängig sein. Ist die Variable von keinem
+  OPT abhängig, darf auch die N-Variable von keinem OPT abhängig sein. Gibt es
+  keine N-Variable, ist hier ein "`-"' anzugeben.
+
+  Aus Kompatibilitätsgründen mit zukünftigen fli4l-Versionen \emph{muss} die
+  hier angegebene Variable identisch sein mit der Variable in
+  \var{OPT\_VARIABLE}, wobei das letzte "`\%"' durch ein "`N"' ersetzt und alles
+  dahinter entfernt wurde. Ein Array \var{HOST\_\%\_IP4} bekommt also zwingend
+  die N-Variable \var{HOST\_N} zugewiesen und ein Array
+  \var{PF\_USR\_CHAIN\_\%\_RULE\_\%} also die N-Variable
+  \var{PF\_USR\_CHAIN\_\%\_RULE\_N}, und diese N-Variable ist selbst wieder eine
+  Array-Variable mit der zugehörigen N-Variable \var{PF\_USR\_CHAIN\_N}.
+  \emph{Alle anderen Benennungen der N-Variable werden mit zukünftigen
+  fli4l-Versionen inkompatibel sein!}
+
+\item \var{VALUE}: Diese Spalte gibt an, welche Werte für diese Variable
+  eingegeben werden können. Es sind dabei z.\,B. folgende Angaben möglich:
+
+  \begin{tabular}[ht!]{|l|l|}
+    \hline
+    Name & Bedeutung \\
+    \hline
+    \hline
+    \var{NONE}     &  Es wird keine Überprüfung vorgenommen\\
+    \var{YESNO}    &  Die Variable muss "`yes"' oder "`no"' sein\\
+    \var{NOTEMPTY} &  Die Variable darf nicht leer sein\\
+    \var{NOBLANK}  &  Die Variable darf kein Leerzeichen enthalten\\
+    \var{NUMERIC}  &  Die Variable muss numerisch sein\\
+    \var{IPADDR}   &  Die Variable muss eine IP-Adresse sein\\
+    \var{DIALMODE} &  Die Variable muss "`on"', "`off"' oder "`auto"' sein\\
+    \hline
+  \end{tabular}
+  \\
+
+  Werden die Werte mit einem "`\var{WARN\_}"'-Präfix versehen, so führt ein
+  illegaler Wert nicht zu einer Fehlermeldung und damit zu einem Abbruch von
+  \var{mkfli4l}, sondern nur zur Ausgabe einer Warnung.
+
+  Die möglichen Prüfungen werden durch reguläre Ausdrücke in
+  \texttt{check/base.exp} definiert. Diese Datei kann erweitert werden und
+  enhält neuerdings z.\,B. zusätzlich folgende Prüfungen: \var{HEX}, \var{NUMHEX},
+  \var{IP\_ROUTE}, \var{DISK} und \var{PARTITION}.
+
+  Die Anzahl der Ausdrücke kann jederzeit erweitert werden, hier ist
+  Rückmeldung von den Paket-Entwicklern erforderlich.
+
+  Zusätzlich können reguläre Ausdrücke auch direkt in den Check-Dateien
+  angegeben werden, wobei man auch Bezug auf existierende Ausdrücke
+  nehmen kann. Statt \var{YESNO} könnte man z.\,B. auch
+\begin{example}
+\begin{verbatim}
+    RE:yes|no
+\end{verbatim}
+\end{example}
+schreiben. Sinnvoll ist es dann, wenn ein
+Test nur ein einziges Mal ausgeführt wird und relativ einfach ist. Für
+genauere Informationen siehe nächstes Kapitel.
+
+\item Standard-Belegung: In dieser Spalte kann optional ein Standard-Wert für
+die Variable stehen, falls die Variable nicht in der Konfiguration steht.
+
+\textbf{Hinweis:} Dies funktioniert zur Zeit jedoch nicht für Array-Variablen.
+Auch darf die Variable nicht optional sein, es darf also kein "`+"' vor dem
+Variablennamen stehen.
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+    OPT_TELNETD     -      -      YESNO    "no"
+\end{verbatim}
+\end{example}
+
+Fehlt \var{OPT\_TELNETD} nun in der Konfigurationsdatei, wird "`no"' angenommen
+und dieser Wert auch in die \texttt{rc.cfg} geschrieben.
+
+\end{enumerate}
+
+    Die Sache mit dem Prozentzeichen lässt sich am Besten mit einem
+    Beispiel erklären. Nehmen wir an, in der \texttt{check/base.txt} steht:
+\begin{example}
+\begin{verbatim}
+    NET_DRV_N          -                  -                  NUMERIC
+    NET_DRV_%          -                  NET_DRV_N          NONE
+    NET_DRV_%_OPTION   -                  NET_DRV_N          NONE
+\end{verbatim}
+\end{example}
+
+      Das heißt, dass je nach Wert von \var{NET\_\-DRV\_\-N} die Variablen \var{NET\_\-DRV\_\-N},
+      \var{NET\_\-DRV\_\-1\_\-OPTION}, \var{NET\_\-DRV\_\-2\_\-OPTION}, \var{NET\_\-DRV\_\-3\_\-OPTION}, usw. überprüft werden.
+
+\subsection{Eigene Definitionen zum Prüfen der Konfigurationsvariablen}
+
+\subsubsection{Einführung regulärer Ausdrücke}
+
+  In der Version 2.0 gab es nur die oben angeführten sieben Werte-Bereiche,
+  auf die Variablen geprüft werden können: \var{NONE}, \var{NOTEMPTY}, \var{NUMERIC},
+  \var{IPADDR}, \var{YESNO}, \var{NOBLANK}, \var{DIALMODE}. Die Überprüfung war in \var{mkfli4l}
+  fest eingebaut, nicht erweiterbar und beschränkte sich auf
+  wesentliche "`Datentypen"', die mit vertretbarem Aufwand geprüft
+  werden können.
+
+  Mit der Version 2.1 wurde diese Prüfung neu implementiert.  Ziel der
+  neuen Implementierung ist eine flexiblere Prüfung der Variablen, die
+  auch in der Lage ist, komplexere Ausdrücke zu prüfen. Deshalb werden
+  reguläre Ausdrücke verwendet, die in einem oder mehreren separaten
+  Dateien abgespeichert werden.  Dadurch wird es zum einen möglich,
+  Variablen zu prüfen, die im Augenblick noch nicht geprüft werden, und
+  zum anderen können Entwickler optionaler Pakete eigene Ausdrücke
+  definieren, um die Konfiguration ihrer Pakete prüfen zu lassen.
+
+  Eine Beschreibung regulärer Ausdrücke findet man via "`man 7 regex"'
+  oder z.\,B. hier: \altlink{http://unixhelp.ed.ac.uk/CGI/man-cgi?regex+7}.
+
+
+\subsubsection{Spezifikation regulärer Ausdrücke}
+
+  Spezifizieren kann man die Ausdrücke auf zwei Wegen:
+
+  \begin{enumerate}
+  \item Paketspezifische exp-Datei \texttt{check/<PAKET>.exp}
+
+    Diese Datei liegt im \texttt{check}-Verzeichnis und trägt den gleichen Namen
+    wie das dazugehörige Paket, also z.\,B. \texttt{check/base.exp}. Sie enthält
+    Definitionen für Ausdrücke, die in der Datei \texttt{check/<PAKET>.txt} referenziert werden
+    können. So enthält \texttt{check/base.exp} im Augenblick Definitionen für die
+    bekannten Prüfungen und \texttt{check/isdn.exp} eine Definition für die Variable
+    \var{ISDN\_\-CIRC\_\-x\_ROUTE} (das Fehlen dieser Überprüfung war der Auslöser
+    dieser Änderungen).
+
+Die Syntax lautet wie folgt, wobei man auch hier bei Bedarf doppelte
+Hochkommata verwenden kann:
+\begin{example}
+\begin{verbatim}
+    <Name> = '<Regulärer Ausdruck>' : '<Fehlermeldung>'
+\end{verbatim}
+\end{example}
+oder am Beispiel aus \texttt{check/base.exp}:
+\begin{example}
+\begin{verbatim}
+    NOTEMPTY = '.*[^ ]+.*'          : 'should not be empty'
+    YESNO    = 'yes|no'             : 'only yes or no are allowed'
+    NUMERIC  = '0|[1-9][0-9]*'      : 'should be numeric (decimal)'
+    OCTET    = '1?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]'
+             : 'should be a value between 0 and 255'
+    IPADDR   = '((RE:OCTET)\.){3}(RE:OCTET)' : 'invalid ipv4 address'
+    EIPADDR  = '()|(RE:IPADDR)'
+             : 'should be empty or contain a valid ipv4 address'
+    NOBLANK  = '[^ ]+'              : 'should not contain spaces'
+    DIALMODE = 'auto|manual|off'    : 'only auto, manual or off are allowed'
+    NETWORKS = '(RE:NETWORK)([[:space:]]+(RE:NETWORK))*'
+             : 'no valid network specification, should be one or more
+                network address(es) followed by a netmask,
+                for instance 192.168.6.0/24'
+\end{verbatim}
+\end{example}
+
+In den regulären Ausdrücken können auch Referenzen auf bereits
+existierende Definitionen enthalten sein. Diese werden dann einfach an
+der Stelle eingefügt. Dadurch ist es einfacher, reguläre Ausdrücke zu
+konstruieren. Eingefügt werden die Referenzen einfach durch
+'(RE:Referenz)'. (Siehe die Definition des Ausdrucks \var{NETWORKS} oben für
+ein entsprechendes Beispiel.)
+
+Die Fehlermeldungen tendieren dazu, zu lang zu werden. Daher besteht
+die Möglichkeit, sie über mehrere Zeilen zu verteilen. Die folgenden
+Zeilen müssen dann immer mit einem Leerzeichen oder Tabulator
+beginnen. Beim Einlesen der \texttt{check/<PAKET>.exp}-Datei werden überflüssige
+Leerzeichen auf eins reduziert und Tabulatoren durch Leerzeichen
+ersetzt. Ein Eintrag in der \texttt{check/<PAKET>.exp} könnte dann so aussehen:
+
+\begin{example}
+\begin{verbatim}
+    NUM_HEX         = '0x[[:xdigit:]]+'
+                    : 'should be a hexadecimal number
+                       (a number starting with "0x")'
+\end{verbatim}
+\end{example}
+
+\item  Reguläre Ausdrücke direkt in der Check-Datei \texttt{check/<PAKET>.txt}
+
+Manche Ausdrücke kommen nur einmal vor, dann lohnt es sich nicht,
+dafür einen regulären Ausdruck in einer \texttt{check/<PAKET>.exp}-Datei zu definieren. Dann kann man
+diesen Ausdruck einfach in die Check-Datei schreiben, z.\,B.:
+
+\begin{example}
+\begin{verbatim}
+    # Variable      OPT_VARIABLE    VARIABLE_N     VALUE
+    MOUNT_BOOT      -               -              RE:ro|rw|no
+\end{verbatim}
+\end{example}
+
+\var{MOUNT\_\-BOOT} kann lediglich die Werte "`ro"', "`rw"' oder "`no"' annehmen,
+alles andere wird abgelehnt.
+
+Will man Bezug auf existierende reguläre Ausdrücke nehmen, fügt man
+einfach eine Referenz via "`(RE:...)"' ein. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    # Variable      OPT_VARIABLE    VARIABLE_N     VALUE
+    LOGIP_LOGDIR    OPT_LOGIP       -              RE:(RE:ABS_PATH)|auto
+\end{verbatim}
+\end{example}
+
+\end{enumerate}
+
+
+\subsubsection{Erweiterung existierender regulärer Ausdrücke}
+
+Fügt ein optionales Paket einen zusätzlichen Wert für eine Variable
+hinzu, die von einem regulären Ausdruck geprüft wird, muss der reguläre
+Ausdruck erweitert werden. Dies geschieht einfach durch Definition der
+neuen möglichen Werte durch einen regulären Ausdruck (wie oben
+beschrieben) und Ergänzung des bestehenden regulären Ausdrucks in
+einer eigenen \texttt{check/<PAKET>.exp}-Datei. Dass ein bestehender
+Ausdruck modifiziert werden soll, kennzeichnet ein führendes "`+"'.
+Der neue Ausdruck ergänzt den bestehenden Ausdruck, indem der neue Wert
+als Alternative an den bestehenden Wert angehängt wird. Verwendet ein
+anderer Ausdruck den ergänzten Ausdruck, gilt auch dort die Ergänzung.
+Die angegebene Fehlermeldung wird einfach an die vorhandene hinten angehängt.
+
+Am Beispiel der Ethernet-Treiber könnte das wie folgt aussehen:
+
+\begin{itemize}
+\item Das Basis-Paket stellt eine Menge von Ethernet-Treibern bereit
+  und prüft die Variable \var{NET\_DRV\_x} mit dem regulären Ausdruck \var{NET\_DRV},
+  der wie folgt spezifiert ist:
+
+\begin{example}
+\begin{verbatim}
+    NET_DRV         = '3c503|3c505|3c507|...'
+                    : 'invalid ethernet driver, please choose one'
+                      ' of the drivers in config/base.txt'
+\end{verbatim}
+\end{example}
+\item Das Paket "`pcmcia"' stellt jetzt zusätzliche Gerätetreiber bereit,
+  muss also \var{NET\_DRV} ergänzen. Das sieht dann wie folgt aus:
+
+\begin{example}
+\begin{verbatim}
+    PCMCIA_NET_DRV = 'pcnet_cs|xirc2ps_cs|3c574_cs|...' : ''
+    +NET_DRV       = '(RE:PCMCIA_NET_DRV)' : ''
+\end{verbatim}
+\end{example}
+\end{itemize}
+
+Nun kann man zusätzlich auch noch PCMCIA-Treiber auswählen.
+
+
+\subsubsection{Regulären Ausdruck in Abhängigkeit von \var{YESNO}-Variablen erweitern}
+
+Wenn man \var{NET\_DRV} wie oben um die PCMCIA-Treiber erweitert hat, aber
+das Paket "`pcmcia"' deaktiviert hat, könnte man dennoch einen PCMCIA-Treiber
+in der \texttt{config/base.txt} auswählen, ohne dass eine Fehlermeldung beim
+Erstellen der Archive auftritt. Um das zu verhindern, kann man den regulären
+Ausdruck auch abhängig von einer \var{YESNO}-Variablen in der Konfiguration
+erweitern. Dazu wird der Name der Variablen, die bestimmt ob der Ausdruck
+erweitert wird, mit runden Klammern direkt hinter den Namen des Ausdrucks
+gehängt. Ist die Variable aktiv und hat den Wert "`yes"', wird der Ausdruck erweitert,
+sonst nicht.
+
+\begin{example}
+\begin{verbatim}
+    PCMCIA_NET_DRV       = 'pcnet_cs|xirc2ps_cs|3c574_cs|...' : ''
+    +NET_DRV(OPT_PCMCIA) = '(RE:PCMCIA_NET_DRV)' : ''
+\end{verbatim}
+\end{example}
+
+Wird jetzt \verb+OPT_PCMCIA='no'+ gesetzt, und in der \texttt{config/base.txt} wird z.\,B. der
+PCMCIA-Treiber \texttt{xirc2ps\_cs} benutzt, gibt es beim Erstellen der Archive eine
+Fehlermeldung.
+
+\textbf{Hinweis:} Dies funktioniert \emph{nicht}, wenn die Variable nicht
+explizit in der Konfigurationsdatei gesetzt wird, sondern ihren Wert
+über eine Standard-Belegung in der \texttt{check/<PAKET>.txt} erhält. In
+diesem Fall muss man also in der Konfigurationsdatei die Variable explizit
+setzen und ggf.\ auf die Standard-Belegung verzichten.
+
+\marklabel{sec:regexp-dependencies}{
+  \subsubsection{Regulären Ausdruck in Abhängigkeit von anderen Variablen erweitern}
+}
+
+Alternativ kann man auch beliebige Werte von Variablen als Bedingung
+verwenden, die Syntax sieht dann wie folgt aus:
+
+\begin{example}
+\begin{verbatim}
+    +NET_DRV(KERNEL_VERSION=~'^3\.18\..*$') = ...
+\end{verbatim}
+\end{example}
+
+Wenn \var{KERNEL\_VERSION} zu dem angegebenen regulären Ausdruck passt, also
+irgendein Kernel aus der 3.18er Versionsreihe genutzt wird, dann wird die Liste der
+erlaubten Netzwerktreiber um die angegebenen Treiber ergänzt.
+
+\textbf{Hinweis:} Dies funktioniert \emph{nicht}, wenn die Variable nicht
+explizit in der Konfigurationsdatei gesetzt wird, sondern ihren Wert
+über eine Standard-Belegung in der \texttt{check/<PAKET>.txt} erhält. In
+diesem Fall muss man also in der Konfigurationsdatei die Variable explizit
+setzen und ggf.\ auf die Standard-Belegung verzichten.
+
+\subsubsection{Fehlermeldungen}
+
+Findet die Prüfung einen Fehler, erscheint eine Fehlermeldung der
+folgenden Art:
+
+\begin{example}
+\begin{verbatim}
+    Error: wrong value of variable HOSTNAME: '' (may not be empty)
+    Error: wrong value of variable MOUNT_OPT: 'rx' (user supplied regular expression)
+\end{verbatim}
+\end{example}
+
+Beim ersten Fehler wurde der Ausdruck in einer \texttt{check/<PAKET>.exp}-Datei definiert und
+ein Hinweis auf den Fehler wird mit ausgegeben. Im zweiten Falle wurde
+der Ausdruck direkt in einer \texttt{check/<PAKET>.txt}-Datei spezifiziert, deshalb gibt es keinen
+zusätzlichen Hinweis auf die Fehlerursache.
+
+
+\subsubsection{Definition regulärer Ausdrücke}
+
+Reguläre Ausdrücke sind wie folgt definiert:
+
+Regulärer Ausdruck: Eine oder mehrere Alternativen, getrennt durch
+'$|$', z.\,B. "`ro$|$rw$|$no"'. Trifft eine der Alternativen zu, trifft der
+ganze Ausdruck zu (hier wären "`ro"', "`rw"' und "`no"' gültige Ausdrücke).
+
+Eine Alternative ist eine Verkettung mehrerer Teilstücke, die einfach
+aneinandergereiht werden.
+
+Ein Teilstück ist ein "`Atom"', gefolgt von einem einzelnen "`*"', "`+"',
+"`?"' oder "`\{min, max\}"'. Die Bedeutung ist wie folgt:
+\begin{itemize}
+\item "`a*"'~--- beliebig viele "`a"'s (erlaubt auch den Fall, das gar kein "`a"' da ist)
+\item   "`a+"'~--- mindestens ein "`a"'
+\item   "`a?"'~--- kein oder ein "`a"'
+\item   "`a\{2,5\}"'~--- zwei bis fünf "`a"'s
+\item   "`a\{5\}"'~--- genau fünf "`a"'s
+\item   "`a\{2,\}"'~--- mindestens zwei "`a"'s
+\item   "`a\{,5\}"'~--- höchstens fünf "`a"'s
+\end{itemize}
+
+Ein "`Atom"' ist ein
+\begin{itemize}
+\item  regulärer Ausdruck eingeschlossen in Klammern, z.\,B. trifft "`(a$|$b)+"'
+          auf eine beliebige Zeichenkette zu, die mindestens
+          ein "`a"' oder "`b"' enthält, sonst aber beliebig viele und in
+          beliebiger Reihenfolge
+        \item   ein leeres Paar Klammern steht für einen "`leeren"'
+          Ausdruck
+        \item   ein Ausdruck mit eckigen Klammern "`[\,]"' (siehe weiter unten)
+        \item ein Punkt "`."', der auf irgendein einzelnes Zeichen zutrifft,
+          z.\,B. trifft "`.+"' auf eine beliebige Zeichenkette zu, die
+          mindestens ein Zeichen enthält
+        \item ein "`\^\,"' steht für den Zeilenanfang, z.\,B. trifft "`\^\,a.*"' auf
+          eine Zeichenkette zu, die mit einem "`a"' anfängt und in der
+          beliebige Zeichen folgen, etwa "`a"' oder "`adkadhashdkash"'
+        \item ein "`\$"' steht für das Zeilenende
+        \item ein "`$\backslash$"' gefolgt von einem der Sonderzeichen
+          \texttt{\^\,.\,[\,\$\,(\,)\,$|$\,*\,+\,?\,\{\,$\backslash$} steht für genau das zweite Zeichen
+          ohne seine spezielle Bedeutung
+        \item  ein normales Zeichen trifft auf genau das Zeichen zu,
+          z.\,B. trifft "`a"' genau auf "`a"' zu.
+\end{itemize}
+
+Ein Ausdruck in rechteckigen Klammern bedeutet Folgendes:
+\begin{itemize}
+\item "`x-y"'~--- trifft auf irgendein Zeichen zu, das zwischen
+                  "`x"' und "`y"' liegt, z.\,B. steht "`[0-9]"' für alle Zeichen
+                  zwischen "`0"' und "`9"'; "`[a-zA-Z]"' steht für alle Buchstaben,
+                  egal ob groß oder klein
+
+                \item "`\^\,x-y"'~--- trifft auf irgendein Zeichen zu, das \emph{nicht} im
+                  angegebenen Intervall liegt; so steht z.\,B. "`[\^\,0-9]"' für alle
+                  Zeichen, die \emph{keine} Ziffern sind
+
+                \item "`[:\emph{character-class}:]"'~--- trifft auf ein Zeichen der Zeichenklasse \emph{character-class}
+                  zu. Relevante Standardzeichenklassen sind: \texttt{alnum}, \texttt{alpha},
+                  \texttt{blank}, \texttt{digit}, \texttt{lower}, \texttt{print}, \texttt{punct}, \texttt{space}, \texttt{upper} und \texttt{xdigit}.
+                So steht "`[\,[:alpha:]\,]"' für alle Groß- und Kleinbuchstaben und ist somit identisch zu "`[\,[:lower:]\,[:upper:]\,]"'.
+\end{itemize}
+
+
+\subsubsection{Beispiele für reguläre Ausdrücke}
+
+Sehen wir uns das mal an einigen Beispielen an!
+
+\var{NUMERIC}: Ein numerischer Wert besteht aus mindestens einer, aber ansonsten
+beliebig vielen Ziffern. "`Mindestens ein"' drückt man
+mit "`+"' aus, eine Ziffer hatten wir schon als Beispiel. Zusammengesetzt
+ergibt das:
+
+\begin{example}
+\begin{verbatim}
+    NUMERIC = '[0-9]+'
+\end{verbatim}
+\end{example}
+oder alternativ
+\begin{example}
+\begin{verbatim}
+    NUMERIC = '[[:digit:]]+'
+\end{verbatim}
+\end{example}
+
+\var{NOBLANK}: Ein Wert, der keine Leerzeichen enthält, ist ein beliebiges
+Zeichen (außer dem Leerzeichen) und davon beliebig viele:
+
+\begin{example}
+\begin{verbatim}
+    NOBLANK = '[^ ]*'
+\end{verbatim}
+\end{example}
+
+bzw.\ wenn der Wert zusätzlich auch nicht leer sein darf:
+
+\begin{example}
+\begin{verbatim}
+    NOBLANK = '[^ ]+'
+\end{verbatim}
+\end{example}
+
+\var{IPADDR}: Sehen wir uns das Ganze nochmal am Beispiel der IPv4-Addresse an. Eine
+IPv4-Adresse besteht aus vier "`Octets"', die durch einen Punkt ("`."') voneinander getrennt sind. Ein
+Octet kann eine Zahl zwischen 0 und 255 sein. Definieren wir als
+erstes ein Octet. Es kann\\
+
+\begin{tabular}[ht!]{lr}
+  eine Zahl zwischen 0 und 9 sein: &       [0-9]\\
+  eine Zahl zwischen 10 und 99: &     [1-9][0-9]\\
+  eine Zahl zwischen 100 und 199:&   1[0-9][0-9]\\
+  eine Zahl zwischen 200 und 249: &  2[0-4][0-9]\\
+  eine Zahl zwischen 250 und 255 sein: & 25[0-5]\\
+\end{tabular}\\
+
+Das Ganze sind Alternativen, also fassen wir sie einfach mittels "`$|$"' zu
+einem Ausdruck zusammen: "`[0-9]$|$[1-9][0-9]$|$1[0-9][0-9]$|$2[0-4][0-9]$|$25[0-5]"' und haben
+damit ein Octet. Daraus können wir nun eine IPv4-Adresse machen, vier
+Octets mit Punkten voneinander getrennt (der Punkt muss mittels eines \emph{Backslashs}
+maskiert werden, da er sonst für ein beliebiges Zeichen
+steht). Basierend auf der Syntax der exp-Dateien sieht das Ganze dann
+wie folgt aus:
+
+\begin{example}
+\begin{verbatim}
+    OCTET  = '[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]'
+    IPADDR = '((RE:OCTET)\.){3}(RE:OCTET)'
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Unterstützung beim Entwurf regulärer Ausdrücke}
+
+Will man reguläre Ausdrücke entwerfen und testen, kann man dazu das
+"`regexp"'-Programm verwenden, das sich in dem Verzeichnis \texttt{unix}
+bzw.\ \texttt{windows} des Pakets "`base"' befindet. Es akzeptiert die folgende
+Syntax:
+
+\begin{example}
+\begin{verbatim}
+    usage: regexp [-c <check dir>] <regexp> <string>
+\end{verbatim}
+\end{example}
+
+Dabei bedeuten die Parameter Folgendes:
+\begin{itemize}
+\item \texttt{<check dir>} ist das Verzeichnis, das die Check-Dateien und damit
+auch die exp-Dateien enthält. Diese werden von "`regexp"' eingelesen,
+damit man auf bereits definierte Ausdrücke zurückgreifen kann.
+
+
+
+\item \texttt{<regexp>} ist der reguläre Ausdruck (im Zweifelsfall immer in \verb+'...'+
+oder \verb+"..."+ angeben, wobei doppelte Anführungsstriche nur nötig sind, wenn
+einfache Hochkommata in dem Ausdruck vorkommen sollen)
+
+
+\item \texttt{<string>} ist die zu prüfende Zeichenkette
+\end{itemize}
+
+Das könnte z.\,B. wie folgt aussehen:
+\begin{example}
+\begin{verbatim}
+./i586-linux-regexp -c ../check '[0-9]' 0
+adding user defined regular expression='[0-9]' ('^([0-9])$')
+checking '0' against regexp '[0-9]' ('^([0-9])$')
+'[0-9]' matches '0'
+
+./i586-linux-regexp -c ../check '[0-9]' a
+adding user defined regular expression='[0-9]' ('^([0-9])$')
+checking 'a' against regexp '[0-9]' ('^([0-9])$')
+regex error 1 (No match) for value 'a' and regexp '[0-9]' ('^([0-9])$')
+
+./i586-linux-regexp -c ../check IPADDR 192.168.0.1
+using predefined regular expression from base.exp
+adding IPADDR='((RE:OCTET)\.){3}(RE:OCTET)'
+ ('^(((1?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.){3}(1?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]))$')
+'IPADDR' matches '192.168.0.1'
+
+./i586-linux-regexp -c ../check IPADDR 192.168.0.256
+using predefined regular expression from base.exp
+adding IPADDR='((RE:OCTET)\.){3}(RE:OCTET)'
+ ('^(((1?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.){3}(1?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]))$')
+regex error 1 (No match) for value '192.168.0.256' and regexp
+ '((RE:OCTET)\.){3}(RE:OCTET)'
+(unknown:-1) wrong value of variable cmd_var: '192.168.0.256' (invalid ipv4 address)
+\end{verbatim}
+\end{example}
+
+
+\subsection{Erweiterte Prüfungen der Konfiguration}
+
+    Manchmal ist es notwendig, komplexere Überprüfungen durchzuführen.
+    Beispiele für solche komplexeren Dinge wären z.\,B. Abhängigkeiten
+    zwischen Paketen oder Bedingungen, die nur erfüllt sein müssen,
+    wenn Variablen bestimmte Werte annehmen. So muss z.\,B. bei Auswahl
+    eines PCMCIA-ISDN-Adapters auch das Paket "`pcmcia"' installiert
+    werden.
+
+    Um diese Überprüfungen durchführen zu können, kann man in
+    \texttt{check/<PAKET>.ext} (auch ext-Skript genannt) kleinere Tests
+    schreiben. Die Sprache besteht aus folgenden Elementen:
+
+    \begin{enumerate}
+    \item Schlüsselwörter:
+
+      \begin{itemize}
+      \item Kontrollfluss:
+
+        \begin{itemize}
+        \item \texttt{if (\textit{expr}) then \textit{statement} else \textit{statement} fi}
+        \item \texttt{foreach \textit{var} in \textit{set\_var} do \textit{statement} done}
+        \item \texttt{foreach \textit{var} in \textit{set\_var\_1 ... set\_var\_n} do \textit{statement} done}
+        \item \texttt{foreach \textit{var} in \textit{var\_n} do \textit{statement} done}
+        \end{itemize}
+
+      \item
+        Abhängigkeiten:
+        \begin{itemize}
+        \item \texttt{provides \textit{package} version \textit{x.y.z}}
+        \item \texttt{depends on \textit{package} version \textit{x1.y1 x2.y2.z2 x3.y3 \ldots}}
+        \end{itemize}
+
+      \item Aktionen:
+        \begin{itemize}
+        \item \texttt{warning "\textit{warning}"}
+        \item \texttt{error   "\textit{error}"}
+        \item \texttt{fatal\_error "\textit{fatal error}"}
+        \item \texttt{set \textit{var} = \textit{value}}
+        \item \texttt{crypt (\textit{variable})}
+        \item \texttt{stat (\textit{filename}, \textit{res})}
+        \item \texttt{fgrep (\textit{filename}, \textit{regex})}
+        \item \texttt{split (\textit{string}, \textit{set\_variable}, \textit{character})}
+        \end{itemize}
+      \end{itemize}
+    \item Datentypen:      Zeichenketten, positive ganze Zahlen, Versionsnummern
+    \item Logische Operationen:    \texttt{<}, \texttt{==}, \texttt{>}, \texttt{!=}, \texttt{!}, \texttt{\&\&}, \texttt{||},
+      \texttt{=}\verb+~+, \texttt{copy\_pending}, \texttt{samenet}, \texttt{subnet}
+    \end{enumerate}
+
+\marklabel{subsec:dev:data-types}{
+\subsubsection{Datentypen}
+}
+
+    Zu den Datentypen ist zu sagen, dass Variablen auf Grund des zugehörigen
+    regulären Ausdrucks fest einem Datentyp zugeordnet werden:
+
+\begin{itemize}
+\item Variablen, deren Typ mit "`\var{NUM}"' beginnt, sind numerisch und
+      enthalten positive ganze Zahlen
+\item Variablen, die eine N-Variable für irgendein Array sind, sind ebenfalls
+      numerisch
+\item alle anderen Variablen werden wie Zeichenketten verarbeitet
+\end{itemize}
+
+    Das bedeutet unter anderem, dass eine Variable vom Typ \var{ENUMERIC}
+    \emph{nicht} als Index beim Zugriff auf eine Array-Variable benutzt werden
+    kann, auch wenn man sich vorher vergewissert hat, dass sie nicht leer ist.
+    Der folgende Code funktioniert somit nicht:
+\begin{example}
+\begin{verbatim}
+    # sei TEST eine Variable vom Typ ENUMERIC
+    if (test != "")
+    then
+        # Fehler: You can't use a non-numeric ID in a numeric 
+        #         context. Check type of operand.
+        set i=my_array[test]
+        # Fehler: You can't use a non-numeric ID in a numeric 
+        #         context. Check type of operand.
+        set j=test+2
+    fi
+\end{verbatim}
+\end{example}
+
+    Eine Lösung für dieses Problem bietet \jump{subsec:split}{\texttt{split}}:
+\begin{example}
+\begin{verbatim}
+    if (test != "")
+    then
+        # alle Elemente von test_% sind numerisch
+        split(test, test_%, ' ', numeric)
+        # OK
+        set i=my_array[test_%[1]]
+        # OK
+        set j=test_%[1]+2
+    fi
+\end{verbatim}
+\end{example}
+
+\marklabel{subsec:dev:string-rewrite}{
+\subsubsection{Zeichenketten und Variablenersetzung}
+}
+
+    An verschiedenen Stellen werden Zeichenketten benötigt, etwa wenn eine
+    \jump{subsec:dev:print}{Warnung} ausgegeben werden soll. In einigen Fällen,
+    die in dieser Dokumentation beschrieben werden, wird eine solche
+    Zeichenkette dabei nach Variablen durchsucht; werden welche gefunden,
+    werden diese durch ihren Inhalt oder andere Attribute \emph{ersetzt}.
+    Diese Ersetzung wird \emph{Variablenersetzung} genannt.
+
+    Dies soll an einem Beispiel verdeutlicht werden. Es gelte die Konfiguration:
+
+\begin{example}
+\begin{verbatim}
+    # config/base.txt
+    HOSTNAME='fli4l'
+    # config/dns_dhcp.txt
+    HOST_N='1' # Anzahl der Hosts
+    HOST_1_NAME='client'
+    HOST_1_IP4='192.168.1.1'
+\end{verbatim}
+\end{example}
+
+    Dann werden die Zeichenketten wie folgt umgeschrieben, wenn die
+    Variablenersetzung in dem jeweiligen Kontext aktiv ist:
+
+\begin{example}
+\begin{verbatim}
+    "Mein Router heißt $HOSTNAME"
+    # --> "Mein Router heißt fli4l"
+    "HOSTNAME ist Teil des Pakets %{HOSTNAME}"
+    # --> "HOSTNAME ist Teil des Pakets base"
+    "@HOST_N ist $HOST_N"
+    # --> " # Anzahl der Hosts ist 1"
+\end{verbatim}
+\end{example}
+
+    Wie man sehen kann, gibt es prinzipiell drei Möglichkeiten der Ersetzung:
+    \begin{itemize}
+    \item \texttt{\$<Name>} bzw.\ \texttt{\$\{<Name>\}}: Ersetzt den
+          Variablennamen durch den Inhalt der Variable. Dies ist die häufigste
+          Form der Ersetzung. Der Name muss in \texttt{\{...\}} stehen, wenn
+          direkt danach in der Zeichenkette ein Zeichen kommt, das gültiger
+          Bestandteil eines Variablennamens sein kann, also ein Buchstabe,
+          eine Ziffer oder ein Unterstrich. In allen anderen Fällen ist die
+          Verwendung von geschweiften Klammern möglich, aber nicht zwingend.
+
+    \item \texttt{\%<Name>} bzw.\ \texttt{\%\{<Name>\}}: Ersetzt den
+          Variablennamen durch den Namen des Pakets, in dem die Variable
+          definiert ist. Dies funktioniert \emph{nicht} bei im Skript via
+          \jump{subsec:dev:assignment}{\texttt{set}} zugewiesenen Variablen oder
+          bei Laufvariablen einer \jump{subsec:dev:control}{\texttt{foreach}-Schleife},
+          da solche Variablen kein Paket besitzen und für Laufvariablen diese
+          Syntax eine andere Bedeutung erhält.
+
+    \item \texttt{@<Name>} bzw.\ \texttt{@\{<Name>\}}: Ersetzt den
+          Variablennamen durch den Kommentar, der in der Konfiguration hinter
+          der Variablen steht. Auch dies ergibt keinen Sinn für im Skript
+          definierte Variablen.
+    \end{itemize}
+
+    Will man ein "`\$"', "`@"' oder "`\%"' im Text haben, schreibt man "`\$\$"',
+    "`@@"' bzw.\ "`\%\%"'.
+
+    \textbf{Hinweis:} Elemente von Array-Variablen können auf diese Weise
+    \emph{nicht} in Zeichenketten integriert werden, weil es keine Möglichkeit
+    gibt, einen Index anzugeben.
+
+    Generell unterliegen nur \emph{Konstanten} der Variablenersetzung;
+    Zeichenketten, die über eine Variable hereinkommen, bleiben unverändert.
+    Ein Beispiel soll dies verdeutlichen - es sei die folgende Konfiguration
+    gegeben:
+
+\begin{example}
+\begin{verbatim}
+    HOSTNAME='fli4l'
+    TEST='${HOSTNAME}'
+\end{verbatim}
+\end{example}
+
+    Dann führt der Code:
+
+\begin{example}
+\begin{verbatim}
+    warning "${TEST}"
+\end{verbatim}
+\end{example}
+
+    zur Ausgabe von:
+    
+\begin{example}
+\begin{verbatim}
+    Warning: ${HOSTNAME}
+\end{verbatim}
+\end{example}
+
+    und \emph{nicht} zur Ausgabe von:
+
+\begin{example}
+\begin{verbatim}
+    Warning: fli4l
+\end{verbatim}
+\end{example}
+
+    In den folgenden Abschnitten wird explizit darauf hingewiesen, unter
+    welchen Umständen Zeichenketten der Variablenersetzung unterliegen.
+
+\subsubsection{Definition eines Dienstes mit einer dazugehörenden
+    Versionsnummer: \texttt{provides}}
+
+    Damit kann z.\,B. ein OPT deklarieren, dass es einen Drucker-Dienst
+    oder einen Webserver-Dienst
+    bereitstellt. Es kann jeweils nur ein einziges Paket geben, dass
+    einen Dienst bereitstellt. Damit kann man verhindern, dass
+    z.\,B. zwei Webserver parallel installiert werden, was
+    naheliegenderweise nicht gehen würde, da sich die beiden Server um
+    den Port 80 streiten würden. Zusätzlich wird die aktuelle Version
+    des Dienstes angegeben, so dass Weiterentwicklungen Rechnung getragen
+    werden kann. Die Versionsnummer besteht aus zwei- oder drei Zahlen, die
+    durch Punkte voneinander getrennt sind, etwa "`4.0"' oder "`2.1.23"'.
+
+    Typischerweise werden Dienste auf OPTs, nicht auf ganze Pakete abgebildet.
+    So besitzt etwa das Paket "`tools"' eine ganze Reihe von Programmen, die
+    jeweils ihre eigene \texttt{provides}-Anweisung definieren, so sie denn
+    via \verb+OPT_...='yes'+ aktiviert sind.
+
+    Die Syntax lautet:
+
+\begin{example}
+\begin{verbatim}
+    provides <Name> version <Version>
+\end{verbatim}
+\end{example}
+
+    Beispiel aus dem Paket "`easycron"':
+
+\begin{example}
+\begin{verbatim}
+    provides cron version 3.10.0
+\end{verbatim}
+\end{example}
+
+    Die Versionsnummer sollte vom OPT-Entwickler in der dritten Komponente
+    angehoben werden, wenn lediglich Funktionserweiterungen vorgenommen wurden
+    und die Schnittstelle zum OPT kompatibel geblieben ist. Die Versionsnummer
+    sollte in der ersten oder zweiten Komponente angehoben werden, wenn sich
+    die Schnittstelle in irgendeiner Weise inkompatibel verändert hat (z.\,B.
+    auf Grund von Variablenumbenennungen, Pfad-Änderungen, verschwundenen oder
+    umbenannten Dienstprogrammen etc.).
+
+\subsubsection{Definition einer Abhängigkeit zu einem Dienst mit einer
+    bestimmten Version: \texttt{depends}}
+
+    Benötigt man zur Erbringung der eigenen Funktionalität einen anderen
+    Dienst (z.\,B. einen Webserver), kann man hiermit diese Abhängigkeit
+    zu einem Dienst mit einer bestimmten Version spezifizieren. Die
+    Version kann zweistellig (z.\,B. "`2.1"') oder dreistellig (z.\,B. "`2.1.11"')
+    angegeben werden, wobei die zweistellige Variante alle Versionen akzeptiert,
+    die ebenfalls so beginnen, während die dreistellige Version nur genau
+    diese angegebene Version akzeptiert. Des Weiteren kann eine Liste von
+    solchen Versionsnummern angegeben werden, falls mehrere Versionen des
+    Dienstes kompatibel mit dem Paket sind.
+
+    Die Syntax lautet:
+
+\begin{example}
+\begin{verbatim}
+    depends on <Name> version <Version>+
+\end{verbatim}
+\end{example}
+
+    Ein Beispiel: Paket "`server"' enthalte:
+\begin{example}
+\begin{verbatim}
+    provides server version 1.0.1
+\end{verbatim}
+\end{example}
+
+    Sei ein Paket "`client"' gegeben. Darin seien folgende
+    \texttt{depends}-Anweisungen beispielhaft enthalten:\footnote{Natürlich nur
+    jeweils eine zur selben Zeit!}
+
+\begin{example}
+\begin{verbatim}
+    depends on server version 1.0       # OK, '1.0' passt zu '1.0.1'
+    depends on server version 1.0.1     # OK, '1.0.1' passt zu '1.0.1'
+    depends on server version 1.0.2     # Fehler, '1.0.2' passt nicht zu '1.0.1'
+    depends on server version 1.1       # Fehler, '1.1' passt nicht zu '1.0.1'
+    depends on server version 1.0 1.1   # OK, '1.0' passt zu '1.0.1'
+    depends on server version 1.0.2 1.1 # Fehler, weder '1.0.2' noch '1.1' passen
+                                        # zu '1.0.1'
+\end{verbatim}
+\end{example}
+
+\marklabel{subsec:dev:print}{
+\subsubsection{Kommunikation mit dem Nutzer: \texttt{warning}, \texttt{error}, \texttt{fatal\_error}}
+}
+
+    Mit Hilfe dieser drei Funktionen kann man Nutzer warnen, einen
+    Fehler signalisieren oder die Prüfung sofort abbrechen. Die Syntax
+    sieht wie folgt aus:
+
+    \begin{itemize}
+    \item \verb+warning "text"+
+    \item \verb+error "text"+
+    \item \verb+fatal_error "text"+
+    \end{itemize}
+
+    Alle an diese Funktionen übergebenen Zeichenketten-Konstanten unterliegen
+    der \jump{subsec:dev:string-rewrite}{Variablenersetzung}.
+
+\marklabel{subsec:dev:assignment}{
+\subsubsection{Zuweisungen}
+}
+
+    Benötigt man aus irgendeinem Grund eine temporäre Variable, kann
+    man diese einfach mit "`\texttt{set var [= value]}"' anlegen. \emph{Die Variable
+    darf kein Konfigurationsvariable sein!}\footnote{Dies ist eine bewusste
+    Entscheidung: Durch check-Skripte lässt sich die Benutzerkonfiguration
+    \emph{nicht} verändern.} Lässt man den "`= value"' Teil weg,
+    wird die Variable einfach auf "`yes"' gesetzt, so dass man sie
+    hinterher einfach in einer \texttt{if}-Anweisung testen kann. Wird ein
+    Zuweisungsteil angegeben, kann hinter dem Gleichheitszeichen alles
+    stehen: normale Variablen, indizierte Variablen, Zahlen,
+    Zeichenketten, Versionsnummern.
+
+    Zu beachten ist, dass durch diese Zuweisung gleichzeitig der \emph{Typ} der
+    temporären Variablen festgelegt wird. Wird eine Zahl zugewiesen, "`merkt"'
+    \var{mkfli4l} sich, dass diese Variable eine Zahl enthält, und erlaubt später
+    das Rechnen damit. Versucht man, mit einer anders getypten Variable zu
+    rechnen, wird dies fehlschlagen. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    set i=1   # OK, i ist eine numerische Variable
+    set j=i+1 # OK, j ist eine numerische Variable und enthält den Wert 2
+    set i="1" # OK, i ist nun eine Zeichenketten-Variable
+    set j=i+1 # Fehler "You can't use a non-numeric ID in a numeric 
+              #         context. Check type of operand."
+              # --> mit Zeichenketten kann man nicht rechnen!
+\end{verbatim}
+\end{example}
+
+    Man kann auch temporäre Arrays (siehe unten) anlegen. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    set prim_%[1]=2
+    set prim_%[2]=3
+    set prim_%[3]=5
+    warning "${prim_n}"
+\end{verbatim}
+\end{example}
+
+    Dabei wird die Anzahl der Elemente in dem Array in der Variable
+    \var{prim\_n} von \var{mkfli4l} verwaltet. Der obige Code führt somit zu
+    folgender Ausgabe:
+
+\begin{example}
+\begin{verbatim}
+    Warning: 3
+\end{verbatim}
+\end{example}
+
+    Wenn auf der rechten Seite einer Zuweisung eine Zeichenketten-Konstante
+    steht, unterliegt sie zum Zeitpunkt der Zuweisung der
+    \jump{subsec:dev:string-rewrite}{Variablenersetzung}. Dies wird im
+    folgenden Beispiel demonstriert. Der Code:
+
+\begin{example}
+\begin{verbatim}
+    set s="a"
+    set v1="$s" # v1="a"
+    set s="b"
+    set v2="$s" # v2="b"
+    if (v1 == v2)
+    then
+      warning "gleich"
+    else
+      warning "ungleich"
+    fi
+\end{verbatim}
+\end{example}
+
+    produziert die Ausgabe "`ungleich"', weil die Variablen \var{v1} und
+    \var{v2} bereits während der Zuweisung den aktuellen Inhalt der Variablen
+    \var{s} ersetzen.
+
+    \textbf{Hinweis:} Eine in einem Skript gesetzte Variable ist bei der
+    Abarbeitung weiterer Skripte sichtbar~-- es existiert zur Zeit kein
+    Lokalitätsprinzip für derart eingeführte Variablen. Da die Reihenfolge, in
+    der die Skripte verschiedener Pakete abgearbeitet wird, nicht definiert ist,
+    sollte man sich nie darauf verlassen, dass Variablen irgendwelche Werte
+    besitzen bzw.\ von einem anderen Paket übernommen haben.
+
+\subsubsection{Arrays}
+
+    Will man auf einzelne Elemente einer \%-Variablen (eines Arrays)
+    zugreifen, muss man den Original-Namen der Variable, wie er in der
+    \texttt{check/<PAKET>.txt}-Datei steht, verwenden, und dabei für
+    jedes "`\%"'-Zeichen einen Index mit Hilfe von "`[\emph{Index}]"' anhängen.
+
+    Beispiel: Will man auf die Elemente der Variable
+    \var{PF\_USR\_CHAIN\_\%\_RULE\_\%} zugreifen, benötigt man zwei Indizes,
+    weil die Variable zwei "`\%"'-Zeichen besitzt. Alle Elemente ausgeben
+    kann man z.\,B. mit Hilfe des folgenden Codes (die \texttt{foreach}-Schleife
+    wird \jump{subsec:dev:control}{weiter unten} erläutert):
+
+\begin{example}
+\begin{verbatim}
+    foreach i in pf_usr_chain_n
+    do
+        # nur ein Index nötig, da nur ein '%' im Variablennamen
+        set j_n=pf_usr_chain_%_rule_n[i]
+        # Achtung: ein
+        # foreach j in pf_usr_chain_%_rule_n[i]
+        # ist leider nicht möglich, deshalb der Umweg über j_n!
+        foreach j in j_n
+        do
+            # zwei Indizes nötig, da zwei '%' im Variablennamen
+            set rule=pf_usr_chain_%_rule_%[i][j]
+            warning "Rule $i/$j: ${rule}"
+        done
+    done
+\end{verbatim}
+\end{example}
+
+    Mit der folgenden Beispiel-Konfiguration
+
+\begin{example}
+\begin{verbatim}
+    PF_USR_CHAIN_N='2'
+    PF_USR_CHAIN_1_NAME='usr-chain_a'
+    PF_USR_CHAIN_1_RULE_N='2'
+    PF_USR_CHAIN_1_RULE_1='ACCEPT'
+    PF_USR_CHAIN_1_RULE_2='REJECT'
+    PF_USR_CHAIN_2_NAME='usr-chain_b'
+    PF_USR_CHAIN_2_RULE_N='1'
+    PF_USR_CHAIN_2_RULE_1='DROP'
+\end{verbatim}
+\end{example}
+
+    gibt es dann die folgenden Ausgaben:
+
+\begin{example}
+\begin{verbatim}
+    Warning: Rule 1/1: ACCEPT
+    Warning: Rule 1/2: REJECT
+    Warning: Rule 2/1: DROP
+\end{verbatim}
+\end{example}
+
+    Alternativ kann man direkt über alle Werte des Arrays iterieren, kennt dann
+    allerdings nicht die exakten Indizes der Einträge (was auch nicht immer
+    erforderlich ist):
+
+\begin{example}
+\begin{verbatim}
+    foreach rule in pf_usr_chain_%_rule_%
+    do
+        warning "Rule %{rule}='${rule}'"
+    done
+\end{verbatim}
+\end{example}
+
+    Das produziert mit der Beispiel-Konfiguration von oben die folgenden
+    Ausgaben:
+
+\begin{example}
+\begin{verbatim}
+    Warning: Rule PF_USR_CHAIN_1_RULE_1='ACCEPT'
+    Warning: Rule PF_USR_CHAIN_1_RULE_2='REJECT'
+    Warning: Rule PF_USR_CHAIN_2_RULE_1='DROP'
+\end{verbatim}
+\end{example}
+
+    An dem zweiten Beispiel sieht man auch schön die Bedeutung der
+    \texttt{\%{<Name>}}-Syntax: Innerhalb der Zeichenkette wird
+    \texttt{\%{rule}} durch den \emph{Namen} der betrachteten Variable ersetzt
+    (also z.\,B. \var{PF\_USR\_CHAIN\_1\_RULE\_1}), während \texttt{\${rule}}
+    durch dessen \emph{Inhalt} (also z.\,B. \var{ACCEPT}) ersetzt wird.
+
+\subsubsection{Verschlüsseln eines Passwortes: \texttt{crypt}}
+
+Einige Variablen enthalten Passwörter, die nicht im Klartext in der
+\texttt{rc.cfg} stehen sollen. Diese Variablen können mittels \texttt{crypt}
+verschlüsselt werden und werden damit in das Format überführt, dass
+auch auf dem Router benötigt wird. Verwendet wird das wie folgt:
+
+\begin{example}
+\begin{verbatim}
+    crypt (<Variable>)
+\end{verbatim}
+\end{example}
+
+Die \texttt{crypt}-Funktion ist die \emph{einzige} Stelle, an der eine
+Konfigurationsvariable verändert werden kann.
+
+\marklabel{subsec:statdatei}{
+\subsubsection{Abfragen von Eigenschaften einer Datei: \texttt{stat}}
+}
+
+    \texttt{stat} ermöglicht es, Eigenschaften einer Datei abzufragen. Zur
+    Verfügung gestellt wird im Augenblick lediglich die Größe einer
+    Datei. Wenn man
+    auf Dateien unterhalb des aktuellen Konfigurationsverzeichnisses testen
+    will, kann man die interne Variable \var{config\_dir} benutzen. Die Syntax
+    lautet:
+
+\begin{example}
+\begin{verbatim}
+    stat (<Dateiname>, <Schlüssel>)
+\end{verbatim}
+\end{example}
+
+    Der Aufruf sieht wie folgt aus (wobei die
+    verwendeten Parameter nur Beispiele sind):
+
+\begin{example}
+\begin{verbatim}
+    foreach i in openvpn_%_secret
+    do
+       stat("${config_dir}/etc/openvpn/$i.secret", keyfile)
+       if (keyfile_res != "OK")
+       then
+          error "OpenVPN: missing secretfile <config>/etc/openvpn/$i.secret"
+       fi
+    done
+\end{verbatim}
+\end{example}
+
+    In dem Beispiel wird geprüft, ob eine Datei im aktuellen
+    Konfigurationsverzeichnis vorhanden ist. Wenn also \verb+OPENVPN_1_SECRET='test'+
+    in der Konfigurationsdatei gesetzt wird, prüft die Schleife im ersten
+    Durchlauf, ob im aktuellen  Konfigurationsverzeichnis die Datei
+    \texttt{etc/openvpn/test.secret} vorhanden ist.
+
+    Nach dem Aufruf sind zwei Variablen definiert:
+
+    \begin{itemize}
+    \item \texttt{<Schlüssel>\_res}: Resultat des Systemaufrufs stat() ("`OK"', wenn
+      Systemruf erfolgreich, sonst Fehlermeldung des Systemaufrufs)
+    \item \texttt{<Schlüssel>\_size}: Größe der Datei
+    \end{itemize}
+
+    Das könnte dann z.\,B. so aussehen:
+
+\begin{example}
+\begin{verbatim}
+    stat ("unix/Makefile", test)
+    if ("$test_res" == "OK")
+    then
+            warning "test_size = $test_size"
+    else
+            error "Error '$test_res' while trying to get size of 'unix/Makefile'"
+    fi
+\end{verbatim}
+\end{example}
+
+    Ein als Zeichenketten-Konstante übergebener Dateiname unterliegt der
+    \jump{subsec:dev:string-rewrite}{Variablenersetzung}.
+
+\marklabel{subsec:fgrepdatei}{
+\subsubsection{Durchsuchen von Dateien: \texttt{fgrep}}
+}
+
+    Wenn Sie in einer Datei per "`grep"'\footnote{"`grep"' ist ein auf
+    Unix-Betriebsystemen verbreitetes Kommando zum Filtern von Textströmen.}
+    suchen wollen, steht Ihnen das
+    \texttt{fgrep}-Kommando zur Verfügung. Die Syntax lautet:
+
+\begin{example}
+\begin{verbatim}
+    fgrep (<Dateiname>, <RegEx>)
+\end{verbatim}
+\end{example}
+
+    Wenn die Datei \texttt{<Dateiname>} nicht existiert wird \var{mkfli4l}
+    mit einem fatalen Fehler beendet! Wenn Sie also nicht sicher sind,
+    ob die Datei immer vorhanden ist, testen Sie die Existenz von
+    \texttt{<Dateiname>} vorher mit \texttt{stat} ab. Nach dem Aufruf von
+    \texttt{fgrep} steht Ihnen das Suchresultat in dem Array
+    \var{FGREP\_MATCH\_\%} zur Verfügung, wobei der Index \emph{x} wie üblich
+    von eins bis \var{FGREP\_MATCH\_N} reicht. \var{FGREP\_MATCH\_1} verweist
+    dabei auf den gesamten Bereich der Zeile, auf den der reguläre Ausdruck
+    gepasst hat, während \var{FGREP\_MATCH\_2} bis \var{FGREP\_MATCH\_N} den
+    jeweils \emph{n-1}-ten geklammerten Teil beinhalten.
+
+    Ein erstes einfaches Beispiel soll die Verwendung demonstrieren. Die Datei
+    \texttt{opt/etc/shells} enthält die Zeile:
+
+\begin{example}
+\begin{verbatim}
+/bin/sh
+\end{verbatim}
+\end{example}
+
+    Der folgende Code
+
+\begin{example}
+\begin{verbatim}
+    fgrep("opt/etc/shells", "^/(.)(.*)/")
+    foreach v in FGREP_MATCH_%
+    do
+      warning "%v='$v'"
+    done
+\end{verbatim}
+\end{example}
+
+    produziert die folgende Ausgabe:
+
+\begin{example}
+\begin{verbatim}
+    Warning: FGREP_MATCH_1='/bin/'
+    Warning: FGREP_MATCH_2='b'
+    Warning: FGREP_MATCH_3='in'
+\end{verbatim}
+\end{example}
+
+    Der reguläre Ausdruck hat (nur) auf "`/bin/"' gepasst, deshalb steht auch
+    (nur) dieser Teil der Zeile in der Variable \var{FGREP\_MATCH\_1}. Der erste
+    geklammerte Teil im Ausdruck passt auf das erste Zeichen hinter dem ersten
+    "`/"', deshalb steht auch nur "`b"' in \var{FGREP\_MATCH\_2}. Der zweite
+    geklammerte Teil umfasst den Rest hinter den "`b"' bis zum letzten "`/"',
+    somit steht "`in"' in der Variable \var{FGREP\_MATCH\_3}.
+
+    Das folgende zweite Beispiel demonstriert eine praxisnahe Verwendung von
+    \texttt{fgrep} an einem Beispiel aus der \texttt{check/base.ext}. Hier
+    wird getestet, ob alle in der \var{PF\_FORWARD\_x} angegebenen
+    \texttt{tmpl:}-Referenzen vorhanden sind:
+
+\begin{example}
+\begin{verbatim}
+    foreach n in pf_forward_n
+    do
+      set rule=pf_forward_%[n]
+      if (rule =~ "tmpl:([^[:space:]]+)")
+      then
+        foreach m in match_%
+        do
+          stat("$config_dir/etc/fwrules.tmpl/$m", tmplfile)
+          if(tmplfile_res == "OK")
+          then
+            add_to_opt "etc/fwrules.tmpl/$m"
+          else
+            stat("opt/etc/fwrules.tmpl/$m", tmplfile)
+            if(tmplfile_res == "OK")
+            then
+              add_to_opt "etc/fwrules.tmpl/$m"
+            else
+              fgrep("opt/etc/fwrules.tmpl/templates", "^$m[[:space:]]+")
+              if (fgrep_match_n == 0)
+              then
+                error "Can't find tmpl:$m for PF_FORWARD_${n}='$rule'!"
+              fi
+            fi
+          fi
+        done
+      fi
+    done
+\end{verbatim}
+\end{example}
+
+    Sowohl ein als Zeichenketten-Konstante übergebener Dateiname als auch als
+    Zeichenketten-Konstante übergebener regulärer Ausdruck unterliegen der
+    \jump{subsec:dev:string-rewrite}{Variablenersetzung}.
+
+\marklabel{subsec:split}{
+\subsubsection{Auseinandernehmen von Parametern: \texttt{split}}
+}
+
+    Oftmals werden Variablen mit mehreren Parametern belegt, die dann
+    in Startup-Skripten erst wieder auseinandergenommen werden. Will
+    man diese bereits vorher auseinandernehmen und Tests auf ihnen
+    durchführen, nimmt man \texttt{split}. Die Syntax lautet:
+
+\begin{example}
+\begin{verbatim}
+    split (<Zeichenkette>, <Array>, <Trennzeichen>)
+\end{verbatim}
+\end{example}
+
+    Die Zeichenkette kann durch eine Variable oder direkt als
+    Konstante angegeben werden. \var{mkfli4l} zerlegt ihn an den Stellen, an
+    denen das Trennzeichen auftaucht, und erzeugt pro Teil ein Element des
+    Arrays. Über diese Elemente kann man dann hinterher iterieren und Prüfungen
+    vornehmen. Steht zwischen zwei Trennzeichen nichts, wird ein Array-Element
+    mit einer leeren Zeichenkette als Wert erzeugt. Ausnahme ist "` "':
+    Hier werden alle Leerzeichen konsumiert und keine leeren Variablen
+    erzeugt.
+
+    Sollen die bei der Zerlegung entstandenen Elemente in einem
+    numerischen Kontext verwendet werden (z.\,B. als Indizes), muss das
+    beim Aufruf von \texttt{split} spezifiert werden. Das geschieht durch das
+    zusätzliche Attribut "`numeric"'. Der Aufruf sieht dann wie folgt
+    aus:
+
+\begin{example}
+\begin{verbatim}
+    split (<Zeichenkette>, <Array>, <Trennzeichen>, numeric)
+\end{verbatim}
+\end{example}
+
+   Ein Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    set bar="1.2.3.4"
+    split (bar, tmp_%, '.', numeric)
+    foreach i in tmp_%
+    do
+            warning "%i = $i"
+    done
+\end{verbatim}
+\end{example}
+
+    Die produzierte Ausgabe ist:
+
+\begin{example}
+\begin{verbatim}
+    Warning: TMP_1 = 1
+    Warning: TMP_2 = 2
+    Warning: TMP_3 = 3
+    Warning: TMP_4 = 4
+\end{verbatim}
+\end{example}
+
+    \textbf{Hinweis:} Wenn die "`numeric"'-Variante verwendet wird, dann prüft
+    \var{mkfli4l} zum Zeitpunkt der Zerlegung \emph{nicht}, ob die
+    Teil-Zeichenketten auch wirklich numerisch sind! Bei einer späteren
+    Verwendung in einem numerischen Kontext (etwa beim Addieren) löst
+    \var{mkfli4l} jedoch einen fatalen Fehler aus, wenn eine solche Variable
+    doch nicht numerisch ist. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    set bar="a.b.c.d"
+    split (bar, tmp_%, '.', numeric)
+    # Fehler: invalid number 'a'
+    set i=tmp_%[1]+1
+\end{verbatim}
+\end{example}
+
+    Eine an \texttt{split} im ersten Parameter übergebene
+    Zeichenketten-Konstante unterliegt der
+    \jump{subsec:dev:string-rewrite}{Variablenersetzung}.
+
+\marklabel{subsec:addtoopt}{
+\subsubsection{Hinzufügen von Dateien zum Archiv: \texttt{add\_to\_opt}}
+}
+
+    Mit der Funktion \texttt{add\_to\_opt} können zusätzliche Dateien
+    ans \texttt{opt}- oder \texttt{rootfs}-Archiv angehängt werden. Es können dabei \emph{alle}
+    Dateien unterhalb von \texttt{opt/} oder aus dem Konfigurationsverzeichnis
+    ausgewählt werden. Eine Beschränkung nur auf die Dateien, die mit einem
+    bestimmten Paket geliefert werden, gibt es nicht. Liegt eine Datei
+    sowohl unter \texttt{opt/} als auch im Konfigurationsverzeichnis im
+    gleichen Pfad, bevorzugt \texttt{add\_to\_opt} die Dateien aus dem
+    Konfigurationsverzeichnis. Die Funktion \texttt{add\_to\_opt} wird in der
+    Regel dann eingesetzt, wenn komplexe logische Regeln darüber entscheiden,
+    ob und welche Dateien in das Archiv aufgenommen werden müssen.
+
+    Die Syntax sieht wie folgt aus:
+\begin{example}
+\begin{verbatim}
+    add_to_opt <Datei> [<Flags>]
+\end{verbatim}
+\end{example}
+
+    Die Flags sind optional. Es gelten die in Tabelle~\ref{table:options}
+    aufgeführten Standard-Werte, falls keine Flags angegeben sind.
+
+    Es folgt ein Beispiel aus dem Paket "`sshd"':
+
+\begin{example}
+\begin{verbatim}
+    if (opt_sshd)
+    then
+       foreach pkf in sshd_public_keyfile_%
+       do
+         stat("$config_dir/etc/ssh/$pkf", publickeyfile)
+         if(publickeyfile_res == "OK")
+         then
+             add_to_opt "etc/ssh/$pkf" "mode=400 flags=utxt"
+         else
+             error "sshd: missing public keyfile %pkf=$pkf"
+         fi
+       done
+    fi
+\end{verbatim}
+\end{example}
+
+    Mit \jump{subsec:statdatei}{\texttt{stat}} wird zunächst geprüft, ob die
+    Datei im Konfigurationsverzeichnis existiert. Ist die Datei vorhanden, wird
+    sie ans Archiv angehängt, andernfalls bricht \var{mkfli4l} mit einer
+    entsprechenden Fehlermeldung ab.
+
+    \textbf{Hinweis:} Auch bei \texttt{add\_to\_opt}
+    \jump{subsec:konfigspezdatei}{prüft} \var{mkfli4l} zuerst, ob die zu
+    kopierende Datei im Konfigurationsverzeichnis zu finden ist.
+
+    Sowohl ein als Zeichenketten-Konstante übergebener Dateiname als auch als
+    Zeichenketten-Konstante übergebene Flags unterliegen der
+    \jump{subsec:dev:string-rewrite}{Variablenersetzung}.
+
+\marklabel{subsec:dev:control}{
+\subsubsection{Kontrollfluss}
+}
+
+\begin{example}
+\begin{verbatim}
+    if (expr)
+    then
+            statement
+    else
+            statement
+    fi
+\end{verbatim}
+\end{example}
+
+    Eine klassische Fallunterscheidung, wie man sie kennt. Ist die
+    Bedingung wahr, wird der \texttt{then}-Teil ausgeführt, ist die Bedingung
+    falsch, wird der \texttt{else}-Teil ausgeführt.
+
+    Will man Tests über Array-Variablen durchführen, muss man jede einzelne
+    Variable testen. Dazu gibt es die \texttt{foreach}-Schleife in zwei
+    Varianten.
+
+    \begin{enumerate}
+    \item Iterieren über Array-Variablen:
+
+\begin{example}
+\begin{verbatim}
+    foreach <Laufvariable> in <Array-Variable>
+    do
+            <Anweisung>
+    done
+
+    foreach <Laufvariable> in <Array-Variable-1> <Array-Variable-2> ...
+    do
+            <Anweisung>
+    done
+\end{verbatim}
+\end{example}
+
+    Diese Schleife iteriert über alle angegebenen Array-Variablen, jeweils
+    angefangen beim ersten Element bis hin zum letzten; die Anzahl der Elemente
+    im Array wird dabei der dem Array zugeordneten N-Variable
+    entnommen. Die Lauf\-vari\-able nimmt dabei die jeweiligen Werte der
+    Array-Variablen an. Zu beachten ist dabei, dass bei optionalen
+    Array-Variablen, die in der Konfiguration nicht vorhanden sind,
+    ein leeres Element generiert wird. Unter Umständen muss das im Skript
+    berücksichtigt werden, was man z.\,B. wie folgt tun kann:
+
+\begin{example}
+\begin{verbatim}
+    foreach i in template_var_opt_%
+    do
+        if (i != "")
+        then
+            warning "%i is present (%i='$i')"
+        else
+            warning "%i is undefined (empty)"
+        fi
+    done
+\end{verbatim}
+\end{example}
+
+    Wie man auch am Beispiel erkennen kann, lässt sich der \emph{Name} der
+    jeweiligen Array-Variablen durch die \texttt{\%<Laufvariable>}-Konstruktion
+    ermitteln.
+
+    Die Anweisung in der Schleife kann eine der oben beschriebenen
+    Kontrollelemente oder Funktionen (\texttt{if}, \texttt{foreach},
+    \texttt{provides}, \texttt{depends}, \ldots) sein.
+
+    Will man auf genau ein Element eines Arrays zugreifen, kann man dieses
+    mittels der Syntax \texttt{<Array>[<Index>]} ansprechen. Der Index kann
+    dabei eine normale Variable, eine Zahlenkonstante oder wiederum ein
+    indiziertes Array sein.
+
+    \item Iterieren über N-Variablen:
+
+\begin{example}
+\begin{verbatim}
+    foreach <Laufvariable> in <N-Variable>
+    do
+            <Anweisung>
+    done
+\end{verbatim}
+\end{example}
+
+    Diese Schleife läuft von 1 bis zum Wert, der in der N-Variable steht. Man
+    kann die Laufvariable dazu benutzen, um Array-Variablen zu indizieren. Will
+    man also nicht nur über eine Array-Variable iterieren, sondern über mehrere
+    gleichzeitig, die alle durch \emph{dieselben} N-Variable kontrolliert
+    werden, nimmt man diese Variante der Schleife und verwendet die
+    Laufvariable zum Indizieren mehrerer Array-Variablen. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    foreach i in host_n
+    do
+        set name=host_%_name[i]
+        set ip4=host_%_ip4[i]
+        warning "$i: name=$name ip4=$ip4"
+    done
+\end{verbatim}
+\end{example}
+
+    Das ergibt bei entsprechend gefüllten \var{HOST\_\%\_NAME}- und
+    \var{HOST\_\%\_IP4}-Arrays beispielsweise:
+
+\begin{example}
+\begin{verbatim}
+    Warning: 1: name=berry ip4=192.168.11.226
+    Warning: 2: name=fence ip4=192.168.11.254
+    Warning: 3: name=sandbox ip4=192.168.12.254
+\end{verbatim}
+\end{example}
+
+    \end{enumerate}
+
+\subsubsection{Ausdrücke}
+
+    Ausdrücke verknüpfen Werte und Operatoren zu einem neuen Wert. Ein Wert
+    kann dabei eine gewöhnliche Variable, ein Array-Element oder eine Konstante
+    (Zahl, Zeichenkette oder Versionsnummer) sein. Alle
+    Zeichenketten-Konstanten, die in Ausdrücken auftreten, unterliegen der
+    \jump{subsec:dev:string-rewrite}{Variablenersetzung}.
+
+    Operatoren erlauben so gut wie alles, was man von einer
+    Programmiersprache gewöhnt ist. Ein Test auf die Gleichheit zweier Variablen
+    könnte also so aussehen:
+
+\begin{example}
+\begin{verbatim}
+    var1 == var2
+    "$var1" == "$var2"
+\end{verbatim}
+\end{example}
+
+    Zu beachten ist dabei, dass der Vergleich in Abhängigkeit vom Typ
+    der Variable erfolgt, der in \texttt{check/<PAKET>.txt} festgelegt
+    wurde. Ist eine der beiden Variablen \jump{subsec:dev:data-types}{numerisch},
+    erfolgt der Vergleich auf numerischer Basis,
+    d.\,h.\ die Zeichenketten werden in Zahlen umgewandelt und dann
+    verglichen. Sonst erfolgt der Vergleich auf Zeichenketten-Basis; ein
+    Vergleich \texttt{"05"\ == "5"} ergibt "`falsch"', ein Vergleich
+    \texttt{"18"\ < "9"} ergibt "`wahr"' auf Grund der lexikographischen Ordnung
+    auf Zeichenketten: die Ziffer "`1"' liegt vor der Ziffer "`9"' im zugrunde
+    liegenden ASCII-Zeichensatz.
+
+    Für den Vergleich von Versionen wird das Hilfskonstrukt
+    \texttt{numeric(version)} eingeführt, welches den numerischen Wert für
+    eine Versionsnummer für Vergleichszwecke bestimmt. Dabei gilt:
+
+\begin{example}
+\begin{verbatim}
+    numeric(version) := major * 10000 + minor * 1000 + sub
+\end{verbatim}
+\end{example}
+
+    wobei "`major"' die erste Komponente der Versionsnummer darstellt,
+    "`minor"' die zweite und "`sub"' die dritte; fehlt "`sub"', entfällt der
+    Term in der obigen Summe einfach (oder anders ausgedrückt, für "`sub"' wird
+    null angenommen).
+
+    Eine vollständige Auflistung aller Ausdrücke ist in Tabelle
+    \ref{tab:expr} zu finden. Dabei steht "`val"' für einen beliebig getypten
+    Wert, "`number"' für einen numerischen Wert und "`string"' für eine
+    Zeichenkette.
+
+    \begin{table}[htb]
+      \centering
+      \caption{Logische Ausdrücke}
+      \label{tab:expr}
+      \begin{tabular}{ll}
+        \hline
+        Ausdruck &                     wahr wenn\\
+        \hline
+        \hline
+       id                    &    id == "`yes"'\\
+       val  == val           &    identisch getypte Werte sind gleich\\
+       val  != val           &    identisch getypte Werte sind ungleich\\
+       val  == number        &    numerischer Wert von val == number\\
+       val  != number        &    numerischer Wert von val != number\\
+       val  $<$  number      &    numerischer Wert von val $<$ number\\
+       val  $>$  number      &    numerischer Wert von val $>$ number\\
+       val  == version       &    numeric(val) == numeric(version) \\
+       val  $<$  version     &    numeric(val) $<$  numeric(version) \\
+       val  $>$  version     &    numeric(val) $>$  numeric(version) \\
+       val  =\verb?~? string &    regulärer Ausdruck in string auf val passt\\
+       ( expr )              &    Ausdruck in Klammern ist wahr\\
+       expr \&\& expr        &    beide Ausdrücke sind wahr\\
+       expr || expr          &    mind. einer der beiden Audrücke ist wahr\\
+       copy\_pending(id)     &    siehe Beschreibung\\
+       samenet (string1, string2) & string1 das gleiche netz wie
+       string2 beschreibt\\
+       subnet (string1, string2)  & string1 ein Subnetz von string2 beschreibt\\
+        \hline
+      \end{tabular}
+    \end{table}
+
+\subsubsection{Match-Operator}
+
+Mit dem Match-Operator \verb?=~? kann man prüfen, ob ein regulärer
+Ausdruck auf den Wert einer Variable passt. Weiterhin kann man
+den Operator auch nutzen, um Teilausdrücke aus einer Variablen zu
+extrahieren. Nach erfolgreichem Anwenden eines regulären Ausdrucks auf
+eine Variable enthält das Array \var{MATCH\_\%} die gefundenen Teile. Das
+könnte z.\,B. wie folgt aussehen:
+
+\begin{example}
+\begin{verbatim}
+    set foo="foobar12"
+    if ( foo =~ "(foo)(bar)([0-9]*)" )
+    then
+            foreach i in match_%
+            do
+                    warning "match %i: $i"
+            done
+    fi
+\end{verbatim}
+\end{example}
+
+Ein \var{mkfli4l}-Aufruf führt dann zu folgender Ausgabe:
+
+\begin{example}
+\begin{verbatim}
+    Warning: match MATCH_1: foo
+    Warning: match MATCH_2: bar
+    Warning: match MATCH_3: 12
+\end{verbatim}
+\end{example}
+
+Bei Verwendung von \verb?=~? kann Bezug auf alle existierenden
+regulären Ausdrücke genommen werden. Will man z.\,B. prüfen, ob ein
+PCMCIA-Ethernet-Treiber ausgewählt wurde, ohne dass \var{OPT\_PCMCIA} auf
+"`yes"' gesetzt wurde, könnte das wie folgt aussehen:
+
+\begin{example}
+\begin{verbatim}
+    if (!opt_pcmcia)
+    then
+        foreach i in net_drv_%
+        do
+           if (i =~ "^(RE:PCMCIA_NET_DRV)$")
+           then
+               error "If you want to use ..."
+           fi
+        done
+    fi
+\end{verbatim}
+\end{example}
+
+Wie in dem Beispiel demonstriert wird, ist es wichtig, den regulären Ausdruck
+mit Hilfe von \texttt{\^} und \texttt{\$} zu \emph{verankern}, wenn man den
+Ausdruck auf die \emph{gesamte} Variable anwenden will. Ansonsten liefert der
+Match-Ausdruck schon "`wahr"', wenn nur ein \emph{Teil} der Variable vom
+regulären Ausdruck abgedeckt wird, was in diesem Fall sicherlich nicht
+erwünscht ist.
+
+\subsubsection{Prüfen, ob in Abhängigkeit vom Wert einer Variable eine
+  Datei kopiert wurde: \texttt{copy\_pending}}
+
+        Mit den im Check-Prozess gewonnenen Informationen prüft die
+        Funktion \texttt{copy\_pending}, ob in Abhängigkeit vom Wert einer
+        Variable eine Datei kopiert wurde oder nicht. Das kann man
+        verwenden, um z.\,B. zu testen, ob der vom Nutzer angegebene
+        Treiber auch wirklich existiert und kopiert
+        wurde. \texttt{copy\_pending} akzeptiert den zu prüfenden Namen in Form
+        einer Variablen oder einer Zeichenkette.\footnote{Wie eingangs
+        beschrieben unterliegt die Zeichenkette der Variablenersetzung, so dass
+        man z.\,B. mittels einer
+        \jump{subsec:dev:control}{\texttt{foreach}-Schleife} und der
+        \jump{subsec:dev:string-rewrite}{\texttt{\%<Name>}-Ersetzung} alle
+        Elemente eines Arrays prüfen kann.} \texttt{copy\_pending} prüft dazu,
+        ob
+
+        \begin{itemize}
+        \item die Variable aktiv ist (wenn sie von einem OPT abhängt,
+           muss dieses auf "`yes"' gesetzt sein),
+
+         \item die Variable in einer \texttt{opt/<PAKET>.txt}-Datei referenziert
+           wurde, und
+
+         \item ob in Abhängigkeit vom aktuellen Wert eine Datei kopiert
+           wurde.
+        \end{itemize}
+
+        Dabei liefert \texttt{copy\_pending} "`wahr"' zurück, wenn im letzten
+        Schritt festgestellt wurde, dass \emph{keine} Datei kopiert wurde,
+        das Kopieren also somit noch aussteht (also "`pending"' ist).
+
+    Ein kleines Beispiel für die Anwendung all dieser Funktionen
+    findet man in \texttt{check/base.ext}:
+
+\begin{example}
+\begin{verbatim}
+    foreach i in net_drv_%
+    do
+        if (copy_pending("%i"))
+        then
+            error "No network driver found for %i='$i', check config/base.txt"
+        fi
+    done
+\end{verbatim}
+\end{example}
+
+    Hier werden alle Elemente des Arrays \var{NET\_DRV\_\%} angemeckert, für
+    die keine Kopieraktion vorgenommen wurde, für die also in der
+    \texttt{opt/base.txt} kein entsprechender Eintrag existiert.
+
+\subsubsection{Vergleich von Netzwerkadressen: \texttt{samenet} und \texttt{subnet}}
+
+Zum Prüfen von Routen benötigt man ab und zu einen Test, ob zwei
+Netzwerke identisch sind oder eines ein Subnetz eines anderen
+ist. Dazu gibt es die beiden Funktionen \texttt{samenet} und
+\texttt{subnet}. Dabei liefert
+
+\begin{example}
+\begin{verbatim}
+    samenet (netz1, netz2)
+\end{verbatim}
+\end{example}
+
+"`wahr"', wenn beide Netze identisch sind, und
+
+\begin{example}
+\begin{verbatim}
+    subnet (netz1, netz2)
+\end{verbatim}
+\end{example}
+
+gibt "`wahr"' zurück, wenn "`netz1"' ein Subnetz von "`netz2"' ist.
+
+\subsubsection{Erweitern der Kernel-Kommandozeile}
+
+Ist ein OPT gezwungen, dem Kernel andere Boot-Parameter zu übergeben, so musste
+früher die Variable \var{KERNEL\_BOOT\_OPTION} geprüft werden, ob der nötige
+Parameter enthalten war, und ggf.\ eine Warnung oder eine Fehlermeldung
+ausgegeben werden. Mit der internen Variable \var{KERNEL\_BOOT\_OPTION\_EXT}
+kann man nötige, aber fehlende Optionen direkt im ext-Skript ergänzen. Ein
+Beispiel aus der \texttt{check/base.ext}:
+
+\begin{example}
+\begin{verbatim}
+    if (powermanagement =~ "apm.*|none")
+    then
+        if ( ! kernel_boot_option =~ "acpi=off")
+        then
+            set kernel_boot_option_ext="${kernel_boot_option_ext} acpi=off"
+        fi
+    fi
+\end{verbatim}
+\end{example}
+
+Damit wird "`acpi=off"' an den Kernel übergeben, falls keine Energieverwaltung
+oder welche vom Typ "`APM"' gewünscht ist.
+
+\subsection{Unterstützung verschiedener Kernelversionslinien}
+
+Verschiedene Kernelversionslinien unterscheiden sich häufig in einigen Details:
+\begin{itemize}
+\item es stehen andere Treiber zur Verfügung, einige sind weggefallen,
+  andere hinzugekommen
+\item die Module heißen teilweise einfach anders
+\item die Modul-Abhängigkeiten sehen anders aus
+\item die Module liegen woanders
+\end{itemize}
+
+Diese Unterschiede werden zum großen Teil durch \var{mkfli4l}
+automatisch behandelt. Um die zur Verfügung stehenden Module zu
+beschreiben, kann man zum einen die zur Prüfung verwendeten Prüfungen in
+Abhängigkit von der Version erweitern
+(\jump{sec:regexp-dependencies}{bedingte reguläre Ausdrücke}), und zum anderen
+erlaubt \var{mkfli4l} \emph{versionsabhängige}
+\texttt{opt/<PAKET>.txt}-Dateien. Dies heißen dann
+\texttt{opt/<PAKET>\_<Kernel-Version>.txt}, wobei die Komponenten der
+Kernel-Version durch Unterstriche voneinander getrennt werden. Ein Beispiel:
+Das Paket "`base"' enthält die folgenden Dateien im \texttt{opt}-Verzeichnis:
+
+\begin{itemize}
+\item \texttt{base.txt}
+\item \texttt{base\_3\_18.txt}
+\item \texttt{base\_3\_19.txt}
+\end{itemize}
+
+Die erste Datei (\texttt{base.txt}) wird \emph{immer} verarbeitet. Die anderen
+beiden Dateien werden nur verarbeitet, wenn die Kernelversion "`3.18(.*)"'
+bzw.\ "`3.19(.*)"' lautet. Wie man sieht, können Versionskomponenten im Dateinamen
+weggelassen werden, wenn man eine ganze Gruppe von Kerneln "`erschlagen"'
+möchte. Unter Annahme von \verb+KERNEL_VERSION='3.18.9'+ werden für ein Paket
+\texttt{<PAKET>} die folgenden Dateien (sofern vorhanden) eingelesen und
+verarbeitet:
+
+\begin{itemize}
+\item \texttt{<PAKET>.txt}
+\item \texttt{<PAKET>\_3.txt}
+\item \texttt{<PAKET>\_3\_18.txt}
+\item \texttt{<PAKET>\_3\_18\_9.txt}
+\end{itemize}
+
+\subsection{Dokumentation}
+
+    Die Dokumentation wird in den Dateien
+
+    \begin{itemize}
+    \item \texttt{doc/<SPRACHE>/opt/<PAKET>.txt}
+    \item \texttt{doc/<SPRACHE>/opt/<PAKET>.html}
+    \end{itemize}
+
+    abgelegt. Die HTML-Dateien können auch aufgeteilt werden, d.\,h.\ für jedes
+    enthaltene OPT eine. Dann muss trotzdem eine \texttt{<PAKET>.html} angelegt
+    werden, die auf die anderen Dateien verweist.
+    Änderungen sollten in folgenden Dateien dokumentiert werden:
+
+    \begin{itemize}
+    \item \texttt{changes/<PAKET>.txt}
+    \end{itemize}
+
+    Die gesamte Text-Dokumentation darf keine Tabulatoren enthalten und muss nach
+    spätestens 79 Zeichen einen harten Zeilenumbruch haben. Die stellt sicher,
+    dass die Dokumentation auch mit einem Editor ohne automatischen
+    Zeilenumbruch richtig gelesen werden kann.
+
+    Wer mag kann auch eine Dokumentation im \LaTeX-Format erstellen und daraus
+    dann HTML- und PDF-Fassungen erzeugen. Als Beispiel kann
+    die Dokumentation von fli4l dienen. Einen Rahmen für die
+    Dokumentation und die minimal benötigten \LaTeX-Macros kann man im
+    Paket "`template"' finden. Eine kurze Beschreibung ist in den
+    folgenden Unterabschnitten zu finden.
+
+    Die fli4l-Dokumentation steht zur Zeit in den folgenden Sprachen zur
+    Verfügung: deutsch, englisch (\texttt{<SPRACHE>} = "`english"') und
+    französisch (\texttt{<SPRACHE>} = "`french"'). Es steht einem
+    Paket-Entwickler jedoch frei, sein Paket in beliebigen Sprachen zu
+    dokumentieren. Im Sinne der Verständlichkeit wird jedoch empfohlen,
+    eine Dokumentation in deutsch und/oder englisch (idealerweise in beiden
+    Sprachen) anzufertigen.
+
+\subsubsection{Voraussetzungen für die Erstellung einer \LaTeX-Dokumentation}
+
+  Zum Erstellen der Dokumentation aus \LaTeX-Quellen gibt es folgende
+  Anforderungen an die Umgebung:
+
+  \begin{itemize}
+  \item Linux/OS~X-Umgebung: Zur einfachen Erzeugung gibt es ein Makefile,
+    mit dem alle weiteren Aufrufe automatisiert sind (Cygwin müsste auch
+    funktionieren, wird aber nicht vom fli4l-Team getestet)
+  \item LaTeX2HTML für die HTML-Version
+  \item natürlich \LaTeX\ (empfohlen wird "`TeX Live"' für Linux/OS~X und
+  "`MiKTeX"' für Microsoft Windows) mit dem "`pdftex"'-Programm und folgenden
+    \TeX-Paketen:
+    \begin{itemize}
+    \item aktuelles KOMA-Skript (mindestens Version 2)
+    \item alle notwendigen Pakete für pdftex
+    \item ausgepacktes Dokumentationspaket für fli4l, welches die
+      benötigten Makefiles und \TeX-Stile bereitstellt
+  \end{itemize}
+  \end{itemize}
+
+
+\subsubsection{Dateinamen}
+
+Die Dateien der Dokumentation werden nach folgendem Schema benannt:
+
+\begin{description}
+\item [\texttt{<PAKET>\_main.tex}:] Diese Datei enthält den Hauptteil der
+  Dokumentation. \texttt{<PAKET>} steht hier für den Namen des
+  Pakets, das beschrieben werden soll (in Kleinbuchstaben).
+\item[\texttt{<PAKET>\_appendix.tex}:] Sollen zu diesem Paket noch
+  weitere Anmerkungen im Anhang hinzugefügt werden, so werden
+  diese hier abgelegt.
+\end{description}
+
+Diese Dateien werden im Verzeichnis
+\texttt{fli4l/<PAKET>/doc/<SPRACHE>/tex/<PAKET>}
+abgelegt.  Für das Paket "`sshd"' sieht das z.\,B. wie folgt aus:
+
+\begin{verbatim}
+    $ ls fli4l/doc/deutsch/tex/sshd/
+    Makefile sshd_appendix.tex  sshd_main.tex  sshd.tex
+\end{verbatim}
+
+Das Makefile ist für die Generierung der Dokumentation verantwortlich,
+die \texttt{sshd.tex}-Datei stellt einen Rahmen für die eigentliche
+Dokumentation und den Anhang bereit, der sich in den anderen beiden Dateien
+befindet. Ansehen kann man sich das am Beispiel der
+Dokumentation des "`template"'-Pakets.
+
+
+\subsubsection{\LaTeX-Grundlagen}
+
+\LaTeX\ arbeitet ähnlich wie HTML "`Tag-orientiert"', nur dass die Tags
+hier "`Kommandos"' heißen und folgendes Format aufweisen: \verb*?\kommando?
+bzw.\ \verb*?\begin{umgebung}? \ldots \verb*?\end{umgebung}?
+
+Nach Möglichkeit sollte man mit Hilfe von Kommandos eher die \emph{Bedeutung}
+des jeweiligen Textes auszeichnen und weniger dessen \emph{Darstellung}. Es
+ist also vorteilhaft, z.\,B.
+
+\begin{example}
+\verb*?\warning{Bitte nicht ... tun}?
+\end{example}
+
+\noindent statt
+
+\begin{example}
+\verb*?\emph{Bitte nicht ... tun}?
+\end{example}
+
+\noindent zu verwenden.
+
+Jedes Kommando bzw.\ jede Umgebung kann noch weitere Parameter
+aufnehmen, die mit \verb*?\kommando{parameter1}{paramter2}{paramterN}?
+geschrieben werden.
+
+Manche Kommandos haben optionale Parameter, die in eckigen (statt geschweiften)
+Klammern stehen: \verb*?\kommando[optionalerParameter]{parameter1}?
+\ldots\ Dabei kommt im Normalfall nur ein optionaler Parameter vor, in
+seltenen Fällen aber auch mehrere.
+
+Einzelne Absätze werden im Dokument durch Leerzeilen
+getrennt.  Innerhalb dieser Absätze nimmt \LaTeX\ selbst den
+Zeilenumbruch und die Worttrennung vor.
+
+Folgende Buchstaben haben eine spezielle Bedeutung in \LaTeX\ und müssen,
+sollten sie in normalem Text vorkommen, mit einem vorangestellten \verb*?\?
+maskiert werden: \# \$ \& \_ \% \{ \}. "`\verb?~?"' und "`\verb?^?"' müssen
+wie folgt geschrieben werden: \verb!\verb?~?! \verb!\verb?^?!
+
+Die wichtigsten \LaTeX-Kommandos werden in der Dokumentation des
+"`template"'-Pakets verwendet und erklärt.
+
+\subsection{Dateiformate}
+
+    Alle Textdateien (sowohl Dokumentation als auch Skripte, die später auf
+    dem Router liegen) müssen im DOS-Dateiformat, also mit CR/LF statt nur LF
+    am Zeilenende in das Paket gelegt werden. Dadurch wird erreicht, dass
+    Windows-Nutzer die Dokumentation auch mit "`notepad"' lesen können und durch eine Änderung
+    eines Skripts unter Windows das Ganze später auf dem Router trotzdem
+    lauffähig bleibt.
+    Die Skripte werden beim Bauen der Archive in das auf dem Router
+    benötigte Format konvertiert (siehe die Beschreibung der Flags in Tabelle~\ref{table:options}).
+
+\subsection{Entwickler-Dokumentation}
+
+    Sollte ein Programm aus dem Paket eine neue Schnittstelle definieren,
+    die andere Programme nutzen können, so ist die Dokumentation dieser
+    Schnittstelle  in einer separaten Dokumentation unter \texttt{doc/dev/<PAKET>.txt} abzulegen.
+
+\subsection{Client-Programme}
+
+    Sollte ein Paket zusätzliche Client-Programme mitliefern, so sind diese
+    im Verzeichnis \texttt{windows/} für Windows-Clients und im Verzeichnis \texttt{unix/} für
+    Unix- und Linux-Clients abzulegen.
+
+\subsection{Quellcode}
+
+    Angepasste Programme und Quellcodes können im Verzeichnis \texttt{src/<PAKET>/} beigelegt
+    werden. Sollen die
+Programme genauso wie die restlichen fli4l-Programme gebaut werden,
+bitte einen Blick in die Dokumentation des \jump{buildroot}{"`src"'-Pakets} werfen.
+
+\marklabel{sec:script_names}{
+  \subsection{Weitere Dateien}
+}
+
+    Alle Dateien, die nachher auf dem Router liegen, werden unter \texttt{opt/}
+    abgelegt. Dabei liegen unter:
+    \begin{itemize}
+    \item \texttt{opt/etc/boot.d/} und \texttt{opt/etc/rc.d/} Skripte, die beim Starten des
+      Systems ausgeführt werden sollen
+    \item \texttt{opt/etc/rc0.d/} Skripte, die beim Herunterfahren des Systems
+      ausgeführt werden
+    \item \texttt{opt/etc/ppp/} Skripte, die beim Einwählen und Auflegen
+      ausgeführt werden
+    \item \texttt{opt/} die ausführbaren Programme und sonstige Dateien
+      entsprechend ihrer Positionen im Dateisystem (d.\,h.\ die Datei
+      \texttt{opt/bin/busybox} wird später auf dem Router im Verzeichnis
+      \texttt{/bin} liegen)
+    \end{itemize}
+
+    Die Skripte in \texttt{opt/etc/boot.d/}, \texttt{opt/etc/rc.d/} und
+    \texttt{opt/etc/rc0.d/}
+    werden wie folgt benannt:
+
+    \begin{example}
+    \begin{verbatim}
+    rc<nummer>.<name>
+    \end{verbatim}
+    \end{example}
+
+    Die Nummer entscheidet über die
+    Reihenfolge der Ausführung, der Name gibt einen Hinweis darauf,
+    welches Programm/Paket von diesem Skript behandelt wird.

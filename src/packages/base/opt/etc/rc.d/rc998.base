@@ -1,0 +1,46 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc998.base
+# was file /etc/rc.d/rc999.base
+#
+# Creation:     25.09.2000  fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------
+# start inetd if necessary
+#----------------------------------------------------------------------------
+begin_script BASE "finishing boot process ..."
+
+if [ -f /usr/sbin/inetd -a -s /etc/inetd.conf ]
+then
+    log_info "starting inetd ..."
+    /usr/sbin/inetd
+fi
+
+#remove cached menus which may be uncomplete
+rm -f /tmp/menu_*
+
+# copy beep to memory to have it there during shutdown
+mk_writable /bin/beep
+
+# checking whether the permissions for /tmp and /var/tmp are sane
+set -- $(ls -ld /tmp)
+if [ "$1" != "drwxrwxrwt" ]
+then
+    log_warn "some package has changed /tmp permissions to $1, correcting"
+    chmod 1777 /tmp
+fi
+set -- $(ls -ld /var/tmp)
+if [ "$1" != "drwxrwxrwt" ]
+then
+    log_warn "some package has changed /var/tmp permissions to $1, correcting"
+    chmod 1777 /var/tmp
+fi
+
+# Boot is finished
+> /var/run/boot_finished
+
+do_beep
+
+end_script

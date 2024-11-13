@@ -1,0 +1,291 @@
+% Synchronized to r35952
+
+\section{Conditions générales de création de script pour fli4l}
+
+Nous n'avons \emph{pas} écrit d'introduction générale pour le Scripts-Shell,
+mais vous pouvez lire cette introduction sur Internet, ici nous traitons que des
+situations particulières pour fli4l. Des informations complémentaires sont disponibles
+dans les différentes pages du manuel Unix-/Linux-. Les liens suivants peuvent servir
+de point de dépard pour ce sujet~:
+
+\begin{itemize}
+\item Introduction au Scripts-Shell~:
+  \begin{itemize}
+  \item \altlink{http://cip.physik.uni-freiburg.de/main/howtos/sh.php}
+  \end{itemize}
+\item Pages d'aide en ligne~:
+   \begin{itemize}
+   \item \altlink{http://linux.die.net/}
+   \item \altlink{http://heapsort.de/man2web}
+   \item \altlink{http://man.he.net/}
+   \item \altlink{http://www.linuxcommand.org/superman_pages.php}
+   \end{itemize}
+\end{itemize}
+
+
+\subsection{Structure}
+
+    Dans le monde Unix, il est essentiel de démarrer le script avec le nom de
+    l'interpréteur de commande, à la première ligne vous devez indiquer~:
+
+\begin{example}
+\begin{verbatim}
+      #!/bin/sh
+\end{verbatim}
+\end{example}
+
+    Pour que l'on puisse identifier plus facilement le script, à savoir, à
+    quoi il sert, qui l'a écrit, il faut maintenant que celui-ci soit suivi
+    d'une en-tête à peu près comme ceci~:
+
+\begin{example}
+\begin{verbatim}
+      #--------------------------------------------------------------------
+      # /etc/rc.d/rc500.dummy - start my cool dummy server
+      #
+      # Creation:     19.07.2001  Toller Hecht <toller-hecht@example.net>
+      # Last Update:  11.11.2001  Süße Maus <suesse-maus@example.net>
+      #--------------------------------------------------------------------
+\end{verbatim}
+\end{example}
+
+    Vous pouvez maintenant poursuivre le script ...
+
+
+\marklabel{dev:sec:config-variables}{
+\subsection{Gestion des variables de configuration}
+}
+
+\subsubsection{Généralités}
+
+    La composition de la configuration de fli4l est dans le fichier
+    \texttt{config/<PAQUETAGE>.txt}. 
+    Cette documentation contient les \jump{subsec:dev:var-check}{Variables actives}
+	et la création du support de boot avec le fichier \texttt{rc.cfg}. Lors du boot
+	du routeur, ce fichier est lu avant tous les scripts-rc (les scripts sont dans
+	\texttt{/etc/rc.d/}). Ce script peut accéder avec le \var{\$<nom de variable>} à
+	toutes les variables de configuration du routeur.
+
+    Avez-vous besoin des valeurs des variables de configuration, même après
+	le boot~? Vous pouvez à partir du fichier \texttt{/etc/rc.cfg}, avec lequel
+	vous avez écrit la configuration pour le support de boot. Par exemple, vous
+	pouvez lire la valeur de la variable \texttt{OPT\_DNS}, avec un script, vous
+	devez le faire de la manière suivante~:
+
+\begin{example}
+\begin{verbatim}
+    eval $(grep "^OPT_DNS=" /etc/rc.cfg)
+\end{verbatim}
+\end{example}
+
+    Cela fonctionne également avec plusieurs variables (c'est-à-dire en
+	utilisant une seul fois le programme \texttt{grep})~:
+
+\begin{example}
+\begin{verbatim}
+    eval $(grep "^\(HOSTNAME\|DOMAIN_NAME\|OPT_DNS\|DNS_LISTEN_N\)=" /etc/rc.cfg)
+\end{verbatim}
+\end{example}
+
+
+\marklabel{dev:sec:persistent-data}{
+\subsubsection{Stockage persistant des données}
+}
+
+Les paquetages on parfois besoins de stocker des données sur un support
+persistant, ils pourront survivre au redémarrage du routeur. Il existe une
+fonction \texttt{map2persistent}, elle peut être utilisée depuis un script
+qui sera enregistré dans \texttt{/etc/rc.d/}. Ce script doit contenir
+la variable avec le chemin et le sous-répertoire. L'idée est que la variable
+est configurée avec un chemin réel~-- Alors, ce chemin sera utilisé, car l'utilisateur
+l'a souhaité ou la variable sera configurée sur \og{}auto\fg{}~-- Alors, un
+sous-répertoire correspondant sera créé en-dessous du répertoire sur un support
+persistant selon le deuxième paramètre. La fonction retourne le résultat de la variable,
+avec le nom qui à été indiqué dans le premier paramètre.
+
+Un exemple permettra de clarifier cela. Soit la variable \var{VBOX\_SPOOLPATH}, qui
+est paramétrée avec un chemin ou avec la valeur \og{}auto\fg{}. Pour l'activation
+
+\begin{example}
+\begin{verbatim}
+    begin_script VBOX "Configuring vbox ..."
+    [...]
+    map2persistent VBOX_SPOOLPATH /spool
+    [...]
+    end_script
+\end{verbatim}
+\end{example}
+
+Cela signifie que la variable \var{VBOX\_SPOOLPATH}, ne sera pas modifié
+(si elle contient un chemin) ou le chemin sera remplacé par
+\texttt{/var/lib/persistent/vbox/spool} (Si elle contient la valeur \og{}auto\fg{}).
+La valeur se réfère \footnote{à l'aide d'un soi-disant \og{}lien\fg{} monté}
+\texttt{/var/lib/persistent} est le répertoire pour enregistrer les données sur
+un support de stockage non volatile, \var{<SCRIPT>} représente un minuscule script
+d'exécution (ce nom est dérivé du premier argument
+\jump{subsec:dev:bug-searching}{exécute \texttt{begin\_script}}). Si aucun support
+convenable n'existe (cela peut être possible), le répertoire \texttt{/var/lib/persistent}
+sera enregistré dans le disque RAM.
+
+Il convient de noter, que le chemin utilisé par \texttt{map2persistent} n'est \emph{pas}
+généré automatiquement~-- Cela doit être fait soi-même (peut-être avec la commande
+\texttt{mkdir -p <chemin>}).
+
+Dans le fichier \texttt{/var/run/persistent.conf} vous pouvez vérifier si le support de
+stockage persistant pour les données est possible. Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    . /var/run/persistent.conf
+    case $SAVETYPE in
+    persistent)
+        echo "Stockage persistant possible!"
+        ;;
+    transient)
+        echo "Stockage persistant PAS possible!"
+        ;;
+    esac
+\end{verbatim}
+\end{example}
+
+
+\marklabel{subsec:dev:bug-searching}{
+\subsection{Recherche d'erreur}
+}
+
+    Au démarrage d'un script, il est souvent utile d’activer le mode débogage,
+    pour déterminer si \og{}un ver est dans le script\fg{} et pour savoir s'il est inséré
+    au début ou à la fin du texte~:
+
+\begin{example}
+\begin{verbatim}
+      begin_script <OPT-Name> "start message"
+      <script code>
+      end_script
+\end{verbatim}
+\end{example}
+
+En fonctionnement normal, un texte apparait au démarrage du script et à la fin
+de se même texte le préfixe \og{}finished\fg{} sera spécifié.
+
+Si vous voulez déboguer un script, vous devez faire deux choses~:
+
+\begin{enumerate}
+\item Il faut mettre \jump{DEBUGSTARTUP}{\var{DEBUG\_\-STARTUP}} sur \og{}yes\fg{}.
+\item Vous devez activer le débogage de l'OPT choisi. On le fait en général
+   par la variable suivante dans les fichiers de configurations~:\footnote{parfois,
+   plusieurs scripts de démarrage sont utilisés pour chaque variable de débogage,
+   ces variables ont des noms différents pour le débogage. Voici un rapide coup d'oeil
+   sur ces scripts.}
+\begin{example}
+\begin{verbatim}
+      <OPT-Name>_DO_DEBUG='yes'
+\end{verbatim}
+\end{example}
+
+Maintenant vous pourrez voir sur la console, la représentation exact de l'exécution
+du programme.
+\end{enumerate}
+
+
+\subsubsection{D'autres variables pour le débogage}
+
+\begin{description}
+  \config{DEBUG\_ENABLE\_CORE}{DEBUG\_ENABLE\_CORE}{DEBUGENABLECORE}
+
+  Si cette variable est placée sur \og{}yes\fg{}, elle permet de créer un core-Dumps
+  (ou image mémoire). Si un programme se bloque en raison d'une erreur, un
+  fichier image enregistre l'état actuel du système, il pourra ensuite être
+  utilisée pour une analyser du problème. L'image core-Dumps sera enregistrée
+  dans le dossier \texttt{/var/log/dumps}.
+
+  \config{DEBUG\_IP}{DEBUG\_IP}{DEBUGIP}
+
+  Si cette variable est placée sur \og{}yes\fg{}, tous les appels du programme par
+  le protocol \texttt{ip} seront enregistrés.
+
+  \config{DEBUG\_IPUP}{DEBUG\_IPUP}{DEBUGIPUP}
+
+  Si cette variable est placée sur \og{}yes\fg{}, lors de l'exécution des scripts
+  \texttt{ip-up}/\texttt{ip-down} les instructions exécutées seront stockées dans
+  le système de journalisation.
+
+  \config{LOG\_BOOT\_SEQ}{LOG\_BOOT\_SEQ}{LOGBOOTSEQ}
+
+  Si cette variable est placée sur \og{}yes\fg{}, elle enregistre dans \texttt{bootlogd}
+  tous le processus de Boot visible sur la console. Cette variable est placée
+  par défaut sur \og{}yes\fg{}.
+
+  \config{DEBUG\_KEEP\_BOOTLOGD}{DEBUG\_KEEP\_BOOTLOGD}{DEBUGKEEPBOOTLOGD}
+
+  Normalement \texttt{bootlogd} se termine à la fin du processus de boot. Si on active
+  cette variable, cela permet l'enregistrement au-delà de l'arrêt du processus
+  de boot visible sur la console.
+
+  \config{DEBUG\_MDEV}{DEBUG\_MDEV}{DEBUGMDEV}
+
+  Si on active cette variable cela génère le protocole Démons-\texttt{mdev} et produit
+  un fichier sur tous les périphériques dans le dossier \texttt{/dev}
+\end{description}
+
+
+\subsection{Remarques}
+
+\begin{itemize}
+\item Il est \emph{toujours} préférable d'utiliser les accolades \og{}\{\ldots\}\fg{} à
+   la place des parenthèses \og{}(\ldots)\fg{}. Il convient après l’ouverture de l’accolade
+   de placer, un espace ou un saut de ligne avant la prochaine commande et de placer avant
+   la fermeture de l’accolade un point-virgule ou un nouveau saut de ligne. Par exemple~:
+
+\begin{example}
+\begin{verbatim}
+        { echo "cpu"; echo "quit"; } | ...
+\end{verbatim}
+\end{example}
+
+        Équivaut à~:
+
+\begin{example}
+\begin{verbatim}
+        {
+                echo "cpu"
+                echo "quit"
+        } | ...
+\end{verbatim}
+\end{example}
+
+      \item Un script peut être arrêté prématurément avec la commande \og{}exit\fg{}.
+        Mais pour le Script de démarrage (\texttt{opt/etc/boot.d/...}, \texttt{opt/etc/rc.d/...}),
+        le Script d’arrêt (\texttt{opt/etc/rc0.d/...}) et les Scripts \texttt{ip-up}/\texttt{ip-down}
+		avec (opt/etc/ppp/*) cela est carrément mortelle, il faut dire aussi
+        que ces Scripts ne seront plus exécuté. En cas de doute, ne toucher
+        à rien.
+
+      \item KISS - Keep it small and simple. Vous voulez utiliser Perl en tant
+        que langage script~? Les possibilités d’écriture pour fli4l ne te
+        suffisent pas~? Penser à votre installation~! Votre OPT en a vraiment
+        besoin~? fli4l est toujours \og{}uniquement\fg{} un routeur, un routeur
+		ne doit pas offrir de services, comme un serveur.
+
+      \item Le message d'erreur~: \og{}not found\fg{} signifie le plus souvent
+		que le script est encore au format-DOS. Autre problème~: si le script n'est
+		pas exécuté.
+        Dans les deux cas, vous devez vérifier le fichier \texttt{opt/<PACKAGE>.txt},
+		pour voir si les options sont correctes (par rapport au \og{}mode\fg{}, \og{}gid\fg{},
+		\og{}uid\fg{} et Flags). Si le script est produit seulement au démarrage du
+		routeur, vous devez exécuter la commande \og{}chmod +x <nom du script>\fg{}.
+
+      \item Pour les fichiers temporaires, vous devez utiliser le chemin \texttt{/tmp}.
+        Mais il est essentiel de veiller à ne pas utiliser trop d’espace, parce que
+		le dossier est dans un Ramdisk-RootFS~! Si vous avez besoin de plus d'espace,
+		il faut créer un Ramdisk et le monter. L’ensemble des détails à ce sujet se
+		trouvent dans le paragraphe "RAM-Disks" de la documentation Dev.
+
+      \item Afin que les fichiers temporaires obtiennent un nom unique, vous devez
+		ajouter un ID de processus actuelle, dans la variable du Shell le caractère
+		\og{}\$\fg{} sera ajouté au nom du fichier. \texttt{/tmp/<OPT-Name>.\$\$} et le nom
+		du fichier sera correct, mais \texttt{/tmp/<OPT-Name>} est plutôt moins, bien sûr
+		\texttt{<OPT-Name>} ne doit pas laissé comme ceci, mais vous devez le modifier en fonction.
+
+\end{itemize}
+

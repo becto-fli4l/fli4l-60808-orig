@@ -1,0 +1,75 @@
+\section{Spezielle Circuit-Typen im base-Paket}
+
+\marklabel{sect:route-circuits}{\subsection{Circuits vom Typ ``route''}}
+
+Ein Circuit vom Typ ``route'' dient dazu, eine vorkonfigurierte \emph{Route}
+zu verwalten. Das Einwählen entspricht dem Aufbau, der Route, das Auflegen dem
+Abbau. Ein einzelner route-Circuit kann das Routen mehrerer IPv4- und
+IPv6-Netze (letzteres nur bei aktivierter IPv6-Unterstützung) gleichzeitig
+steuern. Insofern ist ein route-Circuit flexibler als die Konfiguration einer
+Route via \var{IP\_ROUTE\_x}, weil dort immer nur ein Netz pro Route angegeben
+werden kann.
+
+Neben den allgemeinen Circuit-Variablen, die in Abschnitt
+\jump{sec:circuits:general}{``Circuits allgemein''} beschrieben sind, sind
+zusätzlich die folgenden Angaben erforderlich:
+
+\begin{description}
+
+\config{CIRC\_x\_ROUTE\_DEV}{CIRC\_x\_ROUTE\_DEV}{CIRCxROUTEDEV}
+
+In dieser Variablen ist die Netzwerk-Schnittstelle vermerkt, über welche die
+Route geht. Diese Angabe ist optional, sofern mindestens eine Gateway-Angabe
+(siehe unten) vorliegt und daraus die Netzwerk-Schnittstelle abgeleitet werden
+kann. Es können Schnittstellen-Namen (``eth0''), Schnittstellen-Referenzen
+(``IP\_NET\_1\_DEV'', ``IPV6\_NET\_1\_DEV''), Circuits (``ppp0'') und
+Schlagwörter (``internet-v4'') genutzt werden, wobei Routen über dynamische,
+von Circuits kontrollierte Schnittstellen eher esoterischer Natur sind und nur
+dann verwendet werden sollten, wenn man sich über die auftretenden dynamischen
+Effekte im Klaren ist.
+
+Wenn diese Variable leer ist und beide Gateway-Adressen (IPv4 und IPv6) gesetzt
+sind (s.\,u.), müssen diese derselben Schnittstelle zugeordnet sein. Das
+liegt daran, dass jedem Circuit genau eine Netzwerkschnittstelle zugeordnet
+sein muss (und nicht mehrere).
+
+Beispiel 1: \verb+CIRC_x_ROUTE_DEV='IP_NET_2_DEV'+
+
+Beispiel 2: \verb+CIRC_x_ROUTE_DEV='pppoe-v6'+
+
+\config{CIRC\_x\_ROUTE\_GATEWAY\_IPV4}{CIRC\_x\_ROUTE\_GATEWAY\_IPV4}{CIRCxROUTEGATEWAYIPV4}
+
+Diese Variable enthält die Adresse des Next-Hop-Rou\-ters (gemeinhin ``Gateway''
+genannt) für die zu routenden IPv4-Netze. Sie kann nur dann leer sein, wenn
+\var{CIRC\_x\_ROUTE\_DEV} gesetzt ist; in diesem Fall wird eine Route ohne
+Gateway generiert. Die Gateway-Adresse kann mit einem Circuit kombiniert
+werden, wobei Routen über dynamische, von Circuits kontrollierte Gateways eher
+esoterischer Natur sind und nur dann verwendet werden sollten, wenn man sich
+über die auftretenden dynamischen Effekte im Klaren ist.
+
+Beispiel 1: \verb+CIRC_x_ROUTE_GATEWAY_IPV4='192.168.1.254'+
+
+Beispiel 2 (esoterisch): \verb+CIRC_x_ROUTE_GATEWAY_IPV4='{dhcp}0.0.0.253'+
+
+Im letzten Beispiel wird die Gateway-Adresse dynamisch aus dem per DHCP
+zugewiesenen Netz (z.\,B. 192.168.12.0/24) und dem angegebenen Host-Anteil
+gebildet (in diesem Fall also 192.168.12.253). Dies ist nur dann sinnvoll, wenn
+man weiß, dass egal welches Netzpräfix dem fli4l-Router von dem DHCP-Server
+zugewiesen wird, ein bestimmter Router an der Host-Adresse 253 zu finden ist.
+Normalerweise sollte der via DHCP übermittelte Router alle Routen behandeln
+können, somit sollte man die zu routenden Netze in einem solchen Fall direkt
+im jeweiligen DHCP-Circuit vermerken und nicht einen route-Circuit dafür
+verwenden.
+
+\config{CIRC\_x\_ROUTE\_GATEWAY\_IPV6}{CIRC\_x\_ROUTE\_GATEWAY\_IPV6}{CIRCxROUTEGATEWAYIPV6}
+
+Diese Variable enthält die Adresse des Next-Hop-Rou\-ters (gemeinhin ``Gateway''
+genannt) für die zu routenden IPv6-Netze. Es gilt all das für
+\var{CIRC\_x\_ROUTE\_GATEWAY\_IPV4} Gesagte. Weiterhin kann diese Variable nur
+bei aktivierter IPv6-unterstützung genutzt werden.
+
+Beispiel 1: \verb+CIRC_x_ROUTE_GATEWAY_IPV6='2001:db8:42::1'+
+
+Beispiel 2 (esoterisch): \verb+CIRC_x_ROUTE_GATEWAY_IPV6='{dhcpv6}::0:0:0:254'+
+
+\end{description}

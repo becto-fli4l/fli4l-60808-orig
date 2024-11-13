@@ -1,0 +1,195 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# ip-up-down                                                     __FLI4LVER__
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+. /etc/rc.cfg
+
+script_name="$ip-$script_op"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+. /usr/share/logfunc.sh
+. /etc/boot.d/locking.inc
+
+run_scripts()
+{
+    if [ -n "$circ_id" ]
+    then
+        local l3prot=$ip
+        [ "$l3prot" = "ip" ] && l3prot=ipv4
+
+        local circ_dev=$(circuit_get_interface "{$circ_id}")
+        if [ "$interface" != "$circ_dev" ]
+        then
+            # The configured interface does not match the real one. This should
+            # never happen and the code below is a safety belt.
+            # => We have to terminate this circuit immediately as the device
+            # mismatch can disturb routing and firewall rules. Additionally, we
+            # mark that circuit as "failed" to prevent it from going online
+            # until manual resolution.
+            case $script_op in
+            up)
+                echo "$circ_id: interface '$interface' does not match configured interface '$circ_dev', terminating link"
+                fli4lctrl fail $circ_id
+                ;;
+            down)
+                circuit_go_offline_if_necessary $circ_id $l3prot
+                ;;
+            esac
+            return 6
+        fi
+
+        local circ_link_id=$circ_id circ_bundle
+        circuit_read_field $circ_id circ_bundle
+        if [ -n "$circ_bundle" ]
+        then
+            # bundle circuit exists
+            if [ "$bundle_api" != yes ]
+            then
+                case $script_op in
+                up)
+                    echo "$circ_id: no support for bundled links, terminating connection"
+                    fli4lctrl fail $circ_id
+                    ;;
+                down)
+                    # no support for bundle circuits available
+                    circuit_go_offline_if_necessary $circ_id $l3prot
+                    ;;
+                esac
+                return 7
+            fi
+
+            if [ -z "$BUNDLE" ]
+            then
+                # Lookup bundle identifier for this circuit. This is necessary
+                # if this is the one and only link of a "pseudo" bundle, as
+                # in this case, BUNDLE is empty (as for the PPP daemon, no
+                # bundling is performed).
+                BUNDLE=$(bundle_map_master_to_bundle $circ_id)
+            fi
+
+            if [ -z "$BUNDLE" ]
+            then
+                # the peer does not allow bundling :-(
+                # that means that link-up/link-down were not called, and we
+                # have to create a "pseudo" bundle which can contain at most
+                # one link
+                case $script_op in
+                up)
+                    # we are to go online, so we first have to look whether
+                    # there is already a "master" registered for the bundle,
+                    # i.e. some other link connected or connecting to our
+                    # non-multilink peer
+                    export BUNDLE=$circ_bundle
+
+                    # the following check and link-up call must be atomic,
+                    # as otherwise a race condition can cause the bundle link
+                    # and master to be registered twice, causing weird errors
+                    # as the bundle API functions cannot cope with double
+                    # registrations
+                    local lock_name="${circ_id}_pseudo_bundle_creation"
+                    sync_lock_resource $lock_name ip_up_down
+
+                    local circ_master=$(bundle_map_bundle_to_master "$BUNDLE")
+                    if [ "$circ_id" != "$circ_master" ]
+                    then
+                        if [ -n "$circ_master" ]
+                        then
+                            # we lose
+                            echo "$circ_id: another link to non-multilink peer, failing link"
+                            # leave critical section around test-and-register
+                            # code here, as we return early
+                            sync_unlock_resource $lock_name ip_up_down
+                            # don't call "up" scripts and fail this circuit
+                            fli4lctrl fail $circ_id
+                            return 4
+                        else
+                            # we are the one and only link of a pseudo bundle
+                            echo "$circ_id: connected to non-multilink peer, other bundle links to that peer will fail"
+                            # it's necessary to release the lock after calling
+                            # link-up, as the link-up script eventually calls
+                            # bundle_register_master() such that the call to
+                            # bundle_map_bundle_to_master() above will return
+                            # the registered bundle master for some subsequently
+                            # started layer-3 protocol
+                            /etc/ppp/link-up $interface $circ_id \
+                                $BUNDLE_MASTER_TYPE_PSEUDO
+                        fi
+                    #else: another layer-3 protocol started over the link
+                    fi
+
+                    # leave critical section around test-and-register code
+                    sync_unlock_resource $lock_name ip_up_down
+                    ;;
+                down)
+                    # we are not the master, i.e. we change to the "failed"
+                    # state -- don't call "down" scripts
+                    return 5
+                    ;;
+                esac
+            fi
+
+            # from now on, everything is done in the context of the bundle
+            # circuit which ultimately defines all the networks to be
+            # routed by the bundle
+            circ_id="$circ_bundle"
+        fi
+
+        local vars=$(circuit_get_data $circ_id)
+        if [ -n "$vars" ]
+        then
+            eval export $vars
+            echo "executing $script_name scripts for $circ_id[$interface]"
+            run_${ip}_${script_op}
+            local rc=$?
+            echo "finished $script_name scripts for $circ_id[$interface] (rc=$rc)"
+            return $rc
+        else
+            echo "circuit $circ_id does not exist"
+            return 2
+        fi
+    else
+        echo "circuit is missing"
+        return 3
+    fi
+}
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+# disables coloured printing of messages
+unset booting
+
+if [ -f /var/run/debug_${ip}up ]
+then
+    if [ -f /var/run/syslogd.pid ]
+    then
+        exec >/tmp/$script_name.$$ 2>&1
+    else
+        exec >/dev/console   2>&1
+    fi
+    set -x
+fi
+
+real_interface=$1 # for compatibility, don't use it
+logmsgprio=$facility.notice
+
+if [ -f /var/run/debug_${ip}up ]
+then
+    run_scripts
+    set +x
+
+    if [ -f /tmp/$script_name.$$ ]
+    then
+        {
+            echo "dumping debug trace of $script ..."
+            cat /tmp/$script_name.$$
+            echo "end of debug trace of $script ..."
+        } | logmsg "$script" $logmsgprio
+        rm -f /tmp/$script_name.$$
+    fi
+else
+    run_scripts 2>&1 | logmsg "$script" $logmsgprio
+fi
+
+exit 0

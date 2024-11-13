@@ -1,0 +1,146 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc305.ipv6-eth - ipv6 configuration ethernet cards   __FLI4LVER__
+#
+#
+# Creation:         23.02.2005  ow
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+write_etc_hosts_header()
+{
+    # ------------------------------------------#
+    log_info "  setting up /etc/hosts (IPv6) ..."
+    # ------------------------------------------#
+    {
+        cat <<EOF
+#----------------------------------------------------------------------------
+# /etc/hosts (IPv6)
+# automatically created by rc305.ipv6-eth
+#----------------------------------------------------------------------------
+::1 localhost
+EOF
+    } >> /etc/hosts
+}
+
+setup_nets()
+{
+    # ---------------------------------------#
+    log_info "  setting up IPv6 networks..."
+    # ---------------------------------------#
+
+    # needed for dynamically created interfaces, e.g. ppp0, which need at least
+    # IPv6 link-local addresses in order to make IPv6 over PPP work
+    echo 0 > /proc/sys/net/ipv6/conf/default/disable_ipv6
+
+    # loopback device needs an IPv6 address, too
+    echo 0 > /proc/sys/net/ipv6/conf/lo/disable_ipv6
+
+    net_config_dir="/var/run/ipv6.nets"
+    mkdir -p "$net_config_dir"
+
+    for idx in $(seq 1 $IPV6_NET_N)
+    do
+        eval net='$IPV6_NET_'$idx
+        eval dev='$IPV6_NET_'$idx'_DEV'
+        eval adv='$IPV6_NET_'$idx'_ADVERTISE'
+        eval advvalidlft='$IPV6_NET_'$idx'_ADVERTISE_VALID_LIFETIME'
+        eval advpreflft='$IPV6_NET_'$idx'_ADVERTISE_PREF_LIFETIME'
+        eval adv_dns='$IPV6_NET_'$idx'_ADVERTISE_DNS'
+        eval canonical='$IPV6_NET_'$idx'_NAME'
+
+        if ! translate_net_if $dev dev 1
+        then
+            log_error "    IPV6_NET_$idx: not configured as device $dev could not be mapped"
+            continue
+        fi
+
+        echo 0 > /proc/sys/net/ipv6/conf/$dev/disable_ipv6
+
+        # assign defaults if necessary
+        : ${adv:='no'}
+        : ${adv_dns='no'}
+
+        local resolved_net=$(circuit_resolve_address "$net" ipv6)
+        if [ -n "$resolved_net" ]
+        then
+            net="$resolved_net"
+        fi
+
+        local circuit=
+        case $net in
+        {*}*)
+            local circuit=$(echo "$net" | sed -n 's/^{\([^}]*\)}.*$/\1/p')
+            net=$(echo "$net" | sed -n 's/^{[^}]*}+\(.*\)$/\1/p')
+            ;;
+        esac
+
+        net=$(netcalc canonicalize $net)
+        netaddr=$(echo $net | cut -d '/' -f 1)
+        netlen=$(echo $net | cut -d '/' -f 2)
+
+        if [ -z "$circuit" ]
+        then
+            # statically configured networks should have 'forever' lifetimes
+            : ${advvalidlft:='forever'}
+            : ${advpreflft:='forever'}
+        fi
+
+        netfile="$net_config_dir/$idx.conf"
+        {
+            echo "netaddr=$netaddr"
+            echo "netlen=$netlen"
+            echo "dev=$dev"
+            echo "circuit=$circuit"
+            echo "adv=$adv"
+            echo "advvalidlft=$advvalidlft"
+            echo "advpreflft=$advpreflft"
+            echo "adv_dns=$adv_dns"
+            echo "canonical=$canonical"
+        } > "$netfile"
+
+        if [ -z "$circuit" ]
+        then
+            ipv6-interface-setup.sh "$netfile"
+        fi
+        ip link set dev $dev up
+    done
+}
+
+write_etc_hosts_router_entries()
+{
+    # ---------------------------------------#
+    log_info "  filling /etc/hosts (IPv6) ..."
+    # ---------------------------------------#
+
+    # host-entry for the router
+    aliases=
+    [ 0$HOSTNAME_ALIAS_N -eq 0 ] || for j in $(seq 1 $HOSTNAME_ALIAS_N)
+    do
+        eval alias='$HOSTNAME_ALIAS_'$j
+        aliases="$aliases $alias"
+    done
+
+    ipaddr=$HOSTNAME_IP6
+    : ${ipaddr:=IPV6_NET_1_IPADDR}
+    if ! translate_ip6_net "$ipaddr" HOSTNAME_IP6 ipaddr 1
+    then
+        cat >/var/run/ipv6.hostname <<EOF
+host_net=${ipaddr%_IPADDR}
+host_aliases="$aliases"
+EOF
+    else
+        echo "$ipaddr $HOSTNAME.$DOMAIN_NAME $HOSTNAME $aliases" >> /etc/hosts
+    fi
+}
+
+if [ "$OPT_IPV6" = "yes" ]
+then
+    begin_script IPV6 "configuring IPv6..."
+
+    write_etc_hosts_header
+    setup_nets
+    write_etc_hosts_router_entries
+
+    end_script
+fi

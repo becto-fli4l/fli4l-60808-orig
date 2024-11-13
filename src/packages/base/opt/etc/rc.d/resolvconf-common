@@ -1,0 +1,98 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/resolvconf-common - common functions operating on resolv.conf
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+. /etc/boot.d/base-helper
+
+resolvconf_no=/etc/resolv.conf
+resolvconf_yes=/etc/resolv.dnsmasq
+resolvconf_backup=/var/run/resolv.conf.orig
+resolvconf_peerdns=/var/run/resolv.conf.peerdns
+
+# takes a lock on the resolv.conf
+# $1 = caller
+resolvconf_lock()
+{
+    sync_lock_resource resolvconf $1
+}
+
+# release a lock on the resolv.conf
+# $1 = caller
+resolvconf_unlock()
+{
+    sync_unlock_resource resolvconf $1
+}
+
+# $1 = caller
+resolvconf_generate()
+{
+    {
+        echo "# overridden by peer DNS servers"
+        local caller dns
+        while read caller dns
+        do
+            echo "# $caller"
+            echo "nameserver $dns"
+        done < $resolvconf_peerdns
+    } > $resolvconf
+}
+
+# $1 = source of the DNS servers (circuit name)
+# $2... = DNS servers to add
+# return = 1 if default resolv.conf has been overridden, 0 otherwise
+resolvconf_addpeerdns()
+{
+    local caller=$1
+    eval local $(grep "^OPT_DNS=" /etc/rc.cfg)
+    : ${OPT_DNS:=no}
+    eval local resolvconf=\$resolvconf_${OPT_DNS}
+    shift
+    local rc=0
+
+    resolvconf_lock $caller
+
+    if [ ! -s $resolvconf_peerdns ]
+    then
+        cp -a $resolvconf $resolvconf_backup
+        rc=1
+    fi
+
+    for dns
+    do
+        echo "$caller $dns"
+    done >> $resolvconf_peerdns
+    resolvconf_generate $caller
+
+    resolvconf_unlock $caller
+    return $rc
+}
+
+# $1 = source of the DNS servers (circuit name)
+# return = 1 if default resolv.conf has been restored, 0 otherwise
+resolvconf_removepeerdns()
+{
+    local caller=$1
+    eval local $(grep "^OPT_DNS=" /etc/rc.cfg)
+    : ${OPT_DNS:=no}
+    eval local resolvconf=\$resolvconf_${OPT_DNS}
+    shift
+    local rc=0
+
+    resolvconf_lock $caller
+
+    sed -i "/^$caller /d" $resolvconf_peerdns 2>/dev/null
+    if [ -s $resolvconf_peerdns ]
+    then
+        resolvconf_generate
+    elif [ -f $resolvconf_backup ]
+    then
+        mv $resolvconf_backup $resolvconf
+        rc=1
+    fi
+
+    resolvconf_unlock $caller
+    return $rc
+}

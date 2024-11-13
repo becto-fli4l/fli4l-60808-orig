@@ -1,0 +1,62 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/link-down - called whenever a bundle link goes offline
+#
+# Input:
+#   $1 = interface
+#   $2 = circuit name
+#   $3 = 1 if multilink master goes offline, 0 otherwise
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/networking.inc
+
+script_name="link-down"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+logmsgprio=$facility.notice
+. /usr/share/logfunc.sh
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+interface=$1
+circ_id=$2
+
+{
+
+# map link circuit to bundle
+BUNDLE=$(bundle_map_link_to_bundle $circ_id)
+if [ -n "$BUNDLE" ]
+then
+    echo "bundle link $circ_id[$interface] goes down"
+
+    # assume that we need not force circuit hangup
+    circ_force_hangup=
+    circ_master=$(bundle_map_bundle_to_master "$BUNDLE")
+
+    # Call all custom link-downs
+    lazy_begin
+    for j in /etc/ppp/link-down[0-9][0-9][0-9].*
+    do
+        if [ -f $j ]
+        then
+            echo "executing $j"
+            . $j
+        fi
+    done
+    lazy_end
+
+    # deregister link
+    bundle_deregister_link $circ_id
+    # decrease reference count if we are the master circuit of this bundle
+    [ "$circ_master" = $circ_id ] && bundle_deref_master $circ_master >/dev/null
+
+    # link is offline
+    circuit_event_id=$circ_id \
+    down_link_circuit_event_force_hangup=$circ_force_hangup \
+        mom_unicast_message circd down_link_circuit_event >/dev/null
+fi
+
+} 2>&1 | logmsg "$script" $logmsgprio

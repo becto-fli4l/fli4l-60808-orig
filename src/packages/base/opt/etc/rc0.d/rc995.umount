@@ -1,0 +1,38 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc960.umount - unmount all Filesystems except:
+#                          '/', '/proc', '/dev/pts' and '/sys'
+#
+# Creation:     12.05.2002    rr
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# set -x
+begin_script UMOUNT "Unmounting file systems ..."
+
+sync
+rc=0
+FILESYSTEMS=""
+while read DEV MTPT FSTYPE REST; do
+    case "$MTPT" in
+        /|/proc|/dev/pts|/sys) continue ;;
+    esac
+    case "$FSTYPE" in
+        proc|procfs|linprocfs|devfs|sysfs|usbfs|usbdevfs|devpts)
+            continue
+            ;;
+        *)
+            log_info "Unmounting $MTPT ..."
+            umount -l -r "$MTPT" || rc=1
+            ;;
+    esac
+done < /proc/mounts
+
+SCRIPT_RESULT=$rc
+end_script
+
+if grep -q /dev /proc/swaps ; then
+    begin_script SWAP "Disabling swap space ..."
+    swapoff -a
+    end_script
+fi

@@ -1,0 +1,86 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc099.persistent
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2000-2002 - Frank Meyer
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+begin_script RC099_PERSISTENT "setup of persistent storage..."
+
+SAVEPATH=/var/lib/persistent
+
+# Checks whether a path variable contains the string "auto".
+# If so, it is set to $SAVEPATH/$OPT$2, where $OPT is deduced from
+# the SCRIPT variable set by begin_script(). Otherwise, the variable
+# is left unchanged.
+#
+# $1 = name of path variable
+# $2 = relative path lying under the persistent storage for current OPT;
+#      can be empty but must begin with a slash if not
+#
+# Example:
+#  SCRIPT="VBOX", VBOX_SPOOLPATH="auto"
+#  => map2persistent "VBOX_SPOOLPATH" "/spool" results in
+#     VBOX_SPOOLPATH="$SAVEPATH/vbox/spool"
+map2persistent()
+{
+    eval local val=\$$1
+    if [ "$val" = "auto" ]
+    then
+        local pkg=$(echo $SCRIPT | tr 'A-Z' 'a-z')
+        eval $1=\$SAVEPATH/\$pkg\$2
+    fi
+}
+
+# will be set if persistent storage is found
+PERSISTENTVOLUME=
+PERSISTENTPATH=
+
+# search for directory for persistent storage
+if [ -n "$FLI4L_UUID" ]
+then
+    # extract all devices that are mounted read-write
+    set -- $(sed -n "s#^\(/dev/[^ ]\+\) \([^ ]\+\) [^ ]\+ rw,.*#\1 \2#p" /proc/mounts)
+
+    while [ -n "$1" -a -n "$2" ]
+    do
+        dir=$(find "$2" -type d -name $FLI4L_UUID)
+        if [ -n "$dir" ]
+        then
+            PERSISTENTVOLUME=$1
+            PERSISTENTPATH="$dir"
+            break
+        fi
+        shift 2
+    done
+fi
+
+if [ -z "$PERSISTENTPATH" ]
+then
+    boot_dev=$(sed -n "s#^\(/dev/[^ ]\+\) /boot [^ ]\+ rw,.*#\1#p" /proc/mounts)
+    if [ -n "$boot_dev" ]
+    then
+        PERSISTENTVOLUME=$boot_dev
+        PERSISTENTPATH=/boot/persistent
+        mkdir -p "$PERSISTENTPATH"
+    fi
+fi
+
+mkdir -p "$SAVEPATH"
+
+if [ -d "$PERSISTENTPATH" ]
+then
+    log_info "using $PERSISTENTPATH on $PERSISTENTVOLUME for persistent storage"
+    mount -o bind "$PERSISTENTPATH" "$SAVEPATH"
+    echo "SAVETYPE=persistent" >/var/run/persistent.conf
+else
+    log_warn "Could not find a suitable directory for persistent storage!"
+    log_warn "All persistent settings will be gone after the next reboot!"
+    log_warn "Please create a directory named $FLI4L_UUID on some medium mounted read-write or unset FLI4L_UUID!"
+    echo "SAVETYPE=transient" >/var/run/persistent.conf
+fi
+
+end_script

@@ -1,0 +1,209 @@
+% Synchronized to r49529
+
+\providecommand{\fwaction}[1]{{\small\textsf{#1}}}
+\providecommand{\fwchain}[1]{\texttt{#1}}
+\providecommand{\fwtable}[1]{\textsc{#1}}
+\providecommand{\fwmatch}[1]{\texttt{#1}}
+\providecommand{\fwpktstate}[1]{\texttt{#1}}
+\providecommand{\fwloglevel}[1]{\texttt{#1}}
+
+\section{Utiliser le filtrage de paquets}
+
+\subsection{Ajouter vos propres chaînes et règles}
+
+Un ensemble de routines est fourni pour manipuler le filtrage de paquets,
+elles permettent d'ajouter ou de supprimer des chaînes (en anglais "Chains")
+et des règles. Une chaîne sert à nommée une liste de règles ordonnées.
+Il y a déjà un ensemble de chaînes prédéfinies sur le routeur fli4l
+(\fwchain{PREROUTING}, \fwchain{INPUT}, \fwchain{FORWARD}, \fwchain{OUTPUT},
+\fwchain{POSTROUTING}). Vous pouvez créer d'autre chaînes pour certaines
+fonctions et selon vos besoins.
+
+\begin{description}
+\item [\texttt{add\_chain/add\_nat\_chain <chain>}~:]
+   ajoute une chaîne de \og{}filtrage\fg{} ou de table \og{}nat\fg{}
+\item [\texttt{flush\_chain/flush\_nat\_chain <chain>}~:]
+   supprime toutes les règles d'une chaîne de \og{}filtrage\fg{} ou de table \og{}nat\fg{}
+\item [\texttt{del\_chain/del\_nat\_chain <chain>}~:]
+   supprime une chaîne à partir du \og{}filtrage\fg{} ou de la table \og{}nat\fg{}.
+   Les chaînes doivent être vides avant qu'elles puissent être supprimées, et ces chaînes
+   ne doivent pas avoir de référence. Une telle référence est par exemple l'action \fwaction{JUMP}
+   dont la cible est précisément cette chaîne.
+\item[\texttt{add\_rule/ins\_rule/del\_rule}~:]
+   ajoute une règle à la fin d'une chaîne (\texttt{add\_rule}) ou partout dans la chaîne
+   \texttt{ins\_rule}) ou supprime une règle d'une chaîne (\texttt{del\_rule}). l'exécution
+   sera la suivante~:
+
+\begin{example}
+\begin{verbatim}
+    add_rule <table> <chain> <rule> <comment>
+    ins_rule <table> <chain> <rule> <position> <comment>
+    del_rule <table> <chain> <rule> <comment>
+\end{verbatim}
+\end{example}
+
+  \noindent les paramètres ont les significations suivantes~:
+  \begin{description}
+  \item[table] La table dans laquelle la chaîne est insérée
+  \item[chain] La chaîne dans laquelle la règle est insérée
+  \item[rule] La règle qui doit être insérée, vous devez utiliser le même
+    format que dans le fichier-config
+  \item[position] La position dans laquelle la règle doit être insérée
+    (seulement avec \texttt{ins\_rule})
+  \item[comment] Le commentaire, il sera affiché avec la règle, il sera vu
+    dans le filtrage de paquets.
+  \end{description}
+\end{description}
+
+
+\subsection{Classer les règles dans une infrastructure}
+
+fli4l configure les règles du filtrage de paquets avec certaine norme. Si vous
+souhaitez insérer vos propres règles, vous pouvez ajouter ces règles, après
+les régles par défaut. Pour cela, vous devez savoir quelle action l’utilisateur
+a effectué pour rejeter les paquets. Ces informations peut être obtenue pour 
+les chaînes \fwchain{FORWARD} et \fwchain{INPUT} en utilisant deux fonctions,
+\texttt{get\_defaults} et \texttt{get\_count}. Après l'exécution de
+
+\begin{example}
+\begin{verbatim}
+    get_defaults <chain>
+\end{verbatim}
+\end{example}
+
+On obtient les résultats suivants~:
+
+\begin{description}
+\item[\var{drop}~:] cette variable contient la chaîne dans laquelle le paquet
+  sera dévié et rejeté.
+\item[\var{reject}~:] cette variable contient la chaîne dans laquelle le paquet
+  sera dévié et refusé.
+\end{description}
+
+Après l'exécution de
+
+\begin{example}
+\begin{verbatim}
+    get_count <chain>
+\end{verbatim}
+\end{example}
+
+la variable \var{res} contient le nombre de règle de la chaîne \texttt{<chain>}.
+Cette position est importante car vous ne pouvez \emph{pas} utiliser simplement
+\texttt{add\_rule} pour ajouter une règle à la fin de les chaînes de \og{}filtage\fg{}
+prédéfini \fwchain{INPUT}, \fwchain{FORWARD} et \fwchain{OUTPUT}. Car ces chaînes
+sont déjà terminées par des règles par défaut, qui traite tous les paquets restants,
+en fonction de la disponibilité de la variable \var{PF\_<Chaîne>\_POLICY}. Donc si
+vous insérez cette dernière règle \emph{après} les autres il n'y aura aucun effet.
+La fonction \texttt{get\_count} permet maintenant, de détecter l'emplace directement
+\emph{avant} la dernier règle et de transmettre cette position à la fonction
+\texttt{ins\_rule} avec le paramètre \texttt{<position>} ainsi, la règle souhaitée
+sera ajouter à la fin de la chaîne appropriée, cependant devant la dernier règle saisis. 
+
+Voici un exemple à partir du script \texttt{opt/etc/rc.d/rc390.dns\_dhcp} du paquetage
+\og{}dns\_dhcp\fg{} pour une petit explication~:
+
+\begin{example}
+\begin{verbatim}
+    case $OPT_DHCPRELAY in
+        yes)
+            begin_script DHCRELAY "starting dhcprelay ..."
+
+            idx=1
+            interfaces=""
+            while [ $idx -le $DHCPRELAY_IF_N ]
+            do
+                eval iface='$DHCPRELAY_IF_'$idx
+
+                get_count INPUT
+                ins_rule filter INPUT "prot:udp  if:$iface:any 68 67 ACCEPT" \
+                    $res "dhcprelay access"
+
+                interfaces=$interfaces' -i '$iface
+                idx=`expr $idx + 1`
+            done
+            dhcrelay $interfaces $DHCPRELAY_SERVER
+
+            end_script
+        ;;
+  esac
+\end{verbatim}
+\end{example}
+
+Ici vous pouvez voir dans le milieu de la boucle l'exécution de \texttt{get\_count}
+suivie par l'exécution de la fonction \texttt{ins\_rule}, entre autres la variable
+\var{res} est passé comme paramètre \texttt{position}.
+
+
+\subsection{Extension pour le test de filtrage de paquets}
+
+fli4l utilise la syntaxe \fwmatch{match:params} dans les règles de filtrage des
+paquets, cela permet d'avoir des conditions supplémentaires pour les paquets
+(voir \fwmatch{mac:}, \fwmatch{limit:}, \fwmatch{length:}, \fwmatch{prot:}, \ldots).
+Si vous souhaitez ajouter des tests supplémentaires, vous devez faire comme ci-dessous~:
+
+\begin{enumerate}
+\item Vous devez définir un nom approprié. Ce nom doit commencer par une lettre minuscule
+entre a-z et ensuite être composé de n'importe quelles lettres et de nombres.
+
+\achtung{Si vous testez de filtrage de paquets pour les règles IPv6, assurez-vous alors
+que le nom du test n'est pas un composant d'une adresse IPv6 valide !}
+
+\item Créer d'un fichier \texttt{opt/etc/rc.d/fwrules-<name>.ext}. Le contenu de ce
+fichier ressemble à ceci~:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4 extension is available
+    foo_p=yes
+
+    # the actual IPv4 extension, adding matches to match_opt
+    do_foo()
+    {
+        param=$1
+        get_negation $param
+        match_opt="$match_opt -m foo $neg_opt --fooval $param"
+    }
+
+    # IPv6 extension is available
+    foo6_p=yes
+
+    # the actual IPv6 extension, adding matches to match_opt
+    do6_foo()
+    {
+        param=$1
+        get_negation6 $param
+        match_opt="$match_opt -m foo $neg_opt --fooval $param"
+    }
+\end{verbatim}
+\end{example}
+Le test de filtrage de paquets ne doit pas nécessairement être implémenté pour
+les protocoles IPv4 et IPv6 (bien que cela soit préférable et logique pour les
+deux protocoles de couche 3).
+
+\item Test de l'extension~:
+
+\begin{example}
+\begin{verbatim}
+    $ cd opt/etc/rc.d
+    $ sh test-rules.sh 'foo:bar ACCEPT'
+    add_rule filter FORWARD 'foo:bar ACCEPT'
+    iptables -t filter -A FORWARD -m foo --fooval bar -s 0.0.0.0/0 \
+        -d 0.0.0.0/0 -m comment --comment foo:bar ACCEPT -j ACCEPT
+\end{verbatim}
+\end{example}
+
+\item L’extension est incluse et tous les fichiers restants
+  (les composants \texttt{iptables}) sont archivés avec
+  le mécanisme connus.
+\item Permet l'extension dans la configuration, il faut ajouter
+  \var{FW\_GENERIC\_MATCH} et/ou \var{FW\_GENERIC\_MATCH6} dans le fichier-exp,
+  par exemple~:
+
+\begin{example}
+\begin{verbatim}
+    +FW_GENERIC_MATCH(OPT_FOO) = 'foo:bar' : ''
+    +FW_GENERIC_MATCH6(OPT_FOO) = 'foo:bar' : ''
+\end{verbatim}
+\end{example}
+\end{enumerate}

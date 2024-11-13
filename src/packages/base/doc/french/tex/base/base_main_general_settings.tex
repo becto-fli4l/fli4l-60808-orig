@@ -1,0 +1,412 @@
+% Do not remove the next line
+% Synchronized to r51346
+
+\section{Configuration générale}
+
+\begin{description}
+  \config{HOSTNAME}{HOSTNAME}{HOSTNAME}
+
+  Configuration par défaut~: \var{HOSTNAME='fli4l'}
+
+  {Tout d'abord, vous devez donner un nom au routeur fli4l.}
+
+  \config{PASSWORD}{PASSWORD}{PASSWORD}
+
+  Configuration par défaut~: \var{PASSWORD='fli4l'}
+
+    Ici le mot de passe est nécessaire pour accéder au routeur fli4l~--
+    que ce soit par le clavier branché au routeur ou via le SSH depuis un autre
+    ordinateur (pour cela, le paquetage sshd est nécessaire). Le mot de passe
+	doit être composé d'au moins un à 126 caratères.
+
+  \config{BOOT\_TYPE}{BOOT\_TYPE}{BOOTTYPE}
+
+  Configuration par défaut~: \var{BOOT\_TYPE='hd'}
+
+  \var{BOOT\_TYPE} dans cette variable on configure le média de boot. cette
+  variable recherche le pilote supplémentaire (module kernel) et le script de
+  démarrage dans RootFS. Voici une courte explication du processus de boot
+  (ou démarrage)~:
+
+  \begin{itemize}
+  \item Le BIOS de l'ordinateur charge le média et démarre le Bootloader.
+  \item Le Bootloader décompacte (en règle générale syslinux) et commence à
+    exécuter le kernel.
+  \item Le kernel décompacte RootFS (= il contient les fichiers systèmes, les
+    programmes, les scripts), monte RootFS et commence à traiter les scripts.
+  \item Maintenant selon le \var{BOOT\_TYPE} les modules du kernel sont chargés
+    pour booter le média respectif, monte les partitions, décompacte l'archive OPT
+    (\texttt{opt.img}) et charge les programmes supplémentaires.
+  \item La configuration des différents services de fli4l commence.
+  \end{itemize}
+
+  Voici les options pour la variable \var{BOOT\_TYPE}~:
+
+  \begin{description}
+  \item[ls120] Démarre à partir d'un LS120/240 ou un disque ZIP.
+  \item[hd] Démarre à partir d'un disque dur IDE ou SATA, il sont détectés
+            directement. Pour un support SCSI, USB ou un contrôleur spéciale, le
+            paquetage HD et/ou USB est requis pour l'installation. Pour plus informations
+            voir la \jump{sec:hdinstall}{documentation} du paquetage hd.
+  \item[cd] Démarre à partir d'un CD-ROM. Vous devez simplement créer une image ISO
+            pour le CD, exemple fli4l.iso, qui sera ensuite graver sur le CD avec
+            l'un de vos programmes préféré. Si vous avez besoins d'un pilote spécifique
+			pour le CD-ROM, par exemple SCSI, USB ou un contrôleur spéciale, le paquetage
+			HD et/ou USB est requis pour l'installation.
+  \item[integrated] Choisissez cette option si vous ne prévoyez pas d'utiliser un support de
+					boot classique, mais une installation par le réseau. L'archive OPT est
+					intrégrée dans le RootFS, ainsi le kernel extrait tout à la fois et n'a
+					pas besoin de monter un support de boot. La variable \var{BOOT\_TYPE} est
+					nécessaire pour une installation depuis le réseau.\\
+        \textbf{Notez~:} la mise à jour par le réseau n'est naturellement pas possible.
+  \item[attached] Ce paramètre est similaire à \textbf{integrated} mais l'archive OPT
+				  \texttt{opt.img} n'est pas intrégrée dans le RootFS. il sera copié dans
+				  le répertoire \texttt{/boot} et sera extrait pendant le processus de démarrage.\\
+                  La mise en garde décrite pour \texttt{integrated} est identique ici.
+  \item[netboot] Ce paramètre est similaire à \textbf{integrated}. Toutefois, le script
+                 \texttt{mknetboot.sh} sera exécuté pour créer l'image, celle-ci sera
+                 exécuté sur le LAN (ou réseau local). S'il vous plaît lire la
+                 documentation sur Wiki
+                 \altlink{https://ssl.nettworks.org/wiki/display/f/fli4l+und+Netzboot}
+                 pour plus d'informations.
+  \item[pxeboot] Deux images seront générées, le kernel et le rootfs.img. Ces deux fichiers
+				 seront utilisés par le chargeur de boot PXE. Pendant l'exécution vous pouvez
+				 créer un répertoire TFTP, vous pouvez même créer un sous-répertoire TFTP
+				 avec (--pxesubdir). Vous pouvez vous référer à la documentation sur Wiki,
+				 à cette adresse~:
+                 \altlink{https://ssl.nettworks.org/wiki/display/f/fli4l+und+Netzboot}.
+  \end{description}
+
+  \textbf{Notez~:} fli4l doit être configuré comme un serveur de boot avec
+  les paramètres (pxe/tftp) appropriés, vous trouverez de la documentation
+  dans le paquetage dns\_dhcp
+
+  \config{LIBATA\_DMA}{LIBATA\_DMA}{LIBATADMA}
+
+  Avec cette variable vous pouvez désactiver le DMA pour les périphériques basés
+  sur libata. Il est parfois nécessaire d'utiliser cette fonction, lorsque
+  plusieurs périphérique différent sont raccordés à l'IDE, exemple un adaptateurs
+  Compact Flash. le paramètre par défaut est~: 'disabled'
+
+  \config{MOUNT\_BOOT}{MOUNT\_BOOT}{MOUNTBOOT}
+
+    Configuration par défaut~: \var{MOUNT\_\-BOOT='rw'}
+
+  {Ici on règle, la manière de "monter" un média de boot. Il y a trois possibilités~:
+
+    \begin{description}
+    \item[rw]~-- Read/Write~-- Possibilité de lecture et d'écriture.
+    \item[ro]~-- Read-Only~-- Possibilité de lecture uniquement.
+    \item[no]~-- None~-- Le média sera démonté après le démarrage. Il pourra
+    être enlevé si besoin.
+    \end{description}
+
+    Certaines configurations nécessitent le montage du média au démarrage
+    avec le paramètre Read/Write, par exemple, si vous voulez si vous voulez
+    installer un serveur DHCP ou installer un fichier log (ou journal)
+    pour imond sur le média.}
+
+  \config{BOOTMENU\_TIME}{BOOTMENU\_TIME}{BOOTMENUTIME}
+
+    Configuration par défaut~: \var{BOOTMENU\_TIME='20'}
+
+  {Ici on règle le temps d'attente du Bootloader de syslinux avant de lancer
+   automatiquement l'installation standard.
+
+    Dans le paquetage HD il y a la possibilité d'activer la fonction \var{OPT\_RECOVER}
+    en cas d'instabilité de la version une installation secondaire peut être générée,
+    au cas où l'installation courante aurait un problème. Celle-ci peut être
+    activée dans le menu boot vous pouvez choisir la version Recover.
+
+    Si vous mettez la valeur '0', le système attend que l'utilisateur active
+    le chargement du Bootloader syslinux standard ou la version Recover
+    que vous avez sélectionnée~!}
+
+  \config{TIME\_INFO}{TIME\_INFO}{TIMEINFO}
+
+  Configuration par défaut~: \var{TIME\_INFO='MEZ-1MESZ,M3.5.0,M10.5.0/3'}
+
+  Les heures passent dans le monde d'Unix, elles passent aussi sous fli4l
+  avec la norme UTC (Coordinated Universal Time) une heure unique dans le
+  monde et qui sera convertit pour chaque localité. la variable \var{TIME\_\-INFO}
+  donne les informations nécessaires à fli4l sur les noms du fuseau
+  horaire et régle automatiquement les heures d'été et d'hiver. Pour que cela
+  fonctionne correctement il faut régler l'heure UTC (correspond à l'heure
+  d'hiver de Londres). on peut utiliser pour la synchronisation le paquetage
+  chrony serveur de temps (il est livré avec UTC).
+
+  On paramètre \var{TIME\_\-INFO} avec les valeurs suivantes~:
+\begin{example}
+\begin{verbatim}
+        TIME_INFO='MEZ-1MESZ,M3.5.0,M10.5.0/3'
+\end{verbatim}
+\end{example}
+  \begin{itemize}
+  \item \emph{MEZ-1~:} fuseau horaire de l'Europe centrale (\emph{MEZ}),
+    avec une heure d'avance \emph{MEZ-1=UTC}.
+  \item \emph{MESZ~:} réglage de l'heure d'été (heure d'été en Europe
+    centrale). S'il n'y a aucune indication une heure sera ajoutée automatiquement
+    à l'heure été.
+  \item \emph{M3.5.0,M10.5.0/3~:} date des changements d'horaires d'été et
+  d'hiver, le dernier dimanche d'octobre c'est le passage en heure d'hiver.
+  \end{itemize}
+
+  Normalement on n'a pas besoin de toucher ces valeurs à moins que l'on
+  soit dans un autre fuseau horaire. Si vous voulez adapter ces valeurs, vous devez
+  d'abord jeter un coup d'oeil sur les spécifications des variables d'environnements
+  elles se trouvent à cette adresse URL (en Anglais)~:
+  \altlink{http://pubs.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap08.html}
+
+  \config{RTC\_SYNC}{RTC\_SYNC}{RTCSYNC}{
+  Paramètre par défaut~: \var{RTC\_SYNC='hwclock'}
+
+  De nombreux ordinateurs disposent d'une horloge matérielle qui est alimentée par
+  une batterie, ainsi l'horloge continue de compter les l'heures pendant l'arrêt
+  de l'ordinateur afin qu'elle soit à nouveau disponible en tant qu'horloge système au
+  prochain démarrage. Il est important de faire la distinction entre \emph{l'horloge système}
+  et \emph{l'horloge matériel}~:
+
+  \begin{itemize}
+  \item \emph{L'horloge matériel} est l'heure stockée et maintenue par l'horloge
+  matérielle. L'heure est généralement lu à partir de l'horloge matérielle lorsque
+  le système est démarré et adopté en tant qu'horloge système.
+
+  \item \emph{L'horloge système} est l'heure réelle que le système Linux utilise,
+  c'est elle qui est affichée quand vous utilisez la commande \texttt{date -u}.
+  elle est maintenu à jour par le kernel (ou noyau) Linux, elle est basé sur l'interruption
+  matérielle régulière (Timer Interrupt), elle désigne toujours l'heure en utilisant
+  le temps universel coordonné (UTC) et n'est pas influencé par le fuseau horaire terrestre.
+
+  \item \emph{L'horloge système localisée} est juste la conversion de l'heure système
+  en appliquant l'heure du fuseau horaire terrestre, elle est configuré sur le routeur
+  fli4l via la variable d'environnement \texttt{TZ} (voir la variable \jump{TIMEINFO}{\var{TIME\_INFO}}),
+  elle ne joue aucun rôle dans la suite de cette section.
+  \end{itemize}
+
+  Cette variable informe comment fli4l calibre l'horloge matériel avec l'horloge du système,
+  c'est-à-dire à quelle fréquence l'horloge matériel doit être réglée sur l'horloge système.
+  Un tel ajustement est nécessaire, car même la meilleure horloge matérielle n'est pas
+  précise à 100~\% et tend à dériver systématiquement, c'est-à-dire que l'horloge sera
+  légèrement trop lente ou trop rapide à long terme.
+
+  Il y a essentiellement deux façons de synchroniser l'heure~:
+
+  \begin{itemize}
+  \item Mode "Kernel"~: le client NTP est utilisé pour déterminer l'heure réelle extérieur
+  (généralement via Internet ou par une horloge (radio) externe) et pour maintenir à
+  jour l'horloge système du routeur fli4l. Le kernel Linux est chargé de mettre à jour l'horloge
+  matériel, de sorte qu'aucune synchronisation supplémentaire ne soit nécessaire. La mise à
+  jour par le kernel Linux est légèrement moins précise par rapport à l'utilisation de \texttt{hwclock}
+  (voir le mode "hwclock" ci-dessous), cependant, la qualité de mise à jour est beaucoup moins
+  importante, en raison des erreurs inévitables qui seront compensées par le client NTP.
+
+  Ce mode doit également être utilisé s'il n'existe aucune horloge matérielle. Bien sûr,
+  le kernel Linux ne mettra pas à jour l'horloge matérielle car il n'y en a pas. Cependant,
+  le client NTP doit être utilisé pour s'assurer que le routeur fli4l dispose d'une horloge
+  système raisonnable.
+
+  \item Mode "Hwclock"~: en utilisant le programme \texttt{hwclock} l'horloge se synchronise
+  à intervalle réguliére (toutes les 24 heures) et à l'arrêt du système (avec l'exécution
+  du script stop \texttt{/etc/rc0.d/rc950.hwclock}). Non seulement l'horloge matérielle est
+  définie, mais \texttt{hwclock} mesure également la diffèrence entre l'horloge système et
+  l'horloge matérielle. Lors du démarrage du système, l'horloge système n'est pas prise en compte
+  directement à partir de l'horloge matérielle, mais l'écart entre les deux sera pris en compte
+  afin de réduire au maximum la dérive de l'horloge système. Cette écart est noté dans le fichier
+  \texttt{/etc/adjtime}. Si un support réinscriptible est installé, l'écart sera stocké sous
+  \texttt{/var/lib/persistent/base/adjtime}, dans ce cas, \texttt{/etc/adjtime} sera un lien
+  symbolique.
+
+  Ce mode est incompatible avec le client NTP pour la mise à jour de l'horloge système.
+  En effet, le client NTP permet la mise à jour automatique de l'horloge matérielle
+  par le kernel Linux. Il n'est pas logique que \texttt{hwclock} et le kernel
+  Linux essayent de mettre à jour en même temps l'horloge matériel.
+  \end{itemize}
+
+  Veuillez noter que si une horloge matérielle est disponible (avec une batterie), l'heure
+  stockée sera \emph{toujours} interprétée comme le temps universel coordonné (UTC). Le
+  fuseau horaire défini dans la variable \var{TIME\_INFO} n'affecte pas l'heure stockée dans
+  l'horloge matérielle. Le stockage d'une heure non UTC localisée par l'horloge matérielle
+  n'est \emph{pas} supporté par fli4l.
+
+  L'établissement de l'horloge système à partir de l'horloge matérielle est effectuée
+  une fois que le système est démarragé. Le kernel Linux lit l'horloge matérielle et
+  définit l'horloge système immédiatement au début du processus de démarrage. En mode
+  "hwclock", l'horloge système sera définie plus tard lors de l'exécution du script
+  de démarrage \texttt{/etc/rc.d/rc100.hwclock}, cette fois en tenant compte de l'écart
+  systématique.
+  }
+
+  \config{KERNEL\_VERSION}{KERNEL\_VERSION}{KERNELVERSION}
+
+  Ici on détermine la version du kernel (ou noyau) à utiliser, cette variable
+  doit correspondre au kernel \emph{img/kernel-$<$kernel version$>$.$<$extension
+  compression$>$}, on peut voir la version du Kernel dans le répertoire
+  \emph{opt/lib/modules/$<$kernel version$>$}.
+
+  \config{KERNEL\_BOOT\_OPTION}{KERNEL\_BOOT\_OPTION}{KERNELBOOTOPTION}
+
+  Configuration par défaut~: \var{KERNEL\_BOOT\_OPTION=''}
+
+  Ici vous pouvez ajouter les variables en ligne de commande pour le kernel,
+  ils seront rajoutées dans le fichier syslinux.cfg. Par exemple certain système
+  on besoin pour rebooter correctement d'ajouter 'reboot=bios', avec un système
+  WRAP vous pouvez ajouter 'nokdb reboot=bios'.
+
+  \config{COMP\_TYPE\_ROOTFS}{COMP\_TYPE\_ROOTFS}{COMPTYPEROOTFS}
+
+  Configuration par défaut~: \var{COMP\_TYPE\_ROOTFS='xz'}
+
+  Le contenu de cette variable détermine la méthode de compression pour
+  l'archive RootFS. Les valeurs possibles sont 'xz', 'lzma' et 'bzip2'.
+
+  \config{COMP\_TYPE\_OPT}{COMP\_TYPE\_OPT}{COMPTYPEOPT}
+
+  Configuration par défaut~: \var{COMP\_TYPE\_OPT='xz'}
+
+  Le contenu de cette variable détermine la méthode de compression pour
+  l'archive OPT. Les valeurs possibles sont 'xz', 'lzma' et 'bzip2'.
+
+  \config{POWERMANAGEMENT}{POWERMANAGEMENT}{POWERMANAGEMENT}
+  
+  Configuration par défaut~: \var{POWERMANAGEMENT='acpi'}
+
+  {Le kernel supporte différents formats de gestion d'énergie, l'APM qui est un
+  peu âgé et l'actuel ACPI. Vous pouvez placer ici le format que vous voulez
+  utiliser. Les valeurs possibles sont~: 'none' (aucune gestion d'énergie),
+  'ACPI' et les deux variantes de APM 'apm' et 'apm\_rm'. Ce dernier commute
+  en mode processeur spécial, avant que le routeur s'arrête.}
+
+  \config{FLI4L\_UUID}{FLI4L\_UUID}{FLI4LUUID}
+
+  Configuration par défaut~: \var{FLI4L\_UUID=''}
+
+  {Vous pouvez indiquer dans cette variable un UUID (ou IDentifiant Universellement
+  Unique), dans lequel fli4l pourra enregistrer des données persistantes par
+  exemple sur une clé USB. Cette UUID peut être créé avec n'importe quel
+  Système Linux (et aussi avec fli4l) avec la commande \verb*?'cat /proc/sys/kernel/random/uuid'?
+  Chaque exécution de la commande produit un nouvel UUID que vous devez entrer
+  dans la variable. Sur un support persistant (par exemple, un disque dur
+  (OPT\_HD) ou une clé USB (voir paquetage OPT\_USB et OPT\_HD) vous devez créer un
+  répertoire avec le même nom que l'UUID. Ce répertoire sera utilisé pour stocker
+  les changements de configuration ainsi que les données d'exécution persistante
+  (par ex. pour le dhcp leases (ou baux DHCP). Naturellement les paquetages
+  correspondants pour ce nouveau mécanisme doivent être supportés (voir leur
+  documentation). Le paramètre pour sauvegarder le chemin sera généralement 'auto'.
+
+  Si vous avez installé fli4l avant d'utiliser l'application UUID et que des
+  données sont déjà stockées dans le répertoire fli4l, vous devez natuellement
+  déplacer ces données dans le nouveau répertoire /boot/persistant. Il est 
+  recommandé par conséquent de configurer l'UUID à l'installation de fli4l pour
+  éviter de déplacer les données.
+
+  En outre vous ne devez pas paramétrer la variable comme ceci \var{MOUNT\_BOOT}='ro',
+  tant que l'emplacement de stockage fait partie de la partition /boot.
+
+  Un endroit recommandé pour le répertoire persistant est situé dans la partition
+  /data (niveau supérieur) ou sur une clé USB.  de la clé USB
+  doit être de type VFAT ou activer le fichier système pour OPT\_HD avec les
+  autorisations en écriture et lecture.}
+
+  \config{IP\_CONNTRACK\_MAX}{IP\_CONNTRACK\_MAX}{IPCONNTRACKMAX}
+
+  Configuration par défaut~: \var{IP\_CONNTRACK\_MAX=''}
+
+  Avec cette variable, vous pouvez régler manuellement la quantité
+  maximum de connexions simultanées. Normalement une valeur rationnelle
+  est trouvée automatiquement par rapport à la mémoire vive installée.
+  Le tableau \ref{tab:connectiontracking} représente la configuration par défaut.
+
+    \begin{table}[ht!]
+        \centering
+        \caption{Réglage Automatique du nombre de connexions maximum}\marklabel{tab:connectiontracking}{}
+        \begin{tabular}{p{6cm}p{6cm}}
+          Mémoire RAM Mio   &    Connexions simultanées \\\hline
+          16                      &    1024 \\
+          24                      &    1280 \\
+          32                      &    2048 \\
+          64                      &    4096 \\
+          128                     &    8192 \\
+        \end{tabular}
+    \end{table}
+
+  Si vous utilisez sur le routeur des programmes de partage de fichiers en 
+  arrière ou si le routeur a peu de RAM. Le nombre maximal de connexions 
+  simultanées sera rapidement atteint et les connexions supplémentaires ne
+  pourront plus être développées.\\
+  Cela se traduit par un message erreur qui s'affichera~:
+
+\begin{example}
+\begin{verbatim}
+        ip_conntrack: table full, dropping packet
+\end{verbatim}
+\end{example}
+
+   Autre message
+
+\begin{example}
+\begin{verbatim}
+        ip_conntrack: Maximum limit of XXX entries exceeded
+\end{verbatim}
+\end{example}
+
+    Maintenant au moyen de la variable \var{IP\_\-CONNTRACK\_\-MAX} vous pouvez
+    régler précisément la valeur du nombre maximum de connexions simultanées.
+    Cependant vous devez savoir. Pour chaque connexions simultanées cela coûte
+    350 Octets de mémoire RAM en moins, qui ne seront plus utilisés pour autre
+    chose. Si vous indiquez 10000, on perd à peu près 3,34 Mo de mémoire RAM
+    pour l'utilisation (du kernel, de Ramdisks et des programmes).
+
+    Avec 32 Mio de RAM, il ne devrait pas y avoir de problème, pour la table
+    ip\_conntrack 2 ou 3 Mio seront réservés, voir le tableau. Avec 16 Mio de
+    RAM c'est juste, mais avec 12 ou même 8 Mio on est sur d'avoir un message erreur.
+
+    Le réglage en cours d'utilisation peuvent être affichées sur la console en tapant
+
+\begin{example}
+\begin{verbatim}
+        cat /proc/sys/net/ipv4/ip_conntrack_max
+\end{verbatim}
+\end{example}
+
+    et peut être modifié à la volée en tapant
+
+\begin{example}
+\begin{verbatim}
+        echo "XXX" > /proc/sys/net/ipv4/ip_conntrack_max
+\end{verbatim}
+\end{example}
+
+    "XXX" indique la quantité de connexions simultanées à entrer. Vous pouvez
+    afficher sur la console, le nombre de connexion de la variable \var{IP\_CONNTRACK}
+    en tapant
+
+\begin{example}
+\begin{verbatim}
+        cat /proc/net/ip_conntrack
+\end{verbatim}
+\end{example}
+
+    Pour voir les détails
+
+\begin{example}
+\begin{verbatim}
+        cat /proc/net/ip_conntrack | grep -c use
+\end{verbatim}
+\end{example}
+
+  \config{LOCALE}{LOCALE}{LOCALE}
+
+  Configuration par défaut~: \var{LOCALE}='de'
+
+  Certains composants sont devenus entre-temps multi langues. Par exemple,
+  le menu de l'interface Web. Avec cette variable, vous pouvez choisir votre
+  langue préférée. Différents composants ont leur propre paramètre de base,
+  avec ce réglage le paramètre sera tronqué, si la langue indiquée n'est pas
+  (encore) disponible pour ces composants, l'anglais sera la langue par défaut.
+
+  Si la variable est sur \var{KEYBOARD\_LOCALE}='auto' on utilise le clavier
+  commun à la langue qui est indiquée dans la variable \var{LOCALE}.
+
+  Les réglages suivants sont possibles~: de, en, es, fr, hu, nl.
+
+\end{description}

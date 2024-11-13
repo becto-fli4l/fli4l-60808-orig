@@ -1,0 +1,160 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc120.net - loading driver for netword card
+# was file /etc/rc.d/rc120.eth
+#
+# Creation:     29.03.2000  fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script NET "loading network drivers ..."
+
+# Loading base drivers if available (otherwise they aren't needed)
+
+# returns all names of network link devices
+get_link_names()
+{
+  ip -o link show | cut -d ' ' -f 2 | sed 's/\(.*\):$/\1/'
+}
+
+load_driver()
+{
+  drv=$1
+  opts="$2"
+  oldeth=$(get_link_names)
+
+  case $drv
+  in
+    cs89x0)
+      do_modprobe $drv $opts
+      if [ $? != 0 ]
+      then
+        echo $SCRIPT" module cs89x0 failed, retrying with reset!" >>/bootmsg.txt
+        newopts=
+
+        for var in $opts
+        do
+          v=$(echo $var | sed '/io=/s/.$/1/' | sed '/io=/s/.,/1,/g')
+          newopts="$newopts $v"
+        done
+
+        do_modprobe $drv $newopts
+
+        if [ $? != 0 ]
+        then
+          echo $SCRIPT" module $drv failed!" >>/bootmsg.txt
+        else
+          echo $SCRIPT" module $drv loaded with reset" >>/bootmsg.txt
+        fi
+      fi
+    ;;
+    kaweth)
+      do_modprobe $drv $opts
+      log_info "waiting 8 sec for initalizion of driver kaweth"
+      sleep 8
+    ;;
+    r8152)
+      do_modprobe $drv $opts
+      log_info "waiting 2 sec for initalizion of driver r8152"
+      sleep 2
+    ;;
+    r8169)
+      log_info "Loading realtek PHY driver"
+      do_modprobe realtek
+      sleep 1
+      do_modprobe $drv $opts
+    ;;
+    *)
+        do_modprobe $drv $opts
+    ;;
+  esac
+
+  neweth=$(get_link_names)
+  for i in $oldeth
+  do
+    neweth=$(echo "$neweth" | sed "s/^$i$//")
+  done
+  for i in $neweth
+  do
+    echo "${i}=${drv}" >> $netdrivers
+  done
+
+  # Switch off rx and tx vlan hardware tagging as this code is broken on recent kernels
+  case $drv
+  in
+    e1000bp)
+      case $kernel-major
+      in
+        3.2)
+          if [ -x /usr/sbin/ethtool ]
+          then
+            for i in $neweth
+            do
+              /usr/sbin/ethtool -K $i txvlan off rxvlan off 2>/dev/null
+            done
+          fi
+      ;;
+      esac
+    ;;
+  esac
+
+  # Move wlan Devices to wlan%d namespace
+  if [ -x /sbin/iwconfig ]
+  then
+    #search for lowest possible wlan%d
+    wlan_next=0
+    for i in $(get_link_names | sed -n 's/^wlan\([0-9]\+\)/\1/p')
+    do
+      wlan_next=$((i + 1))
+    done
+
+    #move wlan-devices
+    for i in $(iwconfig 2>/dev/null | sed -n '/^\([ea]th\|ra\)[0-9]/s/ .*$//p')
+    do
+      j=wlan${wlan_next}
+      ip link set dev $i down
+      ip link set dev $i name $j
+      sed -i "s/^$i=/$j=/" $netdrivers
+      wlan_next=$((wlan_next + 1))
+    done
+
+    # Close gaps
+    # should be hyperfluid in this context because i dont think there is a wlan-driver which registeres a wlan and a lan-device at once
+    eth_next=0
+    for i in $(get_link_names | sed -n 's/^eth\([0-9]\+\)/\1/p')
+    do
+      if [ $i != $eth_next ]
+      then
+        src=eth$i
+        tgt=eth${eth_next}
+        ip link set dev $src down
+        ip link set dev $src name $tgt
+        sed -i "s/^$src=/$tgt=/" $netdrivers
+      fi
+      eth_next=$((eth_next + 1))
+    done
+  fi
+}
+
+load_driver_if_exists ()
+{
+  drv=$1
+
+  local kernel_version=$(uname -r)
+  if grep -q "${drv}" "/lib/modules/${kernel_version}/modules.dep"
+  then
+    load_driver "$@"
+  fi
+}
+
+netdrivers=/var/run/netdrivers.conf
+>$netdrivers
+
+for idx in $(seq 1 $NET_DRV_N)
+do
+  eval drv='$NET_DRV_'$idx
+  eval opt='$NET_DRV_'$idx'_OPTION'
+  load_driver $drv "$opt"
+done
+
+end_script

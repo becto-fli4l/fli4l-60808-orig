@@ -1,0 +1,174 @@
+% Synchronized to r49626
+
+\section{Ethernet network adapter drivers}
+
+\begin{description}
+  \config{NET\_DRV\_N}{NET\_DRV\_N}{NETDRVN}
+
+  {Number of needed network adapter drivers.
+
+    If you use the router with ISDN, you typically have one network adapter
+    only, hence the default value is 1. However, if you use DSL, you will
+    have two network adapters in the majority of cases.
+
+    You have to separate two cases:
+    \begin{enumerate}
+    \item Both adapters are of the same type. Then you will have to specify
+      only one driver communicating with both adapters, hence
+      \var{NET\_\-DRV\_\-N}='1'.
+
+    \item The types of the adapters used differ. Then you have to set the
+      variable to `2' and to configure the drivers separately for both adapters.
+    \end{enumerate}
+    }
+
+
+  \configlabel{NET\_DRV\_x\_OPTION}{NETDRVxOPTION}
+  \config{NET\_DRV\_x NET\_DRV\_x\_OPTION}{NET\_DRV\_x}{NETDRVx}
+
+  {This variable contains the name of the driver to be used for the network
+   adapter. The default for \var{NET\_\-DRV\_\-1} is to load the driver for a NE2000
+    compatible network adapter. More available drivers for a large amount of
+    families of network adapters are included in the tables \ref{tabkartentreiber}
+    and \ref{tabwlankartentreiber}.
+
+    The 3COM EtherLinkIII network adapter (3c509) has to be configured by the
+    DOS tool 3c509cfg.exe, available under:
+
+    \altlink{ftp://ftp.ihg.uni-duisburg.de/Hardware/3com/3C5x9n/3C5X9CFG.EXE}
+
+    It should be used for setting the IRQ and I/O port and, if necessary, the
+    type of connection (BNC/TP). The entry \var{NET\_\-DRV\_\-x\_\-OPTION}=''
+    can normally be left empty.
+
+    Some ISA adapters require the driver to have additional information in
+    order to find the adapter, e.g. the I/O address. This is the case e.g. for
+    NE2000 compatible ISA adapters and the EtherExpress16.
+
+    In such a case, you can set
+\begin{example}
+\begin{verbatim}
+        NET_DRV_x_OPTION='io=0x340'
+\end{verbatim}
+\end{example}
+
+    (or the corresponding numerical value).
+
+    If no options are required, you can leave this variable empty.
+
+    If you need to specify more than one option, you have to separate them
+    by blanks, e.g.
+\begin{example}
+\begin{verbatim}
+        NET_DRV_x_OPTION='irq=9 io=0x340'
+\end{verbatim}
+\end{example}
+
+    If you use two identical network adapters, e.g. NE2000 ISA adapters,
+    you have to separate the different I/O ports by commas:
+
+\begin{example}
+\begin{verbatim}
+        NET_DRV_x_OPTION='io=0x240,0x300'
+\end{verbatim}
+\end{example}
+
+    No space is allowed before or after the comma!
+
+    This does not work with all network adapter drivers. Some of them need to
+    be loaded twice, i.e. you have to use \var{NET\_\-DRV\_\-N}='2'. In this
+    case you will have to assign different names to the adapters by using the
+    ``-o'' option, e.g.
+
+\begin{example}
+\begin{verbatim}
+          NET_DRV_N='2'
+          NET_DRV_1='3c503'
+          NET_DRV_1_OPTION='-o 3c503-0 io=0x280'
+          NET_DRV_2='3c503'
+          NET_DRV_2_OPTION='-o 3c503-1 io=0x300'
+\end{verbatim}
+\end{example}
+
+    We recommend to try the ``comma'' method first before falling back to
+    loading the driver multiple times.
+
+    Some more examples:
+
+    \begin{itemize}
+    \item 1 x NE2000 ISA
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1='ne'
+          NET_DRV_1_OPTION='io=0x340'
+\end{verbatim}
+\end{example}
+
+    \item  1 x 3COM EtherLinkIII (3c509)
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1='3c509'
+          NET_DRV_1_OPTION=''
+\end{verbatim}
+\end{example}
+      For this adapter, see also:
+
+    \begin{raggedright}
+      \altlink{http://extern.fli4l.de/fli4l_faqengine/faq.php?display=faq&faqnr=132&catnr=7&prog=1}\\
+      \altlink{http://extern.fli4l.de/fli4l_faqengine/faq.php?display=faq&faqnr=133&catnr=7&prog=1}\\
+      \altlink{http://extern.fli4l.de/fli4l_faqengine/faq.php?display=faq&faqnr=135&catnr=7&prog=1}\par
+    \end{raggedright}
+
+    \item 2 x NE2000 ISA
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1='ne'
+          NET_DRV_1_OPTION='io=0x320,0x340'
+\end{verbatim}
+\end{example}
+      Here, you will often need to specify the IRQ values:
+
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1_OPTION='io=0x320,0x340 irq=3,5'
+\end{verbatim}
+\end{example}
+
+      You should first try the configuration without specifying any IRQs
+      and enter IRQs only if the network adapters are not found otherwise.
+
+    \item 2 x NE2000 PCI
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1='ne2k-pci'
+          NET_DRV_1_OPTION=''
+\end{verbatim}
+\end{example}
+    \item  1 x NE2000 ISA, 1 x NE2000 PCI
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1='ne'
+          NET_DRV_1_OPTION='io=0x340'
+          NET_DRV_2='ne2k-pci'
+          NET_DRV_2_OPTION=''
+\end{verbatim}
+\end{example}
+    \item 1 x SMC WD8013, 1 x NE2000 ISA
+\begin{example}
+\begin{verbatim}
+          NET_DRV_1='wd'
+          NET_DRV_1_OPTION='io=0x270'
+          NET_DRV_2='ne2k'
+          NET_DRV_2_OPTION='io=0x240'
+\end{verbatim}
+\end{example}
+    \end{itemize}
+
+    You can find the complete list of available drivers in the documentation
+    of the respective kernel package.
+
+    \emph{If you need a dummy device, use 'dummy' as your \var{NET\_DRV\_x} and\\
+    \jump{IPNETxDEV}{\var{IP\_NET\_x\_DEV}}='dummy$<$number$>$' as your device.}
+
+   }
+\end{description}

@@ -1,0 +1,44 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use diagnostics;
+
+my $eintrag;
+my %rules;
+my $rule_name;
+my $rule_fwrule;
+my $fwrules;
+my $entry;
+my $zeile;
+my $prot;
+my @prot_array;
+my $port;
+
+%rules = ();
+
+while($zeile = <STDIN>) {
+    if ($zeile ne "\n" && $zeile ne "\r\n") {
+        $zeile =~ s/[\s\n\a]+$//;
+        ($rule_name, $rule_fwrule) = split(/[[:space:]]+/, $zeile, 2);
+        push( @{$rules{$rule_name}}, $rule_fwrule );
+    }
+}
+
+foreach $rule_name (sort keys %rules) {
+    foreach $entry (@{$rules{$rule_name}}) {
+        @prot_array = ();
+        ($prot, $port) = split(/[[:space:]]+/, $entry, 2);
+        if(!defined($port)) {
+            $port = "";
+        }
+        if($prot =~ m/prot:(.*)/) {
+            $prot = $1;
+        } else {
+            $port = $prot;
+            $prot = "tcp/udp";
+        }
+        print "$rule_name & $prot & $port \\\\\n";
+    }
+    print "\\hline\n";
+}

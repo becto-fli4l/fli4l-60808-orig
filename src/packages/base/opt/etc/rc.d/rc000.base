@@ -1,0 +1,160 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc000.base
+# was file /etc/rc.local
+#
+# Creation:     25.09.2000  fm
+# Last Update:  $Id$
+#
+# Copyright (c) 2000-2002 - Frank Meyer
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+begin_script RC000_BASE "basic setup..."
+
+if [ "x$CONSOLE_BLANK_TIME" != "x" ]
+then
+    log_info "setting console blank time to $CONSOLE_BLANK_TIME minutes"
+    echo -e "\33[9;$CONSOLE_BLANK_TIME]"
+fi
+
+#----------------------------------------------------------------------------
+# initialize counter for ttyI devices
+#----------------------------------------------------------------------------
+echo 0 >/var/run/next_ttyI
+
+#----------------------------------------------------------------------------
+# mount boot device
+#----------------------------------------------------------------------------
+
+if [ "$boot_dev" -a "$boot_fs" ]
+then
+    mopt=
+    case $boot_fs in
+        vfat) mopt=',umask=077' ;;
+    esac
+    case "$MOUNT_BOOT"
+    in
+        ro)
+            echo "$boot_dev /boot $boot_fs ro$mopt" >> /etc/fstab
+            mount /boot
+        ;;
+        rw)
+            echo "$boot_dev /boot $boot_fs defaults$mopt" >> /etc/fstab
+            mount /boot
+            # is /boot really writeable (a write-protected floppy will
+            # be mountet ro)
+            if [ -z "`cat /proc/mounts | sed -n '/\/boot .*[ ,]rw[ ,]/p'`" ]
+            then
+                MOUNT_BOOT='ro'
+                log_warn "boot media is write protected, check variable MOUNT_BOOT"
+            fi
+        ;;
+        *)
+            # /boot entry in fstab is needed for recovery-mode of
+            # hd-installation
+            echo "$boot_dev /boot $boot_fs noauto$mopt" >> /etc/fstab
+        ;;
+    esac
+fi
+
+#----------------------------------------------------------------------------
+# set hostname
+#----------------------------------------------------------------------------
+hostname $HOSTNAME                                  # set hostname
+>/etc/inetd.conf                                    # truncate inetd.conf
+
+#----------------------------------------------------------------------------
+# patch shadow file with our password - but only if password filled
+#----------------------------------------------------------------------------
+sed -i -e "s#^root:\*:#root:$PASSWORD:#;s#^fli4l:\*:#fli4l:$PASSWORD:#" /etc/shadow
+
+#----------------------------------------------------------------------------
+# prepare service restart infrastructure
+#----------------------------------------------------------------------------
+service-restart.sh start
+
+#----------------------------------------------------------------------------
+# configure ISA PNP devices:
+#----------------------------------------------------------------------------
+if [ -f /sbin/isapnp -a -f /etc/isapnp.conf ]
+then
+    pnpdump -r >/dev/null 2>&1            # reset pnp devices
+    isapnp /etc/isapnp.conf
+fi
+
+#----------------------------------------------------------------------------
+# configure dynamic ip addresses
+#----------------------------------------------------------------------------
+if [ "$IP_DYN_ADDR" = "yes" ]
+then
+    echo 7 >/proc/sys/net/ipv4/ip_dynaddr           # enable dyn ip addresses
+fi
+[ "$DEBUG_IPUP" = yes ] && > /var/run/debug_ipup
+
+#----------------------------------------------------------------------------
+# setup iptables
+#----------------------------------------------------------------------------
+mkdir /etc/xtables
+> /etc/xtables/connlabel.conf
+
+if [ "$DEBUG_IPTABLES" = "yes" ]
+then
+    mv -f /sbin/iptables /sbin/iptables.real
+    {
+        echo "#!/bin/sh"
+        echo "echo -n \"iptables \$@\" >> /var/log/iptables.log"
+        echo "/sbin/iptables.real iptables \"\$@\""
+        echo "rc=\$?"
+        echo "echo \" --> \$rc\" >> /var/log/iptables.log"
+        echo "exit \$rc"
+    } > /sbin/iptables
+    chmod +x /sbin/iptables
+fi
+#----------------------------------------------------------------------------
+# configure keyboard locale
+#----------------------------------------------------------------------------
+if [ -f /etc/*.map ]
+then
+    cat /etc/*.map | loadkmap
+fi
+#----------------------------------------------------------------------------
+# configure mini-login on secondary console
+#----------------------------------------------------------------------------
+secondary_console=
+case "$SER_CONSOLE" in
+primary)
+    secondary_console="tty0"
+    ;;
+secondary)
+    secondary_console="ttyS${SER_CONSOLE_IF}"
+    ;;
+esac
+
+if [ -n "${secondary_console}" -a -c "/dev/${secondary_console}" ]
+then
+    echo "${secondary_console}::respawn:-/usr/local/bin/mini-login" >> /etc/inittab
+    init -q
+fi
+
+chmod 400 /etc/shadow
+
+# create alias name for imond-stat
+ln -s /usr/local/bin/imond-stat /usr/local/bin/imond-send
+
+# if /etc/fonts/conf.avail exist create a symlink to /etc/fonts/conf.d
+[ -d /etc/fonts/conf.avail ] && ln -s /etc/fonts/conf.avail /etc/fonts/conf.d
+
+# to make the collectd and libsensor happy create an empty sensors3.conf file
+[ -d /etc/sensors.d -a ! -e /etc/sensors3.conf ] && echo "#" > /etc/sensors3.conf
+
+# wrap ip if needed
+if [ "$DEBUG_IP" = "yes" ]; then
+   mv /sbin/ip /usr/local/bin/wrapped
+   ln -s /usr/local/bin/wrapper.sh /sbin/ip
+fi
+
+# helper functions for manipulating the PPP filter expression
+. /etc/rc.d/ppp-filter-helper
+
+end_script

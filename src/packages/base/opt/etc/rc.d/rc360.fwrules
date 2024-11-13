@@ -1,0 +1,322 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc360.fwrules - configure firewall                     __FLI4LVER__
+#
+# Creation:         jw5
+# Last Update:      $Id$
+#------------------------------------------------------------------------------
+
+pf_in_default_rules=
+pf_in_add_default () {
+    pf_in_default_rules="$pf_in_default_rules $1"
+}
+
+pf_fwd_default_rules=
+pf_fwd_add_default () {
+    pf_fwd_default_rules="$pf_fwd_default_rules $1"
+}
+
+pf_out_default_rules=
+pf_out_add_default () {
+    pf_out_default_rules="$pf_out_default_rules $1"
+}
+
+pf_prect_default_rules=
+pf_prect_add_default () {
+    pf_prect_default_rules="$pf_prect_default_rules $1"
+}
+
+pf_outct_default_rules=
+pf_outct_add_default () {
+    pf_outct_default_rules="$pf_outct_default_rules $1"
+}
+
+pf_iterate () {
+    pfi_table=$1
+    pfi_chain=$2
+    pfi_name=$3
+    pfi_postfix=$4
+    pfi_method=$5
+
+    eval val=\$${pfi_name}${pfi_postfix}_N
+    [ 0$val -eq 0 ] || for idx in `seq 1 $val`
+    do
+        eval rule=\$${pfi_name}${pfi_postfix}_$idx
+        eval comment=\$${pfi_name}${pfi_postfix}_${idx}_COMMENT
+        if [ -z "$comment" ]
+        then
+            comment="${pfi_name}${pfi_postfix}_$idx='$rule'"
+        else
+            comment="${pfi_name}${pfi_postfix}_$idx: $comment"
+        fi
+        fw_append_rule $pfi_table $pfi_chain "$rule" "$comment" "$pfi_method"
+    done
+}
+
+add_established ()
+{
+    usr_nat=
+    iptables -nL usr-nat-helper > /dev/null 2>&1 && usr_nat=yes
+
+    if [ 0"$MASQ_MODULE_N" -eq 0 -o "$usr_nat" = yes ]; then
+        [ "$1" = FORWARD ] && \
+            fw_append_rule filter ${1}-head "prot:icmp state:RELATED ACCEPT"   PF_${1}_ACCEPT_DEF
+        if [ "$usr_nat" = yes ]
+        then
+            fw_append_rule filter ${1}-head "state:RELATED usr-nat-helper" PF_${1}_ACCEPT_DEF
+        else
+            fw_append_rule filter ${1}-head "state:RELATED ACCEPT"         PF_${1}_ACCEPT_DEF
+        fi
+        fw_append_rule filter ${1}-head "state:ESTABLISHED ACCEPT"         PF_${1}_ACCEPT_DEF
+    else
+        fw_append_rule filter ${1}-head "state:ESTABLISHED,RELATED ACCEPT" PF_${1}_ACCEPT_DEF
+    fi
+}
+
+begin_script FWRULES "configuring firewall ..."
+
+# get helper functions
+. /etc/rc.d/fwrules-helper
+
+> $fw_ct_proto
+> $fw_ct_nat.ipv4
+echo 1 > $ipset_next
+mkdir -p $iptables_dynrules
+echo 1 > $iptables_dynrules_idx
+mkdir -p $iptables_rules
+mkdir -p $iptables_complexchains
+
+do_modprobe_if_exists kernel/net/netfilter nf_conntrack
+do_modprobe_if_exists kernel/net/ipv4/netfilter nf_nat_ipv4
+echo 1 > /proc/sys/net/netfilter/nf_conntrack_acct
+
+$IPTABLES -P FORWARD DROP          # forward policy is drop
+$IPTABLES -P INPUT   DROP          # REJECT is not possible here :-(
+$IPTABLES -P OUTPUT  ACCEPT        # output policy is accept
+
+fw_convert_to_complex_chain filter INPUT
+fw_convert_to_complex_chain filter FORWARD
+fw_convert_to_complex_chain filter OUTPUT
+
+fw_convert_to_complex_chain mangle PREROUTING
+fw_convert_to_complex_chain mangle INPUT
+fw_convert_to_complex_chain mangle FORWARD
+fw_convert_to_complex_chain mangle OUTPUT
+fw_convert_to_complex_chain mangle POSTROUTING
+
+fw_convert_to_complex_chain nat PREROUTING
+fw_convert_to_complex_chain nat INPUT
+fw_convert_to_complex_chain nat OUTPUT
+fw_convert_to_complex_chain nat POSTROUTING
+
+fw_convert_to_complex_chain raw OUTPUT
+fw_convert_to_complex_chain raw PREROUTING
+
+if [ "$MASQ_MODULE_N" -ne 0 ]
+then
+    # FFL-298: deprecate automatic conntrack helper assignment
+    log_warn "don't use MASQ_MODULE_% as it has been deprecated; use the HELPER:<module>"
+    log_warn "action instead (see section 3.10.8 in the documentation for details)"
+    for idx in `seq 1 $MASQ_MODULE_N`
+    do
+        eval drv='$MASQ_MODULE_'$idx
+        eval options='$MASQ_MODULE_'$idx'_OPTION'
+        do_modprobe nf_conntrack_$drv $options
+        do_modprobe nf_nat_$drv $options
+    done
+else
+    # FFL-298: disable automatic conntrack helper assignment
+    [ -f /proc/sys/net/netfilter/nf_conntrack_helper ] &&
+        echo 0 > /proc/sys/net/netfilter/nf_conntrack_helper
+fi
+
+# setup logging
+: ${PF_INPUT_REJ_LIMIT:="1/second:5"}
+: ${PF_INPUT_UDP_REJ_LIMIT:="1/second:5"}
+: ${PF_FORWARD_REJ_LIMIT:="1/second:5"}
+: ${PF_FORWARD_UDP_REJ_LIMIT:="1/second:5"}
+: ${PF_OUTPUT_REJ_LIMIT:="1/second:5"}
+: ${PF_OUTPUT_UDP_REJ_LIMIT:="1/second:5"}
+setup_logging "$PF_INPUT_LOG" INPUT fw-input "$PF_INPUT_LOG_LIMIT" "$PF_INPUT_REJ_LIMIT" "$PF_INPUT_UDP_REJ_LIMIT" $PF_LOG_LEVEL
+setup_logging "$PF_FORWARD_LOG" FORWARD fw-forward "$PF_FORWARD_LOG_LIMIT" "$PF_FORWARD_REJ_LIMIT" "$PF_FORWARD_UDP_REJ_LIMIT" $PF_LOG_LEVEL
+setup_logging "$PF_OUTPUT_LOG" OUTPUT fw-output "$PF_OUTPUT_LOG_LIMIT" "$PF_OUTPUT_REJ_LIMIT" "$PF_OUTPUT_UDP_REJ_LIMIT" $PF_LOG_LEVEL
+
+# create ipset list
+>> /var/run/ipset.list
+
+#----------------------------------------------------------------------------
+# running chain commands from additional packages
+# these rules comes first in the chain - so beware of bloated rulesets which
+# are used uncommonly
+#----------------------------------------------------------------------------
+
+fw_chain_suffix=-head
+for ext in /etc/rc.d/fwrules.pre[0-9][0-9][0-9].* /etc/rc.d/fwrules.pre.*
+do
+    if [ -f "$ext" ]
+    then
+         . $ext
+    fi
+done
+fw_chain_suffix=
+
+# create user defined chains
+if [ 0$PF_USR_CHAIN_N -ne 0 ]; then
+    for idx in `seq 1 $PF_USR_CHAIN_N`
+    do
+        eval fw_add_chain filter \$PF_USR_CHAIN_${idx}_NAME
+    done
+    for idx in `seq 1 $PF_USR_CHAIN_N`
+    do
+        eval pf_iterate filter \$PF_USR_CHAIN_${idx}_NAME PF_USR_CHAIN_${idx} _RULE
+    done
+fi
+
+# input chain
+get_defaults INPUT
+if [ "$PF_INPUT_ACCEPT_DEF" = 'yes' ]
+then
+    case x$PF_INPUT_ICMP_ECHO_REQ_LIMIT in
+        xnone) limit= ;;
+        x)     limit="limit:1/second:5" ;;
+        *)     limit="limit:$PF_INPUT_ICMP_ECHO_REQ_LIMIT"
+    esac
+
+    fw_add_chain filter in-icmp
+    fw_append_rule filter in-icmp "prot:icmp:8 length:0-$PF_INPUT_ICMP_ECHO_REQ_SIZE $limit ACCEPT" PF_INPUT_ACCEPT_DEF
+    fw_append_rule filter in-icmp "state:RELATED ACCEPT" PF_INPUT_ACCEPT_DEF
+
+    fw_append_rule filter INPUT-head "prot:icmp in-icmp" PF_INPUT_ACCEPT_DEF
+    add_established INPUT
+    # XXX consider dropping invalid incoming packets
+    # fw_append_rule filter INPUT "state:INVALID DROP" PF_INPUT_ACCEPT_DEF
+    fw_append_rule filter INPUT-head "if:lo:any ACCEPT" PF_INPUT_ACCEPT_DEF
+    fw_append_rule filter INPUT-head "state:NEW 127.0.0.1 DROP BIDIRECTIONAL" PF_INPUT_ACCEPT_DEF
+    fw_chain_suffix=-head
+    for i in $pf_in_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+pf_iterate filter INPUT PF_INPUT
+
+# forward chain
+get_defaults FORWARD
+if [ "$PF_FORWARD_ACCEPT_DEF" = 'yes' ]
+then
+    add_established FORWARD
+    fw_append_rule filter FORWARD-head "state:INVALID DROP" PF_FORWARD_ACCEPT_DEF
+    fw_append_rule filter FORWARD-head "state:NEW 127.0.0.1 DROP BIDIRECTIONAL" PF_FORWARD_ACCEPT_DEF
+    fw_chain_suffix=-head
+    for i in $pf_fwd_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+# consider dropping outgoing invalid packets
+# fw_append_rule filter OUTPUT "state:INVALID DROP" PF_FORWARD_ACCEPT_DEF
+
+pf_iterate filter FORWARD     PF_FORWARD
+
+# postrouting chain
+pf_iterate nat    POSTROUTING PF_POSTROUTING
+
+# output chain
+get_defaults OUTPUT
+if [ "$PF_OUTPUT_ACCEPT_DEF" = 'yes' ]
+then
+    add_established OUTPUT
+    fw_append_rule filter OUTPUT-head "if:any:lo ACCEPT" PF_OUTPUT_ACCEPT_DEF
+    fw_chain_suffix=-head
+    for i in $pf_out_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+pf_iterate filter OUTPUT PF_OUTPUT
+
+# prerouting chain
+pf_iterate nat    PORTFW PF_PREROUTING "" exec_prerouting_rule
+
+# conntrack prerouting chain
+pf_iterate raw PREROUTING PF_PREROUTING_CT
+if [ "$PF_PREROUTING_CT_ACCEPT_DEF" = 'yes' ]
+then
+    fw_chain_suffix=-head
+    for i in $pf_prect_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+# conntrack output chain
+pf_iterate raw OUTPUT PF_OUTPUT_CT
+if [ "$PF_OUTPUT_CT_ACCEPT_DEF" = 'yes' ]
+then
+    fw_chain_suffix=-head
+    for i in $pf_outct_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+#----------------------------------------------------------------------------
+# running chain commands from additional packages
+# these rules are added in the end of the ACCEPT rules
+# put uncommon rulesets here
+#----------------------------------------------------------------------------
+
+fw_chain_suffix=-tail
+for ext in /etc/rc.d/fwrules.post.*
+do
+    if [ -f "$ext" ]
+    then
+         . $ext
+    fi
+done
+fw_chain_suffix=
+
+# redirect DNS if necessary
+if [ -s /var/run/ipset.list ]
+then
+    log_info "activating transparent DNS redirection..."
+    for server in $PF_DNS_EXCEPTIONS
+    do
+        fw_append_rule nat PREROUTING-head "tmpl:dns any $server ACCEPT" "DNS redirection exception"
+        fw_append_rule nat PREROUTING-head "tmpl:dns $server any ACCEPT" "DNS redirection exception"
+    done
+    fw_append_rule nat PREROUTING-head "tmpl:dns REDIRECT" "DNS query redirection"
+fi
+
+# close input chain and forward chain
+# default policy of input and forward is DROP, for output it is ACCEPT
+close_chain INPUT $PF_INPUT_POLICY
+close_chain FORWARD $PF_FORWARD_POLICY
+close_chain OUTPUT $PF_OUTPUT_POLICY
+
+#-------------------------------------------------------------------------
+# setting ip_contrack_max
+#-------------------------------------------------------------------------
+if [ "$IP_CONNTRACK_MAX" != "" ]; then
+    if [ -f /proc/sys/net/netfilter/nf_conntrack_max ]; then
+        echo "$IP_CONNTRACK_MAX" >/proc/sys/net/netfilter/nf_conntrack_max
+    else
+        log_error " missing /proc/sys/net/netfilter/nf_conntrack_max"
+    fi
+fi
+
+#----------------------------------------------------------------------------
+# enable forwarding and setup anti-spoofing measures
+#----------------------------------------------------------------------------
+for j in /proc/sys/net/ipv4/conf/*
+do
+    echo 1 > $j/rp_filter                    # anti-spoofing
+done
+echo 1 > /proc/sys/net/ipv4/route/flush
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+set | grep -e "^IP_NET" -e "^IP_ROUTE" > /var/run/ip_net.conf
+
+end_script

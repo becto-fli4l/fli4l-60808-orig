@@ -1,0 +1,460 @@
+% Last Update: $Id$
+\section{Der Paketfilter (IPv6)}
+
+Wie für IPv4 wird auch für IPv6-Netzwerke eine Firewall benötigt, damit nicht
+jeder von außen jeden Rechner im lokalen Netz erreichen kann. Dies ist um so
+wichtiger, als dass jeder Rechner im Normalfall eine weltweit eindeutige
+IPv6-Adresse erhält, die dem Rechner permanent zugeordnet werden kann, da sie
+auf der MAC-Adresse der verwendeten Netzwerkkarte aufbaut.\footnote{Eine
+Ausnahme existiert, wenn auf den LAN-Hosts die so genannten ``Privacy
+Extensions'' aktiviert werden, weil dann ein Teil der IPv6-Adresse zufällig
+generiert wird. Diese Adressen sind jedoch per Definition nicht nach außen hin
+bekannt und somit für die Firewall-Konfiguration nur bedingt bis gar nicht
+relevant.} Deshalb verbietet die Firewall erst einmal jegliche Zugriffe von
+außen und kann dann durch entsprechende Einträge in diesem Abschnitt Stück für
+Stück~-- je nach Bedarf~-- geöffnet werden.
+
+Die Konfiguration der IPv6-Firewall entspricht im Großen und Ganzen der
+Konfiguration der IPv4-Firewall. Auf Besonderheiten und Unterschiede wird
+gesondert eingegangen.
+
+\begin{description}
+\config{PF6\_LOG\_LEVEL}{PF6\_LOG\_LEVEL}{PF6LOGLEVEL} Für alle folgenden
+Ketten gilt die in \var{PF6\_LOG\_LEVEL} vorgenommene Einstellung der
+Protokoll-Stufe, deren Inhalt auf einen der folgenden Werte gesetzt werden
+kann: debug, info, notice, warning, err, crit, alert, emerg.
+
+\config{PF6\_INPUT\_POLICY}{PF6\_INPUT\_POLICY}{PF6INPUTPOLICY}{
+Diese Variable legt die Standard-Strategie für auf dem Router eingehende Pakete
+fest (INPUT-Kette). Mögliche Werte sind ``REJECT'' (Standard, weist alle Pakete
+ab), ``DROP'' (verwirft klammheimlich alle Pakete) und ``ACCEPT'' (akzeptiert
+alle Pakete). Für eine genauere Beschreibung siehe die Dokumentation der
+Variable \var{PF\_INPUT\_POLICY}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_POLICY='REJECT'?
+
+\config{PF6\_INPUT\_ACCEPT\_DEF}{PF6\_INPUT\_ACCEPT\_DEF}{PF6INPUTACCEPTDEF}{
+Diese Variable aktiviert die voreingestellten Regeln für die INPUT-Kette der
+IPv6-Firewall. Mögliche Werte sind ``yes'' und ``no''.
+
+Die voreingestellten Regeln öffnen die Firewall für eingehende ICMPv6-Pings
+(ein Ping pro Sekunde als Limit) sowie für NDP-Pakete (Neighbour Discovery
+Procotol), das zur zustandslosen Selbstkonfiguration von IPv6-Netzen benötigt
+wird. Verbindungen von localhost sowie Antwortpakete zu lokal initiierten
+Verbindungen werden ebenfalls erlaubt. Schließlich wird die IPv4-Firewall
+dahingehend angepasst, dass für jeden Tunnel gekapselte IPv6-in-IPv4-Pakete
+vom Tunnelendpunkt akzeptiert werden.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_ACCEPT_DEF='yes'?
+
+\config{PF6\_INPUT\_LOG}{PF6\_INPUT\_LOG}{PF6INPUTLOG}{
+Diese Variable aktiviert das Logging aller zurückgewiesenen eingehenden Pakete.
+Mögliche Werte sind ``yes'' und ``no''. Für eine genauere Beschreibung siehe
+die Dokumentation der Variable \var{PF\_INPUT\_LOG}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_LOG='no'?
+
+\config{PF6\_INPUT\_LOG\_LIMIT}{PF6\_INPUT\_LOG\_LIMIT}{PF6INPUTLOGLIMIT}{
+Diese Variable konfiguriert das Log-Limit der INPUT-Kette der IPv6-Firewall,
+um die Log-Datei lesbar zu halten. Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_INPUT\_LOG\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_LOG_LIMIT='3/minute:5'?
+
+\config{PF6\_INPUT\_REJ\_LIMIT}{PF6\_INPUT\_REJ\_LIMIT}{PF6INPUTREJLIMIT}{
+Diese Variable stellt das Limit für das Zurückweisen von eingehenden
+TCP-Paketen ein. Überschreitet ein solches Paket dieses Limit, wird das Paket
+klammheimlich verworfen (DROP). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_INPUT\_REJ\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_INPUT\_UDP\_REJ\_LIMIT}{PF6\_INPUT\_UDP\_REJ\_LIMIT}{PF6INPUTUDPREJLIMIT}{
+Diese Variable stellt das Limit für das Zurückweisen von eingehenden
+UDP-Paketen ein. Überschreitet ein solches UDP-Paket dieses Limit, wird es
+klammheimlich verworfen (DROP). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_INPUT\_UDP\_REJ\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_UDP_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_INPUT\_ICMP\_ECHO\_REQ\_LIMIT}{PF6\_INPUT\_ICMP\_ECHO\_REQ\_LIMIT}{PFI6NPUTICMPECHOREQLIMIT}{
+Definiert, wie häufig auf eine ICMPv6-Echo-Anfrage reagiert werden soll.
+Die Häufigkeit wird analog zur Limit-Einschränkung als `n/Zeitein\-heit'
+mit Bursts beschrieben, also z.B. '3/minute:5'. Ist das
+Limit überschritten, wird das Paket einfach ignoriert (DROP). Ist dieser
+Eintrag leer, wird der Standardwert '1/second:5' verwendet; enhält er
+'none', wird keine Limitierung durchgeführt.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_ICMP_ECHO_REQ_LIMIT='1/second:5'?
+
+\config{PF6\_INPUT\_ICMP\_ECHO\_REQ\_SIZE}{PF6\_INPUT\_ICMP\_ECHO\_REQ\_SIZE}{PF6INPUTICMPECHOREQSIZE}{
+Definiert, wie groß eine empfangene ICMPv6-Echo-Anfrage sein darf (in Bytes). In
+dieser Angabe sind neben den ``Nutzdaten'' auch die Paket-Header mit zu
+berücksichtigen. Der Standard-Wert liegt bei 150 Bytes.
+
+Standard-Einstellung:
+}
+\verb*?PF6_INPUT_ICMP_ECHO_REQ_SIZE='150'?
+
+\config{PF6\_INPUT\_N}{PF6\_INPUT\_N}{PF6INPUTN}{
+Diese Variable enthält die Anzahl der IPv6-Firewallregeln für eingehende
+Pakete (INPUT-Kette). Standardmäßig werden zwei Regeln aktiviert: Die erste
+erlaubt allen lokalen Hosts Zugriff auf den Router über so genannte
+Link-Level-Adressen, und die zweite erlaubt die Kommunikation von Hosts aus dem
+ersten definierten IPv6-Subnetz mit dem Router.
+
+Falls mehrere lokale IPv6-Subnetze definiert werden, muss die zweite Regel
+entsprechend oft vervielfältigt werden. Siehe hierzu die Konfigurationsdatei.
+
+Beispiel:
+}
+\verb*?PF6_INPUT_N='2'?
+
+\config{PF6\_INPUT\_x}{PF6\_INPUT\_x}{PF6INPUTx}{
+Diese Variable spezifiziert eine Regel für die INPUT-Kette der IPv6-Fire\-wall.
+Für eine genauere Beschreibung siehe die Dokumentation der Variable
+\var{PF\_INPUT\_x}.
+
+Unterschiede zur IPv4-Firewall:
+\begin{itemize}
+\item Anstatt \var{IP\_NET\_x} wird hier \var{IPV6\_NET\_x} benutzt.
+\item Anstatt \var{IP\_ROUTE\_x} wird hier \var{IPV6\_ROUTE\_x} benutzt.
+\item IPv6-Adressen müssen in eckigen Klammern eingeschlossen werden (inklusive
+    der Netzmaske, falls vorhanden).
+\item Alle IPv6-Adressangaben (also auch \var{IPV6\_NET\_x} etc.) müssen in
+    eckigen Klammern eingeschlossen werden, falls ein Port oder ein Portbereich
+    folgt.
+\end{itemize}
+
+Beispiele:
+}
+
+\begin{example}
+\begin{verbatim}
+PF6_INPUT_1='[fe80::0/10] ACCEPT'
+PF6_INPUT_2='IPV6_NET_1 ACCEPT'
+PF6_INPUT_3='tmpl:samba DROP NOLOG'
+\end{verbatim}
+\end{example}
+
+\config{PF6\_INPUT\_x\_COMMENT}{PF6\_INPUT\_x\_COMMENT}{PF6INPUTxCOMMENT}{
+Diese Variable enthält eine Beschreibung bzw. einen Kommentar zur zugehörigen
+INPUT-Regel.
+
+Beispiel:
+}
+\verb*?PF6_INPUT_3_COMMENT='no samba traffic allowed'?
+
+\config{PF6\_FORWARD\_POLICY}{PF6\_FORWARD\_POLICY}{PF6FORWARDPOLICY}{
+Diese Variable legt die Standard-Strategie für von dem Router weiterzuleitenden
+Pakete fest (FORWARD-Kette). Mögliche Werte sind ``REJECT'' (Standard, weist
+alle Pakete ab), ``DROP'' (verwirft klammheimlich alle Pakete) und ``ACCEPT''
+(akzeptiert alle Pakete). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_FORWARD\_POLICY}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_FORWARD_POLICY='REJECT'?
+
+\config{PF6\_FORWARD\_ACCEPT\_DEF}{PF6\_FORWARD\_ACCEPT\_DEF}{PF6FORWARDACCEPTDEF}{
+Diese Variable aktiviert die voreingestellten Regeln für die FORWARD-Kette der
+IPv6-Firewall. Mögliche Werte sind ``yes'' und ``no''.
+
+Die voreingestellten Regeln öffnen die Firewall für ausgehende ICMPv6-Pings
+(ein Ping pro Sekunde als Limit). Antwortpakete zu bereits erlaubten
+Verbindungen werden ebenfalls erlaubt.
+
+Standard-Einstellung:
+}
+\verb*?PF6_FORWARD_ACCEPT_DEF='yes'?
+
+\config{PF6\_FORWARD\_LOG}{PF6\_FORWARD\_LOG}{PF6FORWARDLOG}{
+Diese Variable aktiviert das Logging aller zurückgewiesenen weterzuleitenden
+Pakete. Mögliche Werte sind ``yes'' und ``no''. Für eine genauere Beschreibung
+siehe die Dokumentation der Variable \var{PF\_FORWARD\_LOG}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_FORWARD_LOG='no'?
+
+\config{PF6\_FORWARD\_LOG\_LIMIT}{PF6\_FORWARD\_LOG\_LIMIT}{PF6FORWARDLOGLIMIT}{
+Diese Variable konfiguriert das Log-Limit der FORWARD-Kette der IPv6-Firewall,
+um die Log-Datei lesbar zu halten. Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_FORWARD\_LOG\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_FORWARD_LOG_LIMIT='3/minute:5'?
+
+\config{PF6\_FORWARD\_REJ\_LIMIT}{PF6\_FORWARD\_REJ\_LIMIT}{PF6FORWARDREJLIMIT}{
+Diese Variable stellt das Limit für das Zurückweisen von weiterzuleitenden
+TCP-Paketen ein. Überschreitet ein solches TCP-Paket dieses Limit, wird es
+klammheimlich verworfen (DROP). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_FORWARD\_REJ\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_FORWARD_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_FORWARD\_UDP\_REJ\_LIMIT}{PF6\_FORWARD\_UDP\_REJ\_LIMIT}{PF6FORWARDUDPREJLIMIT}{
+Diese Variable stellt das Limit für das Zurückweisen von weiterzuleitenden
+UDP-Paketen ein. Überschreitet ein solches UDP-Paket dieses Limit, wird es
+klammheimlich verworfen (DROP). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_FORWARD\_UDP\_REJ\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_FORWARD_UDP_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_FORWARD\_N}{PF6\_FORWARD\_N}{PF6FORWARDN}{
+Diese Variable enthält die Anzahl der IPv6-Firewallregeln für weiterzuleitende
+Pakete (FORWARD-Kette). Standardmäßig werden zwei Regeln aktiviert: Die erste
+verhindert die Weiterleitung aller lokalen Samba-Pakete in nicht-lokale Netze,
+und die zweite erlaubt letzteres für alle anderen lokalen Pakete aus dem
+ersten definierten IPv6-Subnetz.
+
+Falls mehrere lokale IPv6-Subnetze definiert werden, muss die letzte Regel
+entsprechend oft vervielfältigt werden. Siehe hierzu die Konfigurationsdatei.
+
+Beispiel:
+}
+\verb*?PF6_FORWARD_N='2'?
+
+\config{PF6\_FORWARD\_x}{PF6\_FORWARD\_x}{PF6FORWARDx}{
+Diese Variable spezifiziert eine Regel für die FORWARD-Kette der
+IPv6-Fire\-wall. Für eine genauere Beschreibung siehe die Dokumentation der
+Variable \var{PF\_FORWARD\_x}.
+
+Unterschiede zur IPv4-Firewall:
+\begin{itemize}
+\item Anstatt \var{IP\_NET\_x} wird hier \var{IPV6\_NET\_x} benutzt.
+\item Anstatt \var{IP\_ROUTE\_x} wird hier \var{IPV6\_ROUTE\_x} benutzt.
+\item IPv6-Adressen müssen in eckigen Klammern eingeschlossen werden (inklusive
+    der Netzmaske, falls vorhanden).
+\item Alle IPv6-Adressangaben (also auch \var{IPV6\_NET\_x} etc.) müssen in
+    eckigen Klammern eingeschlossen werden, falls ein Port oder ein Portbereich
+    folgt.
+\end{itemize}
+
+Beispiele:
+}
+
+\begin{example}
+\begin{verbatim}
+PF6_FORWARD_1='tmpl:samba DROP'
+PF6_FORWARD_2='IPV6_NET_1 ACCEPT'
+\end{verbatim}
+\end{example}
+
+\config{PF6\_FORWARD\_x\_COMMENT}{PF6\_FORWARD\_x\_COMMENT}{PF6FORWARDxCOMMENT}{
+Diese Variable enthält eine Beschreibung bzw. einen Kommentar zur zugehörigen
+FORWARD-Regel.
+
+Beispiel:
+}
+\verb*?PF6_FORWARD_1_COMMENT='no samba traffic allowed'?
+
+\config{PF6\_OUTPUT\_POLICY}{PF6\_OUTPUT\_POLICY}{PF6OUTPUTPOLICY}{
+Diese Variable legt die Standard-Strategie für vom Router ausgehende Pakete
+fest (OUTPUT-Kette). Mögliche Werte sind ``REJECT'' (Standard, weist alle Pakete
+ab), ``DROP'' (verwirft klammheimlich alle Pakete) und ``ACCEPT'' (akzeptiert
+alle Pakete). Für eine genauere Beschreibung siehe die Dokumentation der
+Variable \var{PF\_OUTPUT\_POLICY}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_OUTPUT_POLICY='REJECT'?
+
+\config{PF6\_OUTPUT\_ACCEPT\_DEF}{PF6\_OUTPUT\_ACCEPT\_DEF}{PF6OUTPUTACCEPTDEF}{
+Diese Variable aktiviert die voreingestellten Regeln für die OUTPUT-Kette der
+IPv6-Firewall. Mögliche Werte sind ``yes'' und ``no''. Momentan existieren keine
+voreingestellten Regeln.
+
+Standard-Einstellung:
+}
+\verb*?PF6_OUTPUT_ACCEPT_DEF='yes'?
+
+\config{PF6\_OUTPUT\_LOG}{PF6\_OUTPUT\_LOG}{PF6OUTPUTLOG}{
+Diese Variable aktiviert das Logging aller zurückgewiesenen ausgehenden Pakete.
+Mögliche Werte sind ``yes'' und ``no''. Für eine genauere Beschreibung siehe
+die Dokumentation der Variable \var{PF\_OUTPUT\_LOG}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_OUTPUT_LOG='no'?
+
+\config{PF6\_OUTPUT\_LOG\_LIMIT}{PF6\_OUTPUT\_LOG\_LIMIT}{PF6OUTPUTLOGLIMIT}{
+Diese Variable konfiguriert das Log-Limit der OUTPUT-Kette der IPv6-Firewall,
+um die Log-Datei lesbar zu halten. Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_OUTPUT\_LOG\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_OUTPUT_LOG_LIMIT='3/minute:5'?
+
+\config{PF6\_OUTPUT\_REJ\_LIMIT}{PF6\_OUTPUT\_REJ\_LIMIT}{PF6OUTPUTREJLIMIT}{
+Diese Variable stellt das Limit für das Zurückweisen von ausgehenden
+TCP-Paketen ein. Überschreitet ein solches Paket dieses Limit, wird das Paket
+klammheimlich verworfen (DROP). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_OUTPUT\_REJ\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_OUTPUT_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_OUTPUT\_UDP\_REJ\_LIMIT}{PF6\_OUTPUT\_UDP\_REJ\_LIMIT}{PF6OUTPUTUDPREJLIMIT}{
+Diese Variable stellt das Limit für das Zurückweisen von ausgehenden
+UDP-Paketen ein. Überschreitet ein solches UDP-Paket dieses Limit, wird es
+klammheimlich verworfen (DROP). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_OUTPUT\_UDP\_REJ\_LIMIT}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_OUTPUT_UDP_REJ_LIMIT='1/second:5'?
+
+\config{PF6\_OUTPUT\_N}{PF6\_OUTPUT\_N}{PF6OUTPUTN}{
+Diese Variable enthält die Anzahl der IPv6-Firewallregeln für eingehende
+Pakete (OUTPUT-Kette). Standardmäßig werden zwei Regeln aktiviert: Die erste
+erlaubt allen lokalen Hosts Zugriff auf den Router über so genannte
+Link-Level-Adressen, und die zweite erlaubt die Kommunikation von Hosts aus dem
+ersten definierten IPv6-Subnetz mit dem Router.
+
+Falls mehrere lokale IPv6-Subnetze definiert werden, muss die zweite Regel
+entsprechend oft vervielfältigt werden. Siehe hierzu die Konfigurationsdatei.
+
+Beispiel:
+}
+\verb*?PF6_OUTPUT_N='1'?
+
+\config{PF6\_OUTPUT\_x}{PF6\_OUTPUT\_x}{PF6OUTPUTx}{
+Diese Variable spezifiziert eine Regel für die OUTPUT-Kette der IPv6-Fire\-wall.
+Für eine genauere Beschreibung siehe die Dokumentation der Variable
+\var{PF\_OUTPUT\_x}.
+
+Unterschiede zur IPv4-Firewall:
+\begin{itemize}
+\item Anstatt \var{IP\_NET\_x} wird hier \var{IPV6\_NET\_x} benutzt.
+\item Anstatt \var{IP\_ROUTE\_x} wird hier \var{IPV6\_ROUTE\_x} benutzt.
+\item IPv6-Adressen müssen in eckigen Klammern eingeschlossen werden (inklusive
+    der Netzmaske, falls vorhanden).
+\item Alle IPv6-Adressangaben (also auch \var{IPV6\_NET\_x} etc.) müssen in
+    eckigen Klammern eingeschlossen werden, falls ein Port oder ein Portbereich
+    folgt.
+\end{itemize}
+
+Beispiele:
+}
+
+\begin{example}
+\begin{verbatim}
+PF6_OUTPUT_1='tmpl:ftp IPV6_NET_1 ACCEPT HELPER:ftp'
+\end{verbatim}
+\end{example}
+
+\config{PF6\_OUTPUT\_x\_COMMENT}{PF6\_OUTPUT\_x\_COMMENT}{PF6OUTPUTxCOMMENT}{
+Diese Variable enthält eine Beschreibung bzw. einen Kommentar zur zugehörigen
+OUTPUT-Regel.
+
+Beispiel:
+}
+\verb*?PF6_OUTPUT_3_COMMENT='no samba traffic allowed'?
+
+\config{PF6\_USR\_CHAIN\_N}{PF6\_USR\_CHAIN\_N}{PF6USRCHAINN}{
+Diese Variable enthält die Anzahl der vom Benutzer definierten
+IPv6-Firewall-Tabellen. Für eine genauere Beschreibung siehe die Dokumentation
+der Variable \var{PF\_USR\_CHAIN\_N}.
+
+Standard-Einstellung:
+}
+\verb*?PF6_USR_CHAIN_N='0'?
+
+\config{PF6\_USR\_CHAIN\_x\_NAME}{PF6\_USR\_CHAIN\_x\_NAME}{PF6USRCHAINxNAME}{
+Diese Variable enthält den Namen der entsprechenden benutzerdefinierten
+IPv6-Firewall-Tabelle. Für eine genauere Beschreibung siehe die Dokumentation
+der Variable \var{PF\_USR\_CHAIN\_x\_NAME}.
+
+Beispiel:
+}
+\verb*?PF6_USR_CHAIN_1_NAME='usr-myvpn'?
+
+\config{PF6\_USR\_CHAIN\_x\_RULE\_N}{PF6\_USR\_CHAIN\_x\_RULE\_N}{PF6USRCHAINxRULEN}{
+Diese Variable enthält die Anzahl der IPv6-Firewallregeln in der zugehörigen
+benutzerdefinierten IPv6-Firewall-Tabelle. Für eine genauere Beschreibung siehe
+die Dokumentation der Variable \var{PF\_USR\_CHAIN\_x\_RULE\_N}.
+
+Beispiel:
+}
+\verb*?PF6_USR_CHAIN_1_RULE_N='0'?
+
+\config{PF6\_USR\_CHAIN\_x\_RULE\_x}{PF6\_USR\_CHAIN\_x\_RULE\_x}{PF6USRCHAINxRULEx}{
+Diese Variable spezifiziert eine Regel für die benutzerdefinierte
+IPv6-Firewall-Tabelle. Für eine genauere Beschreibung siehe die Dokumentation
+der Variable \var{PF\_USR\_CHAIN\_x\_RULE\_x}.
+
+Unterschiede zur IPv4-Firewall:
+\begin{itemize}
+\item Anstatt \var{IP\_NET\_x} wird hier \var{IPV6\_NET\_x} benutzt.
+\item Anstatt \var{IP\_ROUTE\_x} wird hier \var{IPV6\_ROUTE\_x} benutzt.
+\item IPv6-Adressen müssen in eckigen Klammern eingeschlossen werden (inklusive
+    der Netzmaske, falls vorhanden).
+\item Alle IPv6-Adressangaben (also auch \var{IPV6\_NET\_x} etc.) müssen in
+    eckigen Klammern eingeschlossen werden, falls ein Port oder ein Portbereich
+    folgt.
+\end{itemize}
+}
+
+\config{PF6\_USR\_CHAIN\_x\_RULE\_x\_COMMENT}{PF6\_USR\_CHAIN\_x\_RULE\_x\_COMMENT}{PF6USRCHAINxRULExCOMMENT}{
+Diese Variable enthält eine Beschreibung bzw. einen Kommentar zur zugehörigen
+Regel.
+
+Beispiel:
+}
+\verb*?PF6_USR_CHAIN_1_RULE_1_COMMENT='some user-defined rule'?
+
+\config{PF6\_POSTROUTING\_N}{PF6\_POSTROUTING\_N}{PF6POSTROUTINGN}{
+Diese Variable enthält die Anzahl der IPv6-Firewallregeln fürs Maskieren
+(POSTROUTING-Kette). Für eine genauere Beschreibung siehe die Dokumentation der
+Variable \var{PF\_POSTROUTING\_N}.
+
+Beispiel:
+}
+\verb*?PF6_POSTROUTING_N='2'?
+
+\configlabel{PF6\_POSTROUTING\_x\_COMMENT}{PF6POSTROUTINGxCOMMENT}
+\config{PF6\_POSTROUTING\_x PF6\_POSTROUTING\_x\_COMMENT}{PF6\_POSTROUTING\_x}{PF6POSTROUTINGx}
+\mbox{}\newline
+Eine Liste der Regeln, die beschreiben, welche IPv6-Pakete vom Router maskiert
+werden (bzw. unmaskiert weitergeleitet werden). Für eine genauere Beschreibung
+siehe die Dokumentation der Variable \var{PF\_POSTROUTING\_x}.
+
+\config{PF6\_PREROUTING\_N}{PF6\_PREROUTING\_N}{PF6PREROUTINGN}{
+Diese Variable enthält die Anzahl der IPv6-Firewallregeln fürs Weiterleiten an
+ein anderes Ziel (PREROUTING-Kette). Für eine genauere Beschreibung siehe die
+Dokumentation der Variable \var{PF\_PREROUTING\_N}.
+
+Beispiel:
+}
+\verb*?PF6_PREROUTING_N='2'?
+
+\configlabel{PF6\_PREROUTING\_x\_COMMENT}{PF6PREROUTINGxCOMMENT}
+\config{PF6\_PREROUTING\_x PF6\_PREROUTING\_x\_COMMENT}{PF6\_PREROUTING\_x}{PF6PREROUTINGx}
+\mbox{}\newline
+Eine Liste der Regeln, die beschreiben, welche IPv6-Pakete vom Router an ein
+anderes Ziel weitergeleitet werden sollen. Für eine genauere Beschreibung
+siehe die Dokumentation der Variable \var{PF\_PREROUTING\_x}.
+
+\end{description}

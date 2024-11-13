@@ -1,0 +1,282 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/bundle-common
+# common functions for managing bundles
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+if [ "$bundle_api" != yes ]
+then
+
+. /etc/boot.d/locking.inc
+
+# File mapping link circuits to bundle identifiers. The file contains lines
+# which are structured as follows:
+#
+# <circ-id> <bundle-id>
+#
+# where
+#   <circ-id> is the identifier of the link circuit,
+#   <bundle-id> is the bundle identifier being identical for all the links of
+#     a bundle
+bundle_links_db=/var/run/circuits/bundle-links
+
+# File mapping each bundle identifier to its master link(s). The file contains
+# lines which are structured as follows:
+#
+# <master-circ-id> <bundle-circ-id> <bundle-id> <master-type> <ref-count>
+#
+# where
+#   <master-circ-id> is the identifier of the master link circuit,
+#   <bundle-circ-id> is the identifier of the bundle circuit,
+#   <bundle-id> is the bundle identifier the master circuit belongs to,
+#   <master-type> is one of
+#     $BUNDLE_MASTER_TYPE_REAL:
+#       this is the current master link of a real bundle
+#     $BUNDLE_MASTER_TYPE_PSEUDO:
+#       this is the current master link of a pseudo bundle
+#     $BUNDLE_MASTER_TYPE_OBSOLETE:
+#       this is an obsolete master link that will be deleted as soon as all
+#        <l3prot>-down scripts have run
+#   <ref-count> is a reference counter to count the NCPs, the entry is deleted
+#     if the counter reaches zero
+bundle_masters_db=/var/run/circuits/bundle-masters
+
+# denotes a dying master of a bundle
+BUNDLE_MASTER_TYPE_OBSOLETE=0
+# denotes an active master of a real bundle
+BUNDLE_MASTER_TYPE_REAL=1
+# denotes an active master of a pseudo bundle
+BUNDLE_MASTER_TYPE_PSEUDO=2
+
+# regex for sanitizing a BUNDLE
+bundle_sanitize_regex='s/\([/.^$\]\)/\\\1/g'
+
+#----------------------------------------------------------------------------
+# Registers a link circuit with its corresponding bundle identifier. A bundle
+# identifier is circuit dependent but is identical for all circuits comprising
+# a bundle and different from any bundle identifier belonging to a link curcuit
+# that is part of some other bundle.
+#
+# $1 = identifier of link circuit
+# $2 = bundle identifier
+#----------------------------------------------------------------------------
+bundle_register_link()
+{
+    local link=$1 bundle=$2
+    sync_lock_resource bundle_links_db bundle_register_link
+    echo "$link $bundle" >> $bundle_links_db
+    sync_unlock_resource bundle_links_db bundle_register_link
+}
+
+#----------------------------------------------------------------------------
+# Deregisters a link circuit from its corresponding bundle identifier.
+#
+# $1 = identifier of link circuit
+#----------------------------------------------------------------------------
+bundle_deregister_link()
+{
+    local link=$1
+    sync_lock_resource bundle_links_db bundle_deregister_link
+    sed -i "/^$link /d" $bundle_links_db
+    sync_unlock_resource bundle_links_db bundle_deregister_link
+}
+
+#----------------------------------------------------------------------------
+# Registers a bundle identifier with its corresponding master circuit and
+# master state. The initial reference counter is set to 1. If a master link is
+# registered but there is already a master link for the same bundle in the
+# database, the other master link is marked as obsolete. This prevents clashes
+# between the old master link and the new one which can both be up at the same
+# time (one coming up and one going down), because the old master link needs to
+# remain active until the <l3prot>-down scripts have finished execution.
+#
+# $1 = identifier of master circuit
+# $2 = identifier of bundle circuit
+# $3 = bundle identifier
+# $4 = master type (either $BUNDLE_MASTER_TYPE_REAL or
+#      $BUNDLE_MASTER_TYPE_PSEUDO)
+#----------------------------------------------------------------------------
+bundle_register_master()
+{
+    local master=$1 circ_bundle=$2 bundle=$3 type=$4
+    local regex=$(echo "$bundle" | sed "$bundle_sanitize_regex")
+    sync_lock_resource bundle_masters_db bundle_register_master
+    # make all non-obsolete master links for this bundle obsolete;
+    # note that masters of pseudo bundles cannot become obsolete as pseudo
+    # bundles never possess more than one link, but the code is defensive
+    sed -i "s/^\([^ ]\+ $regex\) [^$BUNDLE_MASTER_TYPE_OBSOLETE] \([0-9]\+\)$/\1 0 \2/" \
+        $bundle_masters_db
+    echo "$master $circ_bundle $bundle $type 1" >> $bundle_masters_db
+    sync_unlock_resource bundle_masters_db bundle_register_master
+}
+
+#----------------------------------------------------------------------------
+# Increases the reference count of a master circuit.
+#
+# $1 = identifier of master circuit
+#----------------------------------------------------------------------------
+bundle_ref_master()
+{
+    local master=$1
+    sync_lock_resource bundle_masters_db bundle_ref_master
+
+    local refcount=$(sed -n "s/^$master [^ ]\+ [^ ]\+ [0-9] \([0-9]\+\)$/\1/p" \
+                     $bundle_masters_db)
+    if [ -n "$refcount" ]
+    then
+        refcount=$((refcount+1))
+        sed -i "s/^\($master [^ ]\+ [^ ]\+ [0-9]\) [0-9]\+$/\1 $refcount/" \
+            $bundle_masters_db
+    fi
+
+    sync_unlock_resource bundle_masters_db bundle_ref_master
+}
+
+#----------------------------------------------------------------------------
+# Decreases the reference count of a master circuit. If the reference count
+# reaches zero, the entry is removed from the bundle masters database.
+#
+# $1 = identifier of master circuit
+# output = new reference count or the empty string if the master circuit is
+#          unknown
+#----------------------------------------------------------------------------
+bundle_deref_master()
+{
+    local master=$1
+    sync_lock_resource bundle_masters_db bundle_deref_master
+
+    local refcount=$(sed -n "s/^$master [^ ]\+ [^ ]\+ [0-9] \([0-9]\+\)$/\1/p" \
+                     $bundle_masters_db)
+    if [ -n "$refcount" ]
+    then
+        refcount=$((refcount-1))
+        if [ $refcount -ne 0 ]
+        then
+            sed -i "s/^\($master [^ ]\+ [^ ]\+ [0-9]\) [0-9]\+$/\1 $refcount/" \
+                $bundle_masters_db
+        else
+            sed -i "/^$master /d" $bundle_masters_db
+        fi
+        echo $refcount
+    fi
+
+    sync_unlock_resource bundle_masters_db bundle_deref_master
+}
+
+#----------------------------------------------------------------------------
+# Decreases the reference count of a master circuit. If the reference count
+# reaches one, the last layer-3 protocol has terminated, and /etc/ppp/link-down
+# should be invoked by the caller (which eventually decrease the reference
+# count to zero).
+#
+# $1 = identifier of link circuit
+# exit code = 0 if link is down, else nonzero
+#----------------------------------------------------------------------------
+bundle_handle_l3prot_down()
+{
+    local link=$1
+    local refcount=$(bundle_deref_master $link)
+    set -- $(bundle_map_bundle_to_master_and_type "$BUNDLE")
+    local circ_master=$1 circ_master_type=$2
+
+    if [ -n "$circ_master" ] &&
+        [ $circ_master_type -eq $BUNDLE_MASTER_TYPE_PSEUDO -a $refcount -eq 1 ]
+    then
+        # we are the one and only link of a pseudo bundle, and
+        # the last layer-3 protocol is terminating
+        return 0
+    else
+        return 1
+    fi
+}
+
+#----------------------------------------------------------------------------
+# Maps a link circuit to its corresponding bundle identifier.
+#
+# $1 = identifier of link circuit
+#----------------------------------------------------------------------------
+bundle_map_link_to_bundle()
+{
+    sync_lock_resource bundle_links_db bundle_map_link_to_bundle
+    sed -n "s/^$1 \([^ ]\+\)$/\1/p" $bundle_links_db
+    sync_unlock_resource bundle_links_db bundle_map_link_to_bundle
+}
+
+#----------------------------------------------------------------------------
+# Maps a master circuit to its corresponding bundle identifier.
+#
+# $1 = identifier of master circuit
+#----------------------------------------------------------------------------
+bundle_map_master_to_bundle()
+{
+    sync_lock_resource bundle_masters_db bundle_map_master_to_bundle
+    sed -n "s/^$1 [^ ]\+ \([^ ]\+\) [0-9] [0-9]\+$/\1/p" $bundle_masters_db
+    sync_unlock_resource bundle_masters_db bundle_map_master_to_bundle
+}
+
+#----------------------------------------------------------------------------
+# Maps a bundle identifier to all link circuits being part of that bundle.
+#
+# $1 = bundle identifier
+# output = identifiers of associated link circuits
+#----------------------------------------------------------------------------
+bundle_lookup_links()
+{
+    local regex=$(echo "$1" | sed "$bundle_sanitize_regex")
+    sync_lock_resource bundle_links_db bundle_lookup_links
+    sed -n "s/^\([^ ]\+\) $regex$/\1/p" $bundle_links_db
+    sync_unlock_resource bundle_links_db bundle_lookup_links
+}
+
+#----------------------------------------------------------------------------
+# Maps a bundle identifier to the master circuit of that bundle.
+# Obsolete master links are ignored.
+#
+# $1 = bundle identifier
+# output = identifier of master circuit
+#----------------------------------------------------------------------------
+bundle_map_bundle_to_master()
+{
+    local regex=$(echo "$1" | sed "$bundle_sanitize_regex")
+    sync_lock_resource bundle_masters_db bundle_map_bundle_to_master
+    sed -n "s/^\([^ ]\+\) [^ ]\+ $regex [^$BUNDLE_MASTER_TYPE_OBSOLETE] [0-9]\+$/\1/p" \
+        $bundle_masters_db
+    sync_unlock_resource bundle_masters_db bundle_map_bundle_to_master
+}
+
+#----------------------------------------------------------------------------
+# Maps a bundle identifier to the master circuit of that bundle and its type.
+# Obsolete master links are ignored.
+#
+# $1 = bundle identifier
+# output = <circ-id> <master-type>
+#          where <master-type> is either 1 (master of a real bundle) or 2
+#          (master of a pseudo bundle)
+#----------------------------------------------------------------------------
+bundle_map_bundle_to_master_and_type()
+{
+    local regex=$(echo "$1" | sed "$bundle_sanitize_regex")
+    sync_lock_resource bundle_masters_db bundle_map_bundle_to_master_and_type
+    sed -n "s/^\([^ ]\+\) [^ ]\+ $regex \([^$BUNDLE_MASTER_TYPE_OBSOLETE]\) [0-9]\+$/\1 \2/p" \
+        $bundle_masters_db
+    sync_unlock_resource bundle_masters_db bundle_map_bundle_to_master_and_type
+}
+
+#----------------------------------------------------------------------------
+# Maps a bundle circuit to the master circuit of its corresponding bundle.
+# Obsolete master links are ignored.
+#
+# $1 = identifier of bundle circuit
+#----------------------------------------------------------------------------
+bundle_map_bundle_circuit_to_master()
+{
+    sync_lock_resource bundle_masters_db bundle_map_bundle_circuit_to_master
+    sed -n "s/^\([^ ]\+\) $1 [^ ]\+ [^$BUNDLE_MASTER_TYPE_OBSOLETE] [0-9]\+$/\1/p" $bundle_masters_db
+    sync_unlock_resource bundle_masters_db bundle_map_bundle_circuit_to_master
+}
+
+bundle_api='yes'
+
+fi # $circuit_api != yes

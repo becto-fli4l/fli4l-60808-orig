@@ -1,0 +1,32 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/cra-ext.hostref
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2017 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+# Makes circuit_resolve_address() translate "@<host>" references.
+# Note that an address is always returned (and never a network), regardless of
+# context.
+resolve_host_reference_translation()
+{
+    local address=$1 l3prot=$2 context=$3 res
+    case $address in
+    @*)
+        if [ "$OPT_IPV4" = "yes" ] && [ -z "$l3prot" -o "$l3prot" = "ipv4" ]
+        then
+            lookup_name ${address#@} && echo "$res"
+        fi
+        if [ "$OPT_IPV6" = "yes" ] && [ -z "$l3prot" -o "$l3prot" = "ipv6" ]
+        then
+            lookup_name_ipv6 ${address#@} && echo "$res"
+        fi
+        return 0
+        ;;
+    esac
+    return 1
+}
+
+circuit_register_resolve_address_translation resolve_host_reference_translation

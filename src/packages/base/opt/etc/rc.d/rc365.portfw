@@ -1,0 +1,79 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc130.portfw - configure portforwarding
+# was file /etc/rc.d/rc600.portfw
+#
+# Creation:        05.11.2000  fm
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+case x$PORTFW_N in
+x|x0) ;;
+*)
+    begin_script PORTFW "configuring portforwarding ..."
+
+    oldIFS="$IFS"
+
+    for idx in `seq 1 $PORTFW_N`
+    do
+        eval target='$PORTFW_'$idx'_TARGET'
+        eval new_target='$PORTFW_'$idx'_NEW_TARGET'
+        eval proto='$PORTFW_'$idx'_PROTOCOL'
+        eval comment='$PORTFW_'$idx'_COMMENT'
+
+        target_ports=
+        target=`echo $target | sed -e 's/:\?none//'`
+        if [ "$target" ]
+        then
+            IFS=":"
+            set -- $target
+            IFS="$oldIFS"
+
+            if [ "$2" = "" ]
+            then
+                case $1 in
+                    *.*.*.*)
+                        target_exp=$1
+                        ;;
+                    *)
+                        target_ports=:$1
+                        target_exp=dynamic:$1
+                        ;;
+                esac
+            else
+                target_ports=":$2"
+                translate_ip_net $1 PORTFW_${idx}_TARGET || continue
+                target_exp=$res$target_ports
+            fi
+        else
+            target_exp=dynamic
+        fi
+
+        IFS=":"
+        set -- $new_target
+        IFS="$oldIFS"
+
+        new_target_host="$1"
+        if [ "$2" ]
+        then
+            new_target_ports=":$2"
+        else
+            new_target_ports="$target_ports"
+        fi
+        translate_ip_net $new_target_host PORTFW_${idx}_NEW_TARGET new_target_host || continue
+
+        rule="prot:$proto any $target_exp DNAT:$new_target_host$new_target_ports"
+        nextindex=$(get_next_rule_index nat PORTFW)
+        if [ -z "$comment" ]
+        then
+            comment="PF_PREROUTING_${nextindex}='$pf_rule'"
+        else
+            comment="PF_PREROUTING_${nextindex}: $comment"
+        fi
+
+        fw_append_rule nat PORTFW "$rule" "$comment" exec_prerouting_rule
+    done
+
+    end_script
+;;
+esac

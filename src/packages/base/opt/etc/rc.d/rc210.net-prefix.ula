@@ -1,0 +1,89 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc005.net-prefix.ula
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_NET_PREFIX_ULA" = "yes" ]
+then
+
+begin_script NET_PREFIX_ULA "registration of ULA prefixes..."
+
+#----------------------------------------------------------------------------
+# Generates a ULA prefix (size /48) from an EUI-64 interface identifier.
+#
+# $1     = EUI-64 interface identifier without colons
+# output = ULA prefix (size /48)
+#----------------------------------------------------------------------------
+get_ula_prefix_from_eui64()
+{
+    [ -n "$1" ] || return 1
+    local id=$(printf "%s%s" "$(date +%s%N)" "$1" | sha1sum | cut -d' ' -f1)
+    echo "fd${id:30:2}:${id:32:4}:${id:36:4}::/48"
+}
+
+#----------------------------------------------------------------------------
+# Generates a ULA prefix (size /48) from an Ethernet MAC address.
+#
+# $1     = Ethernet MAC address with colons
+# output = ULA prefix (size /48)
+#----------------------------------------------------------------------------
+get_ula_prefix_from_ethernet_mac_address()
+{
+    get_ula_prefix_from_eui64 "$(get_eui64_from_ethernet_mac_address "$1")"
+}
+
+map2persistent NET_PREFIX_ULA_SAVEDIR
+
+for i in $(seq 1 ${NET_PREFIX_N:-0})
+do
+    eval type=\$NET_PREFIX_${i}_TYPE
+    if [ "$type" = "generated-ula" ]
+    then
+        eval name=\$NET_PREFIX_${i}_NAME
+        ula=
+
+        if [ -f "$NET_PREFIX_ULA_SAVEDIR/$name" ]
+        then
+            read ula < "$NET_PREFIX_ULA_SAVEDIR/$name"
+            if [ -z "$ula" ]
+            then
+                log_warning "  ULA for 'NET_PREFIX_${i}' could not be restored, will generate a new one"
+            fi
+        fi
+
+        if [ -z "$ula" ]
+        then
+            log_info "  trying to generate ULA for 'NET_PREFIX_${i}'"
+
+            eval dev=\$NET_PREFIX_${i}_ULA_DEV
+            mac=$(get_mac_address_from_ethernet_interface "$dev")
+            if [ -z "$mac" ]
+            then
+                log_error "  network interface '$dev' referenced by NET_PREFIX_${i}_ULA_DEV unknown or not an Ethernet device, ignoring 'NET_PREFIX_${i}'"
+                continue
+            fi
+
+            ula=$(get_ula_prefix_from_ethernet_mac_address "$mac")
+            if [ -z "$ula" ]
+            then
+                log_error "  ULA generation failed for network interface '$dev' with MAC address '$mac', ignoring 'NET_PREFIX_${i}'"
+                continue
+            fi
+        fi
+
+        if [ ! -f "$NET_PREFIX_ULA_SAVEDIR/$name" ]
+        then
+            mkdir -p "$NET_PREFIX_ULA_SAVEDIR"
+            echo "$ula" > "$NET_PREFIX_ULA_SAVEDIR/$name"
+        fi
+
+        log_info "  $name --> $ula"
+        circuit_register_prefix "$name" ipv6 "$ula" forever forever
+    fi
+done
+
+end_script
+
+fi

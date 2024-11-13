@@ -1,0 +1,1821 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/share/circuits/api - common circuit API
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$circuit_api" != yes ]
+then
+
+circuit_api='yes'
+
+. /etc/boot.d/string.inc
+. /etc/boot.d/list.inc
+. /etc/boot.d/env.inc
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/locking.inc
+[ -f /etc/rc.d/bundle-common ] && . /etc/rc.d/bundle-common
+. /usr/share/mom/core
+
+# needed by some scripts included by this script
+eval $(grep '^OPT_IPV[46]=' /etc/rc.cfg)
+
+#############################################################
+# ------------------------ C O R E ------------------------ #
+#############################################################
+
+# contains circuit information
+circuit_dir=/var/run/circuits
+circuit_state_dir=$circuit_dir/states
+circuit_states="online semionline ready active deleted failed inactive"
+
+# include circuit layer-3 protocols
+circuit_protocols=
+for f in /usr/share/circuits/proto/*
+do
+    [ -f $f ] && . $f
+done
+
+# include circuit types
+for f in /usr/share/circuits/type/*
+do
+    [ -f $f ] && . $f
+done
+
+# include circuit protocol/type extensions
+for f in /usr/share/circuits/extensions/*
+do
+    [ -f $f ] && . $f
+done
+
+# the logging facility to use for circuit system
+circuit_logfacility=local2
+
+# circuit prefix
+circuit_prefix=circ
+circuit_prefix_len=${#circuit_prefix}
+
+# we allow a single ip(v6)-down pass to take up to one minute
+ip_down_timeout=60
+
+# maximum number of seconds to wait for a reply from circd
+circd_timeout=30
+
+# contains information which circuits are part of which bundle
+links_file=/var/run/circuits/links
+
+# contains identifiers for various circuit types
+id_dir=/var/run/circuits/ids
+
+# contains log FIFOs
+circd_fifo_dir=/var/run/circuits/fifo
+
+# Acquires a read lock on a specific circuit's properties. A read lock inhibits
+# write operations from other processes but allows read operations from other
+# processes.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = caller
+# Exit code:
+#   0 if lock has been acquired, a nonzero value otherwise
+circuit_read_lock()
+{
+    sync_lock_resource_for_reading $1 $2
+}
+
+# Releases a read lock held on a specific circuit's properties.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = caller
+circuit_read_unlock()
+{
+    sync_unlock_resource_for_reading $1 $2
+}
+
+# Acquires a write lock on a specific circuit's properties. A write lock
+# inhibits read and write operations from other processes.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = caller
+# Exit code:
+#   0 if lock has been acquired, a nonzero value otherwise
+circuit_write_lock()
+{
+    sync_lock_resource_for_writing $1 $2
+}
+
+# Releases a write lock held on a specific circuit's properties.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = caller
+circuit_write_unlock()
+{
+    sync_unlock_resource_for_writing $1 $2
+}
+
+# Acquires an exclusive lock on a specific circuit and a read lock on the
+# circuit's properties. This allows
+# a) other processes that do not hold the exclusive lock to read the circuit's
+#    properties without having to wait
+# b) the process holding the read lock to promote it to a write lock if
+#    necessary without risking a deadlock
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = caller
+# Exit code:
+#   0 if lock has been acquired, a nonzero value otherwise
+circuit_lock()
+{
+    sync_lock_resource $1 $2
+    circuit_read_lock $1 $2
+}
+
+# Releases an exclusive lock held on a specific circuit and the read lock held
+# on the circuit's properties.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = caller
+circuit_unlock()
+{
+    circuit_read_unlock $1 $2
+    sync_unlock_resource $1 $2
+}
+
+# Allocates a numbered and prefixed circuit identifier (e.g. ppp0) and stores
+# it in a user-defined variable.
+#
+# Input:
+#   $1 = circuit prefix
+#   $2 = target variable
+#   $3 = (optional) start value, defaults to 0
+# Output:
+#   ${$2} = circuit identifier (= ${1}X with some number X)
+circuit_allocate_device()
+{
+    local next=$id_dir/$1.next
+    sync_lock_resource circuit_id circuit_allocate_device
+    if [ -f $next ]
+    then
+        local idx
+        read idx < $next
+    else
+        local idx=${3:-0}
+    fi
+    echo $((idx+1)) > $next
+    sync_unlock_resource circuit_id circuit_allocate_device
+    eval $2=\$1\$idx
+}
+
+# Determines if a circuit exists.
+#
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   0 if circuit exists, a nonzero value otherwise
+circuit_exists()
+{
+    local id=$1
+    circuit_resolve_alias id
+    [ -f $circuit_state_dir/all/$id ]
+}
+
+# Prints variables of a given circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The variable definitions (e.g. "a=x b=y"). Use
+#     vars=$(circuit_get_data $id)
+#     eval $vars
+#   to make them available in your shell context.
+# Exit code:
+#   0 if circuit exists, a nonzero value otherwise
+# Synchronization:
+#   Takes a read lock on the circuit's properties.
+circuit_get_data()
+{
+    local id=$1
+    circuit_resolve_alias id
+    local file=$circuit_state_dir/all/$id
+    local rc=0
+
+    circuit_read_lock $id circuit_get_data
+    if [ -f $file ]
+    then
+        cat $file
+        rc=$?
+    else
+        rc=1
+    fi
+    circuit_read_unlock $id circuit_get_data
+    return $rc
+}
+
+# Associates a dynamic field with a circuit. Multi-line data is converted into
+# single-line data by replacing newlines by spaces.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = field
+#   $3 = data
+# Synchronization:
+#   Takes a write lock on the circuit's properties.
+circuit_write_field()
+{
+    local id=$1 field=$2 data="$(echo -n "$3" | tr '\n' ' ')"
+    circuit_resolve_alias id
+    local file=$circuit_state_dir/all/$id
+    local rc=0
+
+    circuit_write_lock $id circuit_write_field
+    if [ -f $file ]
+    then
+        sed -i "/^$field=/d" $file
+        echo "$field=\"$data\"" >> $file
+    else
+        rc=1
+    fi
+    circuit_write_unlock $id circuit_write_field
+    return $rc
+}
+
+# Reads a dynamic field from a circuit.
+# Input:
+#   $1 = circuit identifier
+#   $2 = field
+#   $3 = (optional) name of variable receiving the result; if missing, the
+#        result is stored in a variable with the name $2
+#        Don't use variable names starting with "_"!
+# Output:
+#   variable $2 (or $3, if set) is set with the value of the field
+# Synchronization:
+#   Takes a read lock on the circuit's properties.
+circuit_read_field()
+{
+    local _id=$1 _field=$2 _result=${3:-$2}
+    circuit_resolve_alias _id
+    local _file=$circuit_state_dir/all/$_id
+    local _rc=0
+    eval $_result=
+
+    circuit_read_lock $_id circuit_read_field
+    if [ -f $_file ]
+    then
+        eval $(sed -n "s/^$_field=/$_result=/p" $_file)
+    else
+        _rc=1
+    fi
+    circuit_read_unlock $_id circuit_read_field
+    return $_rc
+}
+
+# Creates a new circuit.
+# Input:
+#   $1 = variable receiving the circuit identifier
+#   $2 = variable receiving an error message (if any)
+# Output:
+#   ${$2} = circuit identifier
+# Exit code:
+#   0 if successful, a non-zero value otherwise (in the latter case, $2 is set
+#   to an error message)
+circuit_add()
+{
+    local _circid=$1 _errmsg=$2 _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd \
+                    create_circuit_message \
+                    create_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+
+        case $message_type in
+        ack_create_circuit_reply_message)
+            eval $_circid=\$ack_create_circuit_reply_message_id
+            return 0
+            ;;
+        nak_create_circuit_reply_message)
+            eval $_errmsg=\$nak_create_circuit_reply_message_errmsg
+            return 1
+            ;;
+        *)
+            eval $_errmsg="\"Unknown reply from circd of type $message_type\""
+            return 2
+            ;;
+        esac
+    else
+        eval $_errmsg="\"Timeout while waiting for a reply from circd\""
+        return 3
+    fi
+}
+
+# Starts a creation group. All circuits that are associated with a creation
+# group have their post-processing deferred to the moment when the creation
+# group ends. This is necessary e.g. for MRRU computation and firewall rule
+# installation where forward or circular references are possible.
+#
+# Input:
+#   $1 = variable receiving the identifier of the new creation group
+# Output:
+#   ${$1} = identifier of a new creation group
+# Exit code:
+#   0 if successful, a non-zero value otherwise
+circuit_start_creation_group()
+{
+    local _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd \
+                    start_creation_group_circuit_message \
+                    start_creation_group_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        eval $1=\$start_creation_group_circuit_reply_message_id
+        [ -n "$start_creation_group_circuit_reply_message_id" ]
+    else
+        return 1
+    fi
+}
+
+# Ends a creation group. Post-processing is performed for all circuits that
+# belong to this creation group.
+#
+# Input:
+#   $1 = creation group identifier
+circuit_end_creation_group()
+{
+    end_creation_group_circuit_message_id=$1 \
+    mom_unicast_message \
+        circd \
+        end_creation_group_circuit_message >/dev/null
+}
+
+# Instantiates a multi-instance circuit. If this circuit is part of a bundle,
+# the bundle is also cloned, providing a unique bundle for the new instance.
+# This requires the circuit to be cloned to have circ_multi=yes.
+#
+# The new circuit is an identical clone of the old one with the following
+# exceptions:
+# - circ_origin is set to the old circuit
+# - circ_name is set to the old circ_name, suffixed by ":" and a number which
+#   makes the name unique
+# - circ_up and circ_dialmode are set to "yes" and "auto", respectively
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = name of a function that may adapt the settings of the circuit before
+#        it is cloned
+#        - its most important task is to change $circ_type
+#        - if empty, "-instance" is simply appended to the circuit type
+#        - note that the variables mentioned above are already changed when
+#          this function is called
+#   $3 = user-defined value passed as first argument to the adaptor function
+#        specified in $2
+#   $4 = variable receiving the circuit identifier of the new instance
+#   $5 = variable receiving an error message (if any)
+# Output:
+#   ${$4} = circuit identifier
+# Exit code:
+#   0 if successful
+#   1 if circ_multi is not "yes" for the circuit to be cloned
+#   2 if the associated bundle circuit could not be cloned (can only happen to
+#     circuits which are part of a bundle)
+#   3 if the circuit itself could not be cloned
+#   In case of any failure, $5 is set to an error message.
+circuit_clone()
+{
+    local _id=$1 _adaptor=$2 _arg=$3 _res=$4 _errvar=$5
+    if _result=$(clone_circuit_message_id=$_id \
+                 clone_circuit_message_adaptor=$_adaptor \
+                 clone_circuit_message_adaptor_arg=$_arg \
+                 mom_unicast_message_and_receive_reply \
+                    circd \
+                    clone_circuit_message \
+                    clone_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+
+        case $message_type in
+        ack_clone_circuit_reply_message)
+            eval $_res=\$ack_clone_circuit_reply_message_id
+            return 0
+            ;;
+        nak_clone_circuit_reply_message)
+            eval $_errvar=\$nak_clone_circuit_reply_message_errmsg
+            return 1
+            ;;
+        *)
+            eval $_errvar="\"Unknown reply from circd of type $message_type\""
+            return 2
+            ;;
+        esac
+    else
+        eval $_errvar="\"Timeout while waiting for a reply from circd\""
+        return 3
+    fi
+}
+
+# Attaches a circuit to a bundle. This is necessary for servers where bundle
+# circuits have to be created on-the-fly.
+# Input:
+#   $1 = circuit identifier
+#   $2 = bundle circuit identifier
+# Exit code:
+#   0 if successful, 1 otherwise
+circuit_attach_to_bundle()
+{
+    attach_to_bundle_circuit_message_idchild=$1 \
+    attach_to_bundle_circuit_message_idbundle=$2 \
+    mom_unicast_message \
+        circd \
+        attach_to_bundle_circuit_message >/dev/null
+}
+
+# Returns all links attached to a bundle circuit.
+# Input:
+#   $1 = bundle circuit identifier
+# Output:
+#   one entry for each circuit that is part of the bundle passed
+circuit_get_bundle_links()
+{
+    local id=$1
+    circuit_resolve_alias id
+    sync_lock_resource bundle_db circuit_get_bundle_links
+    sed -n "s/^$id \(.*\)$/\1/p" $links_file
+    sync_unlock_resource bundle_db circuit_get_bundle_links
+    return 0
+}
+
+#############################################################
+# --------------------- A L I A S E S --------------------- #
+#############################################################
+
+# contains information about circuit aliases
+alias_file=/var/run/circuits/aliases
+
+# Registers a circuit alias.
+# Input:
+#   $1 = circuit alias
+#   $2 = circuit identifier the alias points to
+# Exit code:
+#   0 if successful, a non-zero value otherwise
+circuit_register_alias()
+{
+    local alias=$1 circ_id=$2 rc=1
+    local alias_regex=$(echo "$alias" | sed 's,/,\\/,g')
+    sync_lock_resource alias_db circuit_register_alias
+    if ! grep -q "^${alias_regex} " $alias_file
+    then
+        echo "$alias $circ_id" >> $alias_file
+        rc=0
+    fi
+    sync_unlock_resource alias_db circuit_register_alias
+    return $rc
+}
+
+# Deregisters a circuit alias.
+# Input:
+#   $1 = circuit alias
+# Exit code:
+#   always 0
+circuit_deregister_alias()
+{
+    local alias=$1
+    local alias_regex=$(echo "$alias" | sed 's,/,\\/,g')
+    sync_lock_resource alias_db circuit_deregister_alias
+    sed -i "/^${alias_regex} /d" $alias_file
+    sync_unlock_resource alias_db circuit_deregister_alias
+    return 0
+}
+
+# Looks up a circuit alias.
+# Input:
+#   $1 = circuit alias
+# Output:
+#   The circuit the alias maps to or the empty string if alias is not found.
+# Exit code:
+#   always 0
+circuit_lookup_alias()
+{
+    local alias=$1
+    local alias_regex=$(echo "$alias" | sed 's,/,\\/,g')
+    sync_lock_resource alias_db circuit_lookup_alias
+    sed -n "s/^${alias_regex} \(.*\)$/\1/p" $alias_file
+    sync_unlock_resource alias_db circuit_lookup_alias
+    return 0
+}
+
+# Resolves a circuit alias if possible. If passed alias is unknown, it is
+# returned unchanged.
+# Input:
+#   $1 = variable containing circuit alias
+# Output:
+#   ${$1} receives the circuit the alias maps to or remains unchanged if the
+#   alias is unknown.
+# Exit code:
+#   always 0
+circuit_resolve_alias()
+{
+    local _varname=$1
+    eval local _alias=\$${_varname}
+    local _circ_id=$(circuit_lookup_alias $_alias)
+    if [ -n "$_circ_id" ]
+    then
+        eval $_varname=\$_circ_id
+    fi
+    return 0
+}
+
+#############################################################
+# ------------------ D I A L   M O D E S ------------------ #
+#############################################################
+
+# Returns the global dial mode.
+#
+# Output:
+#   The dial mode.
+circuit_get_global_dialmode()
+{
+    local _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd \
+                    get_global_dialmode_message \
+                    get_global_dialmode_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        echo $get_global_dialmode_reply_message_mode
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Stores the global dial mode.
+#
+# Input:
+#   $1 = global dial mode
+circuit_set_global_dialmode()
+{
+    local mode=$1
+    set_global_dialmode_message_mode=$mode \
+    mom_unicast_message \
+        circd \
+        set_global_dialmode_message >/dev/null
+    return 0
+}
+
+# Returns the local dial mode for a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The circuit's local dial mode.
+circuit_get_local_dialmode()
+{
+    local id=$1 _result
+    if _result=$(get_local_dialmode_message_id=$id \
+                 mom_unicast_message_and_receive_reply \
+                    circd \
+                    get_local_dialmode_message \
+                    get_local_dialmode_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        echo $get_local_dialmode_reply_message_mode
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Stores the local dial mode for a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = circuit's local dial mode
+circuit_set_local_dialmode()
+{
+    local id=$1 mode=$2
+    set_local_dialmode_message_id=$id set_local_dialmode_message_mode=$mode \
+    mom_unicast_message \
+        circd \
+        set_local_dialmode_message >/dev/null
+    return 0
+}
+
+# Returns the effective dial mode for a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The dial mode.
+circuit_get_effective_dialmode()
+{
+    local id=$1 _result
+    if _result=$(get_effective_dialmode_message_id=$id \
+                 mom_unicast_message_and_receive_reply \
+                    circd \
+                    get_effective_dialmode_message \
+                    get_effective_dialmode_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        echo $get_effective_dialmode_reply_message_mode
+        return 0
+    else
+        return 1
+    fi
+}
+
+#############################################################
+# ---------------------- S T A T E S ---------------------- #
+#############################################################
+
+# contains information about the 'online' state of the router
+# this file is created by rc340.circuits
+router_state_file=/var/run/circuits/router-state
+
+# contains information which circuits control the 'online' state of the router
+# this file is created by rc340.circuits
+when_online_file=/var/run/circuits/when-online
+
+# Returns all circuits with a given state.
+#
+# Input:
+#   $1... = states
+# Output:
+#   A list of circuits belonging to passed states. May be empty.
+circuit_get_by_state()
+{
+    local states=$* _result
+    if _result=$(get_by_state_circuit_message_states=$states \
+                 mom_unicast_message_and_receive_reply \
+                    circd \
+                    get_by_state_circuit_message \
+                    get_by_state_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        echo $get_by_state_circuit_reply_message_circuits
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Returns the state of a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The circuit state.
+# Exit code:
+#   0 if circuit exists and has a known state, a nonzero value otherwise
+# Synchronization:
+#   Takes the state lock.
+circuit_get_state()
+{
+    local id=$1 _result
+    if _result=$(get_state_circuit_message_id=$id \
+                 mom_unicast_message_and_receive_reply \
+                    circd \
+                    get_state_circuit_message \
+                    get_state_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        echo $get_state_circuit_reply_message_state
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Associates passed circuit with passed layer-3 protocol and changes the
+# circuit's state accordingly ("online" if all configured layer-3 protocols are
+# up, else "semionline").
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol
+circuit_go_online_if_possible()
+{
+    local id=$1 l3prot=$2
+    circuit_event_id=$id \
+    l3prot_circuit_event_l3prot=$l3prot \
+    mom_unicast_message \
+        circd \
+        up_l3prot_circuit_event >/dev/null
+    return 0
+}
+
+# Disssociates passed circuit from passed layer-3 protocol and changes the
+# circuit's state accordingly ("semionline" if at least one other layer-3
+# protocol is up yet, else the circuit is hung up).
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol
+circuit_go_offline_if_necessary()
+{
+    local id=$1 l3prot=$2
+    circuit_event_id=$id \
+    l3prot_circuit_event_l3prot=$l3prot \
+    mom_unicast_message \
+        circd \
+        down_l3prot_circuit_event >/dev/null
+    return 0
+}
+
+# Determines whether a given layer-3 protocol is up for a given circuit
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol
+# Exit code:
+#   0 if the layer-3 protocol is up, 1 otherwise
+circuit_is_l3prot_up()
+{
+    local id=$1 l3prot=$2 circ_protocols_up res=1
+
+    circuit_read_field $id circ_protocols_up
+    [ "$circ_protocols_up" != "${circ_protocols_up/ $l3prot/}" ] && res=0
+
+    return $res
+}
+
+# Determines the online state for a given circuit and a given layer-3 protocol.
+# If no layer-3 protocol is given, all configured layer-3 protocols have to be
+# up for the circuit to be online.
+# Note that a circuit is not considered to be online if it is in the middle of
+# a hangup operation.
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (may be empty)
+# Exit code:
+#   0 if the circuit/layer-3 protocol combination is online, 1 otherwise
+# Synchronization:
+#   Takes a read lock on the circuit.
+circuit_is_online()
+{
+    local id=$1 l3prot=$2
+    if _result=$(is_online_circuit_message_id=$id \
+                is_online_circuit_message_l3prot=$l3prot \
+                mom_unicast_message_and_receive_reply \
+                    circd \
+                    is_online_circuit_message \
+                    is_online_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+        case $message_type in
+        ack_is_online_circuit_reply_message)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+        esac
+    else
+        return 2
+    fi
+}
+
+# Determines if a non-deleted circuit exists.
+#
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   0 if circuit exists and is not in state "deleted", a nonzero value otherwise
+circuit_usable()
+{
+    local id=$1
+    circuit_resolve_alias id
+    [ -f $circuit_state_dir/all/$id -a ! -f $circuit_state_dir/deleted/$id ]
+}
+
+#############################################################
+# --------------------- C L A S S E S --------------------- #
+#############################################################
+# A class groups certain circuit properties, namely:        #
+# - routed networks                                         #
+# - firewall rules                                          #
+# and gives them a unique name. Circuits can be associated  #
+# to one or more classes, which extends their routed        #
+# networks and firewall rules by those of the class. This   #
+# makes it possible to define properties which are common   #
+# to a set of circuits. For an example, think e.g. of a     #
+# class called "Internet" which routes 0.0.0.0/0 (i.e. is   #
+# a default gateway) and which contains firewall rules for  #
+# forwarding service requests to internal servers, e.g. to  #
+# a HTTP server.                                            #
+#                                                           #
+# Circuits can be substituted by classes in all situations  #
+# where multiple circuits cause no problems, e.g. in        #
+# - dependency lists (CIRC_x_DEPS)                          #
+# - firewall rules (CIRC_x_PF_...)                          #
+# - address prefixes                                        #
+#                                                           #
+# They are disallowed where a 1:n mapping cannot be handled #
+# properly, e.g. in                                         #
+# - network interfaces (circ_dev)                           #
+# - almost all circuit_* APIs like circuit_read_field()     #
+#                                                           #
+# Classes share the same namespace as circuit names,        #
+# identifiers, and aliases.                                 #
+#############################################################
+
+# mapps classes to circuits
+classes_file=/var/run/circuits/classes
+
+# Determines if a circuit class exists.
+#
+# Input:
+#   $1 = circuit class
+# Exit code:
+#   0 if circuit class exists, a nonzero value otherwise
+circuit_class_exists()
+{
+    local class=$1 rc
+    sync_lock_resource class_db circuit_add_to_class
+    grep -q "^$class:" $classes_file
+    rc=$?
+    sync_unlock_resource class_db circuit_add_to_class
+    return $rc
+}
+
+# Adds a circuit to a circuit class.
+# Input:
+#   $1 = circuit identifier
+#   $2 = circuit class
+circuit_add_to_class()
+{
+    local id=$1 class=$2
+    circuit_resolve_alias id
+
+    sync_lock_resource class_db circuit_add_to_class
+    if grep -q "^$class:" $classes_file
+    then
+        sed -i "s/^\($class:.*\)$/\1 $id/" $classes_file
+    else
+        echo "$class: $id" >> $classes_file
+    fi
+    sync_unlock_resource class_db circuit_add_to_class
+}
+
+# Removes a circuit from a circuit class.
+# Input:
+#   $1 = circuit identifier
+#   $2 = circuit class
+circuit_remove_from_class()
+{
+    local id=$1 class=$2
+    circuit_resolve_alias id
+
+    sync_lock_resource class_db circuit_remove_from_class
+    sed -i "s/^\($class:.*\) $id\( .*\)\?$/\1\2/" $classes_file
+    sync_unlock_resource class_db circuit_remove_from_class
+}
+
+# Retrieves the circuits belonging to some circuit class.
+# Input:
+#   $1 = circuit class
+# Output:
+#   A list of circuits belonging to this class. This list may be empty.
+circuit_get_class_members()
+{
+    local class=$1
+    sync_lock_resource class_db circuit_get_class_members
+    sed -n "s/^$class: //p" $classes_file
+    sync_unlock_resource class_db circuit_get_class_members
+}
+
+# Resolves a list of circuit aliases, names, or classes to circuit identifiers.
+# Aliases and names are tried first, then classes. Unknown entities are left
+# as-is.
+# Input:
+#   $1... = circuit identifier, alias, name, or a circuit class
+# Output:
+#   A list of circuit identifiers. This list may be empty only if the list
+#   passed is empty or if empty groups are passed.
+#   The list is sorted and does not contain duplicates.
+circuit_resolve()
+{
+    local id
+    for id
+    do
+        circuit_resolve_alias id
+        if circuit_class_exists $id
+        then
+            circuit_get_class_members $id | sed 's/[[:space:]]\+/\n/g'
+        else
+            echo $id
+        fi
+    done | sort -unk 1.$((circuit_prefix_len+1))
+}
+
+#############################################################
+# --------------------- N E T W O R K --------------------- #
+#############################################################
+
+# contains information which local address is used by which circuit
+local_addresses_file=/var/run/circuits/local-addresses
+
+# contains information which network prefix is provided by which circuit
+# this file is maintained by ip-up/down
+prefixes_file=/var/run/circuits/net-prefixes
+
+# contains information which network is routed by which circuit
+# this file is maintained by ip-up-down
+routed_nets_file=/var/run/circuits/routed-nets
+
+# contains information which route is maintained by which circuit
+# this file is maintained by ip-up-down
+routes_file=/var/run/circuits/routes
+
+# Translates an interface specification. This is either a fixed interface
+# (e.g. eth0 or ppp2) or a circuit name in braces (e.g. {LAN}). In the latter
+# case, the circuit's interface is returned, possibly recursively translated
+# by this function again.
+#
+# For convenience, this function also accepts prefixed addresses, i.e.
+# '{LAN}+::1/64', as circuit_resolve_address() does. In this case the circuit
+# name put into braces is extracted and translated as described above.
+#
+# Note that supplying a class name is _not_ supported. This is because a class
+# can potentially map to different interfaces, and a circuit can only have
+# exactly one interface.
+#
+# Input:
+#   $1 = interface to be translated
+# Output:
+#   resulting interface or the empty string if translation was unsuccessful
+#   (e.g. if the reference structure is cyclic)
+# Exit code:
+#   zero if the translation is successful and returns a non-empty string,
+#   else a non-zero value
+circuit_get_interface()
+{
+    local if=$1
+    shift
+
+    case $if in
+    {*}*)
+        local circ=$(echo "$if" | sed -n 's/^{\([^}]*\)}.*$/\1/p')
+        local c
+        for c
+        do
+            # detect cycles
+            [ "$c" = "$circ" ] && return 1
+        done
+
+        local circ_dev
+        circuit_read_field $circ circ_dev
+        if [ -n "$circ_dev" ]
+        then
+            circuit_get_interface $circ_dev $* $circ
+        else
+            return 1
+        fi
+        ;;
+    *)
+        echo "$if"
+        ;;
+    esac
+}
+
+# Registers a network prefix with a circuit. A circuit can be associated with
+# multiple prefixes (the layer-3 protocols of which may be equal). If a prefix
+# is registered with a limited lifetime, a timer is started. As soon as the
+# lifetime of the prefix is reached, the prefix is removed again using
+# /etc/ppp/prefix-down.
+#
+# If the prefix has already been registered with passed circuit and layer-3
+# protocol, its lifetime is updated, i.e. the prefix timer is restarted.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+#   $3 = network prefix to register
+#   $4 = valid lifetime in seconds
+#   $5 = preferred lifetime in seconds
+circuit_register_prefix()
+{
+    local id=$1 l3prot=$2 prefix=$3 valid_lft=$4 preferred_lft=$5 \
+        now=$(date +%s)
+    circuit_resolve_alias id
+    sync_lock_resource_for_writing prefixes_db circuit_register_prefix
+    if grep -q "^$id $l3prot $prefix " $prefixes_file
+    then
+        circuit_deregister_prefix $id $l3prot $prefix
+    fi
+    echo "$id $l3prot $prefix $now $valid_lft $preferred_lft" >> $prefixes_file
+    if [ "$valid_lft" != "forever" ]
+    then
+        local circ_dev prefix_id="$id-prefix-$prefix" script=
+        case $l3prot in
+        ipv4) script=/etc/ppp/prefix-down;;
+        ipv6) script=/etc/ppp/prefixv6-down;;
+        esac
+        circuit_read_field $id circ_dev
+        atd.sh add @$((now+valid_lft)) "$script \"$circ_dev\" \"$circ_id\" \"$prefix\"" "$prefix_id"
+    fi
+    sync_unlock_resource_for_writing prefixes_db circuit_register_prefix
+}
+
+# Find an atd job for a given prefix ID.
+# Input:
+#   $1 = prefix ID to look up
+# Output:
+#   The file name designating the corresponding atd job or nothing if not found.
+circuit_find_atd_job_for_prefix()
+{
+    local prefix_id=$1
+    atd.sh list | while read -r line
+    do
+        # sets "comment" and "filename", among others
+        eval $line
+        if [ "$comment" = "$prefix_id" ]
+        then
+            echo "$filename"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Deregisters a network prefix from a circuit. If the prefix has not been
+# registered with passed circuit and layer-3 protocol, nothing happens. A
+# possibly existing outstanding timer is cancelled.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+#   $3 = network prefix to deregister
+circuit_deregister_prefix()
+{
+    local id=$1 l3prot=$2 prefix=$3
+    local prefix_regex=$(echo "$prefix" | sed 's,/,\\/,g')
+    circuit_resolve_alias id
+
+    sync_lock_resource_for_writing prefixes_db circuit_deregister_prefix
+    sed -i "/^$id $l3prot $prefix_regex /d" $prefixes_file
+    local prefix_id="$id-prefix-$prefix"
+    local filename=$(circuit_find_atd_job_for_prefix "$prefix_id")
+    [ -n "$filename" ] && atd.sh remove "$filename"
+    sync_unlock_resource_for_writing prefixes_db circuit_deregister_prefix
+}
+
+# Computes the remaining valid and preferred lifetimes of a given prefix.
+#
+# Input:
+#   $1 = network prefix
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+# Output:
+#   The following two fields:
+#     - the remaining valid lifetime in seconds or "forever"
+#     - the remaining preferred lifetime in seconds or "forever"
+#   If the prefix is unknown, the empty string is returned.
+circuit_get_remaining_prefix_lifetimes()
+{
+    local prefix=$1 l3prot=${2:-"[^ ]\\+"}
+    local prefix_regex=$(echo "$prefix" | sed 's,/,\\/,g')
+
+    sync_lock_resource_for_writing prefixes_db circuit_get_remaining_prefix_lifetimes
+    set -- $(sed -n "s/^[^ ]\+ $l3prot $prefix_regex \([^ ]\+ [^ ]\+ [^ ]\+\).*/\1 \2/p" $prefixes_file)
+    sync_unlock_resource_for_writing prefixes_db circuit_get_remaining_prefix_lifetimes
+
+    if [ -n "$1" -a -n "$2" -a -n "$3" ]
+    then
+        local now=$(date +%s)
+        if [ "$2" = "forever" ]
+        then
+            echo $2
+        else
+            end_valid=$(($1+$2))
+            [ $end_valid -gt $now ] && echo $((end_valid-now)) || echo 0
+        fi
+        if [ "$3" = "forever" ]
+        then
+            echo $3
+        else
+            end_pref=$(($1+$3))
+            [ $end_pref -gt $now ] && echo $((end_pref-now)) || echo 0
+        fi
+    fi
+}
+
+# Maps a circuit to all associated network prefixes.
+# Input:
+#   $1 = circuit identifier or class
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+# Output:
+#   A list of all associated network prefixes. For each prefix, a line with
+#   prefix, start, valid lifetime in seconds, and preferred lifetime in seconds
+#   is returned, where "start" is an absolute time point (number of seconds
+#   since epoch). The list is empty if the circuit is unknown or if no prefixes
+#   are associated with it.
+circuit_get_prefixes()
+{
+    local id=$1 l3prot=${2:-"[^ ]\\+"} circ
+
+    sync_lock_resource_for_reading prefixes_db circuit_prefix_get
+    for circ in $(circuit_resolve $id)
+    do
+        sed -n "s/^$circ $l3prot //p" $prefixes_file
+    done
+    sync_unlock_resource_for_reading prefixes_db circuit_prefix_get
+}
+
+# Maps a prefixed address to the prefix and associated information.
+# Input:
+#   $1 = prefixed address
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+# Output:
+#   A line of the format:
+#     <id> <prefix> <start> <valid_lft> <preferred_lft>
+#   where
+#     "id" identifies the circuit that registered the prefix in question
+#     "start" is an absolute time point (number of seconds since epoch) when
+#       the prefix started to be valid
+#     "valid_lft" is the prefix's valid lifetime in seconds
+#     "preferred_lft" is the prefix's preferred lifetime in seconds
+#   The function returns the empty string if no such circuit could be found.
+circuit_get_prefix_by_address()
+{
+    local addr=$1 l3prot=${2:-"[^ ]\\+"}
+
+    sync_lock_resource_for_reading prefixes_db circuit_prefix_get
+    sed -n "s/^\([^ ]\+\) $l3prot \(.*\)$/\1 \2/p" $prefixes_file |
+        while read id prefix now valid_lft preferred_lft
+        do
+            prefixlen=${prefix##*/}
+            addrprefix=$(netcalc network $addr/$prefixlen)/$prefixlen
+            if [ "$addrprefix" = "$prefix" ]
+            then
+                echo "$id $prefix $now $valid_lft $preferred_lft"
+                break
+            fi
+        done
+    sync_unlock_resource_for_reading prefixes_db circuit_prefix_get
+}
+
+# Maps a prefixed address to its valid and preferred lifetimes.
+# Input:
+#   $1 = address
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+#   $3 = desired valid lifetime
+#   $4 = desired preferred lifetime
+# Output:
+#   The following two fields:
+#     - the valid lifetime of the address in seconds or "forever"
+#     - the preferred lifetime of address in seconds or "forever"
+#   If a prefix has been recognized, the lifetimes returned are the respective
+#   minimum of the corresponding prefix and desired lifetimes. That means that
+#   lifetimes cannot be extended, only shortened.
+#   If no prefix can be recognized, the desired lifetimes are returned "as is".
+#   If some desired lifetime is missing, "forever" is assumed.
+circuit_get_address_lifetimes()
+{
+    local addr=$1 l3prot=$2 validlft=${3:-forever} preflft=${4:-forever}
+    set -- $(circuit_get_prefix_by_address "$addr" $l3prot)
+    local prefix=$2
+    if [ -n "$prefix" ]
+    then
+        set -- $(circuit_get_remaining_prefix_lifetimes "$prefix" $l3prot)
+        if [ -n "$1" -a -n "$2" ]
+        then
+            validlft=$(circuit_get_minimum_lifetime $1 $validlft)
+            preflft=$(circuit_get_minimum_lifetime $2 $preflft)
+        else
+            # prefix found, but no lifetimes: it must have expired just now
+            validlft=0
+            preflft=0
+        fi
+    fi
+    echo $validlft $preflft
+}
+
+# Computes the minimum lifetime.
+# Input:
+#   $1... = lifetimes
+# Output:
+#   The minimum lifetime of the lifetimes passed.
+#   If no lifetimes have been passed, "forever" is returned (being the greatest
+#   lower bound of the empty set of lifetimes).
+circuit_get_minimum_lifetime()
+{
+    local min=forever lifetime
+    for lifetime
+    do
+        [ "$lifetime" != forever ] || continue
+        if [ $min = forever ] || [ $lifetime -lt $min ]
+        then
+            min=$lifetime
+        fi
+    done
+    echo $min
+}
+
+# Maps an address to the circuits it depends on. Circuit classes are resolved
+# immediately.
+# Input:
+#   $1 = address
+# Output:
+#   List of circuits the address depends on. May be empty.
+# Example:
+#   circuit_get_address_dependees "{LAN}+::1:0:0:0:1/64" returns "LAN" if "LAN"
+#   is a circuit, and the members of "LAN" if it is a circuit class. It returns
+#   the empty string if "LAN" is neither a circuit nor a circuit class.
+#   circuit_get_address_dependees "2001:db8:1234::/48" returns the empty string
+#   as the address is not dependent on any circuits.
+circuit_get_address_dependees()
+{
+    local address=$1
+    local id=$(echo "$address" | sed -n 's/^{\([^}]*\)}.*$/\1/p')
+    [ -n "$id" ] && circuit_resolve $id
+}
+
+# Performs various address translations. The following syntax is supported:
+#
+# Input                  | Type       | Output
+# ------------------------------------+---------------------------------------
+# <literal address>      | literal    | as is
+# ------------------------------------+---------------------------------------
+# {<id>}                 | literal    | same as {<id>.local}
+# ------------------------------------+---------------------------------------
+# {<id>.local}           | projection | extracts the local addresses of the
+#                        |            | circuit <id> (with network mask);
+#                        |            | <id> must be a circuit id
+# ------------------------------------+---------------------------------------
+# {<id>.remote}          | projection | extracts the routed networks of the
+#                        |            | circuit <id> (with network mask);
+#                        |            | <id> must be a circuit id
+# ------------------------------------+---------------------------------------
+# {<id>.prefix}          | projection | extracts the prefixes associated with
+#                        |            | <id> (with network mask);
+#                        |            | <id> must be a circuit id
+# ------------------------------------+---------------------------------------
+# <expr>#ipv4            | operator   | evaluates <expr>;
+#                        |            | non-IPv4 resulting addresses are
+#                        |            | removed
+# ------------------------------------+---------------------------------------
+# <expr>#ipv6            | operator   | evaluates <expr>;
+#                        |            | non-IPv6 resulting addresses are
+#                        |            | removed
+# ------------------------------------+---------------------------------------
+# <expr>#address         | operator   | evaluates <expr>;
+#                        |            | for each resulting address, the
+#                        |            | network mask is stripped off
+# ------------------------------------+---------------------------------------
+# <expr>#net             | operator   | evaluates <expr>;
+#                        |            | for each resulting address, the host
+#                        |            | part is set to zero, and a network
+#                        |            | mask is added if missing
+# ------------------------------------+---------------------------------------
+# <expr>#host            | operator   | evaluates <expr>;
+#                        |            | for each resulting address, the
+#                        |            | network part is set to zero, and a
+#                        |            | network mask is added if missing
+# ------------------------------------+---------------------------------------
+# <expr1>+<expr2>        | operator   | evaluates <expr>;
+#                        |            | each resulting address of <expr1>
+#                        |            | is combined with each resulting
+#                        |            | address of <expr2>; this only succeeds
+#                        |            | if the address families are compatible
+#                        |            | and if the address parts do not
+#                        |            | overlap
+#
+# All resulting addresses are finally filtered by layer-3 protocol. If no
+# layer-3 protocol is supplied, all IP addresses are returned (but non-IP
+# addresses are filtered out).
+#
+# If a {<id>} literal is used without a projection, the context is used as
+# projection. If no context is passed, 'local' is used as default.
+#
+# In the following examples, there is a circuit 'LAN' which is assigned the
+# local addresses 192.168.11.4/24 and 2001:db8:11::4/64, a circuit 'WAN' which
+# is assigned the local addresses 192.0.2.2/32 and fe80::2/128, and a circuit
+# 'DHCP', which is assigned the prefixes 172.16.0.0/14 and 2001:db8:12::/48.
+# Over the circuit 'WAN', both the networks '0.0.0.0/0' and '::/0' are routed.
+#
+# Input                  | Output
+# -----------------------+----------------------------------------------------
+# 1.2.3.4                | 1.2.3.4
+# 1.2.3.4 ipv4           | 1.2.3.4
+# 1.2.3.4 ipv6           |
+# 1.2.3.4/24             | 1.2.3.4/24
+# 1.2.3.4/24 ipv4        | 1.2.3.4/24
+# 1.2.3.4/24 ipv6        |
+# ::1234                 | ::1234
+# ::1234 ipv4            |
+# ::1234 ipv6            | ::1234
+# ::1234/64              | ::1234/64
+# ::1234/64 ipv4         |
+# ::1234/64 ipv6         | ::1234/64
+# {LAN}                  | 192.168.11.4/24 2001:db8:11::4/64
+# {LAN}#ipv4             | 192.168.11.4/24
+# {LAN}#ipv6             | 2001:db8:11::4/64
+# {LAN.local}            | 192.168.11.4/24 2001:db8:11::4/64
+# {LAN.local}#ipv4       | 192.168.11.4/24
+# {LAN.local}#ipv6       | 2001:db8:11::4/64
+# {LAN.remote}           |
+# {LAN.prefix}           |
+# {WAN}                  | 192.0.2.2/32 fe80::2/128
+# {WAN.local}            | 192.0.2.2/32 fe80::2/128
+# {WAN.remote}           | 0.0.0.0/0 ::/0
+# {WAN.remote}#ipv4      | 0.0.0.0/0
+# {WAN.remote}#ipv6      | ::/0
+# {WAN.prefix}           |
+# {DHCP}                 |
+# {DHCP.local}           |
+# {DHCP.remote}          |
+# {DHCP.prefix}          | 172.16.0.0/14 2001:db8:12::/48
+# {DHCP.prefix}#ipv4     | 172.16.0.0/14
+# {DHCP.prefix}#ipv6     | 2001:db8:12::/48
+# {LAN}#address          | 192.168.11.4 2001:db8:11::4
+# {LAN}#address#ipv4     | 192.168.11.4
+# {LAN}#address#ipv6     | 2001:db8:11::4
+# {LAN}#ipv4#address     | 192.168.11.4
+# {LAN}#ipv6#address     | 2001:db8:11::4
+# {LAN.local}#address    | 192.168.11.4 2001:db8:11::4
+# {WAN}#address          | 192.0.2.2 fe80::2
+# {WAN.local}#address    | 192.0.2.2 fe80::2
+# {WAN.remote}#address   | 0.0.0.0 ::
+# {DHCP.prefix}#address  | 172.16.0.0 2001:db8:12::
+# {LAN}#net              | 192.168.11.0/24 2001:db8:11::/64
+# {LAN}#net#ipv4         | 192.168.11.0/24
+# {LAN}#net#ipv6         | 2001:db8:11::/64
+# {LAN}#ipv4#net         | 192.168.11.0/24
+# {LAN}#ipv6#net         | 2001:db8:11::/64
+# {LAN.local}#net        | 192.168.11.0/24 2001:db8:11::/64
+# {WAN}#net              | 192.0.2.2/32 fe80::2/128
+# {WAN.local}#net        | 192.0.2.2/32 fe80::2/128
+# {WAN.remote}#net       | 0.0.0.0/0 ::/0
+# {DHCP.prefix}#net      | 172.16.0.0/14 2001:db8:12::/48
+# {LAN}#host             | 0.0.0.4/24 ::4/64
+# {LAN}#host#ipv4        | 0.0.0.4/24
+# {LAN}#host#ipv6        | ::4/64
+# {LAN}#ipv4#host        | 0.0.0.4/24
+# {LAN}#ipv6#host        | ::4/64
+# {LAN.local}#host       | 0.0.0.4/24 ::4/64
+# {WAN}#host             | 0.0.0.0/32 ::/128
+# {WAN.local}#host       | 0.0.0.0/32 ::/128
+# {WAN.remote}#host      | 0.0.0.0/0 ::/0
+# {DHCP.prefix}#host     | 0.0.0.0/14 ::/48
+circuit_resolve_address()
+{
+    local address=$1 l3prot=$2 context=${3:-local} result
+    case $address in
+    # operator: combine prefix and (tail) address
+    *+*)
+        local prefix suffix
+        for prefix in $(circuit_resolve_address "${address%+*}" "$l3prot" prefix)
+        do
+            for suffix in $(circuit_resolve_address ${address##*+} "$l3prot" $context)
+            do
+                case $suffix in
+                '')
+                    result="$result $prefix"
+                    ;;
+                */*)
+                    local prefixlen=${prefix##*/}
+                    local suffixlen=${suffix##*/}
+                    if [ $prefixlen -le $suffixlen ]
+                    then
+                        local combined=$(netcalc combine $prefix ${suffix%/*} 2>/dev/null)
+                        if [ -n "$combined" ]
+                        then
+                            result="$result ${combined%/*}/$suffixlen"
+                        #else: prefix and suffix overlap
+                        fi
+                    #else: prefix longer than network part of address, ignore it
+                    fi
+                    ;;
+                *)
+                    local combined=$(netcalc combine $prefix $suffix 2>/dev/null)
+                    result="$result ${combined%/*}"
+                    ;;
+                esac
+            done
+        done
+        ;;
+    # operator: evaluate in IPv4 context
+    *#ipv4)
+        result=$(circuit_resolve_address "${address%#*}" ipv4 $context)
+        ;;
+    # operator: evaluate in IPv6 context
+    *#ipv6)
+        result=$(circuit_resolve_address "${address%#*}" ipv6 $context)
+        ;;
+    # operator: strip off network mask
+    *#address)
+        local addr
+        for addr in $(circuit_resolve_address "${address%#*}" "$l3prot" $context)
+        do
+            addr=$(netcalc canonicalize $addr 2>/dev/null)
+            result="$result ${addr%/*}"
+        done
+        ;;
+    # operator: add network mask if missing, set host part to zero
+    *#net)
+        local addr
+        for addr in $(circuit_resolve_address "${address%#*}" "$l3prot" $context)
+        do
+            addr=$(netcalc canonicalize "$addr" 2>/dev/null)
+            result="$result $(netcalc network $addr 2>/dev/null)/${addr##*/}"
+        done
+        ;;
+    # operator: add network mask if missing, set network part to zero
+    *#host)
+        local addr
+        for addr in $(circuit_resolve_address "${address%#*}" "$l3prot" $context)
+        do
+            addr=$(netcalc canonicalize "$addr" 2>/dev/null)
+            result="$result $(netcalc host $addr 2>/dev/null)/${addr##*/}"
+        done
+        ;;
+    # user-defined operator
+    *#*)
+        local prefix=${address%#*} op=${address##*#} func
+        for func in $circuit_resolve_address_operators
+        do
+            result=$($func "$prefix" "$op" "$l3prot" $context) && break
+        done
+        ;;
+    {*})
+        set -- $(echo "$address" | sed -n 's/^{\([^.]*\)\(.*\)}$/\1 \2/p')
+        local id=$1 tail=${2:-".${context}"}
+        [ -n "$id" ] || return 1
+
+        case $tail in
+        # circuit projection: prefixes
+        .prefix)
+            result=$(circuit_get_prefixes $id "$l3prot" | cut -d' ' -f 1)
+            ;;
+        # circuit projection: local addresses (with network mask)
+        .local)
+            result=$(circuit_get_local_addresses $id "$l3prot")
+            ;;
+        # circuit projection: routed networks
+        .remote)
+            result=$(circuit_get_routed_networks $id "$l3prot")
+            ;;
+        # user-defined circuit projection
+        *)
+            local func
+            for func in $circuit_resolve_address_projections
+            do
+                result=$($func $id "$tail" "$l3prot" $context) && break
+            done
+            ;;
+        esac
+        ;;
+    *)
+        # call user-defined translation to parse and interpret address;
+        # if no translation succeeds, the result is left as is
+        result=$address
+
+        local func
+        for func in $circuit_resolve_address_translations
+        do
+            result=$($func "$address" "$l3prot" $context) && break
+            result=$address
+        done
+
+        if [ "$result" != "$address" ]
+        then
+            # call ourselves recursively with translated input; this is useful
+            # if some user-defined translation generates something that is not
+            # a simple address but needs to be translated a second time
+            result=$(list_foreach "circuit_resolve_address \"\$1\" \"\$l3prot\" \$context" $result)
+        fi
+        ;;
+    esac
+
+    for address in $result
+    do
+        case $l3prot in
+        '')
+            netcalc isip "${address%/*}" 2>/dev/null && echo "$address"
+            ;;
+        *)
+            netcalc is${l3prot} "${address%/*}" 2>/dev/null && echo "$address"
+            ;;
+        esac
+    done
+}
+
+circuit_resolve_address_operators=
+circuit_resolve_address_projections=
+circuit_resolve_address_translations=
+
+# Registers a user-defined operator for circuit_resolve_address().
+#
+# Input:
+#   $1 = name of operator function, which has the following interface:
+#        Input:
+#          $1 = address prefix without operator
+#          $2 = operator to handle
+#          $3 = layer-3 protocol (may be empty to match everything)
+#          $4 = context (never empty)
+#        Output:
+#          resulting address or the empty string if not successful
+#        Exit code:
+#          0   if operator succeeded
+#          !=0 if operator failed and the next operator should be tried
+circuit_register_resolve_address_operator()
+{
+    local oeprator=$1
+    circuit_resolve_address_operators="$circuit_resolve_address_operators $oeprator"
+}
+
+# Registers a user-defined circuit projection for circuit_resolve_address().
+#
+# Input:
+#   $1 = name of projection function, which has the following interface:
+#        Input:
+#          $1 = identifier within braces
+#          $2 = projection to translate (e.g. ".local")
+#          $3 = layer-3 protocol (may be empty to match everything)
+#          $4 = context (never empty)
+#        Output:
+#          resulting address or the empty string if not successful
+#        Exit code:
+#          0   if projection succeeded
+#          !=0 if projection failed and the next projection should be tried
+circuit_register_resolve_address_projection()
+{
+    local projection=$1
+    circuit_resolve_address_projections="$circuit_resolve_address_projections $projection"
+}
+
+# Registers a user-defined translation for circuit_resolve_address().
+#
+# Input:
+#   $1 = name of translation function, which has the following interface:
+#        Input:
+#          $1 = address to translate
+#          $2 = layer-3 protocol (may be empty to match everything)
+#          $3 = context (never empty)
+#        Output:
+#          resulting address or the empty string if not successful
+#        Exit code:
+#          0   if translation succeeded
+#          !=0 if translation failed and the next translation should be tried
+circuit_register_resolve_address_translation()
+{
+    local translation=$1
+    circuit_resolve_address_translations="$circuit_resolve_address_translations $translation"
+}
+
+# include circuit_resolve_address extensions
+for f in /usr/share/circuits/cra-ext/*
+do
+    [ -f $f ] && . $f
+done
+
+# Associates a local address with a circuit.
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+#   $3 = local address
+circuit_register_local_address()
+{
+    local id=$1 l3prot=$2 addr=$3
+    circuit_resolve_alias id
+    sync_lock_resource_for_writing local_addresses_db circuit_register_local_address
+    echo "$id $l3prot $addr" >> $local_addresses_file
+    sync_unlock_resource_for_writing local_addresses_db circuit_register_local_address
+}
+
+# Disassociates a local address from a circuit.
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+#   $3 = local address
+circuit_deregister_local_address()
+{
+    local id=$1 l3prot=$2 addr=$(echo "$3" | sed 's,/,\\/,g')
+    circuit_resolve_alias id
+    sync_lock_resource_for_writing local_addresses_db circuit_deregister_local_address
+    sed -i "/^$id $l3prot $addr$/d" $local_addresses_file
+    sync_unlock_resource_for_writing local_addresses_db circuit_deregister_local_address
+}
+
+# Maps a circuit to all local addresses associated with it.
+# Input:
+#   $1 = circuit identifier or class
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+# Output:
+#   A list of all associated local addresses. It is empty if the circuit is
+#   unknown or if no local addresses are associated with it.
+circuit_get_local_addresses()
+{
+    local id=$1 l3prot=${2:-[^ ]\\+}
+
+    sync_lock_resource_for_reading local_addresses_db circuit_get_local_addresses
+    for circ in $(circuit_resolve $id)
+    do
+        sed -n "s/^$circ $l3prot //p" $local_addresses_file
+    done
+    sync_unlock_resource_for_reading local_addresses_db circuit_get_local_addresses
+}
+
+# Returns all local addresses associated with the router.
+# Input:
+#   $1 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+# Output:
+#   A list of all associated local addresses.
+circuit_get_all_local_addresses()
+{
+    local l3prot=${1:-[^ ]\\+}
+
+    sync_lock_resource_for_reading local_addresses_db circuit_get_local_addresses
+    sed -n "s/^[^ ]\+ $l3prot //p" $local_addresses_file
+    sync_unlock_resource_for_reading local_addresses_db circuit_get_local_addresses
+}
+
+# Associates a routed network with a circuit.
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+#   $3 = routed network
+circuit_register_routed_network()
+{
+    local id=$1 l3prot=$2 net=$3
+    circuit_resolve_alias id
+    sync_lock_resource_for_writing routed_nets_db circuit_register_routed_network
+    echo "$id $l3prot $net" >> $routed_nets_file
+    sync_unlock_resource_for_writing routed_nets_db circuit_register_routed_network
+}
+
+# Disassociates a routed network from a circuit.
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+#   $3 = routed network
+circuit_deregister_routed_network()
+{
+    local id=$1 l3prot=$2 net=$(echo "$3" | sed 's,/,\\/,g')
+    circuit_resolve_alias id
+    sync_lock_resource_for_writing routed_nets_db circuit_deregister_routed_network
+    sed -i "/^$id $l3prot $net$/d" $routed_nets_file
+    sync_unlock_resource_for_writing routed_nets_db circuit_deregister_routed_network
+}
+
+# Maps a circuit to all networks routed through it.
+# Input:
+#   $1 = circuit identifier or class
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6, may be empty to match everything)
+# Output:
+#   A list of all associated routed networks. It is empty if the circuit is
+#   unknown or if no networks are routed through it.
+circuit_get_routed_networks()
+{
+    local id=$1 l3prot=${2:-[^ ]\\+}
+
+    sync_lock_resource_for_reading routed_nets_db circuit_get_routed_networks
+    for circ in $(circuit_resolve $id)
+    do
+        sed -n "s/^$circ $l3prot //p" $routed_nets_file
+    done
+    sync_unlock_resource_for_reading routed_nets_db circuit_get_routed_networks
+}
+
+# Maps a routed network to all circuits which have installed a route to this
+# network.
+# Input:
+#   $1 = routed network
+#   $2 = layer-3 protocol (e.g. ipv4 or ipv6)
+# Output:
+#   A list of all circuits which have been associated with passed network.
+circuit_find_by_routed_network()
+{
+    local net=$(echo "$1" | sed 's,/,\\/,g') l3prot=$2
+    sync_lock_resource_for_reading routed_nets_db circuit_find_by_routed_network
+    sed -n "s/^\([^ ]\+\) $l3prot $net$/\1/p" $routed_nets_file
+    sync_unlock_resource_for_reading routed_nets_db circuit_find_by_routed_network
+}
+
+# Adds a route for a circuit and remembers it in $routes_file. If a route for
+# the same network (and with the same metric) but using a different gateway or
+# device already exists, the new route is added anyway and overrides the old
+# route.
+# Input:
+#   $1 = circuit identifier
+#   $2 = protocol (4 or 6)
+#   $3 = route
+circuit_add_route()
+{
+    local id=$1 prot=$2 route=$3
+    circuit_resolve_alias id
+    sync_lock_resource routes_db circuit_add_route
+    ip -$prot route append $route
+    echo "$id $2 $3" >> $routes_file
+    sync_unlock_resource routes_db circuit_add_route
+}
+
+# Removes all routes for a circuit and a given protocol.
+# Input:
+#   $1 = circuit identifier
+#   $2 = protocol (4 or 6)
+circuit_remove_routes()
+{
+    local id=$1
+    circuit_resolve_alias id
+    local dummy prot route
+    sync_lock_resource routes_db circuit_remove_routes
+    grep "^$id $2 " $routes_file | while read dummy prot route
+    do
+        ip -$prot route del $route 2>/dev/null
+    done
+    sed -i "/^$id $2 /d" $routes_file
+    sync_unlock_resource routes_db circuit_remove_routes
+}
+
+#############################################################
+# --------------------- D A E M O N S --------------------- #
+#############################################################
+
+# contains information which daemon is associated with which circuit
+daemons_file=/var/run/circuits/daemons
+
+# Terminates the daemon controlling a circuit if not already done so.
+# Input:
+#   $1 = circuit identifier
+#   $2 = (optional) signal name, e.g. HUP. If nothing is passed, TERM is used.
+circuit_daemon_terminate()
+{
+    local id=$1 signal=$2
+
+    stop_daemon_circuit_message_id=$id \
+    stop_daemon_circuit_message_signal=$signal \
+    mom_unicast_message \
+        circd \
+        stop_daemon_circuit_message >/dev/null
+}
+
+# Circuit daemon wrapper. Starts a daemon, waits for it to exit, sets the
+# correct state after termination and takes care of the PID file. Note that
+# the script assumes that the daemon does not fork itself into the background!
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = name of the daemon
+#   $3 = name of cleanup function to be called when daemon exits (may be empty);
+#        please be aware that the function is called in the context of the
+#        daemon wrapper, not in the context of circd
+#   $4... = daemon arguments
+# Exit code:
+#   The exit code of the daemon.
+circuit_daemon_wrapper()
+{
+    local id=$1 daemon=$2 cleanup_func=$3 args
+    shift 3
+
+    pack_args args "$@"
+    start_daemon_circuit_message_id=$id \
+    start_daemon_circuit_message_daemon=$daemon \
+    start_daemon_circuit_message_daemon_args=$args \
+    start_daemon_circuit_message_cleanup_func=$cleanup_func \
+    mom_unicast_message \
+        circd \
+        start_daemon_circuit_message >/dev/null
+}
+
+# Returns the fdpass path to be used for a certain circuit.
+#
+# Input:
+#   $1 = circuit identifier
+circuit_build_fdpass_path()
+{
+    local id=$1
+    echo "/var/run/fd.$id"
+}
+
+fi # $circuit_api != yes

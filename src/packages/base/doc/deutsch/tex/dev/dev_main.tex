@@ -1,0 +1,363 @@
+% Last Update: $Id$
+\chapter{Entwickler-Dokumentation}
+
+Dieses Kapitel führt in die Aspekte von fli4l ein, die hauptsächlich für jene
+interessant sind, die mit dem Gedanken spielen, fli4l durch die Entwicklung
+eigener Pakete und OPTs zu erweitern. Es wird erläutert, wie fli4l "`unter der
+Haube"' arbeitet und wie man in gewisse Prozesse eingreifen kann, um die
+Funktionalität von fli4l zu verändern oder zu verbessern.
+
+\section{Allgemeine Regeln}
+
+Damit ein neues Paket in die OPT-Datenbank auf der fli4l-Homepage
+aufgenommen wird, müssen einige Regeln beachtet werden. Pakete, die
+sich nicht an diese Regeln halten, können ohne Vorwarnung aus der
+Datenbank entfernt werden.
+
+  \begin{enumerate}
+    \item \emph{Keine} Kopieraktionen von Seiten des Benutzers! fli4l bietet ein
+    ausgefeiltes System, um die Daten der fli4l-Pakete in die
+    Installationsarchive einzupacken. Alle Dateien, die auf den Router sollen,
+    liegen im Verzeichnis \texttt{opt/}.
+
+    \item Pakete richtig packen und komprimieren: Die Pakete müssen so
+    aufgebaut sein, dass sie sich mühelos ins fli4l-Verzeichnis entpacken
+    lassen.
+
+    \item Die Pakete sollen sich \emph{vollständig} über die Konfigurationsdatei
+    konfigurieren lassen. Ein weiteres Bearbeiten der Konfigurationsdateien
+    darf nicht vom Benutzer verlangt werden. Schwierige Entscheidungen dem
+    Benutzer abnehmen oder in einen erweiterten Bereich verlagern (ans Ende
+    der Konfigurationsdatei mit einem dicken Hinweis, etwa: ONLY MODIFY IF YOU
+    KNOW WHAT YOU DO).
+
+    \item Noch ein Hinweis zur Konfigurationsdatei: Anhand des Namens einer
+    Variablen muss sich eindeutig erkennen lassen, zu welchem OPT sie gehört.
+    So gehören z.\,B. zum \var{OPT\_\-HTTPD} die Variablen \var{OPT\_\-HTTPD},
+    \var{HTTPD\_\-USER\_\-N}, usw.
+
+    \item Bitte, bitte, macht möglichst kleine Binaries (Programme)! Das
+    passiert automatisch, wenn ihr das FBR aus dem \emph{src}-Paket verwendet.
+    Denkt auch daran, unnötige Features zu deaktivieren. Bei
+    vorkompilierten Programmen hilft u.\,U. ein
+\begin{example}
+\begin{verbatim}
+      strip -R .comment -R .note <Dateiname>
+\end{verbatim}
+\end{example}
+    weiter. Nichts ist frustrierender als ein Download von 2~MiB, wenn man
+    nachher feststellt, dass 500~kiB gereicht hätten\ldots
+
+    \wichtig{Bitte auf diese Art und Weise keine Kernel-Module behandeln! Sie
+    werden hinterher nicht mehr funktionieren!}
+
+    \item Prüft euer Copyright! Wenn ihr Dateien als Vorlagen benutzt, achtet
+    bitte darauf, das Copyright entsprechend zu ändern. Dies gilt besonders
+    für die Config-, Check- und Opt-Textdateien. Ersetzt hier das Copyright
+    durch euren eigenen Namen. Bei wortwörtlich kopierter Dokumentation muss
+    natürlich das Copyright des Orginal-Autors erhalten bleiben!
+
+    \item Bitte als Archivtypen nur verbreitete, freie Formate benutzen. Dazu
+    gehören:
+    \begin{itemize}
+      \item ZIP  (\texttt{.zip})
+      \item GZIP (\texttt{.tgz} oder \texttt{.tar.gz})
+    \end{itemize}
+    Andere Formate wie RAR, ACE, Blackhole, LHA etc.\ bitte nicht verwenden.
+    Auch Windows-Installer-Dateien (\texttt{.msi}) oder selbstextrahierende Archive und
+    Installer (\texttt{.exe}) sind nicht zu benutzen.
+  \end{enumerate}
+
+\marklabel{sec:libc}{\section{Übersetzen von Programmen}}
+
+Die für das Übersetzen von Programmen zum Einsatz auf dem fli4l-Router
+erforderliche Umgebung wird im separat erhältlichen \emph{src}-Paket angeboten.
+Dort wird auch dokumentiert, wie sich eigene Programme für den fli4l übersetzen
+lassen.
+
+\input {dev_main_modular}
+
+\input {dev_main_scripting}
+
+\input {dev_main_pf}
+
+\input {dev_main_webgui}
+
+\input {dev_main_boot_dial}
+
+\section{Paket "`template"'}
+
+Um einiges von dem hier Beschriebenen etwas zu veranschaulichen, liegt der
+fli4l-Distribution das Paket "`template"' bei. Dieses erklärt an kleinen
+Beispielen, wie:
+
+\begin{itemize}
+\item eine Konfigurationsdatei auszusehen hat (\texttt{config/template.txt})
+\item eine Check-Datei geschrieben wird (\texttt{check/template.txt})
+\item die erweiterten Prüfmöglichekiten verwendet werden (\texttt{check/template.ext})
+\item Konfigurationsvariablen für spätere Verwendung abgelegt werden
+  können \\(\texttt{opt/etc/rc.d/rc999.template})
+\item abgelegte Konfigurationsvariablen wieder ausgelesen werden \\(\texttt{opt/usr/bin/template\_show\_config})
+\end{itemize}
+
+
+
+\section{Aufbau des Boot-Datenträgers}
+
+Seit Version 1.5 wird das Programm \texttt{syslinux} zum Booten verwendet.
+Dieses hat den Vorteil, dass ein DOS-kompatibles Dateisystem auf dem
+Datenträger zur Verfügung steht.
+
+Der Boot-Datenträger enthält folgende Dateien:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}[h!]{lp{10cm}}
+\texttt{ldlinux.sys}             & der Urlader ("`Boot loader"') \texttt{syslinux} \\
+\texttt{syslinux.cfg}            & Konfigurationsdatei für \texttt{syslinux} \\
+\texttt{kernel}                  & Linux-Kernel\\
+\texttt{rootfs.img}              & RootFS: enthält zum Booten nötige Programme\\
+\texttt{opt.img}                 & Optionale Dateien: Treiber und Pakete\\
+\texttt{rc.cfg}                  & Konfigurationsdatei mit den benutzten Variablen aus
+den Dateien des Konfigurationsverzeichnisses\\
+\texttt{boot.msg}                & Texte für das \texttt{syslinux}-Bootmenü \\
+\texttt{boot\_s.msg}             & Texte für das \texttt{syslinux}-Bootmenü \\
+\texttt{boot\_z.msg}             & Texte für das \texttt{syslinux}-Bootmenü \\
+\texttt{hd.cfg}                  & Konfigurationsdatei zur Zuordnung der Partitionen \\
+\end{tabular}
+\end{table}
+
+Durch das Skript \texttt{mkfli4l.sh} (bzw. \texttt{mkfli4l.bat}) werden zunächst
+die Dateien \texttt{opt.img}, \texttt{syslinux.cfg} und \texttt{rc.cfg} sowie das \texttt{rootfs.img} erzeugt.
+Die dafür nötigen Dateien ermittelt das Programm \var{mkfli4l} (im \texttt{unix}- bzw.
+\texttt{windows}-Unterverzeichnis). In den beiden Archiven
+sind die benötigten Kernel- und andere Pakete enthalten. Die Datei
+\texttt{rc.cfg} befindet sich sowohl im Opt-Archiv als auch auf dem
+Boot-Datenträger.\footnote{Die Fassung im Opt-Archiv ist während der frühen
+Boot-Phase nötig, weil zu diesem Zeitpunkt das Boot-Volume noch nicht
+eingehängt ist.}
+
+Anschließend werden die Dateien \texttt{kernel}, \texttt{rootfs.img}, \texttt{opt.img}
+und \texttt{rc.cfg} zusammen mit den \texttt{syslinux}-Dateien auf den Datenträger kopiert.
+
+Beim Booten von fli4l wird über das Skript \texttt{/etc/rc} die \texttt{rc.cfg} ausgewertet und das
+komprimierte \texttt{opt.img}-Archiv in die RootFS-RAM-Disk integriert (je nach
+Installationstyp werden dabei die Dateien direkt in die RootFS-RAM-Disk entpackt
+oder über symbolische Verknüpfungen eingebunden).
+Danach werden die Skripte in \texttt{/etc/rc.d/} in alphanumerischer Reihenfolge ausgeführt
+und somit die Treiber geladen und die Dienste gestartet.
+
+
+\section{Konfigurationsdateien}
+
+Hier werden die Dateien kurz aufgeführt, die vom fli4l-Router
+on-the-fly beim Booten erzeugt werden.
+
+\begin{enumerate}
+\item Konfiguration Provider
+  \begin{itemize}
+  \item         \texttt{etc/ppp/pap-secrets}
+
+  \item         \texttt{etc/ppp/chap-secrets}
+
+  \end{itemize}
+\item Konfiguration DNS
+  \begin{itemize}
+  \item         \texttt{etc/resolv.conf}
+
+  \item         \texttt{etc/dnsmasq.conf}
+
+  \item         \texttt{etc/dnsmasq\_dhcp.conf}
+
+  \item         \texttt{etc/resolv.dnsmasq}
+
+  \end{itemize}
+
+
+\item Hosts-Datei
+  \begin{itemize}
+  \item         \texttt{etc/hosts}
+  \end{itemize}
+
+
+
+\item imond-Konfiguration
+  \begin{itemize}
+  \item \texttt{etc/imond.conf}
+  \end{itemize}
+
+\end{enumerate}
+
+
+\subsection{Konfiguration Provider}
+
+Für den ausgesuchten Provider wird in \texttt{etc/ppp/pap-secrets}
+die User-ID und das Passwort angepasst.
+
+Beispiel für Provider Planet-Interkom:
+
+\begin{example}
+\begin{verbatim}
+# Secrets for authentication using PAP
+# client        server  secret                  IP addresses
+"anonymer"      *       "surfer"                *
+\end{verbatim}
+\end{example}
+
+Dabei ist im Beispiel "`anonymer"' die USER-ID. Als Remote-Server wird
+prinzipiell jeder erlaubt (deshalb "`*"'). "`surfer"' ist das Passwort für
+den Provider Planet-Interkom.
+
+
+\subsection{Konfiguration DNS}
+
+
+Man kann den fli4l-Router als DNS-Server einsetzen. Warum dies
+sinnvoll und bei Windows-Rechnern im LAN sogar zwingend notwendig
+ist, wird in der Dokumentation des "`base"'-Pakets erläutert.
+
+Die Resolver-Datei \texttt{etc/resolv.conf} enthält den Domainnamen und den zu
+verwendenten Nameserver. Sie hat folgenden Inhalt (wobei "`domain.de"' nur
+ein Platzhalter für den Wert der Konfigurationsvariable
+\var{DOMAIN\_\-NAME} ist):
+
+\begin{example}
+\begin{verbatim}
+        search domain.de
+        nameserver 127.0.0.1
+\end{verbatim}
+\end{example}
+
+Der DNS-Server dnsmasq wird über die Datei \texttt{etc/dnsmasq.conf}
+konfiguriert. Sie wird beim Booten vom Skript \texttt{rc040.dns-local} sowie
+\texttt{rc370.dnsmasq} automatisch erzeugt und könnte wie folgt aussehen:
+
+\begin{example}
+\begin{verbatim}
+user=dns
+group=dns
+resolv-file=/etc/resolv.dnsmasq
+no-poll
+no-negcache
+bogus-priv
+log-queries
+domain-suffix=lan.fli4l
+local=/lan.fli4l/
+domain-needed
+expand-hosts
+filterwin2k
+conf-file=/etc/dnsmasq_dhcp.conf
+\end{verbatim}
+\end{example}
+
+
+\subsection{Hosts-Datei}
+
+    Diese Datei enthält eine Zuordnung von Host-Namen zu IP-Adressen. Diese
+    Zuordnung ist jedoch nur lokal auf dem fli4l verwendbar, für andere Rechner
+    im LAN ist sie nicht sichtbar. Diese Datei ist eigentlich überflüssig, wenn
+    zusätzlich ein lokaler DNS-Server gestartet wird.
+
+
+
+\subsection{imond-Konfiguration}
+
+Die Datei \texttt{etc/imond.conf} wird unter anderem aus den Konfigurationsvariablen
+\var{CIRC\_x\_NAME}, \var{CIRC\_x\_ROUTE}, \var{CIRC\_x\_CHARGEINT}
+und \var{CIRC\_x\_TIMES} konstruiert. Sie kann aus bis zu 32 Zeilen
+(ohne die Kommentarzeilen) bestehen. Jede Zeile besteht aus acht Spalten:
+
+\begin{enumerate}
+\item  Bereich Wochentag bis Wochentag
+\item  Bereich Stunde bis Stunde
+\item  Device (\texttt{ippp}\emph{X} oder \texttt{isdn}\emph{X})
+\item  Circuit mit Default-Route: "`yes"'/"`no"'
+\item  Telefonnummer
+\item  Name des Circuits
+\item  Telefonkosten pro Minute in Euro
+\item  Zeittakt ("`Charge interval"') in Sekunden
+\end{enumerate}
+
+    Hier ein Beispiel:
+
+\begin{example}
+\begin{verbatim}
+#day  hour  device  defroute  phone        name        charge  ch-int
+Mo-Fr 18-09 ippp0   yes       010280192306 Addcom      0.0248  60
+Sa-Su 00-24 ippp0   yes       010280192306 Addcom      0.0248  60
+Mo-Fr 09-18 ippp1   yes       019160       Compuserve  0.019   180
+Mo-Fr 09-18 isdn2   no        0221xxxxxxx  Firma       0.08    90
+Mo-Fr 18-09 isdn2   no        0221xxxxxxx  Firma       0.03    90
+Sa-Su 00-24 isdn2   no        0221xxxxxxx  Firma       0.03    90
+\end{verbatim}
+\end{example}
+
+Weitere Erklärungen zum Least-Cost-Routing findet man in der Dokumentation des "`base"'-Pakets.
+
+\subsection{Die \texttt{/etc/.profile}-Datei}
+
+Die Datei \texttt{/etc/.profile} enthält benutzerdefinierte Einstellungen für
+die Shell. Um die Stan\-dard-Einstellungen zu überschreiben, ist es nötig,
+unterhalb seines Konfigurationsverzeichnisses eine Datei \texttt{etc/.profile}
+zu erstellen. Dort können dann Einstellungen zum Prompt oder Abkürzungen
+(so genannte "`Aliase"') eingetragen werden.
+
+\wichtig{Diese Datei darf kein \texttt{exit} enthalten!}
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+alias ll='ls -al'
+\end{verbatim}
+\end{example}
+
+\subsection{Skripte in \texttt{/etc/profile.d/}}
+
+In dem Verzeichnis \texttt{/etc/profile.d/} können Skripte abgelegt werden, die
+beim Starten einer Shell ausgeführt und damit die Umgebung für die Shell
+beeinflussen können. Typischerweise platzieren OPTs dort Skripte, welche
+spezielle Umgebungsvariablen setzen, die für die Programme des OPTs notwendig
+sind.
+
+Falls sich sowohl Skripte in \texttt{/etc/profile.d/} befinden als auch die
+Datei \texttt{/etc/.profile} existiert, werden die Skripte in
+\texttt{/etc/profile.d/} \emph{nach} dem Skript \texttt{/etc/.profile}
+ausgeführt.
+
+\section{Inkompatibilitäten zwischen 3.x und 4.x}
+
+Beim Umstellen von Paketen von Version 3.x auf 4.x sind die folgenden Dinge
+zu beachten:
+
+\begin{itemize}
+\item Die zugrunde liegende $\mu$Clibc-Bibliothek ist aktualisiert worden. Deswegen
+sollten alle Binärprogramme, die gegen eine ältere $\mu$Clibc gebunden wurden, neu
+übersetzt werden. Das dafür nötige FBR (\emph{f}li4l \emph{B}uild\emph{r}oot)
+ist im \emph{src}-Paket zu finden.
+
+\item Das Circuit-Konzept ist stark ausgebaut worden, so dass die Skripte in
+\texttt{/etc/ppp} häufiger aufgerufen werden als vorher (z.B. auch für alle
+konfigurierten Routen). Des Weiteren können jetzt dieselben Skripte für
+verschiedene Circuits parallel ausgeführt werden. Greift ein \texttt{ip-up}-
+oder ein \texttt{ip-down}-Skript auf eine globale Ressource zu (z.B. eine Datei,
+die von allen Circuits gleichermaßen genutzt wird), muss diese Ressource für die
+Dauer der Bearbeitung gesperrt und hinterher wieder freigegeben werden. Die
+dafür nötigen Funktionen \texttt{sync\_lock\_resource} und
+\texttt{sync\_unlock\_resource} werden in Abschnitt \ref{TODO} beschrieben.
+
+\item Der Circuit und das Gerät \texttt{pppoe} existiert nur noch aus
+Kompatibilitätsgründen und sollte nicht mehr benutzt werden. Es repräsentiert
+den ersten konfigurierten PPPoE-Circuit bzw. die ihm zugrunde liegende
+Netzwerkschnittstelle. PPP-Circuits, die \emph{keine} PPPoE-Circuits sind (dies
+trifft z.B. auf PPTP-, Fritz!DSL- oder UMTS-Circuits zu), werden über diesen
+Alias \emph{nicht} mehr repräsentiert. Des Weiteren sollte in den
+Circuit-Skripten unterhalb von \texttt{/etc/ppp} die Variable
+\texttt{real\_interface} nicht mehr genutzt werden. Statt dessen sollte
+die Variable \texttt{interface} verwendet werden. Eine Abbildung von der
+tatsächlichen PPP-Schnittstelle auf \texttt{pppoe} findet nicht mehr statt, da
+nicht mehr davon ausgegangen werden darf, dass es höchstens einen DSL-Circuit
+gibt. Es ist somit auch keine Prüfung mehr vorzunehmen, ob die Variable
+\texttt{interface} den Wert \texttt{pppoe} beinhaltet.
+\end{itemize}
+

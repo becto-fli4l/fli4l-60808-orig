@@ -1,0 +1,60 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/prefix-down
+# called whenever an IPv4 network prefix disappears
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+# $1 = interface
+# $2 = circuit name
+# $3 = network prefix
+
+. /etc/boot.d/forking.inc
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/locking.inc
+. /etc/boot.d/networking.inc
+
+script_name="prefix-down"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+logmsgprio=$facility.notice
+. /usr/share/logfunc.sh
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+interface=$1
+circ_id=$2
+prefix=$3
+
+{
+fork_call_handlers
+sync_lock_resource prefixupdown-$circ_id "$script"
+
+echo "$circ_id[$interface]: IPv4 prefix $prefix has disappeared"
+
+ip -4 route del unreachable $prefix
+circuit_deregister_prefix $circ_id ipv4 $prefix
+setup-dynamic-iptables.sh
+
+# Call all custom prefix-downs
+lazy_begin
+for j in /etc/ppp/prefix-down[0-9][0-9][0-9].*
+do
+    if [ -f $j ]
+    then
+        echo "executing $j"
+        . $j
+    fi
+done
+lazy_end
+
+curprefixes=$(circuit_get_prefixes $circ_id ipv4)
+if [ -z "$curprefixes" ]
+then
+    # now the circuit is at most semionline
+    circuit_go_offline_if_necessary $circ_id ipv4
+fi
+
+sync_unlock_resource prefixupdown-$circ_id "$script"
+} 2>&1 | logmsg "$script" $logmsgprio

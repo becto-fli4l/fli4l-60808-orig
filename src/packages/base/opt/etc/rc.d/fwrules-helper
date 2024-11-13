@@ -1,0 +1,1455 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/fwrules-helper                                  __FLI4LVER__
+# helper functions for packet filter rules
+#
+# Creation:     2003-07-05 jw5
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/base-helper
+. /etc/rc.d/fwrules-helper.common
+
+: ${IPTABLES:=sbin_iptables}
+: ${fwh_state:=/var/run/fwrules-helper.state}
+: ${tmpl_dir:=/etc/fwrules.tmpl}
+: ${ext_dir:=/etc/rc.d}
+: ${ipset_next:=/var/run/ipset-next}
+
+# for compatibility with the old firewall API
+FW_DUMMY_COUNT=99999999
+
+fw_tmp=/tmp/fwrules-helper.$$
+fw_ct_proto=/var/run/fw-l4.ct
+fw_ct_nat=/var/run/fw-l7.ct
+iptables_dynrules=/var/run/iptables.dynrules
+iptables_dynrules_idx=/var/run/iptables.dynrules.next
+iptables_rules=/var/run/iptables.rules
+iptables_complexchains=/var/run/iptables.complex-chains
+fw_chain_suffix=
+
+dummy_rule="127.0.0.1/8 !127.0.0.1/8 ACCEPT"
+create_next_dynrule()
+{
+    phidx=$(cat $iptables_dynrules_idx)
+    echo $((phidx+1)) > $iptables_dynrules_idx
+    dummy_comment="(PLACEHOLDER:$phidx)"
+    comment="$comment $dummy_comment"
+    cat <<-EOF > $iptables_dynrules/$phidx.rule
+dyn_ips="$dyn_ips"
+dyn_ifs="$dyn_ifs"
+table=$orig_table
+chain=$orig_chain
+rule="$full_rule"
+comment="$comment"
+dummy_rule="$dummy_rule"
+dummy_comment="$dummy_comment"
+EOF
+}
+
+# $1 = table
+# $2 = chain
+get_next_rule_index()
+{
+    table=$1
+    chain=$2
+    file=$iptables_rules/$table/$chain.next
+    if [ ! -f $file ]
+    then
+        echo 1
+    else
+        echo $(($(cat $file)+1))
+    fi
+}
+
+iptables_rules_added=0
+reset_rules_added ()
+{
+    iptables_rules_added=0
+}
+get_rules_added ()
+{
+    eval $1=$iptables_rules_added
+}
+set_rules_added ()
+{
+    iptables_rules_added=$1
+}
+
+create_next_ipset ()
+{
+    if grep -q "^${ip#@} " /var/run/ipset.list
+    then
+        res="$(sed -n "/^${ip#@} /s/^[^ ]\+ *\(.*\)$/\1/p" /var/run/ipset.list)"
+    else
+        next=$(cat $ipset_next)
+        echo $((next+1)) > $ipset_next
+        res="dns${next}-"
+        echo "${ip#@} $res" >> /var/run/ipset.list
+        ipset create "${res}4" hash:ip family inet timeout 0
+        ipset create "${res}6" hash:ip family inet6 timeout 0
+    fi
+}
+
+# $1 = layer-4 protocol (e.g. "tcp" or "gre")
+handle_l4prot()
+{
+    local prot=$1
+    if ! echo "$prot" | grep -q $fw_ct_proto
+    then
+        do_modprobe_if_exists kernel/net/netfilter nf_conntrack_proto_$prot
+        echo "$prot" >> $fw_ct_proto
+    fi
+}
+
+# $1 = layer-7 protocol
+# $2 = layer-3 protocol
+handle_ct_helper()
+{
+    local helper=$1 l3prot=$2
+    if ! echo "$helper" | grep -q $fw_ct_nat.$l3_prot
+    then
+        if ! do_modprobe_if_exists kernel/net/netfilter nf_conntrack_$prot
+        then
+            log_error "Conntrack helper module for protocol $helper failed to load, forwarding/NAT traversal might not work"
+        fi
+        if ! do_modprobe_if_exists kernel/net/netfilter nf_nat_$helper ||
+           ! do_modprobe_if_exists kernel/net/$l3prot/netfilter nf_nat_$helper
+        then
+            log_error "NAT helper module for protocol $helper failed to load, NAT traversal will not work"
+        fi
+        echo "$helper" >> $fw_ct_nat.$l3prot
+    fi
+}
+
+sbin_iptables ()
+{
+    if ! /sbin/iptables "$@" > $fw_tmp 2>&1
+    then
+        log_error "Error executing iptables $@"
+        log_error < $fw_tmp
+        rc=1
+    else
+        iptables_rules_added=`expr $iptables_rules_added + 1`
+        rc=0
+    fi
+    rm -f $fw_tmp
+    [ "$op" = R ] && op=I
+    [ "$op" = I ] && position=$((position+1))
+    return $rc
+}
+
+[ "$IP_NET_N" ] || . /var/run/ip_net.conf
+
+# read extensions
+for i in $ext_dir/fwrules-*.ext
+do
+    if [ -f $i ]
+    then
+        if sh -c ". $i" > $fw_tmp 2>&1
+        then
+            . $i
+          else
+            log_error "Error parsing extension $i, rules with this extension in them will fail."
+            log_error < $fw_tmp
+        fi
+        rm -f $fw_tmp
+    fi
+done
+
+assert_empty ()
+{
+    case x$2 in
+        x) ;;
+        *) set_error "$1: to many subexpressions after translation" ;;
+    esac
+}
+
+get_limit()
+{
+    limit=
+    case x"$1" in
+            x | xnone)  ;;
+        *)  set -- `echo $1 | sed -e 's/:/ /'`
+            case x$2 in
+                x) limit="-m limit --limit $1" ;;
+                *) limit="-m limit --limit $1 --limit-burst $2" ;;
+            esac
+            ;;
+    esac
+}
+
+# mangle_params param option
+#     - replace ':' with ' ', '-' with ':'
+mangle_params ()
+{
+    echo $1 | sed -e "s/:/ /g;s/\([0-9]\+\)-\([0-9]\+\)/\1:\2/g;"
+}
+
+do_recent_param ()
+{
+    eval `echo $recent_param | sed -e 's/^\([a-z]*\)=\(.*\)/recent_tok=\1;recent_val=\2/'`
+    recent_opt="$recent_opt --$recent_tok $recent_val"
+}
+
+do_recent ()
+{
+    recent_opt=
+    set -- `echo $1 | sed -e 's/,/ /g'`
+    while [ "$1" ]; do
+        case $1 in
+            \!*) recent_param=`echo $1 | sed -e 's/^!//'`
+                 recent_neg='!'
+                 ;;
+            *)   recent_param="$1"
+                 recent_neg=
+                 ;;
+        esac
+        case $recent_param in
+            name=* | seconds=* | hitcount=*)
+                do_recent_param $recent_param
+                ;;
+            set | update | rcheck | remove)
+                recent_opt="$recent_opt $recent_neg --$recent_param"
+                ;;
+            rttl | rsource | rdest)
+                recent_opt="$recent_opt --$recent_param"
+                ;;
+            *)
+                set_error "recent: unknown option $recent_param"
+                ;;
+        esac
+        shift
+    done
+    match_opt="$match_opt -m recent $recent_opt"
+}
+
+# mangle_ip_params param option
+#     in:  ip:port, ip or port[-range]
+#     out: ip, ip_neg_opt; port, port_neg_opt,  tcp_udp_needed
+#     replaces '-' with ':' if $2 is empty
+#     FQDNs are mapped to ipsets instead to IP addresses if $3 is empty
+mangle_ip_params ()
+{
+    param=$1
+    keepslash=$2
+    nomap=$3
+    case $param in
+        *:*)
+            set -- `echo $param | sed -e 's/:/ /'`
+            ip=$1
+            port=$2
+            tcp_udp_needed='yes'
+            ;;
+        *)
+            if matches_port "$param"
+            then
+                ip=0.0.0.0/0
+                port=$param
+                tcp_udp_needed='yes'
+            else
+                ip=$param
+                port=''
+            fi
+            ;;
+    esac
+
+    get_negation $ip
+    ip=$param
+    ip_neg_opt="$neg_opt"
+
+    get_negation $port
+    port=$param
+    port_neg_opt="$neg_opt"
+
+    eval $(grep "^OPT_DNS=" /etc/rc.cfg)
+    if [ ! "$nomap" -a "${ip#@}" != "$ip" -a "$OPT_DNS" = "yes" ] &&
+            ! lookup_name "${ip#@}"
+    then
+        create_next_ipset
+        res="${res}4"
+    else
+        if is_static_ip_net $ip
+        then
+            translate_ip_net $ip || set_error
+        else
+            dynamic=1
+            if ! translate_ip_net $ip "" "" 1
+            then
+                dyn_ips="$dyn_ips $ip"
+            fi
+        fi
+
+        if [ -n "$res" ]
+        then
+            normalize_networks $res
+            ip=$res
+        fi
+    fi
+
+    [ "$port" -a ! "$keepslash" ] && port="`echo $port | sed -e 's/-/:/'`"
+}
+
+# get_negation param
+#     - removes '!' from param and sets neg_opt accordingly
+get_negation ()
+{
+    case $1 in
+        !*)
+            param=`echo $1 | sed -e 's/^!//g'`
+            neg_opt='! '
+            ;;
+        *)
+            param=$1
+            neg_opt=''
+            ;;
+    esac
+}
+#
+# default matches
+#
+recent_p=yes
+prot_p=yes
+state_p=yes
+length_p=yes
+limit_p=yes
+mark_p=yes
+if_p=yes
+mac_p=yes
+
+# do_something handle "something:" statments
+#
+# do_prot param opt
+#     - handles "prot:" statements
+do_prot ()
+{
+    set -- `mangle_params $1`
+    proto=$1
+    opt=$2
+    case $proto in
+       icmp) assert_empty "do_prot $*" "$3" ;;
+       *)    assert_empty "do_prot $*" "$2" ;;
+    esac
+    get_negation $proto
+    case $param in
+        any) ;;
+        icmp)
+            prot_opt="${neg_opt}-p icmp"
+            case x$opt in
+                x) ;;
+                 *)
+                    get_negation $opt
+                    prot_opt="$prot_opt ${neg_opt}--icmp-type $param"
+                    ;;
+            esac
+            ;;
+        *)
+            handle_l4prot "$param"
+            prot_opt="${neg_opt}-p $param" ;;
+    esac
+}
+
+do_mark ()
+{
+    get_negation $1
+    match_opt="$match_opt -m mark ${neg_opt}--mark $param"
+}
+
+do_state ()
+{
+    get_negation $1
+    match_opt="$match_opt -m conntrack ${neg_opt}--ctstate $param"
+}
+
+do_length ()
+{
+    param=`mangle_params $1`
+    get_negation $param
+    match_opt="$match_opt -m length ${neg_opt}--length $param"
+}
+
+do_limit ()
+{
+    get_limit $1
+    match_opt="$match_opt $limit"
+}
+
+do_mac ()
+{
+    get_negation $1
+    match_opt="$match_opt -m mac ${neg_opt}--mac-source $param"
+}
+
+do_if_opt ()
+{
+    local real_if=
+    if is_static_net_if $3
+    then
+        translate_net_if $3 real_if
+    else
+        dynamic=1
+        if ! translate_net_if $3 real_if 1
+        then
+            dyn_ifs="$dyn_ifs $3"
+        fi
+    fi
+
+    if [ -n "$real_if" ]
+    then
+        [ "$real_if" != "any" ] && if_opt="$if_opt $1$2 $real_if"
+    fi
+}
+
+do_if ()
+{
+    set -- `mangle_params $1`
+    assert_empty "do_if $*" "$3"
+    get_negation $1
+    if_in=$param
+    if_in_negopt="$neg_opt"
+    get_negation $2
+    if_out=$param
+    if_out_negopt="$neg_opt"
+
+    do_if_opt "$if_in_negopt" -i $if_in
+    do_if_opt "$if_out_negopt" -o $if_out
+}
+
+do_default ()
+{
+    rule="$*"
+    full_rule_suffix=
+
+    case "$rule" in
+        *BIDIRECTIONAL*)
+            rule=`echo $rule | sed -e 's#\(.*\)BIDIRECTIONAL\(.*\)#\1\2#'`
+            bidirectional='yes'
+            full_rule_suffix="$full_rule_suffix BIDIRECTIONAL"
+            ;;
+    esac
+
+    case "$rule" in
+            *DROP*|*REJECT*|*ACCEPT*|*SNAT*|*DNAT*|*NETMAP*|*MASQUERADE*|*REDIRECT*|*HELPER*)
+                case "$rule" in
+                *NOLOG*)
+                    rule=`echo $rule | sed -e 's#\(.*\)NOLOG[^[:space:]]*\(.*\)#\1\2#'`
+                    full_rule_suffix="$full_rule_suffix NOLOG"
+                    log_opt='no'
+                    ;;
+                *LOG*)
+                    log_prefix="`echo $rule | sed -e 's#.*LOG:\?\([^[:space:]]*\).*#\1#'`"
+                    log_opt='yes'
+                    rule=`echo $rule | sed -e 's#\(.*\)LOG[^[:space:]]*\(.*\)#\1\2#'`
+                    full_rule_suffix="$full_rule_suffix LOG"
+                    [ -n "$log_prefix" ] && full_rule_suffix="${full_rule_suffix}:$log_prefix"
+                    ;;
+                esac
+        ;;
+    esac
+
+    set -- $rule
+
+    # rewrite arguments
+    case "$#" in
+        3)
+            src=$1
+            dst=$2
+            action=$3
+            ;;
+        2)
+            case $1 in
+                *.*.*.*:* | any:* | IP_*:* | ip_*:* | @*:* | {*}*:* | dynamic*)
+                    dst=$1
+                    ;;
+                *)
+                    # port without destination address (used by templates only!)
+                    if matches_port "$1"
+                    then
+                        dst=$1
+                    else
+                        src=$1
+                    fi
+                    ;;
+            esac
+            action=$2
+            ;;
+        1)
+            action=$1
+            ;;
+        *)
+            set_error "*** Error in rule $rule ***"
+            ;;
+    esac
+
+    mangle_ip_params $src "" nomap
+    if is_error
+    then
+        set_error "$rule: error while processing source '$src'"
+        return 1
+    fi
+
+    src_unmapped=$src
+    case "$ip" in
+    @*)
+        match_opt="$match_opt -m set ${ip_neg_opt}--match-set $res src"
+        src=0.0.0.0/0
+        src_neg=
+        ;;
+    *)
+        src="$ip"
+        src_neg="$ip_neg_opt"
+        ;;
+    esac
+
+    case "x$port" in
+         x) ;;
+         *,*) src_port_opt="-m multiport ${port_neg_opt}--source-ports $port" ;;
+         *) src_port_opt="${port_neg_opt}--source-port $port" ;;
+    esac
+
+    if [ -z "$in_template" ]
+    then
+        full_src="$ip_neg_opt$ip"
+        [ -n "$port" ] && full_src="$full_src:$(echo $port | sed 's/:/-/')"
+    fi
+
+    mangle_ip_params $dst
+    if is_error
+    then
+        set_error "$rule: error while processing destination '$dst'"
+        return 1
+    fi
+
+    dst_unmapped=$dst
+    case "$ip" in
+    @*)
+        match_opt="$match_opt -m set ${ip_neg_opt}--match-set $res dst"
+        dst=0.0.0.0/0
+        dst_neg=
+        ;;
+    *)
+        dst="$ip"
+        dst_neg="$ip_neg_opt"
+        ;;
+    esac
+
+    [ -n "$port" ] && dport=$port
+    case "x$port" in
+         x) ;;
+         *,*) dst_port_opt="-m multiport ${port_neg_opt}--destination-ports $port" ;;
+         *)   dst_port_opt="${port_neg_opt}--destination-port $port" ;;
+    esac
+
+    if [ -z "$in_template" ]
+    then
+        full_dst="$ip_neg_opt$ip"
+        [ -n "$dport" ] && full_dst="$full_dst:$(echo $dport | sed 's/:/-/')"
+
+        full_rule="$full_rule $full_src $full_dst $action $full_rule_suffix"
+    fi
+
+    action_opt=
+    case $action in
+        NONE) ;;
+        DROP)
+            case x$log_prefix in
+                x) action_opt="$drop";;
+                *) action_opt="$action";;
+            esac
+            ;;
+        REJECT)
+            case x$log_prefix in
+                x) action_opt="$reject";;
+                *) action_opt="$action";;
+            esac
+            ;;
+        MARK:*)
+            val=`echo $action | sed -e 's/MARK://'`
+            action_opt="MARK --set-mark $val"
+            ;;
+        MASQUERADE:*)
+            mangle_ip_params `echo $action | sed -e 's/MASQUERADE://'` keepslash nomap
+            action_opt="MASQUERADE"
+            [ "$port" ] && action_opt="$action_opt --to-ports $port"
+            ;;
+        SNAT:*)
+            mangle_ip_params `echo $action | sed -e 's/SNAT://'` keepslash nomap
+            ip=$(list_last $ip)
+            ip=${ip%/*}
+            action_opt="SNAT --to-source ${ip}"
+            [ "$port" ] && action_opt="$action_opt:$port"
+            ;;
+        NETMAP:*)
+            mangle_ip_params `echo $action | sed -e 's/NETMAP://'` keepslash nomap
+            action_opt="NETMAP --to ${ip}"
+            ;;
+        DNAT:*)
+            mangle_ip_params `echo $action | sed -e 's/DNAT://'` keepslash nomap
+            ip=$(list_last $ip)
+            ip=${ip%/*}
+            action_opt="DNAT --to-destination ${ip}"
+            [ "$port" ] && action_opt="$action_opt:$port"
+            ;;
+        REDIRECT:*)
+            mangle_ip_params `echo $action | sed -e 's/REDIRECT://'` keepslash nomap
+            : ${port:=$dport}
+            action_opt="REDIRECT --to-ports $port"
+            ;;
+        HELPER:*)
+            helper=`echo $action | sed -e 's/HELPER://'`
+            action_opt="CT --helper $helper"
+            handle_ct_helper $helper ipv4
+            ;;
+        LOG:*)
+            log_prefix="`echo $action | sed -e 's/LOG://'`"
+            action_opt=LOG
+            ;;
+        *)
+            action_opt="$action"
+            ;;
+    esac
+}
+
+
+execute_log_statement ()
+{
+    case x$log_prefix in
+        x) $IPTABLES -t $table -$op $chain $position $1 -m comment --comment "$comment" -j LOG $log_level ;;
+        *) $IPTABLES -t $table -$op $chain $position $1 -m comment --comment "$comment" -j LOG --log-prefix "$log_prefix " $log_level ;;
+    esac
+}
+
+# prot:(tcp|udp|gre|[0-9]{1,3}) if:in:out state:RELATED,ESTABLISHED,NEW,INVALID src[:port-port] dest[:port-port] accept|reject|drop
+
+really_execute_iptables ()
+{
+    do_action=$2
+    do_log=''
+    case $do_action in
+        *drp-log | *rej-log)
+            if [ "$log_opt" = 'no' ]
+            then
+                do_action=`echo $do_action | sed -e 's#^\(.*\)-log#\1#'`
+            fi
+            ;;
+        *drp | *rej)
+            if [ "$log_opt" = 'yes' ]
+            then
+                do_action=${do_action}-log
+            fi
+            ;;
+        *)
+            do_log="$log_opt"
+            ;;
+        esac
+        case "$do_log" in
+            yes)
+                execute_log_statement "$1"
+                $IPTABLES -t $table -$op $chain $position $1 -m comment --comment "$comment" -j $do_action
+                ;;
+            *)
+                case $do_action in
+                    LOG) execute_log_statement "$1" ;;
+                    *)   $IPTABLES -t $table -$op $chain $position $1 -m comment --comment "$comment" -j $do_action ;;
+                esac
+                ;;
+        esac
+}
+
+exec_iptables ()
+{
+    table=$1
+    chain=$2
+    case $op in
+        I|R) ;;
+        *) position= ;;
+    esac
+    for s in $src
+    do
+        for d in $dst
+        do
+            opts="$if_opt $match_opt ${src_neg}-s $s $src_port_opt ${dst_neg}-d $d $dst_port_opt"
+            if [ -z "$tcp_udp_needed" -o "$prot_opt" ]
+            then
+                really_execute_iptables "$prot_opt $opts" "$action_opt"
+            else
+                really_execute_iptables "-p tcp $opts"  "$action_opt"
+                really_execute_iptables "-p udp $opts"  "$action_opt"
+            fi
+        done
+    done
+}
+
+init_options ()
+{
+    table=$1
+    chain=$2
+    op=$3
+    comment=$4
+    if_opt=''
+    match_opt=''
+    prot_opt=''
+    src='any'
+    src_neg=''
+    src_port_opt=''
+    src_unmapped='any'
+    dst='any'
+    dst_neg=''
+    dst_port_opt=''
+    dst_unmapped='any'
+    dport=
+    action_opt=''
+    tcp_udp_needed=''
+    bidirectional=''
+    log_opt=''
+    log_prefix=''
+    log_target='LOG'
+    dynamic=
+    dyn_ips=
+    dyn_ifs=
+    full_rule=
+    if [ -f $fwh_state.$chain ]
+    then
+        . $fwh_state.$chain
+    else
+        drop=DROP
+        reject=REJECT
+    fi
+}
+
+parse_rule ()
+{
+    parse_rule_param="$1"
+
+    while true
+    do
+        set -- $parse_rule_param
+        eval `echo $1 | sed -e 's/^[[:space:]]*/#/;s/^#\([a-z][[:alnum:]]\+\):\([^[:space:]]*\).*/present=\$\1_p;ext=\1;val=\2/;s/^#.*/ext=;/;s/.*ext=any.*/ext=/'`
+        case x$ext in
+            x|xdynamic)
+                do_default $*
+                return $?
+                ;;
+            *)
+                shift
+                parse_rule_param="$*"
+                case $present in
+                    yes)
+                        full_rule="$full_rule $ext:$val"
+                        eval do_$ext $val
+                        ;;
+                    *)
+                        log_error "invalid match $ext:"
+                        ;;
+                esac
+                ;;
+        esac
+    done
+}
+
+exec_rule ()
+{
+    if [ -n "$dynamic" ] && ! echo "$comment" | grep -q "(PLACEHOLDER:[0-9]\+)$"
+    then
+        case $orig_op in
+        A|I|R)
+            create_next_dynrule
+            ;;
+        *)
+            ;;
+        esac
+    fi
+
+    if [ -n "$dyn_ips$dyn_ifs" ]
+    then
+        save_full_rule="$full_rule"
+        do_rule "$orig_table" "$orig_chain" "$orig_op" "$dummy_rule" "$position" exec_rule "$comment"
+        rc=$?
+        full_rule="$save_full_rule"
+        return $rc
+    else
+        $pre_exec
+        if [ "$bidirectional" = 'yes' ]
+        then
+            exec_iptables $table $chain
+
+            swp=$src
+            swp_neg=$src_neg
+            swp_port_opt=$src_port_opt
+            src=$dst
+            src_neg=$dst_neg
+            src_port_opt=$(echo $dst_port_opt | sed 's/--destination-port/--source-port/')
+            dst=$swp
+            dst_neg=$swp_neg
+            dst_port_opt=$(echo $swp_port_opt | sed 's/--source-port/--destination-port/')
+            if_opt=`echo $if_opt | sed -e 's#-i #-x #' -e 's#-o #-i #' -e 's#-x #-o #'`
+        fi
+
+        exec_iptables $table $chain
+    fi
+}
+
+exec_access_rule()
+{
+    rule="$full_rule"
+    new_rule=
+
+    # let extensions unchanged
+    while true
+    do
+        set -- $rule
+        eval `echo $1 | sed -e 's/^[[:space:]]*/#/;s/^#\([a-z][[:alnum:]]\+\):\([^[:space:]]*\).*/present=\$\1_p;ext=\1;val=\2/;s/^#.*/ext=;/;s/.*ext=any.*/ext=/'`
+        case x$ext in
+            x|xdynamic)
+                break
+                ;;
+            *)
+                new_rule="$new_rule $1"
+                shift
+                rule="$*"
+                ;;
+        esac
+    done
+
+    # extract source, destination, actions
+    set -- $rule
+    src=$1
+    dst=$2
+    action=$3
+    shift 3
+    rule_tail="$*"
+
+    # split destination into address and port (if available)
+    set -- $(echo $dst | sed 's/:/ /')
+    dst=$1
+    dport=$2
+
+    # override parts of destination, according to PREROUTING rule
+    case $action in
+        DNAT:*)
+            chain=PORTFWACCESS
+            set -- $(echo $action | sed 's/^DNAT://;s/:/ /')
+            dst=$1
+            [ -n "$2" ] && dport=$2
+        ;;
+        REDIRECT:*)
+            chain=PORTREDIRACCESS
+            set -- $(echo $action | sed 's/^REDIRECT://')
+            dport=$1
+        ;;
+        *)
+            # no access rules for targets other then DNAT or REDIRECT
+            return ;;
+    esac
+
+    # combine parts to form the new FORWARD rule
+    new_rule="$new_rule $src $dst"
+    [ -n "$dport" ] && new_rule="$new_rule:$dport"
+    new_rule="$new_rule ACCEPT $rule_tail"
+
+    # add rule to the FORWARD chain
+    do_rule filter $chain "$orig_op" "$new_rule" "$position" exec_rule "$comment"
+}
+
+exec_prerouting_rule()
+{
+    exec_rule || return $?
+    get_rules_added saved_rules_added
+    exec_access_rule
+    local rc=$?
+    set_rules_added $saved_rules_added
+    return $rc
+}
+
+read_tmpl ()
+{
+    local tmpl_name=$1
+    {
+        if [ -e $tmpl_dir/$tmpl_name ]
+        then
+            cat $tmpl_dir/$tmpl_name
+        else
+            tmpl_name=$(echo $tmpl_name | tr "A-Z" "a-z")
+            sed -n "s/^$tmpl_name[[:space:]]\+//p" $tmpl_dir/templates 
+        fi
+    } | sed -e "s/#.*//;/^[[:space:]]*$/d"
+}
+
+# do_rule table chain operation rule position method comment
+do_rule ()
+{
+    case x$FWRULES_DO_DEBUG in x) set +x ;; esac
+    local orig_table=$1
+    local orig_chain=$2
+    local orig_op=$3
+    local orig_rule="$4"
+    local full_orig_rule="$4"
+    local position=$5
+    local method="$6"
+    local orig_comment="$7"
+
+    : ${method:=exec_rule}
+    : ${orig_comment:="$orig_rule"}
+
+    reset_rules_added
+
+    case "$orig_rule" in
+        *tmpl:*)
+            eval set -- `echo "$orig_rule"  | sed -e "s#\(.*\)[[:space:]:]*tmpl:\([^[:space:]]*\)\(.*\)#'\1' '\2' '\3'#"`
+            rule_head="$1"
+            rule_tail="$3"
+            orig_rule="$rule_head $rule_tail"
+            local orig_tmpl_name=$2
+            local orig_position=$position
+            : ${orig_position:=1}
+            tmpl_rules="`read_tmpl $2`"
+
+            if [ -n "$tmpl_rules" ]
+            then
+                while read tmpl_rule
+                do
+                    init_options $orig_table $orig_chain $orig_op "$orig_comment"
+                    in_template=yes
+                    parse_rule "$tmpl_rule DROP"
+                    in_template=
+                    parse_rule "$orig_rule"
+                    if ! is_error
+                    then
+                        if [ -n "$bidirectional" ]
+                        then
+                            set_error "$full_orig_rule: using templates and BIDIRECTIONAL simultaneously is not allowed"
+                        else
+                            $method
+                        fi
+                    fi
+                    get_rules_added rules_added
+                    position=`expr $orig_position + $rules_added`
+                done <<EOF
+$tmpl_rules
+EOF
+            else
+                set_error "can't find packetfilter template '$orig_tmpl_name'"
+            fi
+
+            ;;
+        *)
+            init_options $orig_table $orig_chain $orig_op "$orig_comment"
+            parse_rule "$orig_rule"
+            is_error || $method
+    esac
+    case x$tmp_debug in xyes) set -x; ;; esac
+    case x$debug_active in xyes) set -x; ;; esac
+}
+
+add_rule_to_file()
+{
+    mkdir -p $(dirname $pf_file)
+    echo "$pf_rule %%% $comment" >> $pf_file
+    if [ ! -f $pf_file.next ]
+    then
+        echo 1 > $pf_file.next
+    else
+        local next=$(($(cat $pf_file.next)+1))
+        echo $next > $pf_file.next
+    fi
+}
+
+del_rule_from_file()
+{
+    local pf_rule="$(echo $pf_rule | sed 's,/,\\/,g;s/\[/\\[/g')"
+    local pf_comment="$(echo $comment | sed 's,/,\\/,g;s/\[/\\[/g')"
+    sed -i "/^[[:space:]]*$pf_rule %%% $pf_comment[[:space:]]*$/d" $pf_file 2>/dev/null
+}
+
+do_pre_exec ()
+{
+    chain=test-chain
+}
+do_check_rule ()
+{
+    dcr_res=0
+    pre_exec=do_pre_exec
+    base_colecho=true
+    base_log_file=/tmp/check_rule.$$
+    cons_boot=yes
+    rm -f $base_log_file
+
+    if ! iptables -t $1 -L test-chain > /dev/null 2>&1; then
+        do_chain $1 test-chain N add-test-chain
+    fi
+    do_rule $1 $2 A "$3" '' "$4" "$3"
+    if [ -f $base_log_file ]; then
+        echo "Invalid rule '$3'"
+        cat $base_log_file
+        rm -f $base_log_file
+        dcr_res=1
+    else
+        do_rule $1 $2 D "$3" '' "$4" "$3"
+    fi
+
+    unset pre_exec
+    unset base_colecho
+    unset base_log_file
+    return $dcr_res
+}
+
+check_rule ()
+{
+    : ${SCRIPT:=check_rule}
+    do_check_rule filter foo "$1" ''
+}
+
+# setup_logging <yes|no> <chain prefix> <log prefix> <log limits>
+#               <rej limits> <udp rej limits> <log level>
+setup_logging ()
+{
+    enabled=$1
+    chain=$2
+    prefix="$3"
+    log_limit="$4"
+    rej_limit="$5"
+    udp_rej_limit="$6"
+    log_level=$7
+    get_limit "$log_limit"
+    log_limit="$limit"
+    get_limit "$rej_limit"
+    rej_limit="$limit"
+    get_limit "$udp_rej_limit"
+    udp_rej_limit="$limit"
+
+    case $chain in
+        FORWARD)
+            drop="fw-drp"
+            reject="fw-rej"
+            ;;
+        INPUT)
+            drop="in-drp"
+            reject="in-rej"
+            ;;
+        OUTPUT)
+            drop="out-drp"
+            reject="out-rej"
+            ;;
+        *)
+            log_error "setup_loggig: unknown chain $chain"
+            drop="un-drp"
+            reject="un-rej"
+            ;;
+    esac
+    cat <<-EOF > $fwh_state.$chain
+        drop_name=$drop
+        reject_name=$reject
+EOF
+    case x$log_level in
+        x) ;;
+        *)
+            log_level="--log-level $log_level"
+            echo "log_level='$log_level'" >> $fwh_state.$chain
+            ;;
+    esac
+
+    $IPTABLES -N ${drop}
+    $IPTABLES -N ${drop}-log
+    $IPTABLES -N ${reject}
+    $IPTABLES -N ${reject}-log
+    $IPTABLES -N ${reject}-fin
+
+    $IPTABLES -A ${drop}-log            $log_limit     -j LOG --log-prefix "${prefix}-drop " $log_level
+    $IPTABLES -A ${drop}-log                           -j DROP
+    $IPTABLES -A ${drop}                               -j DROP
+
+    $IPTABLES -A ${reject}-log          $log_limit     -j LOG --log-prefix "${prefix}-reject " $log_level
+    $IPTABLES -A ${reject}-log                         -j ${reject}
+    $IPTABLES -A ${reject}       -p udp $udp_rej_limit -j ${reject}-fin
+    $IPTABLES -A ${reject}     ! -p udp $rej_limit     -j ${reject}-fin
+    $IPTABLES -A ${reject}                             -j DROP
+
+    case $reject in
+    *in*)
+        $IPTABLES -A ${reject}-fin   -p tcp  -j REJECT --reject-with tcp-reset
+        $IPTABLES -A ${reject}-fin   -p udp  -j REJECT --reject-with port-unreach
+        $IPTABLES -A ${reject}-fin ! -p icmp -j REJECT --reject-with proto-unreach
+        $IPTABLES -A ${reject}-fin           -j DROP
+        ;;
+    *)
+        $IPTABLES -A ${reject}-fin ! -p icmp -j REJECT --reject-with admin-prohib
+        $IPTABLES -A ${reject}-fin           -j DROP
+        ;;
+    esac
+
+    case  $enabled in
+        yes)
+            drop="${drop}-log"
+            reject="${reject}-log"
+            ;;
+        *)
+            drop=DROP
+            ;;
+    esac
+    cat <<-EOF >> $fwh_state.$chain
+        drop=$drop
+        reject=$reject
+EOF
+}
+
+# get log chain names and default drop/reject actions
+get_defaults ()
+{
+    . $fwh_state.$1
+}
+
+# close_chain <chain name> <chain policy>
+close_chain ()
+{
+    . $fwh_state.$1
+
+    case "$2" in
+        DROP)
+            $IPTABLES -A $1-tail -j $drop
+            ;;
+        REJECT)
+            $IPTABLES -A $1-tail -j $reject
+            ;;
+        ACCEPT)
+            $IPTABLES -P $1 ACCEPT
+        ;;
+    esac
+}
+
+do_chain ()
+{
+    local table=$1
+    local chain=$2
+    local op=$3
+    local name=$4
+    if ! $IPTABLES -t $table -$op $chain
+    then
+        log_error "${name} $chain failed..."
+    fi
+}
+
+####################################
+# OBSOLETE FIREWALL API, DON'T USE #
+####################################
+
+# add_rule table chain rule comment method
+add_rule ()
+{
+    log_warn "add_rule is obsolete and has been replaced by fw_append_rule"
+    fw_append_rule "$@"
+}
+
+# del_rule table chain rule comment method
+del_rule ()
+{
+    log_warn "del_rule is obsolete and has been replaced by fw_delete_rule"
+    fw_delete_rule "$@"
+}
+
+# ins_rule table chain rule position comment method
+ins_rule ()
+{
+    local pos=${4:-1}
+    if [ $pos -eq $FW_DUMMY_COUNT ]
+    then
+        # warning has already been printed by get_count()
+        fw_append_rule "$1" "$2" "$3" "$5" "$6"
+    else
+        log_warn "ins_rule is obsolete and has been replaced by fw_insert_rule"
+        fw_insert_rule "$1" "$2" "$4" "$3" "$5" "$6"
+    fi
+}
+
+set_count ()
+{
+    log_warn "set_count is obsolete, don't use it anymore"
+}
+
+get_count ()
+{
+    log_warn "get_count/ins_rule is obsolete, use fw_append_rule instead"
+    res=$FW_DUMMY_COUNT
+}
+
+chain_present ()
+{
+    local table=$2
+    : ${table:=filter}
+    log_warn "chain_present is obsolete and has been replaced by fw_is_chain_present $table"
+    fw_is_chain_present $table $1
+}
+
+nat_chain_present ()
+{
+    log_warn "nat_chain_present is obsolete and has been replaced by fw_is_chain_present nat"
+    fw_is_chain_present nat $1
+}
+
+add_chain ()
+{
+    log_warn "add_chain is obsolete and has been replaced by fw_add_chain filter"
+    fw_add_chain filter $1
+}
+
+add_nat_chain ()
+{
+    log_warn "add_nat_chain is obsolete and has been replaced by fw_add_chain nat"
+    fw_add_chain nat $1
+}
+
+flush_chain ()
+{
+    log_warn "flush_chain is obsolete, simply use fw_delete_chain filter"
+    do_chain filter $1 F flush
+}
+
+flush_nat_chain ()
+{
+    log_warn "flush_nat_chain is obsolete, simply use fw_delete_chain nat"
+    do_chain nat $1 F flush
+}
+
+del_chain ()
+{
+    log_warn "del_chain is obsolete and has been replaced by fw_delete_chain filter"
+    fw_delete_chain filter $1
+}
+
+del_nat_chain ()
+{
+    log_warn "del_nat_chain is obsolete and has been replaced by fw_delete_chain nat"
+    fw_delete_chain nat $1
+}
+
+################
+# FIREWALL API #
+################
+
+# Adds a simple IPv4 firewall chain.
+#
+# Input:
+#   $1 = table to use
+#   $2 = name of chain
+fw_add_chain()
+{
+    do_chain $1 $2 N fw_add_chain
+}
+
+# Checks whether an IPv4 firewall chain is present.
+#
+# Input:
+#   $1 = table to use
+#   $2 = name of chain
+# Exit code:
+#   zero if the chain is present, non-zero otherwise
+fw_is_chain_present()
+{
+    iptables -t $1 -L $2 > /dev/null 2>&1
+}
+
+# Makes an IPv4 firewall chain a complex one with JUMPs to three entries:
+#   $name-head, $name-middle, $name-tail
+# This allows for simple appending of rules without having to count rules.
+#
+# Input:
+#   $1 = table to use
+#   $2 = name of chain
+fw_convert_to_complex_chain()
+{
+    fw_is_chain_present $1 $2 || return 1
+    if fw_add_chain $1 $2-head
+    then
+        if fw_add_chain $1 $2-middle
+        then
+            if fw_add_chain $1 $2-tail
+            then
+                do_chain $1 $2 F fw_make_complex_chain
+                $IPTABLES -t $1 -A $2 -j $2-head
+                $IPTABLES -t $1 -A $2 -j $2-middle
+                $IPTABLES -t $1 -A $2 -j $2-tail
+                mkdir -p $iptables_complexchains/$1
+                > $iptables_complexchains/$1/$2
+                return 0
+            fi
+            fw_delete_chain $1 $2-middle
+        fi
+        fw_delete_chain $1 $2-head
+    fi
+    return 1
+}
+
+# Determines if a chain is a complex IPv4 firewall chain.
+#
+# Input:
+#   $1 = table to use
+#   $2 = name of chain
+fw_is_complex_chain()
+{
+    [ -f $iptables_complexchains/$1/$2 ]
+}
+
+# Removes an IPv4 firewall chain.
+#
+# Input:
+#   $1 = table to use
+#   $2 = name of chain
+fw_delete_chain()
+{
+    if fw_is_complex_chain $1 $2
+    then
+        rm -f $iptables_complexchains/$1/$2
+        fw_delete_chain $1 $2-head
+        fw_delete_chain $1 $2-middle
+        fw_delete_chain $1 $2-tail
+    fi
+    do_chain $1 $2 F fw_delete_chain
+    do_chain $1 $2 X fw_delete_chain
+}
+
+# Locks an IPv4 firewall chain.
+#
+# Input:
+#   $1 = table
+#   $2 = chain
+#   $3 = caller
+fw_lock_chain()
+{
+    sync_lock_resource "iptables:$1:$2" $3
+}
+
+# Unlocks an IPv4 firewall chain.
+#
+# Input:
+#   $1 = table
+#   $2 = chain
+#   $3 = caller
+fw_unlock_chain()
+{
+    sync_unlock_resource "iptables:$1:$2" $3
+}
+
+# Appends a rule to an IPv4 firewall chain. If the chain is a complex chain,
+# the rule is appended to the -middle chain, unless fw_chain_suffix is set
+# (in this case $fw_chain_suffix is appended to the name of the chain).
+#
+# Input:
+#   $1 = table
+#   $2 = chain
+#   $3 = rule
+#   $4 = comment
+#   $5 = method
+fw_append_rule()
+{
+    local pf_table=$1
+    local pf_chain=$2
+    local pf_rule="$3"
+    local pf_comment="$4"
+    local pf_method="$5"
+
+    if fw_is_complex_chain $pf_table $pf_chain
+    then
+        pf_chain=$pf_chain${fw_chain_suffix:--middle}
+    fi
+    local pf_file=$iptables_rules/$pf_table/$pf_chain
+
+    fw_lock_chain $pf_table $pf_chain fw_append_rule
+    do_rule $pf_table $pf_chain A "$pf_rule" "" "$pf_method" "$pf_comment"
+    fw_unlock_chain $pf_table $pf_chain fw_append_rule
+
+    if is_error
+    then
+        set_error
+    else
+        add_rule_to_file
+    fi
+}
+
+# Prepends a rule to an IPv4 firewall chain. If the chain is a complex chain,
+# the rule is prepended to the -middle chain, unless fw_chain_suffix is set
+# (in this case $fw_chain_suffix is appended to the name of the chain).
+#
+# Input:
+#   $1 = table
+#   $2 = chain
+#   $3 = rule
+#   $4 = comment
+#   $5 = method
+fw_prepend_rule()
+{
+    fw_insert_rule $1 $2 1 "$3" "$4" "$5"
+}
+
+# Inserts a rule into an IPv4 firewall chain at a specific position. If the
+# chain is a complex chain, the rule is appended to the -middle chain, unless
+# fw_chain_suffix is set (in this case $fw_chain_suffix is appended to the name
+# of the chain).
+#
+# Input:
+#   $1 = table
+#   $2 = chain
+#   $3 = position (set to 1 if empty)
+#   $4 = rule
+#   $5 = comment
+#   $6 = method
+fw_insert_rule()
+{
+    local pf_table=$1
+    local pf_chain=$2
+    local pf_pos=${3:-1}
+    local pf_rule="$4"
+    local pf_comment="$5"
+    local pf_method="$6"
+
+    if fw_is_complex_chain $pf_table $pf_chain
+    then
+        pf_chain=$pf_chain${fw_chain_suffix:--middle}
+    fi
+    local pf_file=$iptables_rules/$pf_table/$pf_chain
+
+    fw_lock_chain $pf_table $pf_chain fw_insert_rule
+    do_rule $pf_table $pf_chain I "$pf_rule" $pf_pos "$pf_method" "$pf_comment"
+    fw_unlock_chain $pf_table $pf_chain fw_insert_rule
+
+    if is_error
+    then
+        set_error
+    else
+        add_rule_to_file
+    fi
+}
+
+# Deletes a rule from an IPv4 firewall chain. If the chain is a complex chain,
+# the rule is deleted from the -middle chain, unless fw_chain_suffix is set
+# (in this case $fw_chain_suffix is appended to the name of the chain).
+#
+# Input:
+#   $1 = table
+#   $2 = chain
+#   $3 = rule
+#   $4 = comment
+#   $5 = method
+fw_delete_rule()
+{
+    local pf_table=$1
+    local pf_chain=$2
+    local pf_rule="$3"
+    local pf_comment="$4"
+    local pf_method="$5"
+
+    if fw_is_complex_chain $pf_table $pf_chain
+    then
+        pf_chain=$pf_chain${fw_chain_suffix:--middle}
+    fi
+    local pf_file=$iptables_rules/$pf_table/$pf_chain
+
+    fw_lock_chain $pf_table $pf_chain fw_append_rule
+    do_rule $pf_table $pf_chain D "$pf_rule" "" "$pf_method" "$pf_comment"
+    fw_unlock_chain $pf_table $pf_chain fw_append_rule
+
+    if is_error
+    then
+        set_error
+    else
+        del_rule_from_file
+    fi
+}

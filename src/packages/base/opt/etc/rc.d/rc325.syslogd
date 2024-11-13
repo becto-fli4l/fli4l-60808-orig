@@ -1,0 +1,56 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc325.syslogd - start syslogd
+# was file /etc/rc.d/syslogd
+#
+# Creation:     29.08.2000 fm
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_SYSLOGD" = yes ]
+then
+    begin_script SYSLOGD "starting syslogd ..."
+
+    cat <<-EOF>>/etc/services
+syslog          514/udp
+EOF
+    if [ ! -f /etc/syslog.conf ]                # already existing?
+    then                                        # yes, don't overwrite
+        [ "$SYSLOGD_DEST_N" -eq 0 ] || for idx in `seq 1 $SYSLOGD_DEST_N`
+        do
+            eval dest='$SYSLOGD_DEST_'$idx
+            echo "$dest" >> /etc/syslog.conf
+            dest_dir=`echo "$dest" | sed -n -e 's#^.*[[:space:]]\+##;s#/[^/]\+$##p'`
+            dest_file=`echo "$dest" | sed -n -e 's#^.*[[:space:]]\+##p'`
+            case "$dest_dir" in
+                /dev)
+                ;;
+                /*)
+                    mkdir -p $dest_dir
+                    >> $dest_file
+                ;;
+            esac
+        done
+    fi
+    syslogd_options=''
+    if [ "$SYSLOGD_RECEIVER" = yes ]
+    then
+        syslogd_options="$syslogd_options -r"
+    fi
+    syslogd $syslogd_options
+    sleep 1
+
+    end_script
+
+    if [ "$SYSLOGD_ROTATE" = yes ]
+    then
+        begin_script SYSLOGD_ROTATE "starting syslogd-scheduler ..."
+        map2persistent SYSLOGD_ROTATE_DIR
+        echo "SYSLOGD_ROTATE_DIR='$SYSLOGD_ROTATE_DIR'" > /var/run/syslogd_rotate.conf
+        echo "SYSLOGD_ROTATE_MAX='$SYSLOGD_ROTATE_MAX'" >> /var/run/syslogd_rotate.conf
+
+        service-restart.sh 60 /usr/local/bin/syslogd_rotate_cron.sh &
+
+        end_script
+    fi
+fi

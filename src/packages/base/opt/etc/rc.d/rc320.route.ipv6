@@ -1,0 +1,81 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc320.route.ipv6 - configuration of additional IPv6 routes
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ 0"$IPV6_ROUTE_N" -gt 0 ]
+then
+    begin_script ROUTE "setting up IPv6 routes ..."
+
+    route_circ_n=0
+
+    # group routes using the same gateway
+    for idx in $(seq 1 $IPV6_ROUTE_N)
+    do
+        eval route=\$IPV6_ROUTE_$idx
+        set -- $route
+
+        net=$(circuit_resolve_address "$1" ipv6)
+        gw=$(circuit_resolve_address "$2" ipv6 addr)
+        dev=
+
+        if [ -n "$3" ]
+        then
+            dev=$3
+        elif [ -n "$gw" ]
+        then
+            translate_ipv6_to_dev $gw dev
+        else
+            translate_net_if $2 dev
+        fi
+
+        [ -n "$dev" ] || continue
+
+        target=route_target_$(to_shell_id "${gw} ${dev}")
+        eval circ_idx=\$$target
+        if [ -n "$circ_idx" ]
+        then
+            eval nets=\$route_${circ_idx}_nets
+        else
+            route_circ_n=$((route_circ_n+1))
+            circ_idx=$route_circ_n
+            eval $target=\$circ_idx
+            eval route_${circ_idx}_gw=\$gw
+            eval route_${circ_idx}_dev=\$dev
+            nets=
+        fi
+
+        nets="$nets $net"
+        eval route_${circ_idx}_nets=\$nets
+    done
+
+    # convert each route group into a route circuit
+    for circ_idx in $(seq 1 $route_circ_n)
+    do
+        eval nets=\$route_${circ_idx}_nets
+        eval gw=\$route_${circ_idx}_gw
+        eval dev=\$route_${circ_idx}_dev
+
+        CIRC_N=$((CIRC_N+1))
+        eval CIRC_${CIRC_N}_NAME=IPv6-Route-\$circ_idx
+        eval CIRC_${CIRC_N}_TYPE=route
+        eval CIRC_${CIRC_N}_ENABLED=yes
+        eval CIRC_${CIRC_N}_UP=yes
+        eval CIRC_${CIRC_N}_TIMES=\"Mo-Su:00-24:0.0:Y\"
+        eval CIRC_${CIRC_N}_ROUTE_DEV=\$dev
+        eval CIRC_${CIRC_N}_ROUTE_GATEWAY_IPV6=\$gw
+
+        set -- $nets
+        n=1
+        for net
+        do
+            eval CIRC_${CIRC_N}_NETS_IPV6_${n}=\"$net\"
+            n=$((n+1))
+        done
+        eval CIRC_${CIRC_N}_NETS_IPV6_N=$((n-1))
+    done
+
+    end_script
+fi

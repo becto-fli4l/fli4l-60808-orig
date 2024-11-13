@@ -1,0 +1,94 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/link-up - called whenever a bundle link goes online
+#
+# Input:
+#   $1 = interface
+#   $2 = circuit name
+#   $3 = 0 if a non-master link goes online
+#        <master-type> for a master link ($BUNDLE_MASTER_TYPE_REAL or
+#                                         $BUNDLE_MASTER_TYPE_PSEUDO)
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/networking.inc
+
+script_name="link-up"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+logmsgprio=$facility.notice
+. /usr/share/logfunc.sh
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+interface=$1
+circ_id=$2
+master_type=$3
+: ${master_type:=0}
+
+{
+
+if [ -n "$BUNDLE" ]
+then
+    # register link
+    bundle_register_link $circ_id "$BUNDLE"
+    circuit_read_field $circ_id circ_bundle
+
+    if [ $master_type -eq 0 ]
+    then
+        # move link to correct bundle circuit if necessary; note that this does
+        # not cause a race condition with ip-up-down which tries to determine
+        # the correct bundle circuit, because the move only occurs for slave
+        # links, and slave links do not cause <l3prot>-up/down scripts to be
+        # called
+        circ_master=$(bundle_map_bundle_to_master "$BUNDLE")
+        if [ -n "$circ_master" ]
+        then
+            circ_old_bundle=$circ_bundle
+            circuit_read_field $circ_master circ_bundle
+            if [ "$circ_old_bundle" != "$circ_bundle" ]
+            then
+                echo "moving bundle link $circ_id[$interface] from bundle $circ_old_bundle to bundle $circ_bundle"
+                circuit_attach_to_bundle $circ_id $circ_bundle
+            fi
+            # if a master link is terminated without terminating the bundle
+            # (because other links are part of the bundle), and if this link
+            # is redialled later, it will not become a master link again, but
+            # we have to increase the reference count of the (old) master link
+            # as otherwise the reference count will decrease by one each time
+            # the non-master link goes down
+            [ $circ_id = $circ_master ] &&
+                bundle_ref_master $circ_id
+        fi
+    else
+        # register master circuit using an initial reference count of one
+        bundle_register_master $circ_id $circ_bundle "$BUNDLE" $master_type
+    fi
+
+    echo "bundle link $circ_id[$interface] comes up"
+
+    # link is online
+    circuit_event_id=$circ_id \
+        mom_unicast_message circd up_link_circuit_event >/dev/null
+
+    # Call all custom link-ups
+    lazy_begin
+    for j in /etc/ppp/link-up[0-9][0-9][0-9].*
+    do
+        if [ -f $j ]
+        then
+            echo "executing $j"
+            . $j
+        fi
+    done
+    lazy_end
+else
+    log_error "No BUNDLE set for link $circ_id[$interface], closing link"
+    circuit_event_id=$circ_id \
+    down_link_circuit_event_force_hangup=true \
+        mom_unicast_message circd down_link_circuit_event >/dev/null
+fi
+
+} 2>&1 | logmsg "$script" $logmsgprio

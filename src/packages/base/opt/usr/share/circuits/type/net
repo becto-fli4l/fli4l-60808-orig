@@ -1,0 +1,229 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/net - net circuits
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+net_circuit_add_hooks=
+
+# Registers a user-defined hook called when a net circuit is added.
+# Such a hook allows a dependent package to save additional variables in the
+# circuit state which are later used during pre- or post-processing when a net
+# circuit goes online/offline or changes its properties (e.g. its prefix).
+#
+# Input:
+#   $1 = name of hook function, which has the following interface:
+#        Input:
+#          $1 = circuit identifier
+net_circuit_register_add_hook()
+{
+    local hook=$1
+    net_circuit_add_hooks="$net_circuit_add_hooks $hook"
+}
+
+# Calls all registered "circuit add" hooks after the layer-3 specific add hooks
+# have been called.
+#
+# Input:
+#   $1 = circuit identifier
+net_circuit_call_add_hooks()
+{
+    local _id=$1 _hook
+    for _hook in $net_circuit_add_hooks
+    do
+        $_hook $_id
+    done
+}
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+net_circuit_add()
+{
+    circ_dev=$(circuit_get_interface $circ_net_if)
+    if [ -z "$circ_dev" ]
+    then
+        eval $2=\"could not translate interface \$circ_net_if\"
+        return 1
+    fi
+
+    circuit_allocate_device net circ_alias
+
+    cat >> $1 <<EOF
+circ_net_if="$circ_net_if"
+EOF
+
+    # FFL-955: disable GRO if not explicitly configured by OPT_ETHTOOL
+    local gro_found= i j
+    for i in $(seq 1 ${ETHTOOL_DEV_N:-0})
+    do
+        eval local eth_x=\$ETHTOOL_DEV_${i}
+        if [ "$circ_dev" = "$eth_x" ]
+        then
+            eval local option_n=\$ETHTOOL_DEV_${i}_OPTION_N
+            for j in $(seq 1 ${option_n:-0})
+            do
+                eval local option=\$ETHTOOL_DEV_${i}_OPTION_${j}_NAME
+                case $option in
+                gro)
+                    gro_found=1
+                    break
+                    ;;
+                esac
+            done
+            # note that multiple ETHTOOL_DEV_x entries may refer to the same
+            # device, so we have to iterate through the whole array
+            [ -n "$gro_found" ] && break
+        fi
+    done
+    if [ -z "$gro_found" ]
+    then
+        log_info "  disabling GRO for $circ_dev"
+        ethtool -K $circ_dev gro off 2>/dev/null
+    fi
+
+    # "circuit add" hooks never cause the circuit creation process to fail
+    net_circuit_call_add_hooks
+
+    return 0
+}
+
+net_circuit_change_hooks=
+
+# Registers a user-defined change hook called by net_circuit_change().
+# Such a hook allows a dependent package to perform pre- or post-processing
+# when a net circuit goes online/offline or changes its properties (e.g. its
+# prefix). This can be used e.g. for configuring the RAs sent to clients or for
+# updating the DNS configuration.
+#
+# Input:
+#   $1 = name of hook function, which has the following interface:
+#        Input:
+#          $1 = circuit identifier
+#          $2 = circuit interface
+#          $3 = layer-3 protocol
+#          $4 = event:
+#               "pre-up": before the circuit's addresses are installed
+#               "post-up": after the circuit's addresses have been installed
+#                  $5 = list of installed addresses
+#               "pre-change": before the circuit's addresses are changed
+#               "post-change": after the circuit's addresses have been changed
+#                  $5 = list of removed addresses
+#                  $6 = list of installed addresses
+#               "pre-down": before the circuit's addresses are removed
+#               "post-down": after the circuit's addresses have been removed
+#                  $5 = list of removed addresses
+net_circuit_register_change_hook()
+{
+    local hook=$1
+    net_circuit_change_hooks="$net_circuit_change_hooks $hook"
+}
+
+# Calls all registered change hooks after the layer-3 specific net circuit
+# processing has been performed.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = circuit interface
+#   $3 = layer-3 protocol
+#   $4 = event (see the documentation of net_circuit_register_change_hook())
+#   $5... = optional arguments depending on the type of the event
+net_circuit_call_change_hooks()
+{
+    local _id=$1 _dev=$2 _l3prot=$3 _event=$4 _hook
+    shift 4
+    for _hook in $net_circuit_change_hooks
+    do
+        $_hook $_id $_dev $_l3prot $_event "$@"
+    done
+}
+
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol
+#   $3 = event ("up", "change", or "down")
+# Exit code:
+#   (when operation is "down")
+#   0 if at least one address has been removed, 1 otherwise
+net_circuit_change()
+{
+    local id=$1 l3prot=$2 op=$3 circ_dev circ_net_address old new addr
+
+    circuit_read_field $id circ_dev
+    circuit_read_field $id circ_net_${l3prot}_address circ_net_address
+
+    case $op in
+    up)
+        circuit_lock $id net_circuit_change
+        new=$(circuit_resolve_address $circ_net_address $l3prot)
+        circuit_write_field $id circ_net_${l3prot}_address_resolved "$new"
+        circuit_unlock $id net_circuit_change
+
+        net_circuit_call_change_hooks $id $circ_dev $l3prot pre-up
+        net_circuit_pre_change_$l3prot $id $circ_dev up
+        for addr in $new
+        do
+            net_circuit_add_address_$l3prot $id $circ_dev $addr
+        done
+        net_circuit_post_change_$l3prot $id $circ_dev up "$new"
+        net_circuit_call_change_hooks $id $circ_dev $l3prot post-up "$new"
+        ;;
+    change)
+        circuit_lock $id net_circuit_change
+        circuit_read_field $id circ_net_${l3prot}_address_resolved old
+        new=$(circuit_resolve_address $circ_net_address $l3prot)
+        circuit_write_field $id circ_net_${l3prot}_address_resolved "$new"
+        circuit_unlock $id net_circuit_change
+
+        net_circuit_call_change_hooks $id $circ_dev $l3prot pre-change
+        net_circuit_pre_change_$l3prot $id $circ_dev change
+        for addr in $(list_unique $(list_sub "$old" $new))
+        do
+            net_circuit_remove_address_$l3prot $id $circ_dev $addr
+        done
+
+        for addr in $(list_unique $(list_sub "$new" $old))
+        do
+            net_circuit_add_address_$l3prot $id $circ_dev $addr
+        done
+        net_circuit_post_change_$l3prot $id $circ_dev change "$old" "$new"
+        net_circuit_call_change_hooks $id $circ_dev $l3prot post-change "$old" "$new"
+        ;;
+    down)
+        circuit_lock $id net_circuit_change
+        circuit_read_field $id circ_net_${l3prot}_address_resolved old
+        circuit_write_field $id circ_net_${l3prot}_address_resolved ""
+        circuit_unlock $id net_circuit_change
+
+        net_circuit_call_change_hooks $id $circ_dev $l3prot pre-down
+        net_circuit_pre_change_$l3prot $id $circ_dev down
+        for addr in $old
+        do
+            net_circuit_remove_address_$l3prot $id $circ_dev $addr
+        done
+        net_circuit_post_change_$l3prot $id $circ_dev down "$old"
+        net_circuit_call_change_hooks $id $circ_dev $l3prot post-down "$old"
+        [ -n "$old" ]
+        ;;
+    esac
+}
+
+# Input:
+#   $1 = identifier of circuit adding/removing a prefix
+#   $2 = layer-3 protocol
+net_circuit_prefix_change()
+{
+    local id=$1 l3prot=$2 circ type addr
+    for circ in $(circuit_get_by_state ready semionline online)
+    do
+        circuit_read_field $circ circ_type type
+        if [ "$type" = "net" ]
+        then
+            circuit_read_field $circ circ_net_${l3prot}_address addr
+            if list_is_in $id $(circuit_get_address_dependees "$addr")
+            then
+                net_circuit_change $circ $l3prot change
+            fi
+        fi
+    done
+}

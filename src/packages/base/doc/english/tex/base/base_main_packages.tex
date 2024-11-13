@@ -1,0 +1,346 @@
+% Synchronized to r38958
+
+  \chapter{Packages}
+
+  Besides the BASE installation there are also packages.
+  Each package contains one or more ``OPTs''
+  \footnote{abbreviation for ``OPTional module''} which can be installed in
+  addition to the base installation. Some of the OPTs are part of the BASE
+  package, other have to be downloaded separately. The download site
+  (\altlink{http://www.fli4l.de/en/download/stable-version/}) gives an overview over
+  the packages provided by the fli4l team, the OPT database
+  (\altlink{http://extern.fli4l.de/fli4l_opt-db3/}) contains packages offered
+  by other authors. In the following, we describe the packages supplied by
+  the fli4l team.
+
+  \section{Tools In The Package 'Base'}
+
+  The following OPTs are contained in the BASE package:
+  \begin{center}
+  \begin{tabular}{@{}lp{12cm}@{}}\hline
+    Name               & Description \\\hline
+    \var{OPT\_SYSLOGD} & \jump{OPTSYSLOGD}{Tool for logging system messages}\\
+    \var{OPT\_KLOGD}   & \jump{OPTKLOGD}{Tool for logging kernel messages}\\
+    \var{OPT\_LOGIP}   & \jump{OPTLOGIP}{Tool for logging WAN IP addresses}\\
+    \var{OPT\_Y2K}     & \jump{OPTY2K}{Date correction utility for systems that are not Y2K-safe}\\
+    \var{OPT\_PNP}     & \jump{OPTPNP}{Installation of ISAPnP tools}\\
+    \var{OPT\_HOTPLUG\_PCI} & \jump{OPTHOTPLUGPCI}{\mtr{Aktivating PCI hotplugging}}\\\hline
+  \end{tabular}
+  \end{center}
+
+\marklabel{OPTSYSLOGD}{\subsection{OPT\_SYSLOGD~-- Logging system messages}}\index{OPT\_SYSLOGD}
+
+  Many programs use the Syslog interface to log messages. If you want to see
+  these messages on your fli4l console you have to start the syslogd daemon.
+
+  Setting \var{OPT\_\-SYSLOGD} to `yes' enables debugging messages, `no'
+  disables them.
+
+  See also \jump{ISDNCIRCxDEBUG}{\var{ISDN\_CIRC\_x\_DEBUG}} and
+  \jump{PPPOEDEBUG}{\var{PPPOE\_DEBUG}}.
+
+
+  Default Setting: \var{OPT\_\-SYSLOGD}='no'
+
+  \begin{description}
+    \config{SYSLOGD\_RECEIVER}{SYSLOGD\_RECEIVER}{SYSLOGDRECEIVER}
+
+  \var{SYSLOGD\_RECEIVER} controls whether fli4l can receive Syslog messages
+  from other hosts in the network.
+
+    \configlabel{SYSLOGD\_DEST\_x}{SYSLOGDDESTx}
+    \config{SYSLOGD\_DEST\_N SYSLOGD\_DEST\_x}{SYSLOGD\_DEST\_N}{SYSLOGDDESTN}
+
+  \var{SYSLOGD\_\-DEST\_\-x} describes where the system messages
+  being received by syslogd should be displayed. Normally, this is fli4l's console,
+  hence:
+
+\begin{example}
+\begin{verbatim}
+        SYSLOGD_DEST_1='*.* /dev/console'
+\end{verbatim}
+\end{example}
+
+  If you want to log the messages into a file, you can e.g. use:
+
+\begin{example}
+\begin{verbatim}
+        SYSLOGD_DEST_1='*.* /var/log/messages'
+\end{verbatim}
+\end{example}
+
+  If you have a so-called ``log host'' in your network you can redirect the
+  Syslog messages to that host if you supply its IP address.
+
+  Beispiel:
+\begin{example}
+\begin{verbatim}
+        SYSLOGD_DEST_1='*.* @192.168.4.1'
+\end{verbatim}
+\end{example}
+
+  The ``@'' sign has to be prepended to the IP address.
+
+  If you want the Syslog messages to be delivered to multiple destinations
+  it is necessary to increase the variable \var{SYSLOGD\_DEST\_N} (number of
+  destinations used) accordingly and to fill the variables
+  \var{SYSLOG\_DEST\_1}, \var{SYSLOG\_DEST\_2} etc. with appropriate content.
+
+  The syntax `*.*' directs syslogd to log all messages. However, you are also
+  able to constrain the messages to be logged for certain destinations by the
+  use of so-called ``priorities''. In this case you need to replace the
+  asterisk (*) after the dot (.) by one of the following keywords:
+  \begin{itemize}
+  \item debug
+  \item info
+  \item notice
+  \item warning (deprecated: warn)
+  \item err (deprecated: error)
+  \item crit
+  \item alert
+  \item emerg (deprecated: panic)
+  \end{itemize}
+
+  The items in the list are descending sorted according to severity. The
+  keywords ``error'', ``warn'', and ``panic'' are deprecated---you should not
+  use them anymore.
+
+  You can replace the asterisk (*) in front of the dot by a so-called ``facility''.
+  However, a detailed explanation is outside this scope. You can find an
+  overview over the available facilities at the man page of syslog.conf:
+
+  \enlargethispage{\baselineskip}
+  \noindent \altlink{http://linux.die.net/man/5/syslog.conf}
+
+  In most cases an asterisk is completely sufficient. Example:
+\begin{example}
+\begin{verbatim}
+          SYSLOGD_DEST_1='*.warning @192.168.4.1'
+\end{verbatim}
+\end{example}
+  Windows hosts can serve as log hosts as well as Unix/Linux hosts. You can
+  find links to adequate software at \altlink{http://www.fli4l.de/en/other/links/}.
+  Using a log host is strongly recommended if you want a detailed
+  logging protocol. The protocol is also useful for debugging purposes. The Windows
+  client imonc also ``understands'' the Syslog protocol and is able to display
+  the messages in a window.
+
+  Unfortunately, messages generated during the boot process cannot be
+  directed to syslogd. However, you can configure fli4l to use a serial port
+  as a terminal. You can find more information on this topic in the section
+  \jump{CONSOLESETTINGS}{Console settings}.
+
+  \config{SYSLOGD\_ROTATE}{SYSLOGD\_ROTATE}{SYSLOGDROTATE}
+
+  You can use \var{SYSLOGD\_ROTATE} in order to control whether Syslog message
+  files are rotated once a day, thereby archiving the messages of the last x
+  days.
+
+  \config{SYSLOGD\_ROTATE\_DIR}{SYSLOGD\_ROTATE\_DIR}{SYSLOGDROTATEDIR}
+
+  The optional variable \var{SYSLOGD\_ROTATE\_DIR} lets you specify the
+  directory where the archived Syslog files should be stored. Leave it empty
+  to use the default directory /var/log.
+
+  \config{SYSLOGD\_ROTATE\_MAX}{SYSLOGD\_ROTATE\_MAX}{SYSLOGDROTATEMAX}
+
+  The optional variable \var{SYSLOGD\_ROTATE\_MAX} lets you specify the number of
+  archived/rotated Syslog files.
+
+  \config{SYSLOGD\_ROTATE\_AT\_SHUTDOWN}{SYSLOGD\_ROTATE\_AT\_SHUTDOWN}{SYSLOGDROTATEATSHUTDOWN}
+
+  With the optional variable \var{SYSLOGD\_ROTATE\_AT\_SHUTDOWN} you can disable the rotate
+  of syslog files at shutdown. Please only do this, if your syslogfiles are written directly to
+  a destination on a permanent disk.
+
+\end{description}
+
+
+\marklabel{OPTKLOGD}{\subsection{OPT\_KLOGD~-- Logging kernel messages}}\index{OPT\_KLOGD}
+
+  Many errors, e.g. a dial-in that failed, are written directly to the console
+  by the Linux kernel. If you set \var{OPT\_\-KLOGD}='yes', these messages are
+  redirected to the Syslog daemon which can log them to a file or send them to
+  a log host (see above). This keeps your fli4l console (almost) clear.
+
+  \noindent Recommendation: If you use \var{OPT\_\-SYSLOGD}='yes' you should
+  also set \var{OPT\_\-KLOGD} to `yes'.
+
+  Default setting: \var{OPT\_\-KLOGD}='no'
+
+
+\marklabel{OPTLOGIP}{\subsection{OPT\_LOGIP~-- Logging WAN IP addresses}}\index{OPT\_LOGIP}
+
+  LOGIP logs your WAN IP address to a log file. You activate this logging by
+  setting \var{OPT\_LOGIP} to `yes'.
+
+  Default setting: \var{OPT\_LOGIP}='no'
+
+\begin{description}
+  \config{LOGIP\_LOGDIR}{LOGIP\_LOGDIR}{LOGIPLOGDIR}{~-- Configure directory of log file}
+
+  The variable \var{LOGIP\_LOGDIR} contains the directory where the log
+  file should be created or 'auto' for autodetect.
+
+  Default setting: \var{LOGIP\_LOGDIR}='auto'
+\end{description}
+
+\marklabel{OPTY2K}{\subsection{OPT\_Y2K~-- Date correction for systems that are not Y2K-safe}}\index{OPT\_Y2K}
+
+  fli4l routers are often assembled from old hardware parts. Older
+  mainboards may have a BIOS that is not Y2K-safe. This can lead to the
+  situation that setting the system date to the 27th May 2000 causes the
+  BIOS date to become the 27th May 2094 after a reboot. By the way, Linux 
+  will then show the 27th May 1994 as system date.
+
+  Normally the system date reflected by fli4l is not important and should
+  not matter at all. If you use the LCR (Least Cost Routing) functionality
+  of your fli4l router this may very well play a role.
+
+  The reason: The 27th May 1994 was a Friday, the 27th May 2000 in contrast was
+  a Saturday. And for the weekend there are lower-priced rates or providers,
+  respectively \ldots
+
+  A first solution to that problem is as follows: The BIOS date is changed
+  from the 27th May 2000 to the 28th May 1994 which was a Saturday, too.
+  However, the problem is not solved completely yet: Not only does fli4l
+  use the day of week and the current time for least-cost routing but it also
+  respects bank holidays.
+
+\begin{description}
+  \config{Y2K\_DAYS}{Y2K\_DAYS}{Y2KDAYS}{~-- add N days to the system date}
+
+  Because the BIOS date differs from the actual one by exactly 2191 days, the
+  setting
+
+\begin{example}
+\begin{verbatim}
+        Y2K_DAYS='2191'
+\end{verbatim}
+\end{example}
+
+  causes the fli4l router to add 2191 days to the BIOS date before using it
+  as the Linux system date The BIOS date is left untouched because
+  otherwise the year would be wrong (2094 or 1994, resp.) again after the next
+  boot.
+\end{description}
+  There is an additional alternative:
+
+  Using a time server, fli4l is able to fetch the current date and time from
+  the Internet. The package \jump{sec:opt-chrony}{\var{CHRONY}} is designed
+  for this purpose. Both settings can be combined. This is useful as it allows
+  to correct the date via \var{Y2K\_DAYS} before setting the exact time using
+  the information from the time server.
+
+  If you do not have any problems with Y2K, set \var{OPT\_\-Y2K}='no' and
+  forget it \ldots
+
+
+\marklabel{OPTPNP}{\subsection{OPT\_PNP~-- Installation of ISAPnP tools}}\index{OPT\_PNP}
+
+  Some ISAPnP adapters have to be configured by the ``isapnp'' tool. This
+  especially affects ISDN adapters with a \var{ISDN\_\-TYPE} of 7, 12, 19, 24,
+  27, 28, 30, and 106~-- but only if the adapter is really an ISAPnP adapter.
+
+  For proper configuration you have to create the file
+  ``etc/isapnp.conf''.
+
+  Brief instructions to create this file follow:
+
+  \begin{itemize}
+  \item In $<$config$>$/base.txt, set \var{OPT\_\-PNP}='yes' and
+    \var{MOUNT\_\-BOOT}='rw'
+  \item boot your fli4l~-- the ISAPnP adapter will most likely not be detected
+  \item Logon to the fli4l's console and type:
+\begin{example}
+\begin{verbatim}
+        pnpdump -c >/boot/isapnp.conf
+        umount /boot
+\end{verbatim}
+\end{example}
+    This saves the ISAPnP configuration to your boot medium.
+  \end{itemize}
+  Continue on your PC (Unix/Linux/Windows):
+  \begin{itemize}
+  \item Copy the file isapnp.conf from your boot medium to $<$config$>$/etc/isapnp.conf
+  \item Edit isapnp.conf and save your changes\\
+        The default values can be left unchanged or be replaced by the values
+        proposed. The relevant lines are shown in the following example:
+
+\begin{example}
+\begin{verbatim}
+            #     Start dependent functions: priority acceptable
+            #       Logical device decodes 16 bit IO address lines
+            #             Minimum IO base address 0x0160
+            #             Maximum IO base address 0x0360
+            #             IO base alignment 8 bytes
+            #             Number of IO addresses required: 8
+       1)      (IO 0 (SIZE 8) (BASE 0x0160))
+            #       IRQ 3, 4, 5, 7, 10, 11, 12 or 15.
+            #             High true, edge sensitive interrupt (by default)
+       2)      (INT 0 (IRQ 10 (MODE +E
+\end{verbatim}
+\end{example}
+
+    \begin{description}
+      \item 1)~-- Here, you can choose the I/O \glqq{}BASE\grqq{} address. This
+                 address must lie between the minimum and maximum address and
+                 conform to the \glqq{}base alignment\grqq{}.\\
+                 If your system uses more than one ISA adapter, you will have
+                 to ensure that there are no overlaps between address ranges.
+                 The address range starts at \glqq{}BASE\grqq{} and ends at
+                 \glqq{}BASE + Number of IO addresses required\grqq{}.
+
+      \item 2)~-- Here you can pick an IRQ from the list shown.
+                 The IRQs 2(9), 3, 4, 5, and 7 should be avoided
+                 as these IRQs may clash with your serial and parallel
+                 interfaces or the interrupt cascading.\\
+                 ISA adapters are not able to share IRQs, thus
+                 the IRQ you choose here may not be used elsewhere.
+    \end{description}
+  \item Put the chosen configuration (IRQ/IO) into $<$config$>$/isdn.txt
+  \item In order to let the necessary files be copied to the boot medium, you
+    must set \var{OPT\_\-PNP} to 'yes' in $<$config$>$/base.txt. The variable
+    \var{MOUNT\_BOOT} can be chosen freely, however.
+  \item Create new boot medium
+  \end{itemize}
+  \achtung {The automatically generated file contains Unix line endings (LF
+  without CR). Thus, if you use Notepad under Windows, all content is shown in
+  a single line. In contrast, the DOS editor ``edit'' is able to cope with the
+  Unix line endings. When saved, however, they are changed to DOS line endings
+  (CR+LF).}
+
+  Workaround:
+  \begin{itemize}
+  \item start DOS box
+  \item change to the directory $<$config$>$/etc
+  \item type:
+    edit isapnp.conf
+  \item edit file and save your changes
+  \end{itemize}
+  After that you can also use Notepad to edit the file.
+
+  Under Windows you may also use the Wordpad editor.
+
+  The CRs generated by the ``edit'' tool are filtered when fli4l boots and thus
+  do not disturb.
+
+  Please try first to get along without using \var{OPT\_\-PNP}. If the
+  adapter is not recognized you may follow the procedure described
+  above.
+
+  If you update to a more recent fli4l version, you may reuse the previously
+  created \hbox{isapnp.conf}.
+
+  Default setting: \var{OPT\_\-PNP}='no'
+
+\marklabel{OPTHOTPLUGPCI}{\subsection{OPT\_HOTPLUG\_PCI~-- Aktivating PCI hotplugging}}\index{OPT\_HOTPLUG\_PCI}
+
+  Specifying \var{OPT\_HOTPLUG\_PCI='yes'} copies some modules to fli4l activating
+  PCI hotplugging and loads them during the boot process. This enables adding
+  and removing of PCI adapters during runtime. A suitable PCI hotplug controller
+  has to be used for this functionality.
+
+  This option does \emph{not} have to be activated for adding and removing
+  of virtual devices in \emph{virtualization environments} like KVM, those
+  use ACPI mechanisms and ACPI drivers are activated in the kernel anyway.

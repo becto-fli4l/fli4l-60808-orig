@@ -1,0 +1,169 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/base-helper
+#
+# Creation:     2004-07-04 jw5
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$base_helper" != yes ]
+then
+
+begin_push ()
+{
+    tos=`/usr/bin/expr $tos + 1`
+    eval "stack_$tos=\"${1}\""
+}
+
+begin_pop ()
+{
+    eval "ret=\"\$stack_${tos}\""
+    tos=`/usr/bin/expr $tos - 1`
+}
+
+begin_script ()
+{
+    # disable debugging
+    set +x
+    eval "tmp_debug=\"\$stack_${tos}\""
+
+    # push name and debug state of last script
+    begin_push "$SCRIPT"
+    begin_push "$SCRIPT_MSG"
+    begin_push "$SCRIPT_INDENT"
+    begin_push "$SCRIPT_RESULT"
+    begin_push "$SCRIPT_WARNONLY"
+    begin_push "$debug_active"
+
+    local script=$(basename "$script")
+
+    SCRIPT="$1"
+    SCRIPT_MSG="$2"
+    if echo $1 | grep -q '[[:space:]]'; then
+        log_error "script label contains spaces: '$1'"
+        SCRIPT=$script
+    fi
+
+    case "x$SCRIPT_MSG" in
+    '') SCRIPT_MSG="Executing $SCRIPT" ;;
+    esac
+    eprefixedinfo "$SCRIPT_INDENT[$script]" "$SCRIPT_MSG"
+
+    shell_dbg_opt=
+    eval debug='$'$SCRIPT'_DO_DEBUG'
+    case "$debug" in
+    yes)
+        debug_active='yes'
+        shell_dbg_opt=-x
+        set -x
+        ;;
+    *)
+        case "$tmp_debug" in
+        yes)
+             debug_active=yes
+             shell_dbg_opt=-x
+             set -x
+             ;;
+        esac
+        ;;
+    esac
+
+    # assume successful script
+    SCRIPT_RESULT=0
+    SCRIPT_WARNONLY=yes
+    SCRIPT_INDENT="$SCRIPT_INDENT  "
+}
+
+end_script ()
+{
+    # disable debugging
+    set +x
+
+    case ${SCRIPT_RESULT:-0} in
+    0) eend 0;;
+    *) eend $SCRIPT_RESULT ${SCRIPT_WARNONLY:+ewarn};;
+    esac
+
+    begin_pop
+    debug_state="$ret"
+    begin_pop
+    SCRIPT_WARNONLY="$ret"
+    begin_pop
+    SCRIPT_RESULT="$ret"
+    begin_pop
+    SCRIPT_INDENT="$ret"
+    begin_pop
+    SCRIPT_MSG="$ret"
+    begin_pop
+    SCRIPT="$ret"
+
+    case "$debug_active" in
+    yes)
+        case "$debug_state" in
+        yes) set -x ;;
+        *)
+            debug_active='no'
+            shell_dbg_opt=
+            set +x
+            ;;
+        esac
+    esac
+}
+
+mk_writable ()
+{
+    file=$1
+    case $file in
+    /opt/*)
+        log_error "mk_writable $file invoked, please remove /opt prefix"
+        file=${file#/opt}
+        ;;
+    esac
+    if [ -e $file ]
+    then
+        if [ -L $file ]
+        then
+            cp $file /tmp/mkwrt.$$
+            rm -f $file
+            mv /tmp/mkwrt.$$ $file
+        fi
+        if [ ! -w $file ]
+        then
+            chmod +w $file
+        fi
+    fi
+}
+
+wait_for_mdev ()
+{
+     sleep 1
+}
+
+# internal logging facility
+# (used when message needs to be generated outside the boot process)
+LOG_FACILITY_BASE=local5
+
+. /etc/boot.d/string.inc
+. /etc/boot.d/list.inc
+. /etc/boot.d/set.inc
+. /etc/boot.d/process.inc
+. /etc/boot.d/env.inc
+. /etc/boot.d/console.inc
+. /etc/boot.d/logging.inc
+. /etc/boot.d/forking.inc
+. /etc/boot.d/exittrap.inc
+. /etc/boot.d/locking.inc
+. /etc/boot.d/modules.inc
+. /etc/boot.d/volume.inc
+. /etc/boot.d/user.inc
+. /etc/boot.d/error.inc
+. /etc/boot.d/networking.inc
+. /etc/boot.d/lazy.inc
+
+tos=0
+SCRIPT='unknown'
+SCRIPT_MSG='none'
+SCRIPT_INDENT=''
+base_helper='yes'
+
+fi # $base_helper != yes

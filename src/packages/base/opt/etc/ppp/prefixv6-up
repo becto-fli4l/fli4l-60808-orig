@@ -1,0 +1,76 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/prefixv6-up
+# called whenever an IPv6 network prefix appears
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+# $1 = interface
+# $2 = circuit name
+# $3 = network prefix
+# $4 = valid lifetime
+# $5 = preferred lifetime
+
+. /etc/boot.d/forking.inc
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/locking.inc
+. /etc/boot.d/networking.inc
+
+script_name="prefixv6-up"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+logmsgprio=$facility.notice
+. /usr/share/logfunc.sh
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+interface=$1
+circ_id=$2
+prefix=$3
+valid_lft=${4:-forever}
+preferred_lft=${5:-forever}
+
+{
+fork_call_handlers
+sync_lock_resource prefixv6updown-$circ_id "$script"
+
+# register prefix but check if prefix is new or if it has been updated only
+curprefixes=$(circuit_get_prefixes $circ_id ipv6 | cut -d' ' -f1)
+if echo "$curprefixes" | grep -q "^$prefix$"
+then
+    newprefix=
+    echo "$circ_id[$interface]: IPv6 prefix $prefix has been renewed"
+else
+    newprefix=1
+    echo "$circ_id[$interface]: IPv6 prefix $prefix has appeared"
+fi
+
+circuit_register_prefix $circ_id ipv6 $prefix $valid_lft $preferred_lft
+
+if [ -n "$newprefix" ]
+then
+    ip -6 route add unreachable $prefix
+    setup-dynamic-ip6tables.sh
+
+    if [ -z "$curprefixes" ]
+    then
+        # now the circuit is (at least semi)online
+        circuit_go_online_if_possible $circ_id ipv6
+    fi
+fi
+
+# Call all custom prefixv6-ups
+lazy_begin
+for j in /etc/ppp/prefixv6-up[0-9][0-9][0-9].*
+do
+    if [ -f $j ]
+    then
+        echo "executing $j"
+        . $j
+    fi
+done
+lazy_end
+
+sync_unlock_resource prefixv6updown-$circ_id "$script"
+} 2>&1 | logmsg "$script" $logmsgprio

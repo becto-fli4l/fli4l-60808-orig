@@ -1,0 +1,192 @@
+% Synchronized to r29848
+
+  \section{imond configuration}
+
+  \begin{description}
+
+    \config{OPT\_IMOND}{OPT\_IMOND}{OPTIMOND}
+
+      Default setting: \var{OPT\_\-IMOND='no'}
+    
+    {\var{OPT\_\-IMOND} controls whether to start the imond server or not.
+      The imond server is responsible for monitoring/controlling the fli4l
+      router and for the so-called least cost routing. You can
+      find a detailed description of the
+      \jump{IMONDSCHNITTSTELLE}{Client/Server interface imond} in a separate
+      appendix.
+
+      Important: The least cost routing funtionality of fli4l can only be used
+      when imond is running. Time-based switching of connections is impossible
+      without imond!
+
+      Starting with version 1.5, imond is mandatory for ISDN and DSL routing.
+      In this case you have to set \var{OPT\_\-IMOND}='yes'. If you use fli4l
+      as a router between LANs only, you should set \var{OPT\_\-IMOND}='no'.}
+
+    \config{IMOND\_PORT}{IMOND\_PORT}{IMONDPORT}
+
+    {The TCP/IP port where imond should wait for connections. You shouldn't
+      change the default value `5000' unless in very exceptional cases.}
+
+
+    \config{IMOND\_PASS}{IMOND\_PASS}{IMONDPASS}
+
+      Default setting: \var{IMOND\_\-PASS=''}
+
+    {This variable can be used to set a user password for imond.
+      If a client connects to imond at port 5000, imond expects the client to
+      provide this password before processing any requests, with the exception
+      of the commands ``quit'', ``help'', and ``pass''. If you leave
+      \var{IMOND\_\-PASS} empty, no password is necessary.
+
+      The variables
+      \begin{itemize}
+      \item \jump{IMONDENABLE}{IMOND\_ENABLE},
+      \item \jump{IMONDDIAL}{IMOND\_DIAL},
+      \item \jump{IMONDROUTE}{IMOND\_ROUTE}, and
+      \item \jump{IMONDREBOOT}{IMOND\_REBOOT}
+      \end{itemize}
+      control whether providing the user password is sufficient to execute the
+      control commands like Dial, Hangup, Reboot, or Changing the Default Route, or
+      whether you need a special admin password for these requests (see below).}
+
+    \config{IMOND\_ADMIN\_PASS}{IMOND\_ADMIN\_PASS}{IMONDADMINPASS}
+
+    Default setting: \var{IMOND\_ADMIN\_\-PASS=''}
+
+    {Using the Admin Passwords the client receives all the rights and
+    can thus use all control functions of the server imond~-- regardless 
+    of the content of the variables \var{IMOND\_\-ENABLE}, \var{IMOND\_\-DIAL} etc.
+    If you leave \var{IMOND\_\-ADMIN\_\-PASS} empty, the user password is
+    sufficient to gain all rights!
+    }
+
+    \config{IMOND\_LED}{IMOND\_LED}{IMONDLED}
+
+    {The imond server is able to display the router's online/offline state via
+     a LED. This LED is connected to a serial port as follows:
+
+      25 pin connector:
+
+\begin{example}
+\begin{verbatim}
+        20 DTR  -------- 1kOhm ----- >| ---------- 7 GND
+\end{verbatim}
+\end{example}
+
+
+      9 pin connector:
+\begin{example}
+\begin{verbatim}
+         4 DTR  -------- 1kOhm ----- >| ---------- 5 GND
+\end{verbatim}
+\end{example}
+
+      The LED is on if an ISDN or DSL connection is established, otherwise
+      it is off. If you want this the other way round you have to reverse the polarity of
+      the LED. You can reduce the dropper resistor down to 470 ohm if the LED
+      is lit too dimly.
+
+      It is also possible to use two different coloured LEDs. In this
+      case you have to connect the second LED together with a dropper
+      resistor between DTR and GND too, but with reversed polarity. Then either the
+      first or the second LED will be lit depending on the router's state.
+      Another possibility is to use a DUO LED (two-coloured, three pins).
+
+      Currently, the serial port's RTS pin behaves exactly as the DTR pin.
+      You could even attach a third LED for displaying the
+      online/offline state. However, this behaviour may change in the future.
+
+      The variable \var{IMOND\_\-LED} has to be set to the name of the serial
+      port to where the LED is attached; possible values are `com1', `com2',
+      `com3', and `com4'. Leave the variable empty if you don't use an LED.}
+
+
+    \config{IMOND\_BEEP}{IMOND\_BEEP}{IMONDBEEP}
+
+    {If setting \var{IMOND\_\-BEEP}='yes', imond will emit a two-tone sound
+      over the PC speaker whenever the router's state changes from offline to
+      online and the other way round. In the first case, the higher tone
+      follows the lower one. In the second case, the higher tone is emitted
+      before the lower one.}
+
+
+    \config{IMOND\_LOG}{IMOND\_LOG}{IMONDLOG}
+
+     Default setting: \var{IMOND\_\-LOG='no'}
+    
+    {You can set \var{IMOND\_LOG}='yes' in order to log connections in the
+      file \verb+/var/log/imond.log+. This file can be copied i.e. by scp to
+      another host e.g. for statistical purposes. However, using scp requires
+      you to install and configure the sshd package appropriately.
+
+      The structure of the log file entries is described in Table \ref{tab:imondlog}.
+      \begin{table}[htbp]
+        \small
+        \centering
+        \caption{Structure of Imond log files}\label{tab:imondlog}
+        \begin{tabular}{lp{12cm}}
+          \hline
+          Entry & Meaning \\
+          \hline
+          Circuit & the name of the circuit for which the entry has been created \\
+          Start time & the date and time of dialing this circuit \\
+          Stop time & the date and time of hanging up this circuit \\
+          Online time & the time this circuit was online \\
+          Billed time & the time for which the provider will charge you (depends on
+          the timing) \\
+          Costs & the costs the provider will charge to your account \\
+          Bandwidth & the bandwidth used, separated into ``in'' and ``out''
+          (``in'' coming first), presented as two unsigned integer numbers
+          for which the following applies: Bandwidth =\newline
+          \emph{4GiB~$*<$first~number$>+<$second~number$>$} \\
+          Device & the device used for communication \\
+          Invoice pulse & the invoice pulse used by the provider for charging
+          (taken from the circuit configuration)\\
+          Call charge & the fee charged per invoice pulse (taken from the
+          circuit configuration)\\
+          \hline
+        \end{tabular}
+      \end{table}
+
+      The costs are denoted in Euro. These values are only meaningful if you
+      correctly define the corresponding circuit variables
+      \jump{ISDNCIRCxTIMES}{\var{ISDN\_CIRC\_x\_TIMES}}}.
+
+    \config{IMOND\_LOGDIR}{IMOND\_LOGDIR}{IMONDLOGDIR}
+
+    {If the imond log is activated, this variable can be used to choose an
+    alternative log directory instead of the default /var/log, e.g. /boot.
+    This is useful in order to make the log persistent on the boot medium.
+    However, this requires the boot medium to be mounted read/write.
+
+    The default value is 'auto' which lets the fli4l router to determine the
+    storage location automatically. Depending on further configuration, the
+    storage path is /boot/persistent/base or some other path determined by
+    the FLI4L\_UUID variable. If neither FLI4L\_UUID is set nor /boot is mounted
+    read/write, the log file can be found under /var/run.}
+
+    \configlabel{IMOND\_DIAL}{IMONDDIAL}
+    \configlabel{IMOND\_ROUTE}{IMONDROUTE}
+    \configlabel{IMOND\_REBOOT}{IMONDREBOOT}
+    \config{IMOND\_ENABLE  IMOND\_DIAL  IMOND\_ROUTE  IMOND\_REBOOT}{IMOND\_ENABLE}{IMONDENABLE}
+
+    {These variables make certain imond commands available in user mode
+    (enabling/disabling the ISDN interface, dialing/hanging up, changing the
+    default route, rebooting the router).
+
+    Default settings:
+
+\begin{example}
+\begin{verbatim}
+        IMOND_ENABLE='yes'
+        IMOND_DIAL='yes'
+        IMOND_ROUTE='yes'
+        IMOND_REBOOT='yes'
+\end{verbatim}
+\end{example}
+
+      All other features of imond's Client-Server interface are described in a
+      \jump{IMONDSCHNITTSTELLE}{separate chapter}.}
+
+  \end{description}

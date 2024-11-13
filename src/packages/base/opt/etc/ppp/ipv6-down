@@ -1,0 +1,85 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ipv6-down - called whenever a circuit connection goes offline
+#
+# Input:
+#   $1 = network interface
+#   $2 = TTY device (mostly useless, often set to /dev/null if there is no TTY)
+#   $3 = TTY speed (may be empty, see above)
+#   $4 = local IPv6 address (optionally with subnet mask in CIDR notation)
+#   $5 = remote IPv6 address (if this is a point-to-point connection)
+#   $6 = circuit identifier
+#   $7 = if non-empty, we are called from within addrv6-down
+#
+# Creation:        26.09.2009  zone42
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/networking.inc
+
+run_ipv6_down ()
+{
+    circuit_lock ipv6updown-$circ_id "$script"
+
+    echo "circuit $circ_id[$interface] goes down"
+    [ -n "$local" ] && echo "$circ_id: local IPv6 address: $local"
+    [ -n "$remote" ] && echo "$circ_id: remote IPv6 address: $remote"
+
+    local is_default_route=no i=
+    for i in $(seq 1 $circ_nets_ipv6_n)
+    do
+        eval local net=\$circ_nets_ipv6_$i
+        if [ "$net" = "::/0" ]
+        then
+            is_default_route=yes
+            break
+        fi
+    done
+
+    # Call all custom ipv6-downs
+    lazy_begin
+    for j in /etc/ppp/ipv6-down[0-9][0-9][0-9].*
+    do
+        if [ -f $j ]
+        then
+            echo "executing $j"
+            . $j
+        fi
+    done
+    lazy_end
+
+    circuit_lock $circ_id "$script"
+    circuit_remove_routes $circ_id 6
+    setup-dynamic-ip6tables.sh
+
+    for i in $(seq 1 $circ_nets_ipv6_n)
+    do
+        eval local net=\$circ_nets_ipv6_$i
+        circuit_deregister_routed_network $circ_id ipv6 $net
+        [ -f /var/run/imond.pid ] && imond-stat "$circ_id down $net"
+    done
+
+    # now the circuit is at most semionline
+    circuit_go_offline_if_necessary $circ_id ipv6
+
+    circuit_unlock $circ_id "$script"
+    circuit_unlock ipv6updown-$circ_id "$script"
+}
+
+interface=$1
+tty=$2
+speed=$3
+local=${4:+$(netcalc canonicalize $4)}
+remote=$5
+circ_id=$6
+addrdown=$7
+
+if [ -n "$local" -a -z "$addrdown" ]
+then
+    /etc/ppp/addrv6-down $interface $circ_id "$local" 1 &
+fi
+
+ip=ipv6
+script_op=down
+. /etc/ppp/ip-up-down

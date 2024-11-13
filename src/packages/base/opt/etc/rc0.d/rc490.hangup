@@ -1,0 +1,27 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc490.hangup - hanging-up internet connection at shutdown
+#
+# Creation:     2005-11-12 lanspezi
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /usr/share/circuits/api
+
+circ_n_all=$(circuit_get_by_state all | wc -l)
+circ_n_deleted=$(circuit_get_by_state deleted | wc -l)
+circ_n_failed=$(circuit_get_by_state failed | wc -l)
+circ_n_inactive=$(circuit_get_by_state inactive | wc -l)
+circ_n_active=$(circuit_get_by_state active | wc -l)
+circ_n=$((circ_n_all-circ_n_deleted-circ_n_failed-circ_n_inactive-circ_n_active))
+
+# rationale: ip(v6)?-down scripts are not serialized, so ip_down_timeout should
+# be enough for _all_ circuits; however, of course there will be resource
+# contention, so we add five seconds for each circuit to be hung up
+timeout=$((ip_down_timeout+circ_n*5))
+
+begin_script HANGUP "Hanging up circuits ..."
+fli4lctrl dialmode global off
+fli4lctrl wait \*:offline:$timeout
+SCRIPT_RESULT=$?
+end_script

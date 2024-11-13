@@ -1,0 +1,385 @@
+% Synchronized to r54273
+
+\marklabel{NULLMODEMKABEL}{\section{Null Modem Cable}}
+
+    For using the otional package \jump{sec:optppp}{PPP}
+    a null modem cable is needed.
+
+    It needs at least three wires. This is the pin layout:
+
+\begin{example}
+\begin{verbatim}
+
+male-  female-                        female-  male-
+     pins                                pins
+25pin     9pin                        9pin     25pin
+
+    8  +- 1                             1  -+   8
+       |                                    |
+    3  |  2 ------------\ /------------ 2   |   3
+       |                 X                  |
+    2  |  3 ------------/ \------------ 3   |   2
+       |                                    |
+   20  +- 4                             4  -+  20
+       |                                    |
+    7  |  5 --------------------------- 5   |   7
+       |                                    |
+    6  +- 6                             6  -+   6
+
+    4  +- 7                             7  -+   4
+       |                                    |
+    5  +- 8                             8  -+   5
+
+
+\end{verbatim}
+\end{example}
+
+
+    The plugs have to be soldered with the bridges shown above.
+
+\marklabel{SERIALCONSOLE}{\section{Serial Console}}
+
+    fli4l can be used without monitor and keyboard. A drawback of this 
+    setup is that eventual error messages will not get noticed because 
+    not all messages can be piped to the syslog-port.
+
+    A possible solution is redirecting of all console messages to a PC 
+    or a classic terminal using the serial port of the router.
+    Configuration is done by the variables
+    \jump{SERCONSOLE}{\var{SER\_CONSOLE}},
+    \jump{SERCONSOLEIF}{\var{SER\_CONSOLE\_IF}} and
+    \jump{SERCONSOLERATE}{\var{SER\_CONSOLE\_RATE}}.
+
+    Machines with older mainboards/cards don not support higher serial 
+    speeds than 38400 Bd. This is why you should try with a maximum of 38400 Bd 
+    at first before testing higher port speeds. Since only text messages are
+    displayed on the console higher speeds are not evne necessary.
+
+    All messages that usually would go to the console are now redirected 
+    to the serial port~-- also messages of the boot process!
+
+    As a cable to the terminal or PC with terminal emulation a 
+    \jump{NULLMODEMKABEL}{Null Modem Cable} is used. Using a standard null modem
+    cable is discouraged because these have bridges on the handshake wires.
+    If Terminal or PC are powered off (or no terminal emulation is loaded) the use
+    of a standard null modem cable can thus lead to a hangup.
+
+    This is why a special wiring is needed here for using fli4l also when the 
+    terminal is deactivated. You need a 3-wire cable, with some bridges on the plug.
+    See \jump{NULLMODEMKABEL}{Nullmodemkabel}.
+
+%\begin{verbatim}
+%                      female                   female
+%                    9pol  25pol             25pol   9pol
+%                     3      2 -------------- 3        2
+%                     2      3 -------------- 2        3
+%                     7      4 -+          +- 5        8
+%                               |          |
+%                     8      5 -+          +- 4        7
+%                     6      6 -+          +- 6        6
+%                               |          |
+%                     1      8 -+          +- 8        1
+%                               |          |
+%                     4     20 -+          +- 20       4
+%                     5      7 -------------- 7        5
+%\end{verbatim}
+
+
+
+    \section{Programs}
+
+    To save space on the boot media the program ``BusyBox'' is used. Ti is a single executable
+    containing the standard Unix programs
+
+\begin{example}
+\begin{verbatim}
+        [, [[, arping, ash, base64, basename, bbconfig, blkid, bunzip2, bzcat, bzip2,
+        cat, chgrp, chmod, chown, chroot, cmp, cp, cttyhack, cut, date, dd, df,
+        dirname, dmesg, dnsdomainname, echo, egrep, expr, false, fdflush, fdisk, find,
+        findfs, grep, gunzip, gzip, halt, hdparm, head, hostname, inetd, init, insmod,
+        ip, ipaddr, iplink, iproute, iprule, iptunnel, kill, killall, klogd, less, ln,
+        loadkmap, logger, ls, lsmod, lzcat, makedevs, md5sum, mdev, mkdir, mknod,
+        mkswap, modprobe, mount, mv, nameif, nice, nslookup, ping, ping6, poweroff,
+        ps, pscan, pwd, reboot, reset, rm, rmmod, sed, seq, sh, sleep, sort, swapoff,
+        swapon, sync, sysctl, syslogd, tail, tar, test, top, tr, true, tty, umount,
+        uname, unlzma, unxz, unzip, uptime, usleep, vi, watch, xargs, xzcat, zcat
+\end{verbatim}
+\end{example}
+
+    \noindent . These are mostly ``minimalistic'' implementations which 
+    do not cover the full functional range but fully reflect the modest
+    requirements of fli4l.
+
+    BusyBox is GPL'ed and its source can be obtained at
+
+    \altlink{http://www.busybox.net/}
+
+
+    \section{Other i4l-Tools}
+
+    There are other tools for isdn4linux that could be used for fli4l.
+    It could be that isdnlog is more adequate as a tool to compute online-fees 
+    but it's size is 10 times higher than imond's which additionally does monitoring,
+    controlling and Least-Cost-Routing.
+
+    \section{Debugging}
+
+    Console-Outputs are most helpful for hunting bugs. But these go by so fast
+    on the screen, don't they? Hint: SHIFT-PAGE-UP scrolls back,
+    SHIFT-PAGE-DOWN scroll forwards.
+
+    If the error message ``try-to-free-pages'' occurs during router use
+    there is not enough RAM left for the programs. Try the following
+    options to recover:
+    \begin{itemize}
+    \item add more RAM
+    \item use less Opt-Packages
+    \item try a harddisk-installation according to \jump{INSTALLTYPB}{Typ B}
+    \end{itemize}
+
+    proc-files can help debugging, for example executing
+
+\begin{example}
+\begin{verbatim}
+                cat /proc/interrupts
+\end{verbatim}
+\end{example}
+    
+    shows the interrupts used by the drivers~-- not those
+    used by the hardware!
+    
+    More interesting files under /proc are devices, dma,
+    ioports, kmsg, meminfo, modules, uptime, version and pci (if
+    the router has a PCI-Bus).
+    
+    Often a connection problem with ipppd is caused by 
+    failing authentification. The variables
+
+\begin{example}
+\begin{verbatim}
+        OPT_SYSLOGD='yes'
+\end{verbatim}
+\end{example}
+
+\begin{example}
+\begin{verbatim}
+        OPT_KLOGD='yes'
+\end{verbatim}
+\end{example}
+
+    in config/base.txt and
+
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_x_DEBUG='yes'
+\end{verbatim}
+\end{example}
+
+    in config/isdn.txt can help here.
+
+
+    \section{Literature}
+
+    \begin{itemize}
+    \item Computer Networks, Andy Tanenbaum
+    \item TCP/IP Netzanbindung von PCs, Craig Hunt
+    \item TCP/IP, Kevin Washburn, Jim Evans, Verlag: Addison-Wesley, \\ISBN: 3-8273-1145-4
+    \item TCP/IP Netzanbindung von PCs, ISBN 3-930673-28-2
+    \item TCP/IP Netzwerk Administration, ISBN 3-89721-110-6
+    \item Linux-Anwenderhandbuch, ISBN 3-929764-06-7
+    \item TCP/IP im Detail:\\
+      \altlink{http://www.nickles.de/c/s/ip-adressen-112-1.htm}
+    \item Generell das online Linuxanwenderhandbuch von Lunetix unter:\\
+      \altlink{http://www.linux-ag.com/LHB/}
+    \item Einführung in die Linux-Firewall:
+      \altlink{http://www.little-idiot.de/firewall/}
+    \end{itemize}
+
+    \section{Prefixes}
+
+    For units, prefixes addressed in this document are according to \verb+IEC 60027-2+.\\
+    See: \altlink{http://physics.nist.gov/cuu/Units/binary.html}.
+
+    \section{Warranty and Liability}
+
+    There is no warranty and liability whatsoever for the whole fli4l
+    distribution or parts of it. Also there is no guarantee for
+    function or correct documentation whereever you may find it.
+    
+    There is no Liability at all for eventual damages or costs that
+    may arise! In other words: Don't complain if it eats your hamster.
+
+    \section{Credits}
+    \newcommand{\membermail}[3]{\multicolumn{2}{l}{#1 (\emph{#2})}\\\nopagebreak & \email{#3}\\}
+    \newcommand{\member}[2]{#1 (\emph{#2})\\}
+    \newcommand{\personmail}[2]{#1 & \email{#2}\\}
+    \newcommand{\person}[1]{#1\\}
+    
+    In this part of the documentation all people are honored who
+    contribute or have contributed to the development of fli4l.
+
+    \subsection{Foundation Of The Project}
+    
+    \begin{tabular}{ll}
+      \person{Meyer, Frank}
+    \end{tabular}\latex{\\}
+
+    \noindent\latex{\parbox{\textwidth}}{
+    Frank started the Projekt fli4l on May, 4th 2000!\\
+    See: \altlink{http://www.fli4l.de/home/eigenschaften/historie/}}
+
+    \subsection {Developer- and Testteam}
+
+    \noindent \textbf{The fli4l-Team consists of (in alphabetical order):}
+
+    \begin{tabular}{l}
+      \member{Charrier, Bernard}     {french translation}
+      \member{Eckhofer, Felix}       {documentation, howtos}
+      \member{Franke, Roland}        {OW, FBR}
+      \member{Hilbrecht, Claas}      {VPN, kernel}
+      \member{Klein, Sebastian}      {kernel, wlan}
+      \member{Knipping, Michael}     {accounting}
+      \member{Krister, Stefan}       {opt-Cop, lcd4linux}
+      \member{Miksch, Gernot}        {LCD}
+      \member{Schiefer, Peter}       {fli4l-CD, opt-cop, website, releasemanagement}
+      \member{Schliesing, Manfred}   {testing}
+      \member{Schulz, Christoph}     {FBR, IPv6, kernel}
+      \member{Siebmanns, Harvey}     {documentation, english translation}
+      \member{Spieß, Carsten}        {dsltool, hwsupp, rrdtool, webgui}
+      \member{Vosselman, Arwin}      {LZS-compression, documentation}
+      \member{Weiler, Manuela}       {CD-shipping, treasurer}
+      \member{Weiler, Marcel}        {quality management}
+      \member{Wolters, Florian}      {firmware, kernel}
+    \end{tabular}
+
+    \subsection {Developer- and Testteam (inactive)}
+
+    \begin{tabular}{l}
+      \member{Arndt, Kai-Christian}  {USB}
+      \member{Bauer, Jürgen}         {LCD-Package, fliwiz}
+      \member{Behrends, Arno}        {Support}
+      \member{Blokland, Kees}        {english translation}
+      \member{Bork, Thomas}          {lpdsrv}
+      \member{Bußmann, Lars}         {testing}
+      \member{Cerny, Carsten}        {Website, fliwiz}
+      \member{Dawid, Oliver}         {dhcp, uClibc}
+      \member{Ebner, Hannes}         {QoS}
+      \member{Fischer, Joerg}        {testing}
+      \member{Frauenhoff, Peter}     {testing}
+      \member{Grabner, Hans-Joerg}   {imonc}
+      \member{Grammel, Matthias}     {english translation}
+      \member{Gruetzmacher, Tobias}  {Mini-httpd, imond, proxy}
+      \member{Hahn, Joerg}           {IPSEC}
+      \member{Hanselmann, Michael}   {Mac OS X/Darwin}
+      \member{Hoh, Jörg}             {Newsletter, NIC-DB, events}
+      \member{Hornung, Nicole}       {Verein}
+      \member{Horsmann, Karsten}     {Mini-httpd, WLAN}
+      \member{Janus, Frank}          {LCD}
+      \member{Kaiser, Gerrit}        {Logo}
+      \member{Karner, Christian}     {PPTP-Package}
+      \member{Klein, Marcus}         {Problemfeedback}
+      \member{Lammert, Gerrit}       {HTML-documentation}
+      \member{Lanz, Ulf}             {LCD}
+      \member{Lichtenfeld, Nils}     {QoS}
+      \member{Neis, Georg}           {fli4l-CD, documentation}
+      \member{Peiser, Steffen}       {FAQ}
+      \member{Peus, Christoph}       {uClibc}
+      \member{Pohlmann, Thorsten}    {Mini-httpd}
+      \member{Raschel, Tom}          {IPX}
+      \member{Reinard, Louis}        {CompactFlash}
+      \member{Resch, Robert}         {PCMCIA, WLAN}
+      \member{Schäfer, Harald}       {HDD-Support}
+      \member{Schmitts, Jupp}        {testing}
+      \member{Strigler, Stefan}      {GTK-Imonc, Opt-DB, NG}
+      \member{Wallmeier, Nico}       {windows-imonc}
+      \member{Walter, Gerd}          {UMTS}
+      \member{Walter, Oliver}        {QoS}
+      \member{Wolter, Jean}          {Paketfilter, uClibc}
+      \member{Zierer, Florian}       {wishlist}
+    \end{tabular}
+
+    \subsection {Sponsors}
+
+    \noindent Meanwhile fli4l is a registered als Word-/trademark.
+    The following fli4l-Users (there are more that did not want to be mentioned) have
+    helped to raise the money needed for this:\\
+
+    \begin{tabular}{l}
+      \person{Bebensee, Norbert}
+      \person{Becker, Heiko}
+      \person{Behrends, Arno}
+      \person{Böhm, Stefan}
+      \person{Brederlow, Ralf}
+      \person{Groot, Vincent de}
+      \person{Hahn, Olaf}
+      \person{Hogrefe, Paul}
+      \person{Holpert, Christian}
+      \person{Hornung, Nicole}
+      \person{Kuhn, Robert}
+      \person{Lehnen, Jens}
+      \person{Ludwig, Klaus-Ruediger}
+      \person{Mac Nelly, Christa}
+      \person{Mahnke, Hans-Jürgen}
+      \person{Menck, Owen}
+      \person{Mende, Stefan}
+      \person{Mücke, Michael}
+      \person{Roessler, Ingo}
+      \person{Schiele, Michael}
+      \person{Schneider, Juergen}
+      \person{Schönleber, Suitbert}
+      \person{Sennewald, Matthias}
+      \person{Sternberg, Christoph}
+      \person{Vollmar, Thomas}
+      \person{Walter, Oliver}
+      \person{Wiebel, Christian}
+      \person{Woelk, Fabian}
+    \end{tabular}\latex{\\}
+
+    \noindent For some time fli4l has its own sponsors, whose
+    \mbox{(Hardware-)donations} have helped to support the fli4l development.
+    In detail this are adapters, CompactFlash and Ethernet cards.\\
+
+    \noindent Hardware-donours (in alphabetical order):\\
+
+    \begin{tabular}{l}
+      \person{Baglatzis, Stephanos}
+      \person{Bauer, Jürgen}
+      \person{Dross, Heiko}
+      \person{Kappenhagen, Wenzel}
+      \person{Kipka, Joachim}
+      \person{Klopfer, Tom}
+      \person{Peiser, Steffen}
+      \person{Reichelt, Detlef}
+      \person{Reinard, Louis}
+      \person{Stärkel, Christopher}
+    \end{tabular}\latex{\\\\}
+
+    \noindent\latex{\parbox{\textwidth}}{
+    More sponsors can be found on the fli4-homepage:\\
+    \altlink{http://www.fli4l.de/sonstiges/sponsoren/}}
+
+    \section{Feedback}
+
+    Critics, feedback and cooperation are always welcome.
+
+    The primary point of contact are the fli4l-Newsgroups. Those having problems
+    in the setup of a fli4l-Routers, should at first read the FAQ, Howtos and the 
+    NG-Archives, before posting in the newsgroups. Informations on the
+    different groups and netiquette can be found on the fli4l-Webseite:
+
+           \altlink{http://www.fli4l.de/hilfe/newsgruppen/}\\
+    \indent\altlink{http://www.fli4l.de/hilfe/faq/}\\
+    \indent\altlink{http://www.fli4l.de/hilfe/howtos/}\\
+
+    Because mostly older hardware is used for fli4l problems may be
+    inevitable. Informations can help other fli4l-users having hardware
+    problems with PC-Cards (I/O-Addresses, Interrupts and so on).
+
+    On fli4l's website is a link to a network card database, where
+    appropriate drivers for certain cards are listed and can be entered.
+
+        \altlink{http://www.fli4l.de/hilfe/nic-db/}
+
+    \bigskip
+
+    Have fun with fli4l!

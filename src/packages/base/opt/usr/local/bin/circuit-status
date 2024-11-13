@@ -1,0 +1,70 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/local/sbin/circuit-status - Displays circuit status (on extra tty)
+#
+# Creation:	16.11.2000  tp
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+. /usr/share/circuits/api
+
+circ_col_id_len=7
+circ_col_alias_len=12
+circ_col_type_len=13
+circ_col_interface_len=12
+circ_col_name_len=14
+circ_col_state_len=10
+
+circ_len=$((circ_col_id_len+circ_col_alias_len+circ_col_type_len+circ_col_interface_len+circ_col_name_len))
+
+format="%-${circ_col_id_len}s%-${circ_col_alias_len}s%-${circ_col_type_len}s%-${circ_col_interface_len}s%-${circ_col_name_len}s%-${circ_col_state_len}s%s"
+
+while true
+do
+    clrhome
+    colecho "Circuit Overview `date -R`" 0 0 br
+    printf "================================================================================\n"
+    echo
+
+    dialmode=$(fli4lctrl dialmode global)
+    case $dialmode in
+    auto)   color=gn ;;
+    manual) color="br 0 br" ;;
+    off)    color="rd 0 dk" ;;
+    esac
+
+    colecho "Dialmode: $dialmode" $color
+    echo
+
+    printf "$format\n" Id Alias Type Interface Name State Since
+    printf "--------------------------------------------------------------------------------\n"
+
+    for circuit in $(circuit_get_by_state all)
+    do
+        circuit_file=$(readlink -f $circuit_dir/$state/$circuit)
+        set -- $(ls -l $circuit_file)
+
+        vars=$(circuit_get_data $circuit)
+        if [ -n "$vars" ]
+        then
+            circ_alias=
+            eval $vars
+
+            state=$(circuit_get_state $circuit)
+            case $state in
+            active)     color="bl 0 br" ;;
+            ready)      color=cy ;;
+            semionline) color="br 0 br" ;;
+            online)     color=gn ;;
+            failed)     color="rd 0 br" ;;
+            *)          color="b  0 br" ;;
+            esac
+
+            colecho "$(printf "$format" "$circuit" "$circ_alias" "$circ_type" "$circ_dev" "$circ_name" "$state" "$6 $7 $8")" $color
+        else
+            colecho "$(printf "$format" "$circuit" "" "" "" "" "unknown" "$6 $7 $8")" mg 0 br
+        fi
+    done
+
+    sleep 2
+done

@@ -1,0 +1,112 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc040.dns-local
+#
+# Creation:     13.04.2000  fm
+# Last Update:  $Id$
+#
+# Copyright (c) 2000-2001 - Frank Meyer
+# Copyright (c) 2001-2016 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+begin_script RC040_DNS_LOCAL "creating /etc/resolv.conf and /etc/hosts ..."
+
+write_resolv_conf ()
+{
+    log_info "writing /etc/resolv.conf ..."
+
+    if [ "$OPT_DNS" = "yes" ]
+    then
+        ipaddr=127.0.0.1
+    else
+        ipaddr=$DNS_FORWARDERS
+    fi
+
+    {
+        cat <<EOF
+#----------------------------------------------------------------------------
+# /etc/resolv.conf
+# automatically created by rc040.dns-local
+#----------------------------------------------------------------------------
+search $DOMAIN_NAME
+EOF
+        local forwarder addresses addr port
+        for forwarder in $ipaddr
+        do
+            # to get sure that no port-extensions get into resolv.conf
+            split_addr_port "$forwarder" addresses port || continue
+            for addr in $addresses
+            do
+                echo "nameserver $addr"
+            done
+        done
+    } >/etc/resolv.conf
+}
+
+write_etc_hosts ()
+{
+    log_info "writing /etc/hosts ..."
+
+    {
+        cat <<EOF
+#----------------------------------------------------------------------------
+# /etc/hosts
+# automatically created by rc040.dns-local
+#----------------------------------------------------------------------------
+127.0.0.1 localhost
+EOF
+
+        # host-entry for the router
+        aliases=
+        ipaddr=
+        [ 0$HOSTNAME_ALIAS_N -eq 0 ] || for j in `seq 1 $HOSTNAME_ALIAS_N`
+        do
+            eval alias='$HOSTNAME_ALIAS_'$j
+            aliases="$aliases $alias"
+        done
+        if [ "$HOSTNAME_IP" ]
+        then
+            translate_ip_net $HOSTNAME_IP HOSTNAME_IP ipaddr
+        else
+            [ 0$IP_NET_N -eq 0 ] || for i in `seq 1 $IP_NET_N`
+            do
+                eval net='$IP_NET_'$i''
+                case "$net" in
+                    {*}*) ;;
+                    *.*.*.*)
+                        ipaddr=`echo $net | sed 's/\/.*//'`
+                        break
+                        ;;
+                esac
+            done
+        fi
+        [ "$ipaddr" ] && echo "$ipaddr $HOSTNAME.$DOMAIN_NAME $HOSTNAME $aliases"
+
+        echo "# hostnames for every interface"
+        [ 0$IP_NET_N -eq 0 ] || for i in `seq 1 $IP_NET_N`
+        do
+            eval dev='$IP_NET_'$i'_DEV'
+            dev=`echo $dev | sed -e 's/\./-vlan-/;s/:/-alias-/'`
+            eval net='$IP_NET_'$i''
+            case "$net" in
+                {*}*) continue ;;
+            esac
+            ipaddr=`echo $net | sed 's/\/.*//'`
+            eval canonical='$IP_NET_'$i'_NAME'
+            echo "$ipaddr $canonical $HOSTNAME-$dev.$DOMAIN_NAME $HOSTNAME-$dev"
+        done
+
+    } >/etc/hosts
+}
+
+if [ ! -f /etc/resolv.conf ]        # already existing?
+then                                # yes, don't overwrite
+    write_resolv_conf
+fi
+
+if [ ! -f /etc/hosts ]              # already existing?
+then                                # yes, don't overwrite
+    write_etc_hosts
+fi
+
+end_script

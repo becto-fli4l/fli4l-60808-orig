@@ -1,0 +1,24 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc950.hwclock - write system time to hardware clock
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+case $RTC_SYNC in
+hwclock)
+    begin_script HWCLOCK "Writing system time to RTC ... "
+
+    rtcdev=$(zcat /proc/config.gz 2>/dev/null | sed -n "s/^CONFIG_RTC_SYSTOHC_DEVICE=\"\(.*\)\"$/\1/p")
+    if [ -c "/dev/$rtcdev" ]
+    then
+        hwclock --systohc --utc --rtc=/dev/$rtcdev
+        SCRIPT_RESULT=$?
+    else
+        log_error "no hardware clock configured in the kernel to save the system time to"
+        log_error "check CONFIG_RTC_SYSTOHC_DEVICE in your kernel configuration"
+    fi
+
+    end_script
+    ;;
+esac

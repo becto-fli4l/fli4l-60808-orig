@@ -1,0 +1,433 @@
+% Last Update: $Id$
+\section{Allgemeine Einstellungen}
+
+\begin{description}
+
+  \config{HOSTNAME}{HOSTNAME}{HOSTNAME}
+
+  Standardwert: \var{HOSTNAME='fli4l'}
+
+  Als erstes sollte man seinem fli4l-Router einen Namen geben.
+
+
+  \config{PASSWORD}{PASSWORD}{PASSWORD}
+  
+  Standardwert: \var{PASSWORD='fli4l'}
+  
+  Das hier angegebene Passwort wird für das Einloggen in den fli4l-Rechner
+  benötigt~-- sei es per Tastatur direkt am Router oder per SSH von einem
+  anderen Rechner aus (hierzu wird das sshd-Paket benötigt). Es muss aus
+  mindestens einem und darf aus höchstens 126 Zeichen bestehen.
+
+
+  \config{BOOT\_TYPE}{BOOT\_TYPE}{BOOTTYPE}
+
+  Standardwert: \var{BOOT\_TYPE='hd'}
+
+  \var{BOOT\_TYPE} legt im weitesten Sinne das Bootmedium fest. Diese Variable
+  steuert, welche zusätzlichen Treiber (Kernel-Module) und Start-Skripte mit in
+  das RootFS aufgenommen werden. Zum Verständnis eine kurze Skizze des
+  Bootvorgangs:
+
+ \begin{itemize}
+    \item Das BIOS des Rechners lädt/startet den Bootloader auf dem Bootmedium.
+    \item Der Bootloader (i.d.R syslinux) entpackt, lädt und startet den
+          Kernel.
+    \item Der Kernel entpackt das RootFS (= das grundlegende Dateisystem mit
+          darin enthalten Programmen und Skripte), mountet das RootFS und
+          beginnt die Start-Skripte abzuarbeiten.
+    \item Je nach \var{BOOT\_TYPE} werden nun die Kernel-Module für das jeweilige
+          Bootmedium geladen, die Boot-Partition gemountet und das OPT-Archiv
+          (\texttt{opt.img}) mit den zusätzlichen Programmen entpackt.
+    \item Im Anschluss beginnt die Konfiguration der einzelnen Dienste des fli4l.
+  \end{itemize}
+
+ Zur Zeit sind folgende Werte für \var{BOOT\_TYPE} gültig:
+
+  \begin{description}
+  \item[ls120] Boot von LS120/240 sowie ZIP Disks.
+  \item[hd] Boot von Festplatte. IDE und SATA Geräte werden direkt erkannt, für SCSI, USB oder besondere Controller
+            wird das Paket HD und/oder USB benötigt.
+            Näheres ist der \jump{sec:hdinstall}{Dokumentation} zum Paket HD zu entnehmen.
+  \item[cd] Boot von CD-ROM.  Es wird lediglich das ISO-Image fli4l.iso der CD erzeugt, welches
+            anschließend mit dem jeweiligen Lieblingsbrennprogramm selbst auf
+            CD gebrannt werden muss. Bezüglich SCSI, USB und spezielle Controller ist das Paket HD bzw. USB nötig.
+  \item[integrated] Bei diesem Typ wird kein Bootmedium zu Grunde gelegt,
+                    sondern das OPT-Archiv vollständig ins RootFS
+                    integriert. Somit entfällt das Mounten des Bootmediums
+                    und der Kernel kann gleich alles entpacken. Dieser
+                    \var{BOOT\_TYPE} wird z.B. fürs Booten vom Netzwerk
+                    benötigt.\\
+                    \textbf{Hinweis: } Ein remote Update ist natürlich in diesem
+                    Fall nicht möglich.
+  \item[attached] Ähnlich wie \textbf{integrated}, jedoch wird das
+                  OPT-Archiv als Datei \texttt{opt.img} ans RootFS
+                  angehängt, mit der Folge, dass es wieder im Verzeichnis
+                  \texttt{/boot} zu finden ist und gesondert beim Bootvorgang
+                  entpackt wird.\\
+                  Ansonsten gilt das unter \texttt{integrated} Gesagte.
+  \item[netboot] Entspricht \textbf{integrated}. Es wird jedoch zusätzlich das
+                 Skript \texttt{mknetboot.sh} gestarted, welches ein Image zum
+                 Booten via LAN erzeugt. Weiteres ist bitte dem Wiki 
+                 \altlink{https://ssl.nettworks.org/wiki/display/f/fli4l+und+Netzboot} 
+                 zu entnehmen.
+  \item[pxeboot] Es werden zwei Images generiert, kernel und rootfs.img. Das sind die beiden vom
+		 PXE-Bootloader nachzuladenden Dateien. Beim Aufruf kann
+		 die Lokation des tftp-Verzeichnisses angegeben werden und zusätzlich noch ein
+		 Unterverzeichnis innerhalb des tftp-Verzeichnisses (--pxesubdir).
+		 Weiteres auch hier im Wiki \altlink{https://ssl.nettworks.org/wiki/display/f/fli4l+und+Netzboot}           
+  \end{description}
+
+  \textbf{Hinweis:} wie ein fli4l als passender boot-server (pxe/tftp) zu 
+  konfigurieren ist, können sie in der Dokumentation des Pakets dns\_dhcp nachlesen.\\
+  
+  \config{LIBATA\_DMA}{LIBATA\_DMA}{LIBATADMA}
+
+  Mit dieser Variable kann eingestellt werden, ob DMA für libata basierte Geräte
+  aktiviert werden soll. Dies ist z.B. bei einigen unvollständig verdrahteten
+  IDE zu Compact-Flash Adaptern nötig. Um DMA zu aktivieren: 'enabled'
+  Default: 'disabled'
+
+  \config{MOUNT\_BOOT}{MOUNT\_BOOT}{MOUNTBOOT}
+  
+  Standardwert: \var{MOUNT\_\-BOOT='rw'}
+
+  {Hier wird eingestellt, wie das Boot-Medium gemountet werden
+    soll. Es gibt drei Möglichkeiten:
+
+    \begin{description}
+      \item[rw]~-- Read/Write~-- Schreiben und Lesen ist möglich
+      \item[ro]~-- Read-Only~-- Nur Lesen ist möglich
+      \item[no]~-- None~-- Medium wird nach dem Boot wieder
+        abgemeldet und kann dann bei Bedarf entnommen werden.
+    \end{description}
+
+    Bei bestimmten Konfigurationen ist es unbedingt erforderlich, das
+    Medium Read/\-Write anzumelden, z.B. wenn man den DHCP-Server
+    einsetzen oder die imond-Log-Datei auf dem Medium anlegen
+    möchte.}
+
+
+  \config{BOOTMENU\_TIME}{BOOTMENU\_TIME}{BOOTMENUTIME}
+    
+  Standardwert: \var{BOOTMENU\_TIME='20'}
+
+  {Hier wird eingestellt, wie lange der syslinux Bootloader warten soll,
+    bis automatisch mit der Standard-Installation gebootet wird.
+
+    Im Paket HD besteht die Möglichkeit, über \var{OPT\_RECOVER} eine Funktion
+    zu aktivieren, mit der eine Notfallinstallation aus einer laufenden
+    Installation erstellt werden kann. Diese kann im Bootmenü über die Wahl
+    der Recover-Version aktiviert werden.
+
+    Sollte hier der Wert '0' eingestellt sein, wartet der syslinux Bootloader
+    bis der Anwender die Standard- oder die Recover-Version auswählt und
+    aktiviert!}
+
+
+  \config{TIME\_INFO}{TIME\_INFO}{TIMEINFO}
+
+  Standardwert: \var{TIME\_INFO='MEZ-1MESZ,M3.5.0,M10.5.0/3'}
+  
+  Uhren ticken in der Unix-Welt und damit auch unter fli4l
+  normalerweise nach der UTC (Universal Time Coordinated), einer
+  weltweit einheitlichen Uhrzeit, die vor der Verwendung in die lokale
+  Zeit umgerechnet wird. \var{TIME\_\-INFO} liefert fli4l die dafür
+  notwendigen Informationen über die Namen der Zeitzonen, die
+  Differenz zu UTC und Regeln, wann auf Sommerzeit und wieder zurück
+  gewechselt wird. Damit das korrekt funktioniert, muss die Hardware
+  Uhr auf UTC gestellt werden (entspricht der Londoner Winterzeit)
+  oder über das Paket chrony mit einem Timeserver synchronisiert werden
+  (diese liefern UTC aus).
+
+  Die Einträge in \var{TIME\_\-INFO} bedeuten dabei folgendes:
+  \begin{example}
+    \begin{verbatim}
+        TIME_INFO='MEZ-1MESZ,M3.5.0,M10.5.0/3'
+    \end{verbatim}
+  \end{example}
+  \begin{itemize}
+    \item \emph{MEZ-1:} Wir befinden uns in der mitteleuropäischen
+      Zeitzone (\emph{MEZ}), die der UTC eine Stunde voraus ist \emph{MEZ-1=UTC}.
+    \item \emph{MESZ:} In dieser Zeitzone gibt es Sommerzeit
+      (Mitteleuropäische Sommerzeit). Da nichts weiter angegeben wird,
+      kommt man zur Sommerzeit, indem man die Zeit eine Stunde
+      vorstellt.
+    \item \emph{M3.5.0,M10.5.0/3:} Am letzten Sonntag im März (um 2 Uhr) wird
+      zur Sommerzeit gewechselt, am letzten Sonntag im Oktober (um 3 Uhr)
+      wieder zurück.
+  \end{itemize}
+
+  Normalerweise braucht man diesen Wert nie anzufassen, es sei denn
+  man sitzt in einer anderen Zeitzone. Will man die Werte anpassen,
+  sollte man einen Blick auf die Spezifikation der Umgebungsvariable
+  TZ werfen, die unter folgender URL zu finden ist (englisch):
+  \altlink{http://pubs.opengroup.org/onlinepubs/009695399/basedefs/xbd_chap08.html}
+
+  \config{RTC\_SYNC}{RTC\_SYNC}{RTCSYNC}{
+  Standardwert: \var{RTC\_SYNC='hwclock'}
+
+  In vielen Rechnern steckt eine batteriegepufferte Hardware-Uhr, die auch über
+  die Dauer der Abschaltung mit Strom versorgt wird und die Uhrzeit weiterzählt,
+  so dass sie beim nächsten Starten wieder als Systemzeit zur Verfügung steht.
+  Es ist an dieser Stelle wichtig, zwischen der \emph{Systemzeit} und der
+  \emph{Hardwarezeit} zu unterscheiden:
+
+  \begin{itemize}
+  \item Die \emph{Hardwarezeit} ist die Zeit, die in der Hardware-Uhr
+  gespeichert und von dieser aktuell gehalten wird. Sie wird in der Regel beim
+  Starten des Systems aus der Hardware-Uhr ausgelesen und als Systemzeit
+  übernommen.
+
+  \item Die \emph{Systemzeit} ist die eigentliche Zeit, die das Linux-System
+  verwendet und z.~B.\ beim Aufruf des Befehls \texttt{date -u} angezeigt wird.
+  Sie wird vom Linux-Kernel aktuell gehalten, etwa auf Basis regelmäßiger
+  Hardware-Unterbrechungen (Timer-Interrupt), bezeichnet immer einen Zeitpunkt
+  in koordinierter Weltzeit (UTC), und wird nicht von der Zeitzonen-Einstellung
+  beeinflusst.
+
+  \item Die \emph{lokalisierte Systemzeit} ist lediglich die Umrechnung der
+  Systemzeit in eine andere Zeitzone, die auf dem fli4l-Router über die
+  Umgebungsvariable \texttt{TZ} konfiguriert wird (siehe die Variable
+  \jump{TIMEINFO}{\var{TIME\_INFO}}), und spielt im weiteren Verlauf dieses
+  Abschnitts keine Rolle.
+  \end{itemize}
+   
+  Mit Hilfe dieser Variable wird dem fli4l mitgeteilt, wie der Abgleich der
+  Hardwarezeit mit der Systemzeit vorgenommen werden soll, d.~h.\ ob und wie
+  oft die Hardwarezeit auf die Systemzeit gesetzt werden soll. Ein solcher
+  Abgleich ist nötig, weil auch die beste Hardware-Uhr nicht zu 100~\% genau
+  geht und zum systematischen Abdriften neigt, d.~h.\ sie geht auf Dauer
+  gesehen etwas zu langsam oder etwas zu schnell.
+  
+  Es gibt prinzipiell zwei Möglichkeiten der Synchronisation:
+  
+  \begin{itemize}
+  \item Modus ``kernel'': Ein NTP-Client wird verwendet, um von außen
+  (in der Regel über das Internet oder eine externe (Funk-)Uhr) die tatsächliche
+  Uhrzeit zu ermitteln und die Systemzeit des fli4l-Routers aktuell zu halten.
+  Dabei wird der Linux-Kernel angewiesen, sich um die Aktualisierung der
+  Hardwarezeit zu kümmern, so dass keine weitere Synchronisierung mehr nötig
+  ist. Die Aktualisierung durch den Linux-Kernel ist etwas weniger genau als
+  die Aktualisierung mittels \texttt{hwclock} (siehe Modus ``hwclock'' weiter
+  unten), allerdings ist die Güte der Aktualisierung weit weniger wichtig, weil
+  der zwangsläufige Fehler durch den NTP-Client ausgeglichen wird.
+  
+  Dieser Modus muss auch verwendet werden, wenn gar keine Hardware-Uhr
+  existiert. Der Linux-Kernel wird in diesem Falle natürlich keine Hardwarezeit
+  aktuell halten, weil es keine gibt. Es sollte dann allerdings unbedingt ein
+  NTP-Client verwendet werden, damit der fli4l-Router überhaupt eine sinnvolle
+  Systemzeit erhält.
+
+  \item Modus ``hwclock'': Es findet beim Herunterfahren des Systems
+  (bei der Ausführung des Stopp-Skripts \texttt{/etc/rc0.d/rc950.hwclock})
+  sowie in regelmäßigen Abständen (alle 24 Stunden) eine Synchronisation mit
+  Hilfe des \texttt{hwclock}-Programms statt. Dabei wird nicht nur die
+  Hardwarezeit gesetzt, sondern \texttt{hwclock} misst auch, inwieweit die
+  Systemzeit von der Hardwarezeit abweicht. Beim Starten des Systems wird dann
+  die Systemzeit nicht direkt aus der Hardwarezeit übernommen, sondern es wird
+  auch die Abweichung berücksichtigt, um das Abdriften der Systemzeit möglichst
+  zu reduzieren. Die Abweichung wird in der Datei \texttt{/etc/adjtime}
+  vermerkt. Ist ein beschreibbares persistentes Medium verfügbar, wird die
+  Abweichung unter \texttt{/var/lib/persistent/base/adjtime} gespeichert; in
+  diesem Falle ist \texttt{/etc/adjtime} eine symbolische Verknüpfung dorthin.
+  
+  Dieser Modus ist inkompatibel zu einer Aktualisierung der Systemzeit mit
+  Hilfe eines NTP-Clients. Das liegt daran, dass ein NTP-Client automatisch
+  das Aktualisieren der Hardwareuhr durch den Linux-Kernel aktiviert. Es ist
+  jedoch wenig sinnvoll bzw.\ problematisch, dass sowohl \texttt{hwclock} als
+  auch der Linux-Kernel gleichzeitig versuchen, die Hardwarezeit aktuell zu
+  halten.
+  \end{itemize}
+  
+  Es ist zu beachten, dass wenn eine Hardware-Uhr zur Verfügung steht, die
+  darin gespeicherte Uhrzeit \emph{immer} als koordinierte Weltzeit (UTC)
+  interpretiert wird. Die Zeitzone, die über die Variable \var{TIME\_INFO}
+  gesetzt wird, wirkt sich nicht auf die in der Hardware-Uhr gespeicherte
+  Zeit aus. Das Speichern einer lokalisierten Nicht-UTC-Zeit in der
+  Hardware-Uhr wird von fli4l \emph{nicht} unterstützt.
+  
+  Das Ermitteln der Systemzeit aus der Hardwarezeit wird einmalig beim Starten
+  des Systems vorgenommen. Dabei wird bereits durch den Linux-Kernel das
+  Auslesen der Hardware-Uhr und das Setzen der Systemzeit unmittelbar am Beginn
+  des Bootvorgangs vorgenommen. Im Modus ``hwclock'' wird dann später bei der
+  Ausführung des Boot-Skripts \texttt{/etc/rc.d/rc100.hwclock} die Systemzeit
+  erneut gesetzt, diesmal unter Berücksichtigung der systematischen Abweichung.
+  }
+
+  \config{KERNEL\_VERSION}{KERNEL\_VERSION}{KERNELVERSION}
+
+  Legt die Version des zu verwendenden Kerns fest. Entsprechend dieser
+  Variable werden der Kern aus \emph{img/kernel-$<$kernel
+  version$>$.$<$compression extension$>$} und die Kernel-Module aus 
+  \emph{opt/lib/modules/$<$kernel version$>$} selektiert.
+
+  \config{KERNEL\_BOOT\_OPTION}{KERNEL\_BOOT\_OPTION}{KERNELBOOTOPTION}
+
+  Standardwert: \var{KERNEL\_BOOT\_OPTION=''}
+  
+  Der Inhalt dieser Variable wird an die Kommandozeile des Kerns in
+  der syslinux.cfg angehängt.
+  Manche Systeme benötigen für korrekten Reboot 'reboot=bios'.
+  Bei WRAP-Systemen also 'reboot=bios'.
+
+  \config{COMP\_TYPE\_ROOTFS}{COMP\_TYPE\_ROOTFS}{COMPTYPEROOTFS}
+
+  Standardwert: \var{COMP\_TYPE\_ROOTFS='xz'}
+  
+  Der Inhalt dieser Variable legt die Kompressionsmethode für das RootFS-Archiv
+  fest. Mögliche Werte sind `xz', `lzma' und `bzip2'.
+
+  \config{COMP\_TYPE\_OPT}{COMP\_TYPE\_OPT}{COMPTYPEOPT}
+
+  Standardwert: \var{COMP\_TYPE\_OPT='xz'}
+  
+  Der Inhalt dieser Variable legt die Kompressionsmethode für das OPT-Archiv
+  fest. Mögliche Werte sind `xz', `lzma' und `bzip2'.
+
+  \config{POWERMANAGEMENT}{POWERMANAGEMENT}{POWERMANAGEMENT} 
+  
+    Standardwert: \var{POWERMANAGEMENT='acpi'}
+     
+    {Der Kern unterstützt verschiedene Formen des Powermanagements, das etwas betagte APM 
+    und das aktuellere ACPI. Hier kann man einstellen, welche Form er verwenden soll. 
+    Mögliche Werte sind 'none' (kein Powermanagement), 'acpi' und die beiden APM-Varianten 
+    'apm' und 'apm\_rm'. Letzteres schaltet in einen speziellen Prozessormodus, bevor der 
+    Router ausgeschaltet wird. }
+
+  \config{FLI4L\_UUID}{FLI4L\_UUID}{FLI4LUUID}
+  
+    Standardwert: \var{FLI4L\_UUID=''}
+    
+    {Hier wird eine eindeutige UUID eingetragen, mit der der fli4l seine persistenten Daten 
+    auf z.B. einem USB-Stick finden kann. Eine UUID kann auf einem beliebigen Linux-System
+    (wie auch dem fli4l) mit dem Befehl \verb*?'cat /proc/sys/kernel/random/uuid'? erstellt werden.
+    Dies gibt bei jedem Aufruf eine neue UUID aus. Diese muss nun in die Variable eintragen
+    werden. Auf einem persistenten Medium (z.B. auf einer Festplatte (OPT\_HD) oder einem
+    USB-Stick (OPT\_USB und OPT\_HD)) muss dann noch ein Verzeichnis mit demselben Namen 
+    angelegt werden. Dort wird dann künftig alles gespeichert, das sich gegenüber der
+    Konfiguration geändert hat, ebenso wie persistente Laufzeitdaten wie z.B. DHCP-Leases.
+    Hierzu muss das entsprechende Paket dies natürlich unterstützen (siehe Dokumentation).
+    Der entsprechende Eintrag für den Speicherpfad ist dort dann in der Regel 'auto'.
+
+    Sollte der fli4l bereits vor dem Erstellen der UUID und dem Anlegen des Verzeichnisses
+    einige Daten gespeichert haben, so sind diese unter /boot/persistent zu finden und müssen
+    dann manuell an den neuen Speicherort verschoben werden. Deshalb empfiehlt es sich, die
+    UUID gleich anfangs zu erstellen und nicht erst später zu migrieren.
+
+    Zudem ist zu beachten, dass \var{MOUNT\_BOOT}='ro' nicht gewählt werden darf,
+    solange das Verzeichnis sich irgendwo auf der /boot Partition befindet.
+
+    Ein empfohlener Ort für das persistente Verzeichnis befindet sich auf der /data
+    Partition (ganz oben) oder einem USB-Stick. Das Dateisystem des USB-Sticks sollte
+    VFAT sein oder bei aktivem OPT\_HD alle dort unterstützen schreib-lese-fähigen
+    Dateisysteme.}
+
+  \config{IP\_CONNTRACK\_MAX}{IP\_CONNTRACK\_MAX}{IPCONNTRACKMAX}
+  
+  Standardwert: \var{IP\_CONNTRACK\_MAX=''}
+  
+  Mit Hilfe dieser Variable kann man die maximale mögliche Anzahl gleichzeitiger
+  Verbindungen manuell einstellen. Normalerweise wird anhand des eingebauten
+  Arbeitsspeichers automatisch ein sinnvoller Wert ermittelt. In Tabelle
+  \ref{tab:connectiontracking} sind die verwendeten Voreinstellungen
+  zusammengefasst dargestellt.
+
+    \begin{table}[ht!]
+        \centering
+        \caption{Automatische Einstellung der maximalen Verbindungsanzahl}\marklabel{tab:connectiontracking}{}
+        \begin{tabular}{p{6cm}p{6cm}}
+            Arbeitsspeicher in MiB   &    gleichzeitige Verbindungen \\\hline
+            16                       &    1024 \\
+            24                       &    1280 \\
+            32                       &    2048 \\
+            64                       &    4096 \\
+            128                      &    8192 \\
+        \end{tabular}
+    \end{table}
+
+   Bei Einsatz von FileSharing-Programmen hinter oder auf dem Router und wenig
+   Arbeitsspeicher ist die maximale Anzahl gleichzeitiger Verbindungen aber
+   sehr schnell erreicht und zusätzliche Verbindungen können nicht mehr
+   aufgebaut werden.\\ 
+   Das äußert sich in Fehlermeldungen wie
+   
+    \begin{example}
+      \begin{verbatim}
+        ip_conntrack: table full, dropping packet
+      \end{verbatim}
+    \end{example}
+   
+   oder
+   
+   \begin{example}
+      \begin{verbatim}
+        ip_conntrack: Maximum limit of XXX entries exceeded
+      \end{verbatim}
+    \end{example}
+
+    Mittels \var{IP\_\-CONNTRACK\_\-MAX} lässt sich nun die maximale
+    Anzahl gleichzeitiger Verbindungen fest auf einen bestimmten Wert
+    einstellen. Jede einzelne mögliche Verbindung kostet 350 Bytes Arbeitsspeicher, 
+    der nicht mehr für andere Dinge genutzt werden kann.
+    Setzt man also 10000, so sind gerundet 3,34 MB Arbeitsspeicher für den
+    normalen Gebrauch verloren (Kernel, Ramdisks, Programme).
+
+    Bei 32 MiB RAM sollte es kein Problem sein, mal eben 2 oder 3 MiB für die
+    ip\_conntrack-Tabelle zu reservieren, bei 16 MiB wird es knapp und bei 12
+    oder sogar 8 MiB ist absolute Sparwut angesagt.
+
+    Die momentan benutze Einstellung lässt sich auf der Konsole mit
+
+    \begin{example}
+      \begin{verbatim}
+        cat /proc/sys/net/ipv4/ip_conntrack_max
+      \end{verbatim}
+    \end{example}
+
+    anzeigen und mit
+
+    \begin{example}
+      \begin{verbatim}
+        echo "XXX" > /proc/sys/net/ipv4/ip_conntrack_max
+      \end{verbatim}
+    \end{example}
+
+    zur Laufzeit setzen, wobei XXX für die Anzahl der Einträge steht.
+    Die Einträge in der \var{IP\_CONNTRACK}-Tabelle selbst können auf der Konsole
+    mit
+
+    \begin{example}
+      \begin{verbatim}
+        cat /proc/net/ip_conntrack
+      \end{verbatim}
+    \end{example}
+
+    angesehen und mit
+
+    \begin{example}
+      \begin{verbatim}
+        cat /proc/net/ip_conntrack | grep -c use
+      \end{verbatim}
+    \end{example}
+
+    gezählt werden.
+
+
+  \config{LOCALE}{LOCALE}{LOCALE}
+
+  Standardwert: \var{LOCALE}='de'
+
+  Einige Komponenten sind mittlerweile mehrsprachfähig. Dazu zählen
+  beispielsweise das Konsolen-Menü und die Weboberfläche. Mit dieser Variablen
+  können Sie die bevorzugte Sprache auswählen. Verschiedene Komponenten haben
+  noch eine eigene Einstellung womit diese Grundeinstellung, wenn nötig,
+  überlistet werden kann. Wenn die hier angegebene Sprache bei einer Komponente
+  (noch) nicht verfügbar ist, wird auf Englisch zurückgefallen.
+
+  Bei \var{KEYBOARD\_LOCALE}='auto' wird versucht ein zu der
+  \var{LOCALE}-Einstellung passendes Tastatur-Layout ein zu stellen.
+
+  Bisher sind folgende Einstellungen möglich: de, en, es, fr, hu, nl.  
+
+\end{description}

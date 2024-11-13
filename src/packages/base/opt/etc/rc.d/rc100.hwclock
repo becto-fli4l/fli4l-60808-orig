@@ -1,0 +1,30 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc100.hwclock
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2000-2002 - Frank Meyer
+# Copyright (c) 2002-2018 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+case $RTC_SYNC in
+hwclock)
+    begin_script HWCLOCK "set system time from hardware clock..."
+
+    > /var/run/utmp
+
+    rtcdev=$(zcat /proc/config.gz 2>/dev/null | sed -n "s/^CONFIG_RTC_HCTOSYS_DEVICE=\"\(.*\)\"$/\1/p")
+    if [ -c "/dev/$rtcdev" ]
+    then
+        hwclock --hctosys --utc --rtc=/dev/$rtcdev
+        service-restart.sh $((24 * 60 * 60)) /sbin/hwclock --adjust --utc --rtc=/dev/$rtcdev &
+        SCRIPT_RESULT=$?
+    else
+        log_error "no hardware clock configured in the kernel to restore the system time from"
+        log_error "check CONFIG_RTC_HCTOSYS_DEVICE in your kernel configuration"
+    fi
+
+    end_script
+    ;;
+esac

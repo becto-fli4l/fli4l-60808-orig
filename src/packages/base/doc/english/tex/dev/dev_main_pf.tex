@@ -1,0 +1,208 @@
+% Synchronized to r49912
+
+\providecommand{\fwaction}[1]{{\small\textsf{#1}}}
+\providecommand{\fwchain}[1]{\texttt{#1}}
+\providecommand{\fwtable}[1]{\textsc{#1}}
+\providecommand{\fwmatch}[1]{\texttt{#1}}
+\providecommand{\fwpktstate}[1]{\texttt{#1}}
+\providecommand{\fwloglevel}[1]{\texttt{#1}}
+
+\section{Using The Packet Filter}
+\subsection{Adding Own Chains And Rules}
+
+A set of routines is provided to manipulate the packet filter to add or delete
+so-called ``chains'' and ``rules''. A chain is a named list of ordered rules.
+There is a set of predefined chains (\fwchain{PREROUTING}, \fwchain{INPUT},
+\fwchain{FORWARD}, \fwchain{OUTPUT}, \fwchain{POSTROUTING}), using this set of
+routines more chains can be created as needed.
+
+\begin{description}
+\item [\texttt{add\_chain/add\_nat\_chain <chain>}:]
+  Adds a chain to the ``filter-'' or ``nat-'' table.
+\item [\texttt{flush\_chain/flush\_nat\_chain <chain>}:]
+  Deletes all rules from a chain of the ``filter-'' or ``nat-'' table.
+\item [\texttt{del\_chain/del\_nat\_chain <chain>}:]
+  Deletes a chain from the ``filter-'' or ``nat-'' table. Chains must be empty
+  prior to deleting and all references to them have to be deleted as well before.
+  Such a reference i.e. can be a \fwaction{JUMP}-action with the chain defined
+  as its target.
+\item[\texttt{add\_rule/ins\_rule/del\_rule}:] Adds rules to the end
+  (\texttt{add\_rule}) resp. at any place of a chain (\texttt{ins\_rule})
+  or deletes rules from a chain (\texttt{del\_rule}). Use the syntax like here:
+
+\begin{example}
+\begin{verbatim}
+    add_rule <table> <chain> <rule> <comment>
+    ins_rule <table> <chain> <rule> <position> <comment>
+    del_rule <table> <chain> <rule> <comment>
+\end{verbatim}
+\end{example}
+
+  \noindent where the parameters have the following meaning:
+  \begin{description}
+  \item[table] The table in which the chain is
+  \item[chain] The chain, in which the rule is to be inserted
+  \item[rule] The rule which is to be inserted, the format
+     corresponds to that used in the configuration file
+  \item[position] The position at which the rule will be added (only
+     in \texttt{ins\_rule})
+  \item[comment] A comment that appears with the rule
+     when somebody looks at the packet filter.
+  \end{description}
+\end{description}
+
+
+\subsection{Integrating Into Existing Rules}
+
+fli4l configures the packet filter with a certain default rule set.
+If you want to add your own rules, you will usually want to insert
+them after the default rule set. You will also need to know what the
+action is desired by the user when dropping a packet. This information
+can be obtained for
+\fwchain{FORWARD}- and \fwchain{INPUT} chains by calling two functions,
+\texttt{get\_defaults} and \texttt{get\_count}. After calling
+
+\begin{example}
+\begin{verbatim}
+    get_defaults <chain>
+\end{verbatim}
+\end{example}
+
+the following results are obtained:
+
+\begin{description}
+\item[\var{drop}:] This variable contains the chain to which is branched
+   when a packet is discarded.
+\item[\var{reject}:] This variable contains the chain to which is branched
+   when a packet is rejected.
+\end{description}
+
+After calling
+
+\begin{example}
+\begin{verbatim}
+    get_count <chain>
+\end{verbatim}
+\end{example}
+
+the variable \var{res} contains the number of rules in the chain
+\texttt{<chain>}. This position is of importance because you can \emph{not}
+simply use \texttt{add\_rule} to add a rule at the end of the predefined
+``filter''-chains \fwchain{INPUT}, \fwchain{FORWARD} and \fwchain{OUTPUT}.
+This is because these chains are completed with a default rule valid for
+all remaining packets depending on the content of the \var{PF\_<chain>\_POLICY}-variable.
+Adding a rule \emph{after} this last rule hence has no effect. The function
+\texttt{get\_count} instead allows to detect the position right \emph{in front of}
+this last rule and to pass this position to the \texttt{ins\_rule}-function as a
+parameter \texttt{<position>} in order to add the rule in the place at the end of the
+appropriate chain, but right in front of this last default rule targeting
+all remaining packets.
+
+An example from the script \texttt{opt/etc/rc.d/rc390.dns\_dhcp} from the
+package ``dns\_dhcp'' shall make this clear:
+
+\begin{example}
+\begin{verbatim}
+    case $OPT_DHCPRELAY in
+        yes)
+            begin_script DHCRELAY "starting dhcprelay ..."
+
+            idx=1
+            interfaces=""
+            while [ $idx -le $DHCPRELAY_IF_N ]
+            do
+                eval iface='$DHCPRELAY_IF_'$idx
+
+                get_count INPUT
+                ins_rule filter INPUT "prot:udp  if:$iface:any 68 67 ACCEPT" \
+                    $res "dhcprelay access"
+
+                interfaces=$interfaces' -i '$iface
+                idx=`expr $idx + 1`
+            done
+            dhcrelay $interfaces $DHCPRELAY_SERVER
+
+            end_script
+        ;;
+  esac
+\end{verbatim}
+\end{example}
+
+Here you can see in the middle of the loop a call to \texttt{get\_count}
+followed by a call to the \texttt{ins\_rule} function and, among other things,
+the \var{res} variable is passed as \texttt{position} parameter.
+
+
+\subsection{Extending The Packet Filter Tests}
+
+fli4l uses the syntax \fwmatch{match:params} in packet filter rules
+to add additional conditions for packet matching (see \fwmatch{mac:},
+\fwmatch{limit:}, \fwmatch{length:}, \fwmatch{prot:}, \ldots). If you
+want to add tests you have to do this as follows:
+
+\begin{enumerate}
+\item Define a suitable name. The first character of this name has
+to be lower case a-z. The rest of the name can consist of any character
+or digit.
+
+\achtung{If the packet filter test is used within IPv6 rules it is
+to make sure that the name is not a valid IPv6 address component!}
+
+\item Creating a file \texttt{opt/etc/rc.d/fwrules-<name>.ext}.
+The content of this file is something like this:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4 extension is available
+    foo_p=yes
+
+    # the actual IPv4 extension, adding matches to match_opt
+    do_foo()
+    {
+        param=$1
+        get_negation $param
+        match_opt="$match_opt -m foo $neg_opt --fooval $param"
+    }
+
+    # IPv6 extension is available
+    foo6_p=yes
+
+    # the actual IPv6 extension, adding matches to match_opt
+    do6_foo()
+    {
+        param=$1
+        get_negation6 $param
+        match_opt="$match_opt -m foo $neg_opt --fooval $param"
+    }
+\end{verbatim}
+\end{example}
+
+\mtr{The packet filter test does not have to be implemented for both IPv4 and
+IPv6 (though this would be preferred if reasonable for both layer 3 protocols).}
+
+\item Testing the extension:
+
+\begin{example}
+\begin{verbatim}
+    $ cd opt/etc/rc.d
+    $ sh test-rules.sh 'foo:bar ACCEPT'
+    add_rule filter FORWARD 'foo:bar ACCEPT'
+    iptables -t filter -A FORWARD -m foo --fooval bar -s 0.0.0.0/0 \
+        -d 0.0.0.0/0 -m comment --comment foo:bar ACCEPT -j ACCEPT
+\end{verbatim}
+\end{example}
+
+\item Adding the extension and all other needed files
+(\texttt{iptables} components) to the archive using
+the known mechanisms.
+\item Allowing the extension in the configuration by extending
+of \var{FW\_GENERIC\_MATCH} and/or \var{FW\_GENERIC\_MATCH6} in an exp-file,
+for example:
+
+\begin{example}
+\begin{verbatim}
+    +FW_GENERIC_MATCH(OPT_FOO) = 'foo:bar' : ''
+    +FW_GENERIC_MATCH6(OPT_FOO) = 'foo:bar' : ''
+\end{verbatim}
+\end{example}
+\end{enumerate}

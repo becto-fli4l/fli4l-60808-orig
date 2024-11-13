@@ -1,0 +1,29 @@
+#!/bin/sh
+# Revision: $Id$
+#
+# Waits for a message. As the endpoint registered by this script is anonymous,
+# only broadcast messages can be waited for.
+#
+# $1 = type of message to wait for
+# $2 = (optional) timeout for waiting for the reply
+# Output: If a suitably typed message is received, the parameters of this
+#         message are printed.
+# Returns: 0 on success, 1 on failure and 2 on timeout
+
+. /usr/share/mom/core
+
+type=$1
+timeout=$2
+
+handle_message() {
+	for _var
+	do
+		eval _value=\$$_var
+		pack_args _value "$_value"
+		echo "$_var=$_value"
+	done
+	mom_quit_message_loop 0
+}
+
+mom_register_handler handle_message $type
+mom_run_message_loop $timeout

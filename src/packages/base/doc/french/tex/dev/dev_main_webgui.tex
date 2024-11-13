@@ -1,0 +1,552 @@
+% Synchronized to r36388
+
+\section{Création d'un CGI pour le paquetage \emph{httpd}}
+
+\subsection{Informations générales sur le serveur Web}
+
+Le serveur web, qui est utilisé dans fli4l est un \texttt{mini\_httpd} de ACME Labs.
+Les fichiers sources peuvent être téléchargés à partir du site
+\altlink{http://www.acme.com/software/mini_httpd/}. Cependant, quelques modifications
+ont été apportées pour fli4l. Les ajustements sont dans le paquetage \emph{src} et dans
+le répertoire \texttt{src/fbr/buildroot/package/mini\_httpd}.
+
+
+\subsection{Nom du script}
+
+Le nom du script doit être significatif, de sorte qu'il soit plus facile à distinguer
+par rapport au autres scripts, il ne doit pas avoir de collision de noms avec
+les différents OPTs.
+
+Les sauts de ligne dans les scripts exécuté sous DOS, seront convertis en sauts de
+ligne UNIX, vous devez aussi modifier le fichier \texttt{opt/<PACKAGE>.txt}, voir
+Table~\jump{table:options}{\ref{table:options}}.
+
+
+\subsection{Configuration du menu}
+
+Pour faire une nouvelle entrée dans le menu, vous devez paramétrer le fichier
+\texttt{/etc/httpd/menu}. Ce mécanisme permet de faire des modifications du menu
+pendant le fonctionnement de l'OPT. Pour cela on utilise le script \texttt{/etc/httpd/menu},
+il vérifie le format du fichier pour que celui-ci soit toujours consistant.
+Pour ajouter un nouvel élément dans le menu, vous devez utiliser la commande de
+la manière suivante~:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh add [-p <priority>] <link> <name> [section] [realm]
+\end{verbatim}
+\end{example}
+
+Si vous indiquez un nom dans \texttt{<name>} il sera inclus dans la section,
+que vous avez indiquez dans \texttt{[section]}. Si vous omettez la section, le nom
+sera par défaut inclus dans la section du "paquetage-OPT". Vous indiquez dans
+\texttt{<link>} la cible du nouveau lien. Dans \texttt{<priority>} vous spécifiez
+la priorité de l'élément du menu dans sa section. S'il n'est pas spécifié, 500 sera
+utilisé pour la priorité par défaut. La priorité doit être un nombre à trois chiffres.
+Le lien qui se situ le plus haut dans la section a une priorité la plus faible, si
+vous voulez un lien le plus bas, vous devez par exemple choisir une priorité de 900.
+De même, la priorité des données sont triées avec la cible du lien. Dans \texttt{[realm]}
+vous indiquez le domaine pour que l'utilisateur connecté puisse avoir les autorisations
+nécessaires pour \var{voir} l'élément du menu qui sera affiché. S'il \texttt{[realm]} n'est
+pas spécifié, l'élément du menu sera toujours affiché, voir aussi la section
+\jump{sec:rights}{\og{}Droits des utilisateurs\fg{}}.
+
+Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh add "Nouveau-fichier.cgi" "Cliquez ici" "Outils" "outils"
+\end{verbatim}
+\end{example}
+
+Cet exemple produit dans la section "Outils" un lien avec le titre "Cliquez ici",
+la destination du lien sera "Nouveau-fichier.cgi", la section sera créé si elle n'est
+pas définie.
+
+Vous pouvez également supprimer dans le script un enregistrement de lien du menu~:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh rem <link>
+\end{verbatim}
+\end{example}
+
+Avec cette commande le lien \texttt{<link>} qui a été enregistré sera supprimé.
+
+\wichtig{Si plusieurs enregistrements se réfèrent au même fichier dans le menu, toutes ces
+enregistrements seront supprimés dans le menu.}
+
+Puisque des sections peuvent aussi avoir des priorités, celles-ci peuvent être créées
+manuellement. Si une section est créée automatiquement lorsque vous ajoutez une entré,
+il recevera automatiquement la priorité 500. Voici la syntaxe pour la création d'une section~:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh addsec <priority> <name>
+\end{verbatim}
+\end{example}
+
+Ici aussi \texttt{<priority>} doit contenir un nombre à trois chiffres.
+
+Pour apprendre à configurer judicieusement les priorités, il est
+intéressant de regarder le fichier \texttt{/etc/httpd/menu} pendant l'exécution
+de fli4l les priorités sont dans la deuxième colonne.
+
+Pour être complet, voici un bref commentaire sur le format du fichier menu.
+Si la commande \texttt{httpd-menu.sh} ne suffit pas, vous pouvez sauter ce paragraphe.
+Le fichier \texttt{/etc/httpd/menu} a la structure suivante~: il est divisé en quatre
+colonnes. La première colonne il y a une lettre de code, pour diffèrencier les
+intitulés et les enregistrements. Dans la deuxième colonne il y a les priorités triées.
+La troisième colonne contient en intitulé un trait d'union, cela veut dire qu'il n'y a
+aucune signification pour le titre et de la configuration de la cible du lien. Dans
+le reste de la ligne se trouve le texte qui apparaîtra plus tard dans le menu.
+
+Avec la lettre d'identification \og{}t\fg{}, une nouvelle section dans le menu sera installée.
+Pour configurer une entrée normale dans le menu vous utilisez la lettre d'identification \og{}e\fg{}.
+Un exemple~:
+
+\begin{example}
+\begin{verbatim}
+    t 300 - Mon grand OPT
+    e 200 monopt1.cgi lien pour grand
+    e 500 monopt1.cgi?plus=oui lien plus pour grand
+\end{verbatim}
+\end{example}
+
+Lors de l'édition de ce fichier vous devez vous assurer que le script 
+\texttt{httpd-menu.sh} soit toujours trié avant de sauvegarde le fichier. Que les
+différentes sections soit triées et que les sections enregistrées sont triées
+par section l'algorithme de tri exacte peut être repris par \texttt{httpd-menu.sh}~--
+Cependant, il est possible d'étendre ce script avec de nouvelles fonctionnalités,
+pour que tous les modifications du menu se produisent à un emplacement central.
+
+
+\subsection{Construction d'un script CGI}
+
+\subsubsection{L'en-tête}
+
+Tous les scripts du serveur Web sont de simples scripts shell (les interpréteurs
+tels que Perl, PHP, etc, sont beaucoup trop volumineux pour fli4l). Le script doit
+obligatoirement commencer par l'en-tête avec (la référence de l'interprèteur, le nom,
+une indiquation sur le scénario, l'auteur, la licence).
+
+
+\subsubsection{Script auxiliaire \texttt{cgi-helper}}
+
+Tout de suite après l'en-tête vous devez placer le script auxiliaire
+\texttt{cgi-helper} avec la commande suivante~:
+
+\begin{example}
+\begin{verbatim}
+    . /srv/www/include/cgi-helper
+\end{verbatim}
+\end{example}
+
+L'espace entre le point et le slash (ou la barre oblique) est important~!
+
+Ce script auxiliaire permet diverses fonctionnalités pour simplifier la création
+des CGIs, il est essentiel à fli4l. De plus, avec l'intégration de \texttt{cgi-helper}
+il effectue également des tâches standard, telles que l'analyse syntaxique
+des variables, qui ont été associées à des formulaires ou des transitions URL
+ou de l'affichage de la langue pour le texte ou des fichiers CSS.
+
+Le tableau~\ref{tab:dev:cgi-helper} donne un aperçu des fonctionnalitées des scripts
+\texttt{cgi-helper}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Les fonctions pour le script \texttt{cgi-helper}}
+  \label{tab:dev:cgi-helper}
+  \begin{small}
+    \begin{tabular}{|l|p{0.8\textwidth}|}
+      \hline
+      Nom                  & Fonction \\
+      \hline
+      \texttt{check\_rights}      & Vérification des droits des utilisateurs \\
+      \texttt{http\_header}       & Édition d’une en-tête HTTP standard ou d’une
+          en-tête spécifique, par ex., la manière de télécharger des fichiers \\
+      \texttt{show\_html\_header} & Édition complètes d'une en-tête de page (y compris
+          les en-têtes HTTP et les en-têtes du Menu) \\
+      \texttt{show\_html\_footer} & Édition de la fin d'une page HTML \\
+      \texttt{show\_tab\_header}  & Édition d’une fenêtre de contenu pour un tableau \\
+      \texttt{show\_tab\_footer}  & Édition de la fin de contenu pour un tableau \\
+      \texttt{show\_error}        & Édition d'une fenêtre pour les messages d'erreur (couleur: rouge) \\
+      \texttt{show\_warn}         & Édition d'une fenêtre pour les messages d'alerte (couleur: jaune) \\
+      \texttt{show\_info}         & Édition d'une fenêtre pour les messages d'informations/réussites (couleur: vert) \\
+      \hline
+    \end{tabular}
+  \end{small}
+\end{table}
+
+
+\subsubsection{Contenu d'un script CGI}
+
+Afin d'assurer un aspect homogène et surtout pour la compatibilité avec les
+futures versions-fli4l, il est fortement recommandé d'utiliser les fonctions
+du script auxiliaire \texttt{cgi-helper}, même si nous pouvons théoriquement générer
+toutes les sorties dans un même CGI.
+
+Un simple script-CGI peut ressembler à ceci~:
+
+\begin{example}
+\begin{verbatim}
+    #!/bin/sh
+    # --------------------
+    # Header (c) Autor Datum
+    # --------------------
+    # get main helper functions
+    . /srv/www/include/cgi-helper
+
+    show_html_header "Mon premier CGI"
+    echo '   <h2>Bienvenue</h2>'
+    echo '   <h3>Ceci est un exemple de script-CGI</h3>'
+    show_html_footer
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Fonction \texttt{show\_html\_header}}
+
+La valeur qui est indiqué dans la fonction \texttt{show\_html\_header}, est utilisé
+pour le titre. Il sera généré automatiquement dans le menu, il inclue aussi
+automatiquement le script CSS et le fichier langue. Il faut pour cela que les
+fichiers scripts ont le même nom et qu’ils soient dans les répertoires
+/srv/www/css et /srv/www/lang (bien sûr, avec une extension différente).
+Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    /srv/www/admin/OpenVPN.cgi
+    /srv/www/css/OpenVPN.css
+    /srv/www/lang/OpenVPN.de
+\end{verbatim}
+\end{example}
+
+L'utilisation du fichier-langue ainsi que le fichier-CSS sont facultatif.
+Intégré toujours \texttt{css/nom.css} et \texttt{lang/nom.<lang>}, \texttt{<lang>} correspond à la langue
+choisie.
+
+Vous pouvez placer à côté du titre de la fonction \texttt{show\_html\_header} d'autres
+paramètres. Une exécution de la fonction avec tous les paramètres pourrait
+ressembler à ceci~:
+
+\begin{example}
+\begin{verbatim}
+show_html_header "Titre" "refresh=$time;url=$url;cssfile=$cssfile;showmenu=no"
+\end{verbatim}
+\end{example}
+
+Tous les paramètres supplémentaires, comme le montre l'exemple ci-dessus,
+doivent avoir des guillemets et être séparés par un point-virgule. Autrement
+le contrôle de syntaxe ne sera \emph{pas} réussi~! Il est nécessaire de respecter la
+syntaxe des paramètres.
+
+Voici un bref aperçu des fonctions de ces paramètres~:
+
+\begin{itemize}
+ \item \texttt{refresh=}\emph{time}: Temps en secondes dans lequel la page sera rechargée par le navigateur.
+ \item \texttt{url=}\emph{url}: L'URL est rechargé après un rafraîchissement.
+ \item \texttt{cssfile=}\emph{cssfile}: Nom du fichier CSS, si celui-ci est différent du CGI.
+ \item \texttt{showmenu=no}: L'affichage du menu et l'en-tête peut être supprimée.
+\end{itemize}
+
+D'autres conseils pour le contenu du CGI~:
+
+\begin{itemize}
+ \item Prenez votre temps~:-)
+ \item Écrivez proprement le HTML (SelfHTML\footnote{voir
+    \altlink{http://de.selfhtml.org/}} est un bon point de départ)
+ \item Renoncer au bric-à-brac très moderne, (le JavaScript est OK, si cela ne crée pas
+    de problème avec les utilisateurs, le tout fonctionnent également sans JavaScript)
+\end{itemize}
+
+
+\subsubsection{Fonction \texttt{show\_html\_footer}}
+
+La fonction \texttt{show\_html\_footer} ferme le bloc dans le script CGI, qui a été lancé par
+la fonction \texttt{show\_html\_header}.
+
+
+\subsubsection{Fonction \texttt{show\_tab\_header}}
+
+Dans le CGI, pour que le contenu de vos résultats soit bien rangé et affiché
+sur la page Web, avec l'aide du \texttt{cgi-helper} vous pouvez utiliser la fonction
+show\_tab\_header. Il peut générer des titres dans des onglets cliquables dans
+un 'Tableau', ainsi votre page peut être divisé en plusieurs zones logiquement séparées.
+
+Les paramètres dans la fonction \texttt{show\_tab\_header} sont toujours écrits deux par
+deux. Le premier paramètre correspond au titre de l’onglet et le deuxième
+correspond au lien. Si vous indiquez 'no' comme deuxième paramètre, le titre
+sera seulement placé dans l'onglet (en couleur) et le lien ne sera pas cliquable.
+
+Dans l'exemple suivant, nous allons créer une 'fenêtre' dans laquelle nous
+allons mettre le titre 'Une grande fenêtre’. Dans la fenêtre sera écrit 'foo bar'~:
+
+\begin{example}
+\begin{verbatim}
+    show_tab_header "Une grande fenêtre" "no"
+    echo "foo"
+    echo "bar"
+    show_tab_footer
+\end{verbatim}
+\end{example}
+
+Dans l'exemple suivant, deux onglets cliquables sont générés, la variable
+\var{action} dans le script va transmettre des valeurs différentes.
+
+\begin{example}
+\begin{verbatim}
+    show_tab_header "1. onglet" "$myname?action=machdies" \
+                    "2. onglet" "$myname?action=machjenes"
+    echo "foo"
+    echo "bar"
+    show_tab_footer
+\end{verbatim}
+\end{example}
+
+Maintenant le contenu du script peut exploiter la variable \var{FORM\_action} (voir
+ci-dessous pour l’exploitation de la variable) en fonction des différents
+paramètres. l'onglet apparaîtra et l’on pourra le sélectionner en cliquant
+dessus, si vous ne voulez pas que cet onglet soit sélectionnable, vous devez
+placer dans la fonction 'no', pour ce passé du lien comme indiqué plus haut.
+Cela sera plus facile, si vous utilisez l'exemple suivant~:
+
+\begin{example}
+\begin{verbatim}
+    _opt_machdies="1. onglet"
+    _opt_machjenes="2. onglet"
+    show_tab_header "$_opt_machdies" "$myname?action=opt_machdies" \
+                    "$_opt_machjenes" "$myname?action=opt_machjenes"
+    case $FORM_action in
+        opt_machdies) echo "foo" ;;
+        opt_machjenes) echo "bar" ;;
+    esac
+    show_tab_footer
+\end{verbatim}
+\end{example}
+
+Si vous utilisez une variable pour sélectionner un titre, ce nom correspond à
+l’action de la variable et commencera par un tiret (\texttt{\_}), ainsi l'onglet
+correspond à ce nom pourra être sélectionné.
+
+
+\subsubsection{Fonction \texttt{show\_tab\_footer}}
+
+La fonction \texttt{show\_tab\_footer} ferme le bloc dans le script CGI, qui a été lancé par
+la fonction \texttt{show\_tab\_header}.
+
+
+\subsubsection{Supporte le multi-language}
+
+Le script \texttt{cgi-helper} contient également une fonction pour faire des scripts CGI en
+utilisant d'autres langues. Pour ce faire, vous devez 'juste' utiliser les variables
+commençant par un tiret bas (\texttt{\_}) pour traduire le texte et de définir ces variables
+dans la langue de votre choix.
+
+Exemple~:
+
+lang/opt.de contient~:
+
+\begin{example}
+\begin{verbatim}
+    _opt_machdies="Eine Ausgabe"
+\end{verbatim}
+\end{example}
+
+lang/opt.en contient~:
+
+\begin{example}
+\begin{verbatim}
+    _opt_machdies="An Output"
+\end{verbatim}
+\end{example}
+
+admin/opt.cgi contient~:
+
+\begin{example}
+\begin{verbatim}
+    ...
+    echo $_opt_machdies
+    ...
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Utilisation de formulaires}
+
+Afin de traiter des formulaires, il faut savoir certaines choses. L’utilisateur
+doit choisir la méthode de formulaire \var{GET} ou \var{POST}, les paramètres peuvent
+être trouvées après le montage du script \texttt{cgi-helper} (qui à son tour appelle le
+de programme auxiliaire proccgi) avec la nouvelle variable \var{FORM\_<Paramètre>}.
+Si vous avez entré un nom, une "adresse" dans le champ de formulaire et si vous indiquez
+dans le script CGI \var{\$FORM\_adresse}, cette adresse sera accessible.
+
+Pour plus d'informations sur le programme \texttt{proccgi} vous pouvez les trouver ici
+\altlink{http://www.fpx.de/fp/Software/ProcCGI.html}.
+
+
+\marklabel{sec:rights}{
+    \subsubsection{Droits des utilisateurs~: Fonction \texttt{check\_rights}}
+}
+
+Afin de vérifier si l'utilisateur a les droits suffisants pour utiliser un script CGI,
+la fonction \texttt{check\_rights}  est appelée au début du script CGI comme ceci~:
+
+\begin{example}
+\begin{verbatim}
+    check_rights <Section> <Action>
+\end{verbatim}
+\end{example}
+
+Le script CGI ne sera exécuté que si l'utilisateur est enregistré.
+\begin{itemize}
+\item A tous les droits (\verb+HTTPD_RIGHTS_x='all'+), ou
+\item tous les droits dans un domaine spécifique
+    (\verb+HTTPD_RIGHTS_x='<Domaine>:all'+), ou
+\item a le droit d'effectuer une action spécifique dans un domaine spécifique \\
+    (\verb+HTTPD_RIGHTS_x='<Domaine>:<Action>'+).
+\end{itemize}
+
+
+\subsubsection{Fonction \texttt{show\_error}}
+
+Cette fonction renvoie un message d'erreur dans une fenêtre rouge. Il a besoin de
+deux paramètres~: un titre et un message. Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    show_error "Error: No key" "No key was specified!"
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Fonction \texttt{show\_warn}}
+
+Cette fonction renvoie un message d'avertissement dans une fenêtre jaune. Il a besoin de
+deux paramètres~: un titre et un message. Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    show_info "Warnung" "Actuellement, il n'y pas de connexion!"
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Fonction \texttt{show\_info}}
+
+Cette fonction renvoie un message de réussite ou d'information dans une fenêtre verte.
+Il a besoin de deux paramètres~: un titre et un message. Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    show_info "Info" "Action a été exécutée avec succès!"
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Script auxiliaire \texttt{cgi-helper-ip4}}
+
+Immédiatement après le script \texttt{cgi-helper}, vous devez ensuite intégrer
+le script auxiliaire \texttt{cgi-helper-ip4} avec la commande suivante~:
+
+\begin{example}
+\begin{verbatim}
+. /srv/www/include/cgi-helper-ip4
+\end{verbatim}
+\end{example}
+
+L'espace entre le point et le slash (ou la barre oblique) est important~!
+
+Ce script fournit des fonctions pour vous aidez à effectuer des tests d'adresse IPv4.
+
+
+\subsubsection{Fonction \texttt{ip4\_isvalidaddr}}
+
+Cette fonction vérifie si une adresse IPv4 qui a été enregistrée est valide.
+Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    if ip4_isvalidaddr ${FORM_inputip}
+    then
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Fonction \texttt{ipv4\_normalize}}
+
+Cette fonction supprime les zéros inutile dans l'adresse IPv4 enregistrée.
+Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    ip4_normalize ${FORM_inputip}
+    IP=$res
+    if [ -n "$IP" ]
+    then
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Fonction \texttt{ipv4\_isindhcprange}}
+
+Cette fonction vérifie si l'adresse IPv4 enregistrée est dans la plage d'adresse
+de début et de fin. Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    if ip4_isindhcprange $FORM_inputip $ip_start $ip_end
+    then
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+
+\subsection{Divers}
+
+Des choses et d'autres (et oui, c'est aussi important!)~:
+
+\begin{itemize}
+ \item Le \texttt{mini\_httpd} ne protège pas les sous-répertoires par mot de passe.
+      Vous devez avoir un répertoire \texttt{.htaccess} pour chaque utilisateur
+      ou créer un lien vers un autre fichier \texttt{.htaccess}.
+ \item KISS - Keep it simple, stupid~!
+ \item Ces informations peuvent être changées à tout moment et sans préavis~!
+\end{itemize}
+
+
+\subsection{Dépannage}
+
+Pour faciliter le débogage d'un script CGI, vous pouvez activer le mode débogage avant
+l'intégration du script \texttt{cgi-helper}. Pour cela, la variable \var{set\_debug} doit
+être paramétrée sur "yes". Cela conduit à la création du fichier \texttt{debug.log}, que
+vous pourrez télécharger sur l'URL \texttt{http://<fli4l-Host>/admin/debug.log}. Cela inclut
+tous les appels vers ce script CGI. La variable \texttt{set\_debug} n'est pas globale, et
+doit être renouvelée dans tous les scripts CGI en question. Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    set_debug="yes"
+    . /srv/www/include/cgi-helper
+\end{verbatim}
+\end{example}
+
+En outre, cURL\footnote{voir \altlink{http://de.wikipedia.org/wiki/CURL}} est
+idéal pour le dépannage, en particulier lorsque les en-têtes HTTP ne sont pas
+assemblé correctement ou que le navigateur affiche une page blanche. Et aussi,
+le comportement de mise cache des navigateurs modernes est un véritable problème.
+
+Exemple~: Avec l'exécution suivant, en-tête HTTP ("`\emph{d}ump"', \texttt{-D})
+l'affichage normale du CGI \texttt{admin/mon.cgi} sera publié. Vous pouvez utiliser
+le nom d'utilisateur ("`\emph{u}ser"', \texttt{-u}) "`admin"'.
+
+\begin{example}
+\begin{verbatim}
+    curl -D - http://fli4l/admin/mon.cgi -u admin
+\end{verbatim}
+\end{example}

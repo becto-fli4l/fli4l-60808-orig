@@ -1,0 +1,338 @@
+#!/bin/busybox sh
+#----------------------------------------------------------------------------
+# /etc/rc - boot script
+#
+# Creation:     29.03.2000  fm
+# Last Update:  $Id$
+#
+# Copyright (c) 2000-2002 - Frank Meyer
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------
+# stop-function to be used instead of 'exit' to keep error-messages readable
+#----------------------------------------------------------------------------
+stop()
+{
+    log_error "$1"
+    while true; do
+        /bin/sh
+    done
+}
+
+#----------------------------------------------------------------------------
+# read_config <config file> - load configuration from rc.cfg
+#----------------------------------------------------------------------------
+read_config()
+{
+    file=$1
+    [ -f $file ] || stop "missing config file ('$file')"
+
+    cp $file /tmp/rc.$$
+    dtou -s /tmp/rc.$$
+    . /tmp/rc.$$                        # get fli4l config
+    rm /tmp/rc.$$                       # clean up
+}
+
+#----------------------------------------------------------------------------
+# exec_scripts <dir> : executes all scripts in directory <dir>
+#----------------------------------------------------------------------------
+rename_ln()
+{
+    mv /bin/ln /bin/ln.real
+    cat <<-EOF > /bin/ln
+        #! /bin/sh
+        param="\$*"
+        . /etc/boot.d/base-helper
+        case \$1 in
+            -s) shift ;;
+        esac
+        case \$2 in
+            /*) path=\$2 ;;
+            *)  path=\`pwd\`/\$2 ;;
+        esac
+        case \$path in
+            /opt/*)
+                SCRIPT=\$script
+                log_error "trying to create link in wrong location (ln \$param), please fix this (maybe by removing /opt prefix)."
+                ;;
+        esac
+        busybox ln \$param
+EOF
+    chmod +x /bin/ln
+}
+
+exec_scripts()
+{
+    dir=$1
+    if [ ! -d $dir ]
+    then
+        log_error "exec_scripts called for non existing directory $dir"
+        return
+    fi
+    rename_ln
+    for script in $dir/rc[0-9][0-9][0-9]*.*
+    do
+        if [ -f $script ]
+        then
+            echo "script=$script" > /var/run/rc.script
+            . $script
+        fi
+    done
+    rm -f /var/run/rc.script
+    if [ -f /bin/ln.real ]; then
+        mv /bin/ln.real /bin/ln
+    fi
+}
+
+#-----------------------------------------------------------------------------
+# extract_opt [<file> [<target dir>]]
+#    - fetch opt.tar from specified location and extract it
+#-----------------------------------------------------------------------------
+extract_opt() {
+    file=$1
+    target_dir=$2
+
+    case $COMP_TYPE_OPT in
+        bzip2) method="bunzip2 -c" ;;
+        lzma) method="unlzma -c" ;;
+        xz) method="unxz -c" ;;
+        *) method="cat" ;;
+    esac
+
+    case x$target_dir in
+        x) target_dir=/ ;;
+    esac
+
+    case x$file in
+        x- | x )
+            # file comes from stdin
+            file=
+            ;;
+        *)
+            [ -f $file ] || stop "extract_opt: missing file $file"
+            ;;
+    esac
+    log_info "extracting files from opt archive"
+    cd $target_dir
+
+    if ! $method $file | tar -xf - --warning=no-timestamp --checkpoint=50 --checkpoint-action=dot
+    then
+        log_error "extraction failed!"
+        stop "either your archives are corrupt or you have run out of memory"
+    else
+        # --checkpoint-action=dot does not emit a final newline
+        echo
+    fi
+}
+
+do_beep()
+{
+    beep -f750 -l120
+}
+
+#----------------------------------------------------------------------------
+# main function -- put everything together
+#----------------------------------------------------------------------------
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:.; export PATH
+trap "" 1
+
+#
+# setup busybox
+#
+busybox mount -t proc proc /proc
+
+if busybox grep -q ^/dev/root /proc/mounts
+then
+    set `busybox grep ^/dev/root /proc/mounts`
+    case $3 in
+        ext*)
+            busybox mount -o remount,rw,noatime /dev/root /
+            busybox echo $1 $2 $3 rw >> /etc/fstab
+            ;;
+    esac
+fi
+busybox --install
+
+mount -t sysfs  sysfs  /sys
+mount -t devpts devpts /dev/pts
+
+# tmpfs is mounted with mode=1777, but e.g. dropbear does not like this
+# correct this as early as possible
+chmod 0755 /
+
+kernel_version=`cat /proc/version | cut -d' ' -f 3`
+set -- `echo $kernel_version | sed -e "s/\([0-9]\+\.[0-9]\+\)\.\([0-9]\+\).*/\1 \2/"`
+kernel_major=$1
+kernel_minor=$2
+echo $kernel_version > /etc/kernel-version
+echo $kernel_major   > /etc/kernel-major
+echo $kernel_minor   > /etc/kernel-minor
+
+echo "" > /proc/sys/kernel/hotplug
+
+# create /etc/mdev.conf
+for script in /etc/mdev.d/mdev[0-9][0-9][0-9].*
+do
+    if [ -f $script ]
+    then
+        . $script
+    fi
+done > /etc/mdev.conf
+
+if [ -f /etc/rc.cfg ]; then
+   grep -q "^DEBUG_MDEV='yes'" /etc/rc.cfg && > /dev/mdev.log
+fi
+mdev -s
+
+# wait for the first bunch of devices to be created, otherwise e.g. bootlogd
+# may miss the tty device
+sleep 2
+
+ln -sf /proc/mounts /etc/mtab
+
+# add alias names to modprobe.conf
+[ -f /lib/modules/$kernel_version/modules.alias ] && cat /lib/modules/$kernel_version/modules.alias >> /etc/modprobe.conf
+
+#----------------------------------------------------------------------------
+# relocate core dumps
+#----------------------------------------------------------------------------
+if [ -f /proc/sys/kernel/core_pattern ]; then
+    mkdir /var/log/dumps
+    chmod 1777 /var/log/dumps
+    echo '/var/log/dumps/core.%e' > /proc/sys/kernel/core_pattern
+fi
+
+#----------------------------------------------------------------------------
+# create marker file if core dumps have been requested
+#----------------------------------------------------------------------------
+if [ -f /etc/rc.cfg ] && grep -q "^DEBUG_ENABLE_CORE='yes'" /etc/rc.cfg
+then
+    > /var/run/coredumps.enabled
+fi
+
+#-----------------------------------------------------------------------------
+# setup boot logging and startup debugging
+#-----------------------------------------------------------------------------
+[ -x /sbin/bootlogd ] && /sbin/bootlogd -c -l /var/tmp/boot.log
+
+case "$fli4ldebug" in
+yes)
+    > /var/run/debugging
+    set -x
+    stack_0='yes'
+esac
+
+#----------------------------------------------------------------------------
+# initialize some variables
+#----------------------------------------------------------------------------
+script=rc
+export script
+booting=yes
+extfs=ext4
+export booting
+
+# remove stale /files link
+rm -f /files
+#----------------------------------------------------------------------------
+# mount devices, e.g. /proc
+#----------------------------------------------------------------------------
+cd /        # be in root directory
+mount -av   # mount /proc
+mount
+
+#----------------------------------------------------------------------------
+# check for recover-version activation by kernel APPEND
+#----------------------------------------------------------------------------
+rc_name=rc.cfg
+opt_name=opt.img
+case "$fli4l_mode" in
+    recover)
+        rcfile=rc2.cfg
+        opt_archive=opt2.img
+        fli4l_ramdisk=yes
+        log_info "booting recovery version ..." cy
+        ;;
+    test)
+        rcfile=rc-test.cfg
+        opt_archive=opt-test.img
+        fli4l_ramdisk=yes
+        log_info "booting test version ..." cy
+        ;;
+    *)
+        rcfile=$rc_name
+        opt_archive=$opt_name
+        fli4l_ramdisk=
+        ;;
+esac
+
+#----------------------------------------------------------------------------
+# ?- == depends on boot method,  !- == mandatory
+# ?- load drivers
+# ?- mount boot medium
+# !- read rc.cfg
+# ?- extract/mount opt files
+#----------------------------------------------------------------------------
+. /etc/boot.d/base-helper
+net_alias_add any any TID_
+
+# load speaker module
+do_modprobe_if_exists kernel/drivers/input/misc pcspkr
+
+(
+    # use separate environment for boot scripts
+    if [ -f /etc/rc.cfg ]; then
+        read_config /etc/rc.cfg
+    else
+        log_error "Missing initial boot configuration file /etc/rc.cfg"
+    fi
+
+    log_info "running boot scripts"
+    exec_scripts /etc/boot.d
+    log_info "finished boot scripts"
+    echo -e "boot_dev=$boot_dev\nboot_fs=$boot_fs\nhd_data=$hd_data" > /var/run/boot.cfg
+    cat /var/run/boot.cfg
+)
+
+#-----------------------------------------------------------------------------
+# read rc.cfg
+#-----------------------------------------------------------------------------
+mv -f /etc/rc.cfg /etc/rc.cfg.orig
+if [ -f /var/run/$rcfile ]; then
+   cp -L /var/run/$rcfile /etc/rc.cfg
+else
+   cp -L /boot/$rcfile /etc/rc.cfg
+fi
+read_config /etc/rc.cfg
+. /var/run/boot.cfg
+grep -q /boot /proc/mounts && umount /boot
+
+#-----------------------------------------------------------------------------
+# exec rc scripts
+#-----------------------------------------------------------------------------
+exec_scripts /etc/rc.d
+
+# wait a bit as pending ip-up scripts are executed now
+sleep 15
+
+#-----------------------------------------------------------------------------
+# version logging
+#-----------------------------------------------------------------------------
+
+log_info "fli4l boot finished - VERSION: `cat /etc/version` KERNEL: `uname -r` ARCH: `uname -m` "
+mkdir -p /var/lib/persistent/base
+echo "`date '+%Y-%m-%d %T (%Z)'` | boot finished | `cat /etc/version` | `uname -r ` | `uname -m` " >> /var/lib/persistent/base/boot_upd.log
+
+#-----------------------------------------------------------------------------
+# stop boot logging
+#-----------------------------------------------------------------------------
+if [ -x /sbin/bootlogd ]
+then
+    if [ "$DEBUG_KEEP_BOOTLOGD" != yes ]; then
+        # stop bootlog daemon
+        log_info "terminating bootlogd to close bootlog ..."
+        killall bootlogd
+    fi
+fi
+
+

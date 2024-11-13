@@ -1,0 +1,277 @@
+% Synchronized to r35952
+
+\section{Creating Scripts for fli4l}
+
+
+The following is \emph{not} a general introduction to shell scripts,
+everyone can read about this topic on the Internet. It is only about the flil4-specific
+things. Further information is available in the various *nix/Linux help pages.
+The following links may be used as entry points to this topic:
+\begin{itemize}
+\item Introduction to shell scripts:
+  \begin{itemize}
+  \item \altlink{http://linuxcommand.org/writing_shell_scripts.php}
+  \end{itemize}
+ \item
+   Help pages online:
+   \begin{itemize}
+   \item \altlink{http://linux.die.net/}
+   \item \altlink{http://heapsort.de/man2web}
+   \item \altlink{http://man.he.net/}
+   \item \altlink{http://www.linuxcommand.org/superman_pages.php}
+   \end{itemize}
+\end{itemize}
+
+\subsection{Structure}
+
+    In the *nix world, it is necessary to begin a script with the name of the interpreter,
+    hence the first line is:
+\begin{example}
+\begin{verbatim}
+      #!/bin/sh
+\end{verbatim}
+\end{example}
+
+    To easily recognize later what a script does and who created it,
+    this line should now be followed by a short header, like so:
+
+\begin{example}
+\begin{verbatim}
+      #--------------------------------------------------------------------
+      # /etc/rc.d/rc500.dummy - start my cool dummy server
+      #
+      # Creation:     19.07.2001 Sheldon Cooper  <sheldon@nerd.net>
+      # Last Update:  11.11.2001 Howard Wolowitz <howard@nerd.net>
+      #--------------------------------------------------------------------
+\end{verbatim}
+\end{example}
+
+    Now for the real stuff to start...
+
+
+
+\marklabel{dev:sec:config-variables}{
+\subsection{Handling of Configuration Variables}
+}
+
+
+    Packages are configured via the file \texttt{config/<PACKAGE>.txt}.
+    The \jump{subsec:dev:var-check}{active variables} contained there are
+    transferred to the file \texttt{rc.cfg} during creation of the medium.
+    This file is processed during router boot before any rc-script
+    (scripts under \texttt{/etc/rc.d/}) gets started. The script then
+    may access all configuration variables by reading the content of
+    \var{\$<variable name>}.
+
+    If the values of configuration variables are needed after booting
+    the may be extracted from \texttt{/etc/rc.cfg} to which the configuration
+    of the boot medium was written during the boot process. If for example
+    the value of the variable \texttt{OPT\_DNS} should be processed in a script
+    this can be achieved as follows:
+
+\begin{example}
+\begin{verbatim}
+    eval $(grep "^OPT_DNS=" /etc/rc.cfg)
+\end{verbatim}
+\end{example}
+
+    This works efficiently also with multiple variables (with calling
+    the \texttt{grep} program only once):
+
+\begin{example}
+\begin{verbatim}
+    eval $(grep "^\(HOSTNAME\|DOMAIN_NAME\|OPT_DNS\|DNS_LISTEN_N\)=" /etc/rc.cfg)
+\end{verbatim}
+\end{example}
+
+\marklabel{dev:sec:persistent-data}{
+\subsection{Persistent Data Storage}
+}
+
+Occasionally a package needs the possibility to store data persistent,
+surviving the reboot of the router. For this purpose, the function
+\texttt{map2persistent} exists and can be called from a script in
+\texttt{/etc/rc.d/}. It expects a variable that contains a path
+and a subdirectory. The idea is that the variable is either describing
+an actual path~-- then this path is used because the user explicitely
+has done so, or the string ``auto''~-- then a subdirectory on a persistent
+medium is created corresponding to the second parameter. The function returns
+the result in the variable passed by name as the first parameter.
+An example will make this clear. \var{VBOX\_SPOOLPATH} is a variable,
+that 'contains a path or the string ``auto'' . The call
+
+\begin{example}
+\begin{verbatim}
+    begin_script VBOX "Configuring vbox ..."
+    [...]
+    map2persistent VBOX_SPOOLPATH /spool
+    [...]
+    end_script
+\end{verbatim}
+\end{example}
+
+results in the variable \var{VBOX\_SPOOLPATH} either not being changed at all
+(if it contains a path), or being changed to \texttt{/var/lib/persistent/vbox/spool}
+(if it contains the string ``auto''). \texttt{/var/lib/persistent} then points\footnote{
+by the use of a so-called ``bind''-mount} to a directory on a non-volatile and writable
+storage medium, \var{<SCRIPT>} is the name of the calling script in lowercase
+(this name is derived from the first argument of the
+\jump{subsec:dev:bug-searching}{\texttt{begin\_script}-call}).
+If no suitable medium should exist (which may well be),
+\texttt{/var/lib/persistent} is a directory in the RAM disk.
+
+Please note that the path returned by \texttt{map2persistent} is \emph{not}
+created automatically~-- The caller has to do that by himself (ie. by calling
+\texttt{mkdir -p <path>}).
+
+The file \texttt{/var/run/persistent.conf} allows for checking if
+persistent data storage is possible. Example:
+
+\begin{example}
+\begin{verbatim}
+    . /var/run/persistent.conf
+    case $SAVETYPE in
+    persistent)
+        echo "persistent data storage is possible!"
+        ;;
+    transient)
+        echo "persistent data storage is NOT possible!"
+        ;;
+    esac
+\end{verbatim}
+\end{example}
+
+\marklabel{subsec:dev:bug-searching}{
+\subsection{Debugging}
+}
+
+    For startup scripts it is often useful to run them in debug mode
+    in a shell when you are in need to determine where they fail.
+    For this purpose, insert the following at the beginning and at the end:
+
+\begin{example}
+\begin{verbatim}
+      begin_script <OPT-Name> "start message"
+      <script code>
+      end_script
+\end{verbatim}
+\end{example}
+
+At the start and at the end of the script the specified text will now appear,
+preceded by ``finished''.
+
+If you want to debug the scripts, you must do two things:
+
+\begin{enumerate}
+
+\item You have to set \jump{DEBUGSTARTUP}{\var{DEBUG\_\-STARTUP}} to ``yes''.
+\item You have to activate debugging for the OPT. This is usually done by the
+  entry
+\begin{example}
+\begin{verbatim}
+      <OPT-Name>_DO_DEBUG='yes'
+\end{verbatim}
+\end{example}
+in the config file.\footnote{Sometimes multiple start-scripts are used,
+  which then have different names for their debug-variables. Have a quick look at the scripts for clarification.}
+    What happens during runtime is now displayed in detail on screen.
+\end{enumerate}
+
+
+\subsubsection{Further Variables helpful for Debugging}
+
+\begin{description}
+
+  \config{DEBUG\_ENABLE\_CORE}{DEBUG\_ENABLE\_CORE}{DEBUGENABLECORE}
+
+  This variable allows the creation of ``Core-Dumps''. If a program crashes
+  due to an error an image of the current state in the file system is stored
+  which can be used to analyse the problem. The core dumps are stored under
+  \texttt{/var/log/dumps/}.
+
+  \config{DEBUG\_IP}{DEBUG\_IP}{DEBUGIP}
+
+  Activating this variable will log all calls of the program \texttt{ip}.
+
+  \config{DEBUG\_IPUP}{DEBUG\_IPUP}{DEBUGIPUP}
+
+  Setting this variable to ``yes'' will log all executed instructions of the
+  \texttt{ip-up}- and \texttt{ip-down}-scripts to syslog.
+
+  \config{LOG\_BOOT\_SEQ}{LOG\_BOOT\_SEQ}{LOGBOOTSEQ}
+
+  Setting this variable to ``yes'' will cause \texttt{bootlogd} to log all console
+  output during boot to the file \texttt{/var/tmp/boot.log}. This variable has
+  ``yes'' as a default value.
+
+  \config{DEBUG\_KEEP\_BOOTLOGD}{DEBUG\_KEEP\_BOOTLOGD}{DEBUGKEEPBOOTLOGD}
+
+  Normally \texttt{bootlogd} is terminated at the end of the boot process.
+  Activating this variable prevents this and thus allows for logging console
+  output during the whole runtime.
+
+  \config{DEBUG\_MDEV}{DEBUG\_MDEV}{DEBUGMDEV}
+
+  Setting this variable generates a logfile for the \texttt{mdev}-daemon,
+  which is responsible for creating device nodes under \texttt{/dev}.
+
+\end{description}
+\subsection{Hints}
+\begin{itemize}
+\item  It is \emph{always} better to use curly brackets ``\{\ldots\}'' instead of normal
+      ones``(\ldots)''. However, care must be taken to ensure
+      that after the opening bracket a space or a new line follows before
+      the next command and before the closing brackets a Semicolon
+      or a new line. For example:
+
+\begin{example}
+\begin{verbatim}
+        { echo "cpu"; echo "quit"; } | ...
+\end{verbatim}
+\end{example}
+
+      \noindent is equal to:
+
+\begin{example}
+\begin{verbatim}
+        {
+                echo "cpu"
+                echo "quit"
+        } | ...
+\end{verbatim}
+\end{example}
+
+
+      \item A script may be stopped by an ``exit'' at any time. This is deadly for
+	start scripts (\texttt{opt/etc/boot.d/...},
+        \texttt{opt/etc/rc.d/...}), stop-scripts (\texttt{opt/etc/rc0.d/...}) and\\
+        \texttt{ip-up}/\texttt{ip-down}-scripts (\texttt{opt/etc/ppp/...})
+        because the following scripts will not be run as well. If in doubt,
+        keep your fingers away.
+
+
+      \item KISS~-- Keep it small and simple. You want to use Perl for
+        scripting? The scripting abilities of fli4l are not enough for you?
+        Rethink your attitude! Is your OPT really necessary? fli4l after all
+        is ``only'' a router and a router should not really offer server services.
+
+
+      \item The error message ``: not found'' usually means the script is
+        still in DOS format. Another source of errors: the script is not executable.
+        In both cases the \texttt{opt/<PACKAGE>.txt} file should be checked whether
+        it contains the correct options for ``mode'', ``gid'', ``uid'' and Flags.
+        If the script is created during boot, execute ``chmod +x <script name>''.
+
+      \item Use the path \texttt{/tmp} for temporary files. However, it is important
+	to keep in mind that there is little space there because it is situated in the
+	rootfs-RAM disc! If more space is needed, you have to create and mount your own
+	ramdisk. Detailed informations on this topic can be found in the section ``RAM-Disks''
+        of this documentation.
+
+    \item In order to create temporary files with unique names you should always append
+      the current process-ID stored in the shell variable ``\$'' to the file name.
+      \texttt{/tmp/<OPT-Name>.\$\$} hence is a perfect file name,
+      \texttt{/tmp/<OPT-Name>} rather not (\texttt{<OPT-Name>} of course has
+      to be replaced by the according OPT-Name).
+
+\end{itemize}

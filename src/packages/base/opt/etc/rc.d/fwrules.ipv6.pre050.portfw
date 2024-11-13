@@ -1,0 +1,70 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/fwrules.pre050.portfw6
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+pf6_fwd_portfw_default () {
+    fw_append_rule6 filter FORWARD 'state:NEW PORTFWACCESS' PF6_FORWARD_ACCEPT_DEF
+}
+
+if ip6tables -t nat -L >/dev/null 2>&1
+then
+
+#
+# redirection chains
+#
+fw_add_chain6 nat PORTFW
+fw_append_rule6 nat PREROUTING 'PORTFW'
+
+#
+# access chains
+#
+fw_add_chain6 filter PORTFWACCESS
+fw_add_chain6 filter PORTREDIRACCESS
+
+case $PF6_FORWARD_ACCEPT_DEF in
+    yes)
+        pf6_fwd_add_default pf6_fwd_portfw_default
+        ;;
+    no)
+        [ 0$PF6_FORWARD_N -eq 0 ] || for idx in `seq 1 $PF6_FORWARD_N`
+        do
+            var=PF6_FORWARD_$idx
+            eval rule=\$$var
+            case "$rule" in
+                pfwaccess-chain)
+                    eval $var="'state:NEW PORTFWACCESS'"
+                    break
+                ;;
+            esac
+        done
+    ;;
+esac
+
+
+pf6_in_portredir_default () {
+    fw_append_rule6 filter INPUT 'state:NEW PORTREDIRACCESS' PF6_INPUT_ACCEPT_DEF
+}
+
+case $PF6_INPUT_ACCEPT_DEF in
+    yes)
+        pf6_in_add_default pf6_in_portredir_default
+        ;;
+    no)
+        [ 0$PF6_INPUT_N -eq 0 ] || for idx in `seq 1 $PF6_INPUT_N`
+        do
+            var=PF6_INPUT_$idx
+            eval rule=\$$var
+            case "$rule" in
+                redir-access-chain)
+                    eval $var="'state:NEW PORTREDIRACCESS'"
+                    break
+                ;;
+            esac
+        done
+    ;;
+esac
+
+fi

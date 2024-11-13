@@ -1,0 +1,325 @@
+﻿#------------------------------------------------------------------------------
+# check/circuits.ext - extended check of circuits                  __FLI4LVER__
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if (OPT_IMOND == "yes")
+then
+    error "OPT_IMOND='yes' is currently not supported, please use OPT_IMOND='no' for now"
+fi
+
+set classes=""
+foreach name in CIRC_CLASS_%_NAME
+do
+    if (classes == "")
+    then
+        set classes="${name}"
+    else
+        set classes="${classes}|${name}"
+    fi
+done
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set name=CIRC_%_NAME[i]
+        set type=CIRC_%_TYPE[i]
+        set protocols=CIRC_%_PROTOCOLS[i]
+        set usepeerdns=CIRC_%_USEPEERDNS[i]
+        set huptimeout=CIRC_%_HUP_TIMEOUT[i]
+        set wait=CIRC_%_WAIT[i]
+
+        foreach j in CIRC_N
+        do
+            if (CIRC_%_ENABLED[j] == "yes")
+            then
+                if (j > i && name == CIRC_%_NAME[j])
+                then
+                    error "CIRC_${i}_NAME and CIRC_${j}_NAME are both set to '${name}', please use unique circuit names"
+                fi
+            fi
+        done
+        foreach prefixname in NET_PREFIX_%_NAME
+        do
+            if (name == prefixname)
+            then
+                error "CIRC_${i}_NAME and %{prefixname} are both set to '${name}', please use unique circuit/prefix names"
+            fi
+        done
+
+        set class_n=CIRC_%_CLASS_N[i]
+        foreach j in class_n
+        do
+            set class=CIRC_%_CLASS_%[i][j]
+            if (!(class =~ "^(${classes})$"))
+            then
+                error "CIRC_${i}_CLASS_${j}='${class}' references an unknown circuit class, please check the CIRC_CLASS_% array"
+            fi
+        done
+
+        if (OPT_IMOND == "yes" && !defined(CIRC_%_TIMES[i]))
+        then
+            error "CIRC_${i}_TIMES must be set when using OPT_IMOND='yes'"
+        fi
+        if (OPT_IMOND == "no" && !defined(CIRC_%_UP[i]))
+        then
+            error "CIRC_${i}_UP must be set when using OPT_IMOND='no'"
+        fi
+
+        if (opt_ipv4)
+        then
+            set nets_ipv4_n=CIRC_%_NETS_IPV4_N[i]
+            if (nets_ipv4_n > 0 && protocols != "" && !(protocols =~ "ipv4"))
+            then
+                error "CIRC_${i}_NETS_IPV4_N='${nets_ipv4_n}' requires CIRC_${i}_PROTOCOLS to contain 'ipv4'"
+            fi
+        else
+            set nets_ipv4_n=0
+        fi
+
+        if (opt_ipv6)
+        then
+            set nets_ipv6_n=CIRC_%_NETS_IPV6_N[i]
+            if (nets_ipv6_n > 0 && protocols != "" && !(protocols =~ "ipv6"))
+            then
+                error "CIRC_${i}_NETS_IPV6_N='${nets_ipv6_n}' requires CIRC_${i}_PROTOCOLS to contain 'ipv6'"
+            fi
+        else
+            set nets_ipv6_n=0
+        fi
+
+        if (huptimeout > 0 && wait > 0)
+        then
+            error "CIRC_${i}_WAIT='${wait}' is incompatible with CIRC_${i}_HUP_TIMEOUT='${huptimeout}' (waiting for on-demand circuit is senseless)"
+        fi
+
+        set bundle_ref=CIRC_%_BUNDLE[i] ?: ""
+        if (bundle_ref != "")
+        then
+            set bundle=0
+            foreach j in CIRC_N
+            do
+                if (CIRC_%_ENABLED[j] == "yes")
+                then
+                    if (bundle_ref == CIRC_%_NAME[j])
+                    then
+                        set bundle=j
+                    fi
+                fi
+            done
+
+            if (bundle == 0)
+            then
+                error "CIRC_${i}_BUNDLE='${bundle_ref}' does not refer to a valid circuit"
+            else
+                set bundle_type=CIRC_%_TYPE[bundle]
+                set bundle_name=CIRC_%_NAME[bundle]
+                if (i < bundle)
+                then
+                    error "It is not allowed to configure the circuit circ${i} ('${name}') before its bundle circuit circ${bundle} ('${bundle_name}')"
+                fi
+                if (i == bundle)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' cannot reference itself -- a circuit is either a multilink bundle or a link, but not both"
+                fi
+
+                if (huptimeout > 0)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_HUP_TIMEOUT to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_HUP_TIMEOUT appropriately)"
+                fi
+                if (protocols != "")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PROTOCOLS to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PROTOCOLS appropriately)"
+                fi
+                if (nets_ipv4_n > 0)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_NETS_IPV4_N to be zero (configure the bundle circuit instead by setting CIRC_${bundle}_NETS_IPV4_N appropriately)"
+                fi
+                if (nets_ipv6_n > 0)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_NETS_IPV6_N to be zero (configure the bundle circuit instead by setting CIRC_${bundle}_NETS_IPV6_N appropriately)"
+                fi
+                if (usepeerdns == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_USEPEERDNS='no' (configure the bundle circuit instead by setting CIRC_${bundle}_USEPEERDNS='yes')"
+                fi
+            fi
+        fi
+
+        if (type == "route")
+        then
+            if (bundle_ref != "")
+            then
+                error "CIRC_${i}_TYPE='route' disallows the circuit to be itself part of the bundle circuit '${bundle_ref}'"
+            fi
+            if (huptimeout > 0)
+            then
+                error "CIRC_${i}_HUP_TIMEOUT='${huptimeout}' cannot be used with CIRC_${i}_TYPE='route'"
+            fi
+            if (usepeerdns != "no")
+            then
+                error "CIRC_${i}_USEPEERDNS='${usepeerdns}' cannot be used with CIRC_${i}_TYPE='route'"
+            fi
+            if (!defined(CIRC_%_ROUTE_DEV[i]))
+            then
+                if (nets_ipv4_n > 0 && !defined(CIRC_%_ROUTE_GATEWAY_IPV4[i]))
+                then
+                    error "Either CIRC_${i}_ROUTE_DEV or CIRC_${i}_ROUTE_GATEWAY_IPV4 (or both) must be set for CIRC_${i}_TYPE='route' and CIRC_${i}_NETS_IPV4_N='${nets_ipv4_n}'"
+                fi
+                if (nets_ipv6_n > 0 && !defined(CIRC_%_ROUTE_GATEWAY_IPV6[i]))
+                then
+                    error "Either CIRC_${i}_ROUTE_DEV or CIRC_${i}_ROUTE_GATEWAY_IPV6 (or both) must be set for CIRC_${i}_TYPE='route' and CIRC_${i}_NETS_IPV6_N='${nets_ipv6_n}'"
+                fi
+            fi
+        fi
+    fi
+done
+foreach i in CIRC_CLASS_N
+do
+    set name=CIRC_CLASS_%_NAME[i]
+    foreach j in CIRC_N
+    do
+        if (CIRC_%_ENABLED[j] == "yes")
+        then
+            if (name == CIRC_%_NAME[j])
+            then
+                error "CIRC_CLASS_${i}_NAME and CIRC_${j}_NAME are both set to '${name}', please use unique names for circuits and circuit classes"
+            fi
+        fi
+    done
+    foreach j in CIRC_CLASS_N
+    do
+        if (j > i && name == CIRC_CLASS_%_NAME[j])
+        then
+            error "CIRC_CLASS_${i}_NAME and CIRC_CLASS_${j}_NAME are both set to '${name}', please use unique names for circuit classess"
+        fi
+    done
+done
+
+if (defined(circ_online))
+then
+    split(circ_online, tag_%, ' ')
+    foreach tag in tag_%
+    do
+        if (!(tag =~ "^((${circ_ipv4})|(${circ_ipv6}))$"))
+        then
+            error "CIRC_ONLINE references the unknown circuit '$tag'"
+        fi
+    done
+fi
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set deps=CIRC_%_DEPS[i] ?: ""
+        split(deps, dep_%, ' ')
+        foreach dep in dep_%
+        do
+            # remove possibly appended layer-3 protocol
+            split(dep, tmp_%, '/')
+            set dep=tmp_%[1]
+
+            if (!(dep =~ "^((${circ_ipv4})|(${circ_ipv6}))$"))
+            then
+                error "CIRC_${i}_DEPS references the unknown circuit '$dep'"
+            fi
+        done
+    fi
+done
+if (opt_ipv4)
+then
+    foreach net in IP_NET_%
+    do
+        if (net =~ "^\{([^}]+)\}.*$")
+        then
+            set circuit=match_%[1]
+            if (!(circuit =~ "^(${circ_ipv4})$"))
+            then
+                if (!(circuit =~ "^(${circ_ipv6})$"))
+                then
+                    error "%net references the unknown circuit '$circuit'"
+                else
+                    error "%net references the IPv6-only circuit '$circuit'"
+                fi
+            fi
+        fi
+    done
+    foreach rule in PF_INPUT_% PF_FORWARD_% PF_OUTPUT_% PF_POSTROUTING_% PF_PREROUTING_% PF_OUTPUT_CT_% PF_PREROUTING_CT_% PF_USR_CHAIN_%_RULE_%
+    do
+        if (rule =~ "if:(!?[^ :]+:!?[^ :]+)")
+        then
+            split(match_%[1], if_%, ':')
+            foreach interface in if_%
+            do
+                if (!(interface =~ "^(any|lo|(RE:FW_NET_DEV)|\{(${circ_ipv4})\})$"))
+                then
+                    if (!(interface =~ "^\{(${circ_ipv6})\}$"))
+                    then
+                        error "%rule references the unknown circuit '$interface'"
+                    else
+                        error "%rule references the IPv6-only circuit '$interface'"
+                    fi
+                fi
+            done
+        fi
+    done
+    foreach i in PORTFW_N
+    do
+        set rule=PORTFW_%_TARGET[i]
+        if (rule =~ "^((RE:FW_NET)|(RE:DNS_IP)|(RE:CIRCUIT)):")
+        then
+            split(rule, rule_%, ':')
+            set circuit=rule_%[1]
+            if (!(circuit =~ "^((RE:FW_NET)|(RE:DNS_IP)|\{(${circ_ipv4}))\}$"))
+            then
+                if (!(interface =~ "^\{(${circ_ipv6})\}$"))
+                then
+                    error "PORTFW_${i}_TARGET references the unknown circuit '$interface'"
+                else
+                    error "PORTFW_${i}_TARGET references the IPv6-only circuit '$interface'"
+                fi
+            fi
+        fi
+    done
+fi
+if (opt_ipv6)
+then
+    foreach net in IPV6_NET_%
+    do
+        if (net =~ "^\{([^}]+)\}.*$")
+        then
+            set circuit=match_%[1]
+            if (!(circuit =~ "^(${circ_ipv6})$"))
+            then
+                if (!(circuit =~ "^(${circ_ipv4})$"))
+                then
+                    error "%net references the unknown circuit '$circuit'"
+                else
+                    error "%net references the IPv4-only circuit '$circuit'"
+                fi
+            fi
+        fi
+    done
+    foreach rule in PF6_INPUT_% PF6_FORWARD_% PF6_OUTPUT_% PF6_POSTROUTING_% PF6_PREROUTING_% PF6_OUTPUT_CT_% PF6_PREROUTING_CT_% PF6_USR_CHAIN_%_RULE_%
+    do
+        if (rule =~ "if:(!?[^ :]+:!?[^ :]+)")
+        then
+            split(match_%[1], if_%, ':')
+            foreach interface in if_%
+            do
+                if (!(interface =~ "^(any|lo|(RE:FW_NET_DEV6)|\{(${circ_ipv6})\})$"))
+                then
+                    if (!(interface =~ "^\{(${circ_ipv4})\}$"))
+                    then
+                        error "%rule references the unknown circuit '$interface'"
+                    else
+                        error "%rule references the IPv4-only circuit '$interface'"
+                    fi
+                fi
+            done
+        fi
+    done
+fi

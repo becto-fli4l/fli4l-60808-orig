@@ -1,0 +1,1004 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for base
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+provides fli4l version 4.0.0
+
+# needed for uClibc-ng, see https://patchwork.ozlabs.org/patch/494505/ for details
+if (arch == "x86_64")
+then
+    add_to_opt "rootfs:lib/ld64-uClibc.so.0" "type=symlink linktarget=ld64-uClibc.so.1"
+else
+    add_to_opt "rootfs:lib/ld-uClibc.so.0" "type=symlink linktarget=ld-uClibc.so.1"
+fi
+
+crypt (PASSWORD)
+
+stat("opt/lib/modules/${KERNEL_VERSION}/modules.dep", res)
+if (res_res != "OK")
+then
+    error "No kernel with version ${KERNEL_VERSION} available! Available versions are:"
+    fgrep("$config_dir/kernel_*.txt", "^##.*configuration for kernel (.*)$")
+    set i=0
+    foreach m in fgrep_match_%
+    do
+        if (i == 0)
+        then
+            set i=1
+        else
+            stat ("opt/lib/modules/$m/modules.dep", res)
+            if (res_res == "OK")
+            then
+                error "  $m"
+            else
+                error "  $m [incomplete, don't use]"
+            fi
+            set i=0
+        fi
+    done
+    error "Please change KERNEL_VERSION appropriately!"
+fi
+
+# add corresponding kernel package dependency
+if (kernel_version =~ "5\.4\..*")
+then
+    depends on kernel_v54
+else
+    if (kernel_version =~ "5\.6\..*")
+    then
+        depends on kernel_v56
+    else
+        warning "Kernel package for kernel version ${KERNEL_VERSION} could not be determined; please check your KERNEL_VERSION variable!"
+    fi
+fi
+
+# Initialize Kernel-Boot-Options Extending Variable
+set kernel_boot_option_ext=""
+
+if (! ( kernel_boot_option =~ ".*printk.time.*" ) )
+then
+    set kernel_boot_option_ext="${kernel_boot_option_ext} printk.time=0"
+fi
+
+#
+# Network related stuff
+#
+foreach i in net_drv_%
+do
+    if (copy_pending("%i"))
+    then
+        error "No network driver found for %i='$i', check config/base.txt"
+    fi
+done
+
+if (!opt_ipv4 && !opt_ipv6)
+then
+    error "You have to use either OPT_IPV4='yes' or OPT_IPV6='yes' (or both)!"
+fi
+
+if (opt_ipv4)
+then
+    provides ipv4 version 4.0.0
+
+    if (ip_net_n == 0 && (!defined (ignore_ip_net_warning) || ! ignore_ip_net_warning))
+    then
+        warning "You should configure at least one network device. If you actually don't have network devices or use some other mechanism to configure them, disable this warning by setting IGNORE_IP_NET_WARNING='yes' in your config file"
+    fi
+
+    foreach i in ip_net_n
+    do
+        if (ip_net_%[i] == "" && ip_net_%_mac[i] == "")
+        then
+            error "IP_NET_$i must not be empty if IP_NET_${i}_MAC is not set!"
+        fi
+    done
+
+    foreach i in ip_net_n
+    do
+        set net1=ip_net_%[i]
+        foreach j in ip_net_n
+        do
+            set net2=ip_net_%[j]
+            if (i != j)
+            then
+                set if1=ip_net_%_dev[i]
+                set if2=ip_net_%_dev[j]
+
+                if( if1 == if2 )
+                then
+                    warning "You are using the same interface for different networks: IP_NET_${i}_DEV='$if1' - IP_NET_${j}_DEV='$if2'. Please be sure that this is actually your intention."
+                fi
+                if (net1 =~ "^(RE:IPADDR)$" && net2 =~ "^(RE:IPADDR)$")
+                then
+                    if (subnet ("$net1", "$net2"))
+                    then
+                        warning "Possible invalid IP_NET configuration, IP_NET_$i='$net1' and IP_NET_$j='$net2' overlap each other."
+                    fi
+                fi
+            fi
+        done
+    done
+
+    if (ip_route_n != 0)
+    then
+        set defaultroute="no"
+        foreach i in ip_route_n
+        do
+            if (ip_route_%[i] =~ "^0\.0\.0\.0/0[[:space:]]+.*")
+            then
+                if(defaultroute == "yes")
+                then
+                    error "You can't have more than one default route in your IP_ROUTE configuration. You must remove the defaultroute in IP_ROUTE_${i}."
+                fi
+                set defaultroute="yes"
+            fi
+        done
+    fi
+
+    if (opt_net)
+    then
+        add_to_opt "usr/share/circuits/type/net.ipv4" "mode=555 flags=sh"
+        add_to_opt "etc/rc.d/rc020.mom.types.circuits.net.ipv4" "flags=sh"
+        add_to_opt "etc/ppp/prefix-up050.circuits-net" "flags=sh"
+        add_to_opt "etc/ppp/prefix-down950.circuits-net" "flags=sh"
+    fi
+
+    if (opt_bundle)
+    then
+        add_to_opt "etc/ppp/ip-up010.bundle" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/ip-down990.bundle" "mode=555 flags=sh"
+    fi
+
+    if (opt_logip)
+    then
+        add_to_opt "etc/rc.d/rc335.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/addr-up300.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/addr-down700.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/prefix-up300.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/prefix-down700.logip" "mode=555 flags=sh"
+    fi
+else
+    if (opt_net)
+    then
+        add_to_opt "usr/share/circuits/type/net.ipv4.disabled" "mode=555 flags=sh name=usr/share/circuits/type/net.ipv4"
+    fi
+
+    # TODO: remove this line if IPv6-only configuration really works
+    error "OPT_IPV4='no' is currently not yet supported, sorry"
+fi
+
+if (opt_ipv6)
+then
+    provides ipv6 version 4.0.0
+
+    # check if DNS support is correctly activated and configured
+    if (!(opt_dns && dns_support_ipv6))
+    then
+        foreach i in ipv6_net_%_advertise_dns
+        do
+            if("$i" == "yes")
+            then
+                error "You have to enable OPT_DNS and DNS_SUPPORT_IPV6 in the dns_dhcp package in order to advertise IPv6 DNS servers! Either configure dns_dhcp accordingly or disable IPV6_NET_%_ADVERTISE_DNS for all IPv6 subnets."
+            fi
+        done
+    fi
+
+    if (opt_bundle)
+    then
+        add_to_opt "etc/ppp/ipv6-up010.bundle" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/ipv6-down990.bundle" "mode=555 flags=sh"
+    fi
+
+    if (opt_net)
+    then
+        add_to_opt "usr/share/radvd.api" "mode=555 flags=sh"
+        add_to_opt "usr/sbin/radvd" "mode=555"
+        add_to_opt "usr/share/circuits/type/net.ipv6" "mode=555 flags=sh"
+        add_to_opt "etc/rc.d/rc020.mom.types.circuits.net.ipv6" "flags=sh"
+        add_to_opt "etc/ppp/prefixv6-up050.circuits-net" "flags=sh"
+        add_to_opt "etc/ppp/prefixv6-down950.circuits-net" "flags=sh"
+    fi
+
+    if (opt_logip)
+    then
+        add_to_opt "etc/rc.d/rc335.logip6" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/addrv6-up300.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/addrv6-down700.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/prefixv6-up300.logip" "mode=555 flags=sh"
+        add_to_opt "etc/ppp/prefixv6-down700.logip" "mode=555 flags=sh"
+    fi
+
+    if (opt_pppoe)
+    then
+        add_to_opt "etc/rc.d/rc200.pppoe.filter.ipv6" "mode=555 flags=sh"
+    fi
+else
+    if (opt_hosts)
+    then
+        foreach i in host_%_ip6
+        do
+            if("$i" == "auto")
+            then
+                error "You have to enable OPT_IPV6 in order to use %i='$i'!"
+            fi
+        done
+        foreach i in host_%_ip6_net
+        do
+            if("$i" != "")
+            then
+                error "You have to enable OPT_IPV6 in order to use %i='$i'!"
+            fi
+        done
+    fi
+
+    if (opt_net)
+    then
+        add_to_opt "usr/share/circuits/type/net.ipv6.disabled" "mode=555 flags=sh name=usr/share/circuits/type/net.ipv6"
+    fi
+fi
+
+#
+# Hard disk stuff
+#
+
+if (arch == "x86" || arch == "x86_64")
+then
+    add_to_opt "rootfs:ahci.ko"
+    add_to_opt "rootfs:ata_piix.ko"
+    add_to_opt "rootfs:ata_generic.ko"
+    add_to_opt "rootfs:pata_legacy.ko"
+fi
+
+#
+# misc stuff
+#
+if(domain_name =~ ".+\.local$")
+then
+    warning "Your DOMAIN is '$domain_name' - on some Operating Systems there are problems with this DOMAIN-name"
+fi
+
+if (opt_klogd && !opt_syslogd)
+then
+    error "if you want to use klogd, you have to enable syslogd too (set OPT_SYSLOGD='yes')"
+fi
+
+if (opt_pnp)
+then
+    stat ("$config_dir/etc/isapnp.conf", res)
+    if (res_res != "OK")
+    then
+        stat ("opt/etc/isapnp.conf", res)
+        if (res_res == "OK")
+        then
+            if (res_size <= 41)
+            then
+                warning "unconfigured isapnp.conf found, please create a valid <config>/etc/isapnp.conf (see documentation to find out how)"
+            fi
+        else
+            error "$res_res: while trying to check for isapnp.conf"
+        fi
+    fi
+fi
+
+#
+# package decompression problems
+#
+stat ("opt/etc/crlf-test.txt", res)
+if (res_res == "OK")
+then
+    if (res_size != 11)
+    then
+        error "If you used WinZip to uncompress the Fli4l archives switch of Smart-Tar-CRLF-Conversion and do it again."
+    fi
+else
+    error "$res_res: while trying to check size of opt/etc/crlf-test.txt"
+fi
+
+stat ("opt/etc/issue", res)
+if (res_res != "OK")
+then
+    error "$res_res: Maybe you used WinACE and didn't read the warning on the download page?"
+fi
+
+#
+# boot related checks
+#
+if (boot_type =~ "integrated|attached" && mount_boot != "no")
+then
+    error "you must set MOUNT_BOOT='no' if you want to use BOOT_TYPE integrated or attached'"
+fi
+
+if (bootmenu_time == 0)
+then
+    warning "BOOTMENU_TIME='0' in base.txt - Syslinux bootmenu wait until a selection by user to boot standard- or recovery-installation!"
+fi
+
+stat("$config_dir/etc/inittab", inittabfile)
+if(inittabfile_res == "OK")
+then
+    fgrep("$config_dir/etc/inittab", "[0-9A-Za-z]?::(respawn|askfirst):cttyhack[[:space:]]+.+/mini-login$")
+    if (fgrep_match_n == 0)
+    then
+        error "Your inittab is missing a mini-login with cttyhack. Without cttyhack CTRL-C doesn't work in your shell. Use something like this: ::respawn:cttyhack /usr/local/bin/mini-login"
+    fi
+fi
+
+#
+# hardware clock
+#
+if (rtc_sync == "hwclock")
+then
+    add_to_opt "etc/rc.d/rc100.hwclock" "mode=555 flags=sh"
+    add_to_opt "etc/rc0.d/rc950.hwclock" "mode=555 flags=sh"
+fi
+
+#
+# keyboard handling
+#
+if (keyboard_locale != "" && keyboard_locale != "off")
+then
+    set keyboard_mapfile="in_kernel"
+    if (keyboard_locale == "auto")
+    then
+        set keyboard_mapfile=locale
+        if (locale == "de")
+        then
+            set keyboard_mapfile = "de-latin1-nodeadkeys"
+        fi
+        if (locale == "fr")
+        then
+            set keyboard_mapfile = "fr-latin1"
+        fi
+        if (locale == "en" || locale == "nl")
+        then
+            set keyboard_mapfile = "in_kernel"
+        fi
+    else
+        set keyboard_mapfile=keyboard_locale
+    fi
+    if (keyboard_mapfile != "in_kernel")
+    then
+        stat("opt/etc/$keyboard_mapfile.map", keymap_file)
+        stat("$config_dir/etc/$keyboard_mapfile.map", keymap_conf_file)
+        if(keymap_file_res == "OK" || keymap_conf_file_res == "OK")
+        then
+            add_to_opt "etc/$keyboard_mapfile.map"
+        else
+            error "There is no keyboard mapfile $keyboard_locale.map available in opt/etc that matches your KEYBOARD_LOCALE='$KEYBOARD_LOCALE' setting!"
+        fi
+    fi
+fi
+
+
+#
+# add pc_speaker module if exists and is needed
+#
+if (beep || imond_beep)
+then
+    stat("opt/lib/modules/${KERNEL_VERSION}/kernel/drivers/input/misc/pcspkr.ko", tmpspkr)
+    if ( tmpspkr_res == "OK" )
+    then
+        add_to_opt "rootfs:lib/modules/${KERNEL_VERSION}/kernel/drivers/input/misc/pcspkr.ko"
+    else
+        warning "Your kernel ($kernel_version) is missing the speaker module (kernel/drivers/input/misc/pcspkr.ko). Therefore the router will not beep although you set beep='yes' or imond_beep='yes'."
+    fi
+fi
+
+if (beep)
+then
+    if (ser_console)
+    then
+        add_to_opt "rootfs:usr/bin/beep.sh" "mode=555 flags=sh name=bin/beep"
+    fi
+fi
+
+#
+# packet filter related stuff
+#
+
+# we check later if the masq modul is used
+set masq_ftp="no"
+set masq_sip="no"
+set tmpl_ftp="no"
+
+foreach i in masq_module_%
+do
+    warning "don't use %i='$i' as it has been deprecated; use the HELPER:$i action instead (see section 3.10.9 in the documentation for details)"
+
+    if (copy_pending("%i") && i!="udp_dloose")
+    then
+        error "No masq module found for %i='$i', check config/base.txt"
+    fi
+    if (i == "ftp")
+    then
+        set masq_ftp="yes"
+    fi
+done
+
+if (opt_ipv4)
+then
+    foreach i in pf_prerouting_ct_% pf_output_ct_%
+    do
+        if (i =~ " HELPER:ftp")
+        then
+            set masq_ftp="yes"
+        fi
+        if (i =~ " HELPER:sip")
+        then
+            set masq_sip="yes"
+        fi
+    done
+
+    if (portfw_n != 0)
+    then
+        warning "PORTFW_N is deprecated - please use the PF_PREROUTING setting!"
+
+        add_to_opt "etc/rc.d/rc365.portfw" "mode=555 flags=sh"
+        add_to_opt "etc/rc.d/fwrules.pre050.portfw" "mode=555 flags=sh"
+
+        foreach i in portfw_n
+        do
+            if (portfw_%_target[i] =~ ".*-.*" && portfw_%_new_target[i] =~ ".*:[^-]*$")
+            then
+                error "you can't forward a port range to one port (PORTFW_${i}_NEW_TARGET)"
+            fi
+            if (portfw_%_protocol[i] == "gre" && ! portfw_%_target[i] =~ ".*none")
+            then
+                error "you can't specify a destination port if you want to forward the gre protocol"
+            fi
+            foreach j in portfw_n
+            do
+                if (i<j && portfw_%_target[i]==portfw_%_target[j] && portfw_%_protocol[i]==portfw_%_protocol[j])
+                then
+                    error "PORTFW_${i}_TARGET and PORTFW_${j}_TARGET conflict: you can't forward the same port to multiple hosts"
+                fi
+            done
+
+            set tmp_prot=portfw_%_protocol[i]
+            if (portfw_%_target[i] =~ ":")
+            then
+                split (portfw_%_target[i], tmp_target_%, ':')
+                if (tmp_target_%[1] =~ "\." || tmp_target_%[1] =~ "IP_NET_[0-9]*_IPADDR")
+                then
+                    set tmp_target=tmp_target_%[1]
+                else
+                    set tmp_target="dynamic"
+                fi
+                set tmp_targetport=tmp_target_%[2]
+            else
+                set tmp_target="dynamic"
+                set tmp_targetport=portfw_%_target[i]
+            fi
+            set tmp_newtarget=portfw_%_new_target[i]
+            if (portfw_%_protocol[i] != "tcp" && portfw_%_protocol[i] != "udp" )
+            then
+                warning "replace PORTFW_$i by PF_PREROUTING_$i='prot:$tmp_prot $tmp_target DNAT:$tmp_newtarget'"
+            else
+                warning "replace PORTFW_$i by PF_PREROUTING_$i='prot:$tmp_prot $tmp_target:$tmp_targetport DNAT:$tmp_newtarget'"
+            fi
+
+        done
+    fi
+
+    foreach rule in pf_prerouting_% pf_postrouting_% pf_input_% pf_output_% pf_prerouting_ct_% pf_output_ct_%
+    do
+        if (rule =~ "if:.*[[:space:]]BIDIRECTIONAL")
+        then
+            error "you can't use an interface specification with bidirectional in %rule='$rule'"
+        fi
+    done
+
+    set pflog_warning="no"
+    #
+    # check for opt_syslogd and opt_klogd if packetfilter logging is requested
+    #
+    if ((! opt_syslogd || ! opt_klogd) && ! opt_metalog)
+    then
+        if  (packetfilter_log || pf_input_log || pf_forward_log || pf_output_log)
+        then
+            warning "Consider setting OPT_SYSLOGD and OPT_KLOGD to 'yes', if you want to use packetfilter logging (PACKETFILTER_LOG, PF_INPUT_LOG, PF_FORWARD_LOG, PF_OUTPUT_LOG). If you don't do this, logging output will go to console!"
+        else
+            set pflog_warning
+        fi
+    fi
+
+    set templates=""
+    set names=" $hostname "
+    set namesfqdn=" "
+    if (defined(host_n))
+    then
+        foreach name in HOST_%_ALIAS_% HOST_%_NAME
+        do
+            if (! name =~ "\.")
+            then
+                set names="$names$name "
+            else
+                set namesfqdn="$namesfqdn$name "
+            fi
+        done
+
+    fi
+
+    foreach rule in pf_prerouting_% pf_postrouting_% pf_input_% pf_forward_% pf_output_% pf_prerouting_ct_% pf_output_ct_% pf_usr_chain_%_rule_%
+    do
+        #
+        # check referenced names
+        #
+        if (rule =~ "@([^[:space:]:]+)")
+        then
+            set name=match_1
+            if (rule =~ "@@$name")
+            then
+                # rule has a @reference
+                #
+                # check if name contains a . / . = hostalias with fqdn or extern fqdn used with ipset
+                #
+                if (! name =~ "\.")
+                then
+                    # hostname (must defined in HOST_%)
+                    if (! names =~ " $name ")
+                    then
+                        error "Unknown host '$name' referenced by %rule='$rule'"
+                    fi
+                else
+                    # alias or ipset (fqdn)
+                    if (! namesfqdn =~ " $name " && !opt_dns)
+                    then
+                        error "Host '$name' referenced by %rule='$rule' requires you to activate OPT_DNS to resolve ip of host"
+                    else
+                        if (opt_dns)
+                        then
+                            add_to_opt "usr/sbin/ipset" "mode=4555"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+        #
+        # check for opt_syslogd and opt_klogd if packetfilter logging is requested
+        #
+        if (pflog_warning && rule =~ "[[:space:]]LOG")
+        then
+            warning "You requested to log firewall packets in %rule='$rule'. Consider setting OPT_SYSLOGD and OPT_KLOGD to 'yes', if you want to use packet filter logging. If you don't do this, logging output will go to console!"
+        fi
+        #
+        # check for templates
+        #
+        if (rule =~ "tmpl:([^[:space:]]+)")
+        then
+            set tmpl=match_%[1]
+            if (rule =~ "BIDIRECTIONAL")
+            then
+                error "%rule: using templates and BIDIRECTIONAL simultaneously is not allowed"
+            fi
+            if (! templates =~ ".*$tmpl.*")
+            then
+                set templates="$templates $tmpl"
+
+                if(tmpl == "ftp")
+                then
+                    set tmpl_ftp="yes"
+                fi
+
+                stat("$config_dir/etc/fwrules.tmpl/$tmpl", tmplfile)
+                if(tmplfile_res == "OK")
+                then
+                    add_to_opt "etc/fwrules.tmpl/$tmpl" "flags=utxt"
+                else
+                    stat("opt/etc/fwrules.tmpl/$tmpl", tmplfile)
+                    if(tmplfile_res == "OK")
+                    then
+                        add_to_opt "etc/fwrules.tmpl/$tmpl" "flags=utxt"
+                    else
+                        fgrep("opt/etc/fwrules.tmpl/templates", "^$tmpl[[:space:]]+")
+                        if (fgrep_match_n == 0)
+                        then
+                            error "Can't find template '$tmpl' in %rule, check your packet filter configuration!"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    #
+    # *_accept_def related checks
+    #
+
+    set pfw_chain="no"
+    foreach i in pf_forward_n
+    do
+        if (pf_forward_%[i] == "pfwaccess-chain")
+        then
+            if (pfw_chain == "yes")
+            then
+                error "PFW: You can't have more than one pfwaccess-chain entry in your PF_FORWARD! Please remove the entry in PF_FORWARD_${i}."
+            fi
+            set pfw_chain="yes"
+        fi
+    done
+
+    if (pf_forward_accept_def && pfw_chain)
+    then
+        error "PFW: You can't have an PF_FORWARD_x='pfwaccess-chain' entry in your PF_FORWARD with PF_FORWARD_ACCEPT_DEF='yes'!"
+    fi
+fi
+
+if (opt_ipv6)
+then
+    foreach i in pf6_prerouting_ct_% pf6_output_ct_%
+    do
+        if (i =~ " HELPER:ftp")
+        then
+            set masq_ftp="yes"
+        fi
+        if (i =~ " HELPER:sip")
+        then
+            set masq_sip="yes"
+        fi
+    done
+
+    foreach rule in pf6_prerouting_% pf6_postrouting_% pf6_input_% pf6_output_% pf_prerouting_ct_% pf6_output_ct_%
+    do
+        if (rule =~ "if:.*[[:space:]]BIDIRECTIONAL")
+        then
+            error "you can't use an interface specification with bidirectional in %rule='$rule'"
+        fi
+    done
+
+    set pf6log_warning="no"
+    #
+    # check for opt_syslogd and opt_klogd if packetfilter logging is requested
+    #
+    if ((! opt_syslogd || ! opt_klogd) && ! opt_metalog)
+    then
+        if  (pf6_input_log || pf6_forward_log || pf6_output_log)
+        then
+            warning "Consider setting OPT_SYSLOGD and OPT_KLOGD to 'yes', if you want to use packetfilter logging (PF6_INPUT_LOG, PF6_FORWARD_LOG, PF6_OUTPUT_LOG). If you don't do this, logging output will go to console!"
+        else
+            set pf6log_warning
+        fi
+    fi
+
+    foreach rule in pf6_prerouting_% pf6_postrouting_% pf6_input_% pf6_forward_% pf6_output_% pf6_prerouting_ct_% pf6_output_ct_% pf6_usr_chain_%_rule_%
+    do
+        #
+        # check referenced names
+        #
+        if (rule =~ "@([^[:space:]:]+)")
+        then
+            set name=match_1
+            if (rule =~ ":@@$name")
+            then
+                if (! names =~ " $name ")
+                then
+                    error "Unknown host '$name' referenced by %rule='$rule'"
+                fi
+            else
+                if (! names =~ " $name " && !(opt_dns && dns_support_ipv6))
+                then
+                    error "Host '$name' referenced by %rule='$rule' requires you to activate OPT_DNS and DNS_SUPPORT_IPV6"
+                else
+                    if (opt_dns && dns_support_ipv6)
+                    then
+                        add_to_opt "usr/sbin/ipset" "mode=4555"
+                    fi
+                fi
+            fi
+        fi
+        #
+        # check for opt_syslogd and opt_klogd if packetfilter logging is requested
+        #
+        if (pf6log_warning && rule =~ "[[:space:]]LOG")
+        then
+            warning "You requested to log firewall packets in %rule='$rule'. Consider setting OPT_SYSLOGD and OPT_KLOGD to 'yes', if you want to use packet filter logging. If you don't do this, logging output will go to console!"
+        fi
+        #
+        # check for templates
+        #
+        if (rule =~ "tmpl:([^[:space:]]+)")
+        then
+            set tmpl=match_%[1]
+            if (rule =~ "BIDIRECTIONAL")
+            then
+                error "%rule: using templates and BIDIRECTIONAL simultaneously is not allowed"
+            fi
+            if (! templates =~ ".*$tmpl.*")
+            then
+                set templates="$templates $tmpl"
+
+                if(tmpl == "ftp")
+                then
+                    set tmpl_ftp="yes"
+                fi
+
+                stat("$config_dir/etc/fwrules.tmpl/$tmpl", tmplfile)
+                if(tmplfile_res == "OK")
+                then
+                    add_to_opt "etc/fwrules.tmpl/$tmpl" "flags=utxt"
+                else
+                    stat("opt/etc/fwrules.tmpl/$tmpl", tmplfile)
+                    if(tmplfile_res == "OK")
+                    then
+                        add_to_opt "etc/fwrules.tmpl/$tmpl" "flags=utxt"
+                    else
+                        fgrep("opt/etc/fwrules.tmpl/templates", "^$tmpl[[:space:]]+")
+                        if (fgrep_match_n == 0)
+                        then
+                            error "Can't find template '$tmpl' in %rule, check your packet filter configuration!"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    set pfw6_chain="no"
+    foreach i in pf6_forward_n
+    do
+        if (pf6_forward_%[i] == "pfwaccess-chain")
+        then
+            if (pfw6_chain == "yes")
+            then
+                error "PFW6: You can't have more than one pfwaccess-chain entry in your PF6_FORWARD! Please remove the entry in PF6_FORWARD_${i}."
+            fi
+            set pfw6_chain="yes"
+        fi
+    done
+
+    if (pf6_forward_accept_def && pfw6_chain)
+    then
+        error "PFW6: You can't have an PF6_FORWARD_x='pfwaccess-chain' entry in your PF6_FORWARD with PF6_FORWARD_ACCEPT_DEF='yes'!"
+    fi
+fi
+
+# check if tmpl:ftp is used
+if(tmpl_ftp && !masq_ftp)
+then
+    warning "You're using a tmpl:ftp without the ftp masq module. You have to open the data port 20 (tcp) to use active ftp."
+fi
+
+# check if tmpl:sip is used
+if(tmpl_sip && !masq_sip)
+then
+    warning "You're using a tmpl:sip without the sip masq module."
+fi
+
+if (!opt_ipv6)
+then
+    set kernel_boot_option_ext="${kernel_boot_option_ext} ipv6.disable=1"
+fi
+
+#
+# Powermanagent Stuff
+#
+if (powermanagement =~ "apm.*|none")
+then
+    if ( ! kernel_boot_option =~ "acpi=off")
+    then
+        set kernel_boot_option_ext="${kernel_boot_option_ext} acpi=off"
+    fi
+fi
+
+if (powermanagement == "acpi")
+then
+    if (arch == "x86" || arch == "x86_64")
+    then
+        add_to_opt "etc/acpi/events/shutdown" "mode=444 flags=utxt"
+        add_to_opt "etc/rc.d/rc980.acpid" "mode=555 flags=sh"
+        add_to_opt "usr/sbin/acpid" "mode=555"
+    else
+        error "POWERMANAGEMENT='acpi' not available for ARCH='$arch'"
+    fi
+fi
+
+#
+# IPv6 DNS Forwarders only with OPT_IPV6 and DNS_SUPPORT_IPV6
+#
+
+if ( dns_forwarders =~ "(RE:IPADDR6)" )
+then
+  if ( opt_dns && ! dns_support_ipv6 )
+  then
+    error "you may not use IPv6 dns-servers with opt_dns='yes' and dns_support_ipv6='no'"
+  fi
+fi
+
+#
+# DNS Forwarders with Port only if OPT_DNS is on and no USEPEERDNS is used.
+#
+
+if ( ! dns_forwarders =~ "^(RE:EIPADDRESSES)$" )
+then
+  if ( ! opt_dns )
+  then
+    error "you may not use dns-servers with non-standard ports if opt_dns is not enabled"
+  fi
+  if ( OPT_UMTS )
+  then
+    if ( umts_usepeerdns )
+    then
+      error "you may not use dns-servers with non-standard ports if UMTS_USEPEERDNS is enabled"
+    fi
+  fi
+  if ( OPT_FRITZDSL )
+  then
+    if ( fritzdsl_usepeerdns )
+    then
+      error "you may not use dns-servers with non-standard ports if FRITZDSL_USEPEERDNS is enabled"
+    fi
+  fi
+  if ( OPT_ISDN )
+  then
+    foreach i in ISDN_CIRC_N
+    do
+      if ( ISDN_CIRC_%_USEPEERDNS[i] )
+      then
+        error "you may not use dns-servers with non-standard ports if ISDN_CIRC_${i}_USEPEERDNS is enabled"
+      fi
+    done
+  fi
+  if ( OPT_MODEM )
+  then
+    foreach i in MODEM_CIRC_N
+    do
+      if ( MODEM_CIRC_%_USEPEERDNS[i] )
+      then
+        error "you may not use dns-servers with non-standard ports if MODEM_CIRC_${i}_USEPEERDNS is enabled"
+      fi
+    done
+  fi
+fi
+if ( powermanagement =~ "apm.*" )
+then
+    stat("opt/lib/modules/${KERNEL_VERSION}/kernel/arch/x86/kernel/apm.ko", tmpapm)
+    if ( tmpapm_res == "OK" )
+    then
+        add_to_opt "apm.ko"
+    fi
+fi
+#
+# Add additional modules
+#
+if ( opt_addmodules )
+then
+    split (addmodules, mlist_%,'|')
+    foreach modpar in mlist_%
+    do
+        split (modpar, modul_%, ' ')
+        add_to_opt "${modul_1}.ko"
+    done
+fi
+
+if (opt_hotplug_pci)
+then
+    # add platform specific PCI hotplug handlers
+    if (arch == "x86")
+    then
+        add_to_opt "cpqphp.ko"
+        add_to_opt "ibmphp.ko"
+    fi
+fi
+
+set circ_ipv4=""
+set circ_ipv6=""
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set name=CIRC_%_NAME[i]
+        set protocols=CIRC_%_PROTOCOLS[i]
+
+        if (opt_ipv4)
+        then
+            set nets_ipv4_n=CIRC_%_NETS_IPV4_N[i]
+
+            set type=CIRC_%_TYPE[i]
+            if (type == "net" && defined(CIRC_%_NET_IPV4_ADDRESS[i]) &&
+                CIRC_%_NET_IPV4_ADDRESS[i] != "")
+            then
+                set nets_ipv4_n=nets_ipv4_n+1
+            fi
+
+            if (nets_ipv4_n > 0 || protocols =~ "ipv4")
+            then
+                if (circ_ipv4 == "")
+                then
+                    set circ_ipv4="${name}"
+                else
+                    set circ_ipv4="${circ_ipv4}|${name}"
+                fi
+
+                set class_n=CIRC_%_CLASS_N[i]
+                foreach class_index in class_n
+                do
+                    set class=CIRC_%_CLASS_%[i][class_index]
+                    set circ_ipv4="${circ_ipv4}|${class}"
+                done
+            fi
+        fi
+
+        if (opt_ipv6)
+        then
+            set nets_ipv6_n=CIRC_%_NETS_IPV6_N[i]
+
+            set type=CIRC_%_TYPE[i]
+            if (type == "net" && defined(CIRC_%_NET_IPV6_ADDRESS[i]) &&
+                CIRC_%_NET_IPV6_ADDRESS[i] != "")
+            then
+                set nets_ipv6_n=nets_ipv6_n+1
+            fi
+
+            if (nets_ipv6_n > 0 || protocols =~ "ipv6")
+            then
+                if (circ_ipv6 == "")
+                then
+                    set circ_ipv6="${name}"
+                else
+                    set circ_ipv6="${circ_ipv6}|${name}"
+                fi
+
+                set class_n=CIRC_%_CLASS_N[i]
+                foreach class_index in class_n
+                do
+                    set class=CIRC_%_CLASS_%[i][class_index]
+                    set circ_ipv6="${circ_ipv6}|${class}"
+                done
+            fi
+        fi
+    fi
+done
+
+if (opt_net_prefix)
+then
+    foreach i in NET_PREFIX_N
+    do
+        set name=NET_PREFIX_%_NAME[i]
+        set type=NET_PREFIX_%_TYPE[i]
+
+        foreach j in NET_PREFIX_N
+        do
+            if (j > i && name == NET_PREFIX_%_NAME[j])
+            then
+                error "NET_PREFIX_${i}_NAME and NET_PREFIX_${j}_NAME are both set to '${name}', please use unique prefix names"
+            fi
+        done
+
+        if (type == "static")
+        then
+            if (opt_ipv4 && defined(NET_PREFIX_%_STATIC_IPV4[i]))
+            then
+                if (circ_ipv4 == "")
+                then
+                    set circ_ipv4="${name}"
+                else
+                    set circ_ipv4="${circ_ipv4}|${name}"
+                fi
+            fi
+            if (opt_ipv6 && defined(NET_PREFIX_%_STATIC_IPV6[i]))
+            then
+                if (circ_ipv6 == "")
+                then
+                    set circ_ipv6="${name}"
+                else
+                    set circ_ipv6="${circ_ipv6}|${name}"
+                fi
+            fi
+        fi
+        if (type == "generated-ula")
+        then
+            if (circ_ipv6 == "")
+            then
+                set circ_ipv6="${name}"
+            else
+                set circ_ipv6="${circ_ipv6}|${name}"
+            fi
+        fi
+    done
+fi

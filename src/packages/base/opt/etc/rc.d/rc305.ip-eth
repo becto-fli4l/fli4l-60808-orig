@@ -1,0 +1,85 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc305.ip-eth - ip configuration of ethernet cards
+# /etc/rc.d/ip-eth
+#
+# Creation:     04.02.2001  fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script IP_NET "configuring ip on network cards ..."
+
+if [ ! -f /var/run/wlan.dontuse ]; then > /var/run/wlan.dontuse; fi
+
+for idx in `seq 1 $IP_NET_N`
+do
+    eval dev='$IP_NET_'$idx'_DEV'
+    eval mac='$IP_NET_'$idx'_MAC'
+    eval net='$IP_NET_'$idx''
+    eval comment='$IP_NET_'$idx'_COMMENT'
+
+    # leave mac as is, unless otherwise configured
+    if [ -n "$mac" ]
+    then
+      ip link set dev $dev addr $mac
+    fi
+    # Put comment into netaliases.conf file
+    if [ -n "$comment" ]
+    then
+      comment=`echo $comment | sed 's/ /_/g'`
+      net_alias_add "$comment" $dev
+    fi
+
+    # FFL-955: disable GRO if not explicitly configured by OPT_ETHTOOL
+    gro_found=
+    for i in $(seq 1 ${ETHTOOL_DEV_N:-0})
+    do
+        eval eth_x=\$ETHTOOL_DEV_${i}
+        if [ "$dev" = "$eth_x" ]
+        then
+            eval option_n=\$ETHTOOL_DEV_${i}_OPTION_N
+            for j in $(seq 1 ${option_n:-0})
+            do
+                eval option=\$ETHTOOL_DEV_${i}_OPTION_${j}_NAME
+                case $option in
+                gro)
+                    gro_found=1
+                    break
+                    ;;
+                esac
+            done
+            # note that multiple ETHTOOL_DEV_x entries may refer to the same
+            # device, so we have to iterate through the whole array
+            [ -n "$gro_found" ] && break
+        fi
+    done
+    if [ -z "$gro_found" ]
+    then
+        log_info "  disabling GRO for $dev"
+        ethtool -K $dev gro off 2>/dev/null
+    fi
+
+    # if no ip address, skip configuration
+    if [ -z "`grep $dev /var/run/wlan.dontuse`" ]
+    then
+        case "$net" in
+            '') ;;
+            {*}*)
+                circuit=$(echo "$net" | sed -n 's/^{\([^}]*\)}.*$/\1/p')
+                log_info "$dev will be configured later when circuit $circuit comes up"
+                ;;
+            *.*.*.*)
+                broadcast=`netcalc broadcast $net`
+                ip addr add $net broadcast $broadcast dev $dev
+                ip link set dev $dev up
+                ;;
+            *)
+                log_error "unsupported network $net associated with IP_NET_$idx"
+                ;;
+        esac
+    else
+        log_error "skipping device $dev because of previous error on wlan-setup for security reasons"
+    fi
+done
+
+end_script

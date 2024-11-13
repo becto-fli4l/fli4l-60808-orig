@@ -1,0 +1,90 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/route - route circuits
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+route_circuit_add()
+{
+    circ_dev=$circ_route_dev
+
+    local route_ipv4_dev
+    local route_ipv6_dev
+
+    if [ -z "$circ_dev" ]
+    then
+        # if no interface is given explicitly, all non-empty gateways must
+        # unambiguously map to the same device
+        if [ -n "$circ_route_gateway_ipv4" ]
+        then
+            translate_ipv4_to_dev "$circ_route_gateway_ipv4" route_ipv4_dev || return 1
+        fi
+        if [ -n "$circ_route_gateway_ipv6" ]
+        then
+            translate_ipv6_to_dev "$circ_route_gateway_ipv6" route_ipv6_dev || return 1
+        fi
+        if [ -n "$circ_route_gateway_ipv4" -a -n "$circ_route_gateway_ipv6" -a "$route_ipv4_dev" != "$route_ipv6_dev" ]
+        then
+            eval $3="\"IPv4 gateway $circ_route_gateway_ipv4 and IPv6 gateway $circ_route_gateway_ipv6 map to different interfaces ($route_ipv4_dev and $route_ipv6_dev, resp.)\""
+            return 1
+        fi
+
+        if [ -n "$route_ipv4_dev" ]
+        then
+            circ_dev=$route_ipv4_dev
+        else
+            circ_dev=$route_ipv6_dev
+        fi
+    else
+        translate_net_if "$circ_dev" circ_dev 1
+
+        # if an interface is given explicitly, gateways may be untranslatable;
+        # this is the case for routes as "via <gw> dev <if>" for a gateway <gw>
+        # that does not belong to any configured subnet
+        if [ -n "$circ_route_gateway_ipv4" ]
+        then
+            translate_ipv4_to_dev "$circ_route_gateway_ipv4" route_ipv4_dev 1
+        fi
+        if [ -n "$circ_route_gateway_ipv6" ]
+        then
+            translate_ipv6_to_dev "$circ_route_gateway_ipv6" route_ipv6_dev 1
+        fi
+
+        if [ -n "$route_ipv4_dev" -a -n "$route_ipv6_dev" -a "$route_ipv4_dev" != "$route_ipv6_dev" ]
+        then
+            eval $3="\"IPv4 gateway $circ_route_gateway_ipv4 and IPv6 gateway $circ_route_gateway_ipv6 map to different interfaces ($route_ipv4_dev and $route_ipv6_dev, resp.)\""
+            return 1
+        fi
+    fi
+
+    if [ -n "$circ_route_gateway_ipv4" ]
+    then
+        case $circ_route_gateway_ipv4 in
+        {*}*)
+            local circuit=$(echo "$circ_route_gateway_ipv4" | sed -n 's/^{\([^}]*\)}.*$/\1/p')
+            circ_deps="$circ_deps $circuit"
+            ;;
+        esac
+    fi
+    if [ -n "$circ_route_gateway_ipv6" ]
+    then
+        case $circ_route_gateway_ipv6 in
+        {*}*)
+            local circuit=$(echo "$circ_route_gateway_ipv6" | sed -n 's/^{\([^}]*\)}.*$/\1/p')
+            circ_deps="$circ_deps $circuit"
+            ;;
+        esac
+    fi
+
+    circuit_allocate_device route circ_alias
+
+    cat >> $1 <<EOF
+circ_route_gateway_ipv4="$circ_route_gateway_ipv4"
+circ_route_gateway_ipv6="$circ_route_gateway_ipv6"
+EOF
+
+    return 0
+}

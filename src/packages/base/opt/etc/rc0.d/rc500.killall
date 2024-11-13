@@ -1,0 +1,35 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc0.d/rc500.killall - kill all Processes
+#
+# Creation:     12.05.2002  rr
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# $1 = signal name
+send_signal()
+{
+    begin_script KILLALL_$1 "Sending $1 signal to all processes ..."
+    for pr in /proc/[0-9]?*
+    do
+        pr=`basename $pr`
+        if [ $pr != $$ ]
+        then
+            name=`cat /proc/$pr/cmdline 2>/dev/null | tr '\000' ' ' | sed -e 's/ *$//'`
+            case $name in
+                *hwsuppd*|*watchdog*|*cardmgr*|*halt*|*reboot*|*rc0|init|-sh)
+                    ;;
+                *)
+                    echo -n "."
+                    kill -$1 $pr >>/dev/null 2>&1
+                    ;;
+            esac
+        fi
+    done
+    echo
+    end_script
+}
+
+send_signal TERM
+sleep 5
+send_signal KILL

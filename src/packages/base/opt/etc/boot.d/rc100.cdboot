@@ -1,0 +1,39 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/rc100.cdboot
+#
+# Creation:     2004-06-26 
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ ! "$boot" -a -f /proc/sys/dev/cdrom/info ]
+then
+    begin_script BOOT "mounting boot device and extracting opt archive ..."
+    boot_fs=iso9660
+
+    cd_drives=`cat /proc/sys/dev/cdrom/info | grep "drive name:" | sed -e 's/^drive name://'`
+
+    # loop through all cd drives and try to find the one with rc.cfg
+    for drive in $cd_drives
+    do
+        boot_dev="/dev/$drive"
+        if mount -r $boot_dev /boot -t $boot_fs
+        then
+            if [ -e /boot/rc.cfg ]
+            then
+                fli4l_cd_found=yes
+                break
+            fi
+        else
+            log_info "No fli4l boot disc found on device $boot_dev"            
+        fi
+    done
+    if [ x$fli4l_cd_found = xyes ]
+    then
+        extract_opt /boot/$opt_archive
+    else
+        stop "can't mount boot-cd, check drivers"
+    fi
+
+    end_script
+fi

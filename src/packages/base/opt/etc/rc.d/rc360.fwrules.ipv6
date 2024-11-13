@@ -1,0 +1,298 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc360.fwrules - configure firewall                     __FLI4LVER__
+#
+# Creation:     jw5
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+pf6_in_default_rules=
+pf6_in_add_default () {
+    pf6_in_default_rules="$pf6_in_default_rules $1"
+}
+
+pf6_fwd_default_rules=
+pf6_fwd_add_default () {
+    pf6_fwd_default_rules="$pf6_fwd_default_rules $1"
+}
+
+pf6_out_default_rules=
+pf6_out_add_default () {
+    pf6_out_default_rules="$pf6_out_default_rules $1"
+}
+
+pf6_prect_default_rules=
+pf6_prect_add_default () {
+    pf6_prect_default_rules="$pf6_prect_default_rules $1"
+}
+
+pf6_outct_default_rules=
+pf6_outct_add_default () {
+    pf6_outct_default_rules="$pf6_outct_default_rules $1"
+}
+
+pf6_iterate () {
+    pfi_table=$1
+    pfi_chain=$2
+    pfi_name=$3
+    pfi_postfix=$4
+    pfi_method=$5
+
+    eval val=\$${pfi_name}${pfi_postfix}_N
+    [ 0$val -eq 0 ] || for idx in `seq 1 $val`
+    do
+        eval rule=\$${pfi_name}${pfi_postfix}_$idx
+        eval comment=\$${pfi_name}${pfi_postfix}_${idx}_COMMENT
+        if [ -z "$comment" ]
+        then
+            comment="${pfi_name}${pfi_postfix}_$idx='$rule'"
+        else
+            comment="${pfi_name}${pfi_postfix}_$idx: $comment"
+        fi
+        fw_append_rule6 $pfi_table $pfi_chain "$rule" "$comment" "$pfi_method"
+    done
+}
+
+begin_script FWRULES6 "configuring firewall (IPv6) ..."
+
+# kristov: disable file name globbing as IPv6 addresses may occur in square
+# brackets [...] which are interpreted as character classes otherwise
+set -f
+
+# get helper functions
+. /etc/rc.d/fwrules-helper.ipv6
+
+> $fw_ct_nat.ipv6
+mkdir -p $ip6tables_dynrules
+echo 1 > $ip6tables_dynrules_idx
+mkdir -p $ip6tables_rules
+mkdir -p $ip6tables_complexchains
+
+do_modprobe_if_exists kernel/net/ipv6/netfilter nf_nat_ipv6
+
+$IP6TABLES -P FORWARD DROP          # forward policy is drop
+$IP6TABLES -P INPUT   DROP          # REJECT is not possible here :-(
+$IP6TABLES -P OUTPUT  ACCEPT        # output policy is accept
+
+fw_convert_to_complex_chain6 filter INPUT
+fw_convert_to_complex_chain6 filter FORWARD
+fw_convert_to_complex_chain6 filter OUTPUT
+
+fw_convert_to_complex_chain6 mangle PREROUTING
+fw_convert_to_complex_chain6 mangle INPUT
+fw_convert_to_complex_chain6 mangle FORWARD
+fw_convert_to_complex_chain6 mangle OUTPUT
+fw_convert_to_complex_chain6 mangle POSTROUTING
+
+if ip6tables -t nat -L >/dev/null 2>&1
+then
+    fw_convert_to_complex_chain6 nat PREROUTING
+    fw_convert_to_complex_chain6 nat INPUT
+    fw_convert_to_complex_chain6 nat OUTPUT
+    fw_convert_to_complex_chain6 nat POSTROUTING
+fi
+
+fw_convert_to_complex_chain6 raw OUTPUT
+fw_convert_to_complex_chain6 raw PREROUTING
+
+# setup logging
+: ${PF6_INPUT_REJ_LIMIT:="1/second:5"}
+: ${PF6_INPUT_UDP_REJ_LIMIT:="1/second:5"}
+: ${PF6_FORWARD_REJ_LIMIT:="1/second:5"}
+: ${PF6_FORWARD_UDP_REJ_LIMIT:="1/second:5"}
+: ${PF6_OUTPUT_REJ_LIMIT:="1/second:5"}
+: ${PF6_OUTPUT_UDP_REJ_LIMIT:="1/second:5"}
+setup_logging6 "$PF6_INPUT_LOG" INPUT fw-input "$PF6_INPUT_LOG_LIMIT" "$PF6_INPUT_REJ_LIMIT" "$PF6_INPUT_UDP_REJ_LIMIT" $PF6_LOG_LEVEL
+setup_logging6 "$PF6_FORWARD_LOG" FORWARD fw-forward "$PF6_FORWARD_LOG_LIMIT" "$PF6_FORWARD_REJ_LIMIT" "$PF6_FORWARD_UDP_REJ_LIMIT" $PF6_LOG_LEVEL
+setup_logging6 "$PF6_OUTPUT_LOG" OUTPUT fw-output "$PF6_OUTPUT_LOG_LIMIT" "$PF6_OUTPUT_REJ_LIMIT" "$PF6_OUTPUT_UDP_REJ_LIMIT" $PF6_LOG_LEVEL
+
+# create ipset list
+>> /var/run/ipset.list
+
+#----------------------------------------------------------------------------
+# running chain commands from additional packages
+# these rules comes first in the chain - so beware of bloated rulesets which
+# are used uncommonly
+#----------------------------------------------------------------------------
+
+fw_chain_suffix=-head
+set +f
+for ext in /etc/rc.d/fwrules.ipv6.pre[0-9][0-9][0-9].* /etc/rc.d/fwrules.ipv6.pre.*
+do
+    if [ -f "$ext" ]
+    then
+        set -f
+        . $ext
+        set +f
+    fi
+done
+set -f
+fw_chain_suffix=
+
+# create user defined chains
+if [ 0$PF6_USR_CHAIN_N -ne 0 ]; then
+    for idx in `seq 1 $PF6_USR_CHAIN_N`
+    do
+        eval fw_add_chain6 filter \$PF6_USR_CHAIN_${idx}_NAME
+    done
+    for idx in `seq 1 $PF6_USR_CHAIN_N`
+    do
+        eval pf6_iterate filter \$PF6_USR_CHAIN_${idx}_NAME PF6_USR_CHAIN_${idx} _RULE
+    done
+fi
+
+# input chain
+get_defaults6 INPUT
+if [ "$PF6_INPUT_ACCEPT_DEF" = 'yes' ]
+then
+    case x$PF6_INPUT_ICMP_ECHO_REQ_LIMIT in
+        xnone) limit= ;;
+        x)     limit="limit:1/second:5" ;;
+        *)     limit="limit:$PF6_INPUT_ICMP_ECHO_REQ_LIMIT"
+    esac
+
+    fw_add_chain6 filter in-icmp
+    fw_append_rule6 filter in-icmp "prot:icmpv6:1 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:2 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:3 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:4 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:echo-request length:0-$PF6_INPUT_ICMP_ECHO_REQ_SIZE $limit ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:133 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:135 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter in-icmp "prot:icmpv6:136 ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter INPUT-head "state:ESTABLISHED,RELATED ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter INPUT-head "if:lo:any ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter INPUT-head "state:NEW ::1 DROP BIDIRECTIONAL" PF6_INPUT_ACCEPT_DEF
+    # disable processing of RH-0 packets, see RFC 5095
+    ip6tables -A INPUT-head -m rt --rt-type 0 -j DROP
+    fw_append_rule6 filter INPUT-head "prot:icmpv6 in-icmp" PF6_INPUT_ACCEPT_DEF
+    fw_append_rule6 filter INPUT-head "[fe80::0/10] ACCEPT" PF6_INPUT_ACCEPT_DEF
+    fw_chain_suffix=-head
+    for i in $pf6_in_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+pf6_iterate filter INPUT PF6_INPUT
+
+# forward chain
+get_defaults6 FORWARD
+if [ "$PF6_FORWARD_ACCEPT_DEF" = 'yes' ]
+then
+    fw_append_rule6 filter FORWARD-head "state:ESTABLISHED,RELATED ACCEPT" PF6_FORWARD_ACCEPT_DEF
+    fw_append_rule6 filter FORWARD-head "state:INVALID DROP" PF6_FORWARD_ACCEPT_DEF
+    fw_append_rule6 filter FORWARD-head "state:NEW ::1 DROP BIDIRECTIONAL" PF6_FORWARD_ACCEPT_DEF
+    # disable processing of RH-0 packets, see RFC 5095
+    ip6tables -A FORWARD-head -m rt --rt-type 0 -j DROP
+    fw_chain_suffix=-head
+    for i in $pf6_fwd_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+# consider dropping outgoing invalid packets
+# fw_append_rule6 filter OUTPUT "state:INVALID DROP" PF6_FORWARD_ACCEPT_DEF
+
+pf6_iterate filter FORWARD     PF6_FORWARD
+
+# postrouting chain
+if ip6tables -t nat -L >/dev/null 2>&1
+then
+    pf6_iterate nat    POSTROUTING PF6_POSTROUTING
+fi
+
+# output chain
+get_defaults6 OUTPUT
+if [ "$PF6_OUTPUT_ACCEPT_DEF" = 'yes' ]
+then
+    fw_append_rule6 filter OUTPUT-head "state:ESTABLISHED,RELATED ACCEPT" PF6_OUTPUT_ACCEPT_DEF
+    fw_append_rule6 filter OUTPUT-head "if:any:lo ACCEPT" PF6_OUTPUT_ACCEPT_DEF
+    # disable processing of RH-0 packets, see RFC 5095
+    ip6tables -A OUTPUT-head -m rt --rt-type 0 -j DROP
+    fw_chain_suffix=-head
+    for i in $pf6_out_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+pf6_iterate filter OUTPUT PF6_OUTPUT
+
+if ip6tables -t nat -L >/dev/null 2>&1
+then
+    # prerouting chain
+    pf6_iterate nat PORTFW PF6_PREROUTING "" exec_prerouting_rule6
+fi
+
+# conntrack prerouting chain
+pf6_iterate raw PREROUTING PF6_PREROUTING_CT
+if [ "$PF6_PREROUTING_CT_ACCEPT_DEF" = 'yes' ]
+then
+    fw_chain_suffix=-head
+    for i in $pf6_prect_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+# conntrack output chain
+pf6_iterate raw OUTPUT PF6_OUTPUT_CT
+if [ "$PF6_OUTPUT_CT_ACCEPT_DEF" = 'yes' ]
+then
+    fw_chain_suffix=-head
+    for i in $pf6_outct_default_rules; do
+        $i
+    done
+    fw_chain_suffix=
+fi
+
+# redirect DNS if necessary and possible
+if [ -s /var/run/ipset.list ] && ip6tables -t nat -L >/dev/null 2>&1
+then
+    log_info "activating transparent DNS redirection..."
+    for server in $PF6_DNS_EXCEPTIONS
+    do
+        fw_append_rule6 nat PREROUTING-head "tmpl:dns any $server ACCEPT" "DNS redirection exception"
+        fw_append_rule6 nat PREROUTING-head "tmpl:dns $server any ACCEPT" "DNS redirection exception"
+    done
+    fw_append_rule6 nat PREROUTING-head "tmpl:dns REDIRECT" "DNS query redirection"
+fi
+
+#----------------------------------------------------------------------------
+# running chain commands from additional packages
+# these rules are added in the end of the ACCEPT rules
+# put uncommon rulesets here
+#----------------------------------------------------------------------------
+
+fw_chain_suffix=-tail
+set +f
+for ext in /etc/rc.d/fwrules.ipv6.post.*
+do
+    if [ -f "$ext" ]
+    then
+        set -f
+        . $ext
+        set +f
+    fi
+done
+set -f
+fw_chain_suffix=
+
+# close input chain and forward chain
+# default policy of input and forward is DROP, for output it is ACCEPT
+close_chain6 INPUT $PF6_INPUT_POLICY
+close_chain6 FORWARD $PF6_FORWARD_POLICY
+close_chain6 OUTPUT $PF6_OUTPUT_POLICY
+
+#----------------------------------------------------------------------------
+# enable forwarding
+#----------------------------------------------------------------------------
+echo "1" > /proc/sys/net/ipv6/conf/all/forwarding
+
+set | grep -e "^IPV6_NET" -e "^IPV6_ROUTE" > /var/run/ip6_net.conf
+
+# kristov: re-enable file name globbing as other scripts depend on it
+set +f
+
+end_script

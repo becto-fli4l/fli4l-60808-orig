@@ -1,0 +1,252 @@
+% Last Update: $Id$
+\chapter{Installation und Konfiguration}
+
+\section{Entpacken der Archive}
+
+Unter Linux:
+
+\begin{verse}\texttt{tar xvfz fli4l-\version.tar.gz}\end{verse}
+
+\noindent Funktioniert dies nicht, geht's auch so:
+
+\begin{verse}\texttt{gzip -d < fli4l-\version.tar.gz | tar xvf -}\end{verse}
+
+Wer die aktuelle Version in einem bereits existierenden
+fli4l-Verzeichnis installiert, sollte anschließend
+\texttt{mkfli4l.sh -c} aufrufen, also:
+
+\begin{verse}
+    \texttt{cd fli4l-\version}\\
+    \texttt{sh mkfli4l.sh -c}
+\end{verse}
+
+Es wird jedoch empfohlen, ein neues Verzeichnis für eine neue Version
+zu benutzen~-- die Konfiguration kann durch ein entsprechendes Werkzeug zum
+Dateivergleich sehr einfach übernommen werden.
+
+Unter MS~Windows kann das komprimierte Tar-Archiv zum Beispiel mit WinZip
+extrahiert werden. Dabei ist jedoch zu beachten, dass die Dateien
+\emph{mit} Unterverzeichnissen (Einstellung in WinZip überprüfen!)
+ausgepackt werden. Außerdem ist in \emph{Optionen \pfeil
+  Konfiguration} die so genannte "`Smart TAR CR conversion"'
+abzuschalten. Ist diese eingeschaltet, werden einige wichtige
+Dateien von WinZip falsch extrahiert.
+
+Alternativ ist das OpenSource-Programm 7-Zip (\altlink{http://www.7-zip.org/})
+sehr zu empfehlen, welches ebenso mächtig wie WinZip ist.
+
+Es werden folgende Dateien im Unterverzeichnis
+\texttt{fli4l-\version/} installiert:
+
+\begin{itemize}
+\item Dokumentation:
+  \begin{itemize}
+  \item doc/deutsch/* Deutsche Dokumentation
+  \item doc/english/* Englische Dokumentation
+  \item doc/french/*  Französische Dokumentation
+  \end{itemize}
+
+\item Konfiguration:
+  \begin{itemize}
+  \item config/*.txt Konfigurationsdateien, diese müssen bearbeitet
+    werden
+  \end{itemize}
+
+\item Skripte/Prozeduren:
+  \begin{itemize}
+  \item mkfli4l.sh Boot-Medium oder Dateien erzeugen: Linux/Unix-Version
+  \item mkfli4l.bat Boot-Medium erzeugen: Windows-Version
+  \end{itemize}
+
+\item Kernel/Boot-Dateien:
+  \begin{itemize}
+  \item img/kernel Linux-Kernel
+  \item img/boot*.msg Bootscreen Texte
+  \end{itemize}
+
+\item Zusatzpakete:
+  \begin{itemize}
+  \item opt/*.txt Diese Dateien beschreiben, was bei welchen Einstellungen in
+  das Archiv opt.img gelangt.
+  \item opt/... Optionale Kernel-Module, Dateien und Programme
+  \end{itemize}
+
+\item Quellcode:
+  \begin{itemize}
+  \item src/* Quellcode/Werkzeuge für Linux, siehe src/README
+  \end{itemize}
+
+\item Programme:
+  \begin{itemize}
+  \item unix/mkfli4l* Erzeugen des Bootmediums: Unix/Linux-Version
+  \item windows/* Erzeugen des Bootmediums: Windows-Version
+  \item unix/imonc* imond-Client für Unix/Linux
+  \item windows/imonc/* imond-Client für Windows
+  \end{itemize}
+\end{itemize}
+
+\section{Konfiguration}
+\subsection{Editieren der Konfigurationsdateien}
+
+Zur Konfiguration von fli4l müssen lediglich die Dateien config/*.txt
+angepasst werden. Um im Nachhinein die eigenen Konfiguration mit der
+ausgelieferten vergleichen zu können oder um mehrere Konfigurationen
+verwalten zu können, empfiehlt es sich, eine Kopie des
+config-Verzeichnisses anzulegen und die Konfiguration in dieser Kopie
+durchzuführen. Ein Vergleich der Konfigurationen ist dann durch
+Verwendung eines geeigneten Werkzeugs (z.B. ``diff'' unter *nix) relativ
+einfach möglich. Nehmen wir einmal an, die eigene config liegt in einem
+Verzeichnis mit Namen ``meine\_config'' ebenfalls im fli4l-Verzeichnis
+dann wäre der Aufruf wie folgt:
+\begin{example}
+\begin{verbatim}
+    ~/src/fli4l> diff -u {config,meine_config}/build/rc.cfg | grep '^[+-]'
+    --- config/build/rc.cfg    2014-02-18 15:34:39.085103706 +0100
+    +++ meine_config/build/rc.cfg        2014-02-18 15:34:31.094317441 +0100
+    -PASSWORD='/P6h4iOIN5Bbc'
+    +PASSWORD='3P8F3KbjYgzUc'
+    -NET_DRV_1='ne2k-pci'
+    +NET_DRV_1='pcnet32'
+    -START_IMOND='no'
+    +START_IMOND='yes'
+    -OPT_PPPOE='no'
+    +OPT_PPPOE='yes'
+    -PPPOE_USER='anonymer'
+    -PPPOE_PASS='surfer'
+    +PPPOE_USER='ich'
+    +PPPOE_PASS='mein-passwd'
+    -OPT_SSHD='no'
+    +OPT_SSHD='yes'
+\end{verbatim}
+\end{example}
+
+Man sieht hier auch sehr schön, dass ein einfacher DSL-Router mit
+wenigen Handgriffen konfiguriert ist, auch wenn einen die
+Konfigurationsdateien auf den ersten Blick mit ihrer Fülle von
+Einstellungsmöglichkeiten erschlagen.
+
+\subsection{Konfiguration über eine spezielle Konfigurationsdatei}
+
+Da sich die Konfiguration durch das Modul-Konzept auf verschiedene
+Dateien verteilt, und das Bearbeiten dadurch unter Umständen etwas
+mühsam wird, kann man die Konfiguration auch in einer einzelnen Datei
+namens \emph{$<$config~verzeichnis$>$/\_fli4l.txt} ablegen, deren Inhalt
+dann zusätzlich zu den normalen Konfigurationsdateien eingelesen wird
+und deren Inhalt dominiert. Um beim obigen Beispiel zu bleiben: Um
+einen einfachen DSL-Router zu konfigurieren, könnten wir einfach
+folgendes in diese Datei schreiben:
+
+\begin{example}
+\begin{verbatim}
+    PASSWORD='3P8F3KbjYgzUc'
+    NET_DRV_N='1'
+    NET_DRV_1='pcnet32'
+    START_IMOND='yes'
+    OPT_PPPOE='yes'
+    PPPOE_USER='ich'
+    PPPOE_PASS='mein-passwd'
+    OPT_SSHD='yes'
+\end{verbatim}
+\end{example}
+
+Man sollte vermeiden, beide Konfigurationsvarianten zu mischen.
+
+\subsection{Variablen}
+
+  Sie werden merken, dass einige Variablen auskommentiert sind. Wenn das der 
+  Fall ist, erhält sie eine sinnvolle Standard-Belegung. Diese Standard-Belegung 
+  ist für jede Variable dokumentiert. Wünschen Sie einen anderen Wert für diese 
+  Variable, sollten Sie das Kommentarzeichen am Anfang der Variablendefinition ('\#') 
+  entfernen und den entsprechenden Wert zwischen den Hochkommata einfügen.
+
+\marklabel{VARIANTEN}{\section{Installationsvarianten}}
+
+In den vorhergehenden Versionen von fli4l wurde lediglich das Booten
+von einer Diskette unterstützt. Dies ist aus oben genannten Gründen nun
+nicht mehr möglich, aber die Alternative mittels eines USB-Sticks ist 
+gegeben.
+
+Es sind auch eine Vielzahl anderer Bootmedien (CD, HD, Netzwerk,
+Compact-Flash, DoC, \ldots) möglich und fli4l kann auch auf diversen
+Medien installiert (HD, Compact-Flash, DoC) werden. Dazu kann fli4l auf
+drei verschiedenen Wegen gebootet werden:
+
+\begin{description}
+\item [Single Image] Der Bootloader lädt den Linux-Kern und dann fli4l
+als ein einziges Image --- danach kann fli4l ohne weiteren Zugriff auf
+andere Medien booten. Beispiele dafür sind die Boottypen \emph{integrated}, 
+\emph{attached}, \emph{netboot} und \emph{cd}.
+\item [Split Image] Der Bootloader lädt den Linux-Kern und dann ein
+rudimentäres fli4l-Image, dass die Bootmedien einbindet und die
+Konfiguration und restlichen Dateien aus einem dort liegenden Archiv
+holt. Beispiele dafür sind diese Boottypen: \emph{hd (Typ A)}, \emph{ls120},
+\emph{attached} und \emph{cd-emul}.
+\item [Installation auf einem Medium] Der Bootloader lädt den
+Linux-Kern und dann ein rudimentäres fli4l-Image, das eine bereits
+vorhandene fli4l-Installation in sein Dateisystem einbindet und damit
+keine weiteren Archive auspacken muss. Eine HD-Installation vom Typ B
+ist ein Beispiel dafür.
+\end{description}
+
+Man sollte jedoch zunächst erst einmal fli4l in einer minimalen Version 
+installieren und damit Erfahrungen sammeln. Möchte man später fli4l 
+zusätzlich als Anrufbeantworter und als HTTP-Proxy einsetzen, so hat 
+man vorher schon mal Erfahrungen mit einem grundsätzlich laufenden Router.
+
+Für die Installation ergeben sich daraus die folgenden fünf Varianten:
+
+\begin{description}
+\item[USB-Stick] Router auf einem USB-Stick
+\item[CD-router] Router auf einer CD
+\item[Netzwerk] Netzwerkboot
+\item[HD-Installation Typ A] Router auf Festplatte, CF, DoC~-- nur eine FAT-Partition
+\item[HD-Installation Typ B] Router auf Festplatte, CF, DoC~-- je eine FAT- und ext3-Partition
+\end{description}
+
+\marklabel{INSTALLTYP0}{\subsection{Router auf einem USB-Stick}}
+
+USB-Sticks werden von Linux als Festplatten angesprochen, daher gelten hier
+die Ausführungen zur Festplatteninstallation entsprechend. Bitte beachten Sie,
+dass mittels des \var{OPT\_\-USB} die entspechenden Treiber geladen werden
+müssen, damit der Stick mittels \var{OPT\_\-HDINSTALL} eingebunden werden kann.
+
+\marklabel{INSTALLTYP0}{\subsection{Router auf einer CD oder Netzwerkboot}}
+
+Alle benötigten Dateien liegen auf dem Bootmedium und werden beim
+Booten in eine dynamische RAM-Disk entpackt.  In einer
+Minimalkonfiguration ist damit ein Betrieb des Routers mit nur 64 MiB
+RAM möglich. Die maximale Konfiguration wird nur durch die Kapazität
+des Bootmediums und des Hauptspeichers limitiert.
+
+\marklabel{INSTALLTYPA}{\subsection{Typ A: Router auf Festplatte~-- nur eine FAT-Partition}}
+
+Dies entspricht der CD-version, nur dass die Dateien hierbei auf
+einer Festplatte liegen, wobei der Begriff \glqq{}Festplatte\grqq{} hier auch
+Compact-Flash-Medien ab 8 MiB und andere Geräte, welche Linux als
+Festplatte ansprechen kann, mit einschließt. Seit fli4l 2.1.4 können
+auch DiskOnChip Flash-Speicher von M-Sys oder SCSI-Festplatten benutzt
+werden.
+
+Die Beschränkung des Archivs opt.img durch die
+Diskettenkapazität wird aufgehoben, aber alle diese Dateien müssen in
+einer RAM-Disk mit der entsprechenden Größe beim Boot installiert werden.
+Dies erhöht den RAM-Bedarf beim Einsatz vieler Pakete.
+
+Für ein Update der Softwarepakete (d.h. des Archivs opt.img und der
+rc.cfg über das Netzwerk) muss die FAT-Partition genügend Platz für den
+Kernel, das RootFS und die DOPPELTE Größe des opt.img haben!
+Falls auch die Notfall-Option genutzt werden soll, erhöht sich der
+Platzbedarf noch einmal um die Größe des opt.img.
+
+\marklabel{INSTALLTYPB}{\subsection{Typ B: Router auf Festplatte~-- je eine FAT- und ext3-Partition}}
+
+Im Gegensatz zum Typ A werden hier nicht alle Dateien in die Ramdisk
+gepackt, sondern bei dem erstmaligen Start nach der Installation oder
+nach einem Update aus dem Archiv opt.img direkt auf eine
+ext3-Partition kopiert und im späteren Betrieb von dort geladen. Bei
+dieser Version ist der Speicherbedarf für die RAM-Disk am geringsten
+und damit meist auch ein Betrieb mit sehr wenig RAM möglich.
+
+Weitere Informationen zur Installation auf Festplatten finden Sie in
+der Dokumentation des Pakets HD (separat herunterzuladen)-
+beginnend bei der Beschreibung der Variablen \var{OPT\_\-HDINSTALL}.

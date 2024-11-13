@@ -1,0 +1,214 @@
+% Last Update: $Id$
+
+\providecommand{\fwaction}[1]{{\small\textsf{#1}}}
+\providecommand{\fwchain}[1]{\texttt{#1}}
+\providecommand{\fwtable}[1]{\textsc{#1}}
+\providecommand{\fwmatch}[1]{\texttt{#1}}
+\providecommand{\fwpktstate}[1]{\texttt{#1}}
+\providecommand{\fwloglevel}[1]{\texttt{#1}}
+
+\section{Arbeit mit dem Paketfilter}
+\subsection{Hinzufügen von eigenen Ketten und Regeln}
+
+Zur Manipulation des Paketfilters steht eine Reihe von Routinen zur
+Verfügung, mit deren Hilfe man Ketten (engl. "`Chains"') und Regeln hinzufügen
+und wieder löschen kann. Eine Kette ist eine benannte und geordnete Liste von
+Regeln. Es gibt einen Satz vordefinierter Ketten (\fwchain{PREROUTING},
+\fwchain{INPUT}, \fwchain{FORWARD}, \fwchain{OUTPUT}, \fwchain{POSTROUTING});
+mit Hilfe dieser Funktionen können weitere Ketten nach Bedarf erstellt werden.
+
+\begin{description}
+\item [\texttt{add\_chain/add\_nat\_chain <chain>}:]
+  Fügt eine Kette zur "`filter"'- oder "`nat"'-Ta\-bel\-le hinzu.
+\item [\texttt{flush\_chain/flush\_nat\_chain <chain>}:]
+  Entfernt alle Regeln aus einer Kette der "`filter"'- oder "`nat"'-Tabelle.
+\item [\texttt{del\_chain/del\_nat\_chain <chain>}:]
+  Entfernt eine Kette aus der "`filter"'- oder "`nat"'-Tabelle. Ketten müssen
+  leer sein, bevor sie gelöscht werden können, und es darf auch keine Referenz
+  mehr auf sie geben. Eine solche Referenz ist z.\,B. eine \fwaction{JUMP}-Aktion,
+  deren Ziel eben diese Kette ist.
+\item[\texttt{add\_rule/ins\_rule/del\_rule}:] Fügt Regeln
+  am Ende einer Kette (\texttt{add\_rule}) bzw. an beliebiger Stelle in einer
+  Kette (\texttt{ins\_rule}) ein bzw. löscht Regeln aus einer Kette
+  (\texttt{del\_rule}). Ein Aufruf sieht wie folgt aus:
+
+\begin{example}
+\begin{verbatim}
+    add_rule <table> <chain> <rule> <comment>
+    ins_rule <table> <chain> <rule> <position> <comment>
+    del_rule <table> <chain> <rule> <comment>
+\end{verbatim}
+\end{example}
+
+  \noindent wobei die Parameter folgende Bedeutung haben:
+  \begin{description}
+  \item[table] Die Tabelle, in der sich die Kette befindet
+  \item[chain] Die Kette, in welche die Regel eingefügt werden soll
+  \item[rule] Die Regel, die eingefügt werden soll; das Format
+    entspricht dem in der Konfigurationsdatei verwendeten
+  \item[position] Die Position, an der die Regel eingefügt werden soll (nur
+    bei \texttt{ins\_rule})
+  \item[comment] Ein Kommentar, der zusammen mit der Regel angezeigt
+    werden soll, wenn sich jemand den Paketfilter ansieht.
+  \end{description}
+\end{description}
+
+
+\subsection{Einordnen in bestehende Regeln}
+
+fli4l konfiguriert den Paketfilter mit einem gewissen
+Standardregelsatz. Will man eigene Regeln einfügen, wird man diese in
+der Regel nach dem Standardregelsatz einfügen wollen. Ebenfalls wird
+man wissen wollen, was denn die vom Nutzer gewünschte Aktion beim
+Verwerfen eines Paketes ist. Diese Informationen bekommt man für die
+\fwchain{FORWARD}- und \fwchain{INPUT}-Ketten durch Aufruf zweier Funktionen,
+\texttt{get\_defaults} und \texttt{get\_count}. Nach Aufruf von
+
+\begin{example}
+\begin{verbatim}
+    get_defaults <chain>
+\end{verbatim}
+\end{example}
+
+erhält man die folgenden Ergebnisse:
+
+\begin{description}
+\item[\var{drop}:] Diese Variable enthält die Kette, in die verzweigt wird,
+  wenn ein Paket verworfen wird.
+\item[\var{reject}:] Diese Variable enthält die Kette, in die verzweigt wird,
+  wenn ein Paket abgelehnt wird.
+\end{description}
+
+Nach Aufruf von
+
+\begin{example}
+\begin{verbatim}
+    get_count <chain>
+\end{verbatim}
+\end{example}
+
+erhält man in der Variable \var{res} die Anzahl der Regeln in der Kette
+\texttt{<chain>}. Diese Position ist insofern wichtig, als man \emph{nicht}
+einfach \texttt{add\_rule} verwenden kann, um eine Regel am Ende der
+vordefinierten "`filter"'-Ketten \fwchain{INPUT}, \fwchain{FORWARD} und
+\fwchain{OUTPUT} einzufügen. Dies liegt daran, dass diese Ketten mit einer
+Standardregel abgeschlossen werden, welche alle verbliebenen Pakete behandelt,
+je nach Belegung der \var{PF\_<Kette>\_POLICY}-Variablen. Ein Einfügen
+\emph{hinter} dieser letzten Regel hat also keine Auswirkungen. Die Funktion
+\texttt{get\_count} erlaubt es nun hingegen, die Stelle direkt \emph{vor}
+dieser letzten Regel zu ermitteln und die Position dann an die
+\texttt{ins\_rule}-Funktion im Parameter \texttt{<position>} zu übergeben, um
+die Regel wie gewünscht am Ende der jeweiligen Kette, aber vor der letzten
+Auffang-Regel einzubauen.
+
+Ein Beispiel aus dem Skript \texttt{opt/etc/rc.d/rc390.dns\_dhcp} des Pakets
+"`dns\_dhcp"' soll dies verdeutlichen:
+
+\begin{example}
+\begin{verbatim}
+    case $OPT_DHCPRELAY in
+        yes)
+            begin_script DHCRELAY "starting dhcprelay ..."
+
+            idx=1
+            interfaces=""
+            while [ $idx -le $DHCPRELAY_IF_N ]
+            do
+                eval iface='$DHCPRELAY_IF_'$idx
+
+                get_count INPUT
+                ins_rule filter INPUT "prot:udp  if:$iface:any 68 67 ACCEPT" \
+                    $res "dhcprelay access"
+
+                interfaces=$interfaces' -i '$iface
+                idx=`expr $idx + 1`
+            done
+            dhcrelay $interfaces $DHCPRELAY_SERVER
+
+            end_script
+        ;;
+  esac
+\end{verbatim}
+\end{example}
+
+Hier sieht man inmitten der Schleife einen Aufruf von \texttt{get\_count},
+gefolgt von einem Aufruf der \texttt{ins\_rule}-Funktion, der unter anderem
+die \var{res}-Variable als \texttt{position}-Parameter übergeben wird.
+
+
+\subsection{Erweiterung der Paketfilter-Tests}
+
+fli4l verwendet in den Paketfilterregeln die Syntax \fwmatch{match:params},
+um zusätzliche Bedingungen an die Pakete zu stellen
+(siehe \fwmatch{mac:}, \fwmatch{limit:}, \fwmatch{length:}, \fwmatch{prot:},
+\ldots). Will man zusätzliche
+Tests hinzufügen, wird das folgendermaßen gemacht:
+
+\begin{enumerate}
+\item Festlegen eines passenden Namens. Dieser Name muss mit einem
+Kleinbuchstaben im Bereich a-z beginnen und ansonsten aus beliebigen
+Buchstaben und Ziffern bestehen.
+
+\achtung{Wenn der Paketfilter-Test in IPv6-Regeln verwendet werden soll,
+dann muss darauf geachtet werden, dass der Name keine gültige
+IPv6-Adresskomponente ist!}
+
+\item Anlegen einer Datei \texttt{opt/etc/rc.d/fwrules-<name>.ext}.
+In dieser Datei steht in etwa Folgendes:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4 extension is available
+    foo_p=yes
+
+    # the actual IPv4 extension, adding matches to match_opt
+    do_foo()
+    {
+        param=$1
+        get_negation $param
+        match_opt="$match_opt -m foo $neg_opt --fooval $param"
+    }
+
+    # IPv6 extension is available
+    foo6_p=yes
+
+    # the actual IPv6 extension, adding matches to match_opt
+    do6_foo()
+    {
+        param=$1
+        get_negation6 $param
+        match_opt="$match_opt -m foo $neg_opt --fooval $param"
+    }
+\end{verbatim}
+\end{example}
+
+Der Paketfilter-Test muss nicht zwingend sowohl für IPv4 als auch für IPv6
+implementiert sein (obwohl dies zu bevorzugen ist, falls er für beide
+Layer-3-Protokolle sinnvoll ist).
+
+\item Testen der Erweiterung:
+
+\begin{example}
+\begin{verbatim}
+    $ cd opt/etc/rc.d
+    $ sh test-rules.sh 'foo:bar ACCEPT'
+    add_rule filter FORWARD 'foo:bar ACCEPT'
+    iptables -t filter -A FORWARD -m foo --fooval bar -s 0.0.0.0/0 \
+        -d 0.0.0.0/0 -m comment --comment foo:bar ACCEPT -j ACCEPT
+\end{verbatim}
+\end{example}
+
+\item Aufnahme der Erweiterung und aller noch benötigten Dateien
+(\texttt{iptables}-Komponenten) ins Archiv über einen
+der bekannten Mechanismen.
+\item Zulassen der Erweiterung in der Konfiguration durch Erweitern
+von \var{FW\_GENERIC\_MATCH} und/oder \var{FW\_GENERIC\_MATCH6} in einer
+exp-Datei, z.\,B. wie folgt:
+
+\begin{example}
+\begin{verbatim}
+    +FW_GENERIC_MATCH(OPT_FOO) = 'foo:bar' : ''
+    +FW_GENERIC_MATCH6(OPT_FOO) = 'foo:bar' : ''
+\end{verbatim}
+\end{example}
+\end{enumerate}

@@ -1,0 +1,375 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/networking.inc.ipv4
+# Extensions for IPv4 networking.
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$networking_ipv4_api" != yes ]
+then
+
+. /etc/boot.d/env.inc
+. /etc/boot.d/list.inc
+. /etc/boot.d/logging.inc
+
+if [ "$networking_api" != yes ]
+then
+    log_error "Never use networking.inc.ipv4 directly; include networking.inc instead."
+fi
+
+#----------------------------------------------------------------------------
+# usage:       lookup_name <FQDN|alias>
+# parameter:   <FQDN|alias> either a FullQualifiedDomainName or an alias name
+# returns:     nothing
+# errorcodes:  0 success - successfully resolved name to ip address
+#              1 error   - no matching host record found
+#
+# description: Tries to resolve either an FQDN or an alias to an IP address.
+#              Uses /etc/hosts and /etc/hosts.d/hosts* as source.
+#              MAGIC done by this function:
+#              The result will be stored in an global variable "res".
+#----------------------------------------------------------------------------
+lookup_name()
+{
+    local name="$1"
+    if [ -f /etc/dnsmasq.d/cname.conf ]
+    then
+        set -- $(sed -n "s/^cname=${name},\(.*\)/\1/p" /etc/dnsmasq.d/cname.conf)
+        [ -n "$1" ] && name="$1"
+    fi
+    set -- $(sed -n "/[[:space:]]${name}\([[:space:]]\|$\)/s/^\([0-9\.]\+\)[[:space:]].*/\1/p" /etc/hosts.d/hosts*)
+    res=$1
+    [ -n "$res" ]
+}
+
+#----------------------------------------------------------------------------
+# Checks if an IPv4 network specification can be translated statically. Returns
+# 0 when the translation result is purely statically decidable and a nonzero
+# value otherwise. A translation is statically undecidable in general if the
+# network is associated with a circuit (e.g. DHCP).
+#
+# $1 = network specification to translate
+#----------------------------------------------------------------------------
+is_static_ip_net()
+{
+    case $1 in
+    dynamic)
+        return 1
+        ;;
+    IP_NET_*_IPADDR)
+        is_static_ip_net ${1%_IPADDR}
+        ;;
+    IP_NET_*)
+        local res
+        if get_value $1
+        then
+            is_static_ip_net "$res"
+        else
+            return 0
+        fi
+        ;;
+    {*}*)
+        return 1
+        ;;
+    *)
+        return 0
+        ;;
+    esac
+}
+
+#----------------------------------------------------------------------------
+# Translates an IPv4 network specification (e.g. IP_NET_1) into a list of
+# network addresses (e.g. 192.168.222.0/24).
+#
+# $1 = network specification to translate
+# $2 = (optional) name of variable where the network specification originates
+#      from
+# $3 = (optional) name of variable receiving the translated value
+# $4 = if nonzero, untranslatable network specifiers do not produce an error
+#      message
+#
+# Returns a non-zero value if an error happens.
+#----------------------------------------------------------------------------
+translate_ip_net()
+{
+    local tin_param="$1"
+    local var_name=$2
+    local var=$3
+    local tin_ignore=$4
+    res=
+
+    case $tin_param in
+    any)
+        res=0.0.0.0/0
+    ;;
+    dynamic)
+        if [ -f /var/run/dynamic.ip ]
+        then
+            # TODO: only the last (newest) address is taken
+            res=$(tail -n 1 /var/run/dynamic.ip)
+            res=${res%/*}
+        fi
+        ;;
+    IP_NET_*_IPADDR)
+        if translate_ip_net ${tin_param%_IPADDR} "$var_name" res 1
+        then
+            res=${res%/*}
+        fi
+    ;;
+    IP_NET_*)
+        if get_value $tin_param
+        then
+            if ! translate_ip_net $res "$var_name" res 1
+            then
+                res=
+            fi
+        fi
+    ;;
+    IP_ROUTE_*)
+        if get_value $tin_param
+        then
+            set -- $res
+            res=$1
+        fi
+    ;;
+    *)
+        res=$(circuit_resolve_address "$1" ipv4)
+    ;;
+    esac
+
+    if [ -z "$res" ]
+    then
+        if [ -z "$tin_ignore" ]
+        then
+            if [ -n "$var_name" ]
+            then
+                log_error "translate_ip_net: cannot translate network $var_name='$tin_param'"
+            else
+                log_error "translate_ip_net: cannot translate network '$tin_param'"
+            fi
+        fi
+        return 1
+    else
+        [ "$var" ] && eval $var=\"$res\"
+        return 0
+    fi
+}
+
+#----------------------------------------------------------------------------
+# IPv4 specific hook for is_static_net_if(). Understands interface
+# specifications like IP_NET_x_DEV.
+#
+# $1 = interface specification to translate
+#----------------------------------------------------------------------------
+is_static_net_if_hooks="$is_static_net_if_hooks is_static_net_if_ipv4"
+is_static_net_if_ipv4()
+{
+    case $1 in
+    IP_NET_*_DEV)
+        local res=
+        if get_value $1
+        then
+            is_static_net_if $res
+        else
+            return 0
+        fi
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+#----------------------------------------------------------------------------
+# IPv4 specific hook for translate_net_if(). Understands interface
+# specifications like IP_NET_x_DEV.
+#
+# $1 = interface specification to translate
+# $2 = name of variable receiving the translated value
+#----------------------------------------------------------------------------
+translate_net_if_hooks="$translate_net_if_hooks translate_net_if_ipv4"
+translate_net_if_ipv4()
+{
+    local tid_tif=$1
+    local tid_var=$2
+
+    case $tid_tif in
+    IP_NET_*_DEV)
+        local res=
+        if get_value $tid_tif
+        then
+            translate_net_if "$res" $tid_var 1
+        else
+            return 1
+        fi
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+#----------------------------------------------------------------------------
+# Translates an IPv4 address into the interface this address belongs to.
+#
+# $1 = IPv4 address
+# $2 = name of variable receiving the translated value
+# $3 = if nonzero, untranslatable network specifications do not produce an
+#      error message
+# exit code = 0 on success and a nonzero value otherwise
+#----------------------------------------------------------------------------
+translate_ipv4_to_dev()
+{
+    if is_static_ip_net $1
+    then
+        local addresses addr
+        translate_ip_net $1 '' addresses $3 || return 1
+
+        for addr in $(list_foreach 'echo ${1%/*}' $addresses)
+        do
+            for i in $(seq 1 $IP_NET_N)
+            do
+                local othernets othernet
+                translate_ip_net IP_NET_$i '' othernets 1 || continue
+
+                for othernet in $othernets
+                do
+                    local netmaskbits=$(netcalc netmaskbits $othernet)
+                    local othernet=$(netcalc network $othernet)
+                    local addrnet=$(netcalc network $addr/$netmaskbits)
+                    if [ "$addrnet" = "$othernet" ]
+                    then
+                        # suitable network found
+                        local netdev=IP_NET_${i}_DEV
+                        translate_net_if $netdev $2 $3
+                        return $?
+                    fi
+                done
+            done
+        done
+
+        [ -z "$3" ] && log_error "translate_ipv4_to_dev: cannot translate address '$1'"
+        return 1
+    else
+        local res=
+        case $1 in
+        IP_NET_*_IPADDR)
+            get_value ${1%_IPADDR}
+            ;;
+        IP_NET_*)
+            get_value $1
+            ;;
+        *)
+            res=$1
+            ;;
+        esac
+
+        case $res in
+        {*}*)
+            local dev=$(circuit_get_interface "$res")
+            eval $2=\$dev
+            [ -n "$dev" ]
+            ;;
+        *)
+            [ -z "$3" ] && log_error "translate_ipv4_to_dev: cannot translate address '$1'"
+            return 1
+            ;;
+        esac
+    fi
+}
+
+#----------------------------------------------------------------------------
+# Translates an interface into the associated IPv4 addresses.
+# NOTE: This currently only works for interfaces configured by IP_NET_x!
+#
+# $1 = interface
+# $2 = name of variable receiving the list of addresses (which may be empty)
+#----------------------------------------------------------------------------
+translate_dev_to_ipv4()
+{
+    if [ -z "$2" ]
+    then
+        log_error "translate_dev_to_ipv4: missing variable name"
+        return 1
+    fi
+
+    local list=
+    local dev
+    if translate_net_if $1 dev 1
+    then
+        local i
+        for i in $(seq 1 $IP_NET_N)
+        do
+            local otherdev=IP_NET_${i}_DEV
+            translate_net_if $otherdev otherdev 1 || continue
+            if [ "$dev" = "$otherdev" ]
+            then
+                local net
+                if translate_ip_net IP_NET_$i '' net 1
+                then
+                    list="$list $net"
+                fi
+            fi
+        done
+    fi
+    list=${list# }
+    eval $2=\"\$list\"
+    return 0
+}
+
+#----------------------------------------------------------------------------
+# IPv4 specific hook for split_addr_port(). Understands IPv4 addresses.
+#
+# Input:
+#   $1 = address to split
+#   $2 = name of variable receiving the extracted address(es)
+#   $3 = name of variable receiving the extracted port
+# Exit code:
+#    0 = if an address and a port have been found and extracted
+#    1 = if no port has been found
+#----------------------------------------------------------------------------
+split_addr_port_hooks="$split_addr_port_hooks split_addr_port_ipv4"
+split_addr_port_ipv4()
+{
+    local _value=$1 _addrvar=$2 _portvar=$3
+    set -- $(echo "$_value" | sed -n 's,^\([^:]\+\):\([0-9]\+\)$,\1 \2,p')
+    eval ${_addrvar}=\$1
+    eval ${_portvar}=\$2
+    [ -n "$2" ]
+}
+
+# Returns all IPv4 addresses currently assigned to the router. The addresses
+# are returned together with a CIDR-style subnet mask.
+get_local_ipv4_addresses()
+{
+    local i res
+    for i in $(seq 1 ${IP_NET_N:-0})
+    do
+        eval local net=\$IP_NET_${i}
+        if translate_ip_net "$net" IP_NET_${i} '' 1
+        then
+            echo $res
+        else
+            clear_error
+        fi
+    done
+    circuit_get_all_local_addresses ipv4
+    return 0
+}
+
+# Returns all IPv4 subnets currently assigned to the router. The subnets are
+# returned in CIDR style.
+get_local_ipv4_subnets()
+{
+    local addr
+    for addr in $(get_local_ipv4_addresses)
+    do
+        echo $(netcalc network $addr)/${addr##*/}
+    done
+    return 0
+}
+
+networking_ipv4_api='yes'
+
+fi # $networking_ipv4_api != yes

@@ -1,0 +1,2972 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/share/circuits/circd                                        __FLI4LVER__
+#
+# This program, called the circuit daemon, is responsible for managing,
+# controlling, and monitoring the circuits on the fli4l router. Events are used
+# for the communication between various parts of the circuit system, including
+# dial/hangup scripts, ip-up/down scripts, fli4lctrl, and the circuit daemon.
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+# that's we
+mom_process=$(basename $0)
+
+# our MOM process ID
+mom_id=$mom_process
+
+# initialize MOM
+. /usr/share/mom/core
+
+# to make translate_* functions work
+. /etc/rc.cfg
+
+# include API circd uses (and circuit setup scripts can use)
+. /etc/boot.d/env.inc
+. /etc/boot.d/forking.inc
+. /etc/boot.d/exittrap.inc
+. /etc/boot.d/locking.inc
+. /etc/boot.d/networking.inc
+
+# include API circuit setup scripts may additionally use
+. /etc/boot.d/modules.inc    # some circuit setup scripts need to load modules
+
+# redirect output
+exec >>/var/log/circd.log 2>&1
+
+# initialize logging
+script="$(basename $0)[$$]"
+facility=$circuit_logfacility
+. /usr/share/logfunc.sh
+
+# set to a non-empty string when circd is shutting down;
+# this prevents circuit creation and activation messages from being processed
+circd_shutting_down=
+circd_shutting_down_requestors=
+circd_shutting_down_message="request ignored as circd is shutting down"
+
+############
+# PROCESSES
+############
+
+# running child processes
+circd_children=" "
+
+# ignore all signals except
+# - SIGTERM which calls circd_exit
+# - SIGUSR1 which calls circd_save_state
+exit_trap_ignore_all_signals
+exit_trap_install_for_signal TERM circd_exit
+exit_trap_install_for_signal USR1 circd_save_state
+
+# Notifies circd about a terminating child process.
+circd_notify_parent_about_child_exit()
+{
+    mom_unicast_message circd child_exited_circd_event >/dev/null
+}
+
+# Sends a stop_service_message to circd.
+circd_exit()
+{
+    log_warn "SIGTERM received"
+    mom_unicast_message circd stop_service_message >/dev/null
+    # return non-zero to prevent circd from being terminated via "exit"
+    return 1
+}
+
+# Checks whether circd can safely exit. This is possible (a) if no outstanding
+# child processes are still running and (b) if all circuits are either inactive
+# or failed. If circd can safely exit, mom_quit_message_loop() is called.
+circd_check_exit()
+{
+    case $(circd_get_composite_state) in
+    failed|inactive)
+        [ -n "${circd_children# }" ] && return 0
+        [ -s "$daemons_file" ] && return 0
+        mom_quit_message_loop 0
+        ;;
+    esac
+}
+
+##############
+# PERSISTENCE
+##############
+
+# path to circd's external state
+circd_state_file=/var/run/circuits/circd.state
+
+# Saves circd's internal state to $circd_state_file. This function is called at
+# exit time and when SIGUSR1 is received.
+circd_save_state()
+{
+    cat <<EOF > $circd_state_file
+circd_next_creation_group_id="$circd_next_creation_group_id"
+circd_creation_groups="$circd_creation_groups"
+circd_revdeps="$circd_revdeps"
+circd_activate="$circd_activate"
+circd_fail="$circd_fail"
+EOF
+
+    local group
+    for group in $circd_creation_groups
+    do
+        local name=circd_creation_group_$group
+        eval local value=\$$name
+        echo "$name=\"$value\"" >> $circd_state_file
+    done
+
+    local revdep
+    for revdep in $circd_revdeps
+    do
+        local name=circd_revdeps_$(circd_make_varname $revdep)
+        eval local value=\$$name
+        echo "$name=\"$value\"" >> $circd_state_file
+    done
+}
+
+# Restores circd's internal state from $circd_state_file. This function is
+# called at start time when $circd_state_file exists.
+circd_restore_state()
+{
+    eval "$(cat $circd_state_file)"
+}
+
+######################
+# LIFETIME MANAGEMENT
+######################
+
+# next creation group ID
+circd_next_creation_group_id=1
+# currently active creation groups
+circd_creation_groups=" "
+# all circuits/classes for which reverse dependencies are stored
+circd_revdeps=" "
+# circuits to activate when starting
+circd_activate=
+# circuits to fail when starting
+circd_fail=
+
+# Encodes a circuit identifier such that it can become part of a variable name.
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   A suitably encoded identifier that can become part of a variable name.
+circd_make_varname()
+{
+    local name=${1//-/_}
+    echo ${name//:/__}
+}
+
+# Increments the reference counter for a circuit. After creation, the reference
+# counter is set to 1.
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   always 0
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_ref()
+{
+    local id=$1 circ_refcount
+    circuit_resolve_alias id
+    circuit_lock $id circd_ref
+    circuit_read_field $id circ_refcount
+    : ${circ_refcount:=0}
+    circ_refcount=$((circ_refcount+1))
+    circuit_write_field $id circ_refcount $circ_refcount
+    circuit_unlock $id circd_ref
+    return 0
+}
+
+# Decrements the reference counter for a circuit. After creation, the reference
+# counter is set to 1. If the counter reaches zero, the circuit is removed by
+# calling circd_circuit_remove().
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   always 0
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_unref()
+{
+    local id=$1 circ_refcount
+    circuit_resolve_alias id
+    circuit_lock $id circd_unref
+    circuit_read_field $id circ_refcount
+    : ${circ_refcount:=1}
+    circ_refcount=$((circ_refcount-1))
+    circuit_write_field $id circ_refcount $circ_refcount
+    circuit_unlock $id circd_unref
+    [ $circ_refcount -eq 0 ] && circd_circuit_remove $id
+    return 0
+}
+
+# Input:
+#   $1 = circuit identifier
+circd_circuit_postprocessing()
+{
+    local circ=$1 circ_deps circ_bundle circ_origin dep
+
+    circuit_read_field $circ circ_deps
+    circuit_read_field $circ circ_bundle
+    circuit_read_field $circ circ_origin
+    for dep in $circ_deps $circ_bundle $circ_origin
+    do
+        # remove potential layer-3 protocol
+        dep=${dep%/*}
+        circuit_resolve_alias dep
+        local depid=$(circd_make_varname $dep)
+
+        local revdepsname=circd_revdeps_$depid
+        eval local revdeps=\$$revdepsname
+        if [ -z "$revdeps" ]
+        then
+            # $depid points to a yet unused circuit class, not a circuit
+            revdeps=" "
+            circd_revdeps="$circd_revdeps$dep "
+        fi
+        revdeps="$revdeps$circ "
+        eval $revdepsname=\"\$revdeps\"
+        log_info "circd_circuit_postprocessing: adding reverse dependency $dep --> $circ"
+    done
+}
+
+# Creates a new circuit. Note that no type-specific postprocessing is done,
+# this has to be done by the caller.
+# Input:
+#   $1 = variable receiving the circuit identifier
+#   $2 = variable receiving an error message (if any)
+# Output:
+#   ${$2} = circuit identifier
+# Exit code:
+#   0 if successful, 1 otherwise (in the latter case, $2 is set to an error
+#   message)
+# Synchronization:
+#   Takes a read/write lock on the newly created circuit.
+circd_circuit_add()
+{
+    local errvar=$2
+
+    # start numbering with 1, to have CIRC_X <--> circX
+    circuit_allocate_device $circuit_prefix $1 1
+    eval local circ_id=\$$1
+    circuit_lock $circ_id circuit_add
+
+    [ -n "$circ_bundle" ] && circuit_resolve_alias circ_bundle
+
+    # circuit device
+    local circ_dev=
+    # dependencies
+    local circ_deps=$circ_deps
+    # auto (= use global dial mode unchanged)
+    local circ_dialmode=${circ_dialmode:-auto}
+    # no debug information
+    local circ_debug=${circ_debug:-0}
+    # circuit does not hang up automatically
+    local circ_hup_timeout=${circ_hup_timeout:-0}
+    # don't let the peer override DNS forwarders
+    local circ_usepeerdns=${circ_usepeerdns:-no}
+    # no charging
+    local circ_chargeint=${circ_chargeint:-0}
+    # no waiting
+    local circ_wait=${circ_wait:-0}
+    # assume existing interface
+    local circ_newif=no
+    # assume that a circuit controls only one interface; set to yes if the
+    # circuit controls multiple interfaces, e.g. via circuit clones or via
+    # special programs (e.g. DHCPv6 client or server)
+    local circ_multi=no
+    # the suffix to append to a multi-circuit's interface; "-" e.g. leads to
+    # interface names like "ppp0-1", "ppp0-2" etc. if the interface configured
+    # for the multi-circuit is "ppp0"
+    local circ_multi_ifsuffix=
+    # no initial interface alias
+    local circ_alias=
+    # no fd passing by default
+    local circ_fdpass=${circ_fdpass:-no}
+
+    # heuristic whether circuit is a server circuit (server circuits remain in
+    # state "ready" after being dialled, so dependencies on server circuits
+    # have to be handled slightly different)
+    case $circ_type in
+    *-server)
+        local circ_server=${circ_server:-yes}
+        ;;
+    *)
+        local circ_server=${circ_server:-no}
+        ;;
+    esac
+
+    # map circ_debug=yes to circ_debug=1 and circ_debug=no to circ_debug=0
+    case $circ_debug in
+    yes)
+        circ_debug=1 ;;
+    no)
+        circ_debug=0 ;;
+    esac
+
+    local circuit_file=$circuit_state_dir/all/$circ_id
+    cat > $circuit_file <<EOF
+circ_id=$circ_id
+circ_type=$circ_type
+circ_name="$circ_name"
+circ_debug=$circ_debug
+circ_usepeerdns=$circ_usepeerdns
+circ_chargeint=$circ_chargeint
+circ_wait=$circ_wait
+circ_fdpass=$circ_fdpass
+EOF
+
+    # initialise type generic but layer-3 specific parts
+    local circ_default_route=no
+    local used_protos=
+
+    local prot
+    for prot in ${circ_protocols:-$circuit_protocols}
+    do
+        local func=circuit_add_$prot
+        if type $func >/dev/null 2>&1
+        then
+            $func $circuit_file $errvar
+            case $? in
+            0)
+                used_protos="$used_protos $prot"
+                ;;
+            1)
+                echo "$circ_protocols" | grep -q "\<$prot\>" &&
+                    used_protos="$used_protos $prot"
+                ;;
+            *)
+                rm $circuit_file
+                circuit_unlock $circ_id circuit_add
+                return 1
+                ;;
+            esac
+        else
+            echo "warning: $circ_id: layer-3 protocol '$prot' not enabled, ignoring part of its configuration" >&2
+        fi
+    done
+
+    circuit_write_field $circ_id circ_default_route $circ_default_route
+
+    # initialise type and layer-3 specific parts
+    local func="${circ_type//-/_}_circuit_add"
+    for prot in ${circ_protocols:-$circuit_protocols}
+    do
+        local protfunc=${func}_$prot
+        if type $protfunc >/dev/null 2>&1
+        then
+            $protfunc $circuit_file $errvar
+            case $? in
+            0)
+                echo "$used_protos" | grep -q "\<$prot\>" ||
+                    used_protos="$used_protos $prot"
+                ;;
+            1)
+                ;;
+            *)
+                rm $circuit_file
+                circuit_unlock $circ_id circuit_add
+                return 1
+                ;;
+            esac
+        fi
+    done
+
+    # now the set of layer-3 protocols is known
+    if [ -z "$circ_protocols" ]
+    then
+        local circ_protocols=$used_protos
+    fi
+    circ_protocols=${circ_protocols# }
+    circuit_write_field $circ_id circ_protocols "$circ_protocols"
+
+    # initialise type specific but layer-3 generic parts
+    # needs to set:
+    #   circ_dev
+    # may override:
+    #   circ_newif
+    #   circ_alias
+    #   circ_hup_timeout
+    #   circ_deps (only extensions are permitted!)
+    #   circ_server
+    #   circ_multi
+    #   circ_multi_ifsuffix
+    if ! type $func >/dev/null 2>&1
+    then
+        eval $errvar="\"circuit setup function \$func is missing\""
+        rm $circuit_file
+        circuit_unlock $circ_id circuit_add
+        return 1
+    fi
+    if ! $func $circuit_file $errvar
+    then
+        rm $circuit_file
+        circuit_unlock $circ_id circuit_add
+        return 1
+    fi
+
+    if [ -z "$circ_dev" ]
+    then
+        rm $circuit_file
+        eval $errvar="\"interface is missing\""
+        circuit_unlock $circ_id circuit_add
+        return 2
+    else
+        # add circuit dependency if interface is created by another circuit
+        case $circ_dev in
+        {*})
+            local dep=${circ_dev#\{}
+            dep=${dep%\}}
+            if circuit_exists $dep
+            then
+                circuit_read_field $dep circ_newif
+                circuit_read_field $dep circ_multi
+                circuit_read_field $dep circ_multi_ifsuffix
+                for prot in $circ_protocols
+                do
+                    local circ_deps="$circ_deps $dep/$prot"
+                done
+            else
+                rm $circuit_file
+                eval $errvar="\"circuit $dep referenced by interface $circ_dev does not exist\""
+                circuit_unlock $circ_id circuit_add
+                return 4
+            fi
+            ;;
+        *)
+            if [ "$circ_newif" != yes ] &&
+                ! translate_net_if "$circ_dev" circ_dev
+            then
+                rm $circuit_file
+                eval $errvar="\"interface $circ_dev does not exist\""
+                circuit_unlock $circ_id circuit_add
+                return 5
+            fi
+            ;;
+        esac
+    fi
+
+    if [ $circ_hup_timeout -gt 0 ]
+    then
+        if [ "$circ_newif" != yes ]
+        then
+            rm $circuit_file
+            eval $errvar="\"dial-on-demand requires a circuit operating on a newly created interface\""
+            circuit_unlock $circ_id circuit_add
+            return 3
+        fi
+    fi
+
+    cat >> $circuit_file <<EOF
+circ_hup_timeout=$circ_hup_timeout
+circ_dev=$circ_dev
+circ_deps="${circ_deps# }"
+circ_newif=$circ_newif
+circ_origin=$circ_origin
+circ_server=$circ_server
+circ_multi=$circ_multi
+circ_multi_ifsuffix=$circ_multi_ifsuffix
+circ_class_n=${circ_class_n:-0}
+EOF
+
+    # add circuit to circuit classes
+    local idx
+    for idx in $(seq 1 ${circ_class_n:-0})
+    do
+        eval local circ_class=\$circ_class_$idx
+        circuit_add_to_class $circ_id $circ_class
+        echo "circ_class_${idx}=\"$circ_class\"" >> $circuit_file
+    done
+
+    # add circuit aliases, used e.g. by fli4lctrl
+    circuit_register_alias $circ_name $circ_id
+    if [ -n "$circ_alias" ]
+    then
+        echo "circ_alias=$circ_alias" >> $circuit_file
+        circuit_register_alias $circ_alias $circ_id
+    fi
+
+    # initially, a circuit is inactive and has a reference count of 1
+    ln -s ../all/$circ_id $circuit_state_dir/inactive/$circ_id
+    circd_ref $circ_id
+    # set initial local dial mode
+    circd_set_local_dialmode $circ_id $circ_dialmode
+
+    # attach circuit to its bundle if necessary
+    if [ -n "$circ_bundle" ]
+    then
+        circd_attach_to_bundle $circ_id "$circ_bundle"
+    fi
+
+    eval circd_revdeps_$(circd_make_varname $circ_id)=\" \"
+    circd_revdeps="$circd_revdeps$circ_id "
+
+    # perform post-processing if not part of a creation group;
+    # register circuit at its creation group otherwise
+    case $circ_creation_group in
+    '')
+        circd_circuit_postprocessing $circ_id
+        local pp_func=${circ_type//-/_}_post_processing
+        if type $pp_func >/dev/null 2>&1
+        then
+            $pp_func $circ_id
+        fi
+        ;;
+    *)
+        eval local circuits=\$circd_creation_group_${circ_creation_group}
+        eval circd_creation_group_${circ_creation_group}=\"\$circuits\$circ_id \"
+        echo "circ_creation_group=\"$circ_creation_group\"" >> $circuit_file
+        ;;
+    esac
+
+    if [ ! -f "$when_online_file.fixed" -a "$circ_default_route" = yes ]
+    then
+        echo "$circ_id" >> $when_online_file
+    fi
+
+    circuit_unlock $circ_id circuit_add
+    circd_start_queue $circ_id
+
+    if [ "$circ_up" = yes ]
+    then
+        circd_circuit_activate $circ_id
+    fi
+
+    return 0
+}
+
+# Deletes a circuit. This function may only be called by circd_unref()
+# and requires the circuit to be in the state 'deleted'.
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   0 if successful, 1 otherwise
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_circuit_remove()
+{
+    local id=$1 circ_name circ_type circ_dev circ_alias circ_bundle \
+                circ_origin circ_protocols circ_creation_group circ_deps \
+                circ_class_n circ_class
+    circuit_resolve_alias id
+    [ -n "$id" ] || return 1
+
+    circd_stop_queue $id
+
+    circuit_lock $id circd_circuit_remove
+
+    circuit_read_field $id circ_name
+    circuit_read_field $id circ_type
+    circuit_read_field $id circ_dev
+    circuit_read_field $id circ_alias
+    circuit_read_field $id circ_bundle
+    circuit_read_field $id circ_origin
+    circuit_read_field $id circ_protocols
+    circuit_read_field $id circ_creation_group
+    circuit_read_field $id circ_deps
+    circuit_read_field $id circ_class_n
+
+    local prot func="${circ_type//-/_}_circuit_remove"
+
+    # finalize type and layer-3 specific parts
+    for prot in $circ_protocols
+    do
+        local protfunc=${func}_$prot
+        if type $protfunc >/dev/null 2>&1
+        then
+            $protfunc $id
+        fi
+    done
+
+    # finalise type specific but layer-3 generic parts
+    if type $func >/dev/null 2>&1
+    then
+        $func $id
+    fi
+
+    # finalize type generic but layer-3 specific parts
+    for prot in $circ_protocols
+    do
+        local func=circuit_remove_$prot
+        if type $func >/dev/null 2>&1
+        then
+            $func $id
+        fi
+    done
+
+    # detach circuit from its bundle if necessary
+    circd_detach_from_bundle $id
+
+    # remove local dialmode and state entry
+    circd_set_local_dialmode $id ""
+    rm $circuit_state_dir/deleted/$id
+
+    # remove circuit aliases
+    circuit_deregister_alias $circ_name
+    [ -n "$circ_alias" ] && circuit_deregister_alias $circ_alias
+
+    # remove circuit file
+    rm $circuit_state_dir/all/$id
+
+    # take circuit from its creation group if necessary
+    if [ -n "$circ_creation_group" ]
+    then
+        eval local circuits=\$circd_creation_group_${circ_creation_group}
+        circuits=${circuits// $id / }
+        eval circd_creation_group_${circ_creation_group}=\"\$circuits\"
+    fi
+
+    # remove circuit from circuit classes
+    local i
+    for i in $(seq $i $circ_class_n)
+    do
+        circuit_read_field $id circ_class_$i circ_class
+        circuit_remove_from_class $id $circ_class
+    done
+
+    # remove circuit from reverse dependency lists
+    circd_revdeps=${circd_revdeps/ $id / }
+    unset circd_revdeps_$(circd_make_varname $id)
+
+    for dep in $circ_deps $circ_bundle $circ_origin
+    do
+        # remove potential layer-3 protocol
+        dep=${dep%/*}
+        circuit_resolve_alias dep
+        local depid=$(circd_make_varname $dep)
+
+        local revdepsname=circd_revdeps_$depid
+        eval local revdeps=\$$revdepsname
+        revdeps=${revdeps/ $id / }
+        eval $revdepsname=\"\$revdeps\"
+        log_info "circd_circuit_remove: removing reverse dependency $dep --> $id"
+    done
+
+    circuit_unlock $id circd_circuit_remove
+    [ -n "$circd_shutting_down" ] && circd_check_exit
+}
+
+# Starts a creation group. All circuits that are associated with a creation
+# group have their post-processing deferred to the moment when the creation
+# group ends. This is necessary e.g. for MRRU computation and firewall rule
+# installation where forward or circular references are possible.
+#
+# Input:
+#   $1 = name of variable receiving the identifier of the new creation group
+# Output:
+#   ${$1} = identifier of a new creation group
+circd_start_creation_group()
+{
+    circd_creation_groups="$circd_creation_groups$circd_next_creation_group_id "
+    eval circd_creation_group_${circd_next_creation_group_id}=\" \"
+    eval $1=\$circd_next_creation_group_id
+    circd_next_creation_group_id=$((circd_next_creation_group_id+1))
+}
+
+# Ends a creation group. Post-processing is performed for all circuits that
+# belong to this creation group.
+#
+# Input:
+#   $1 = creation group identifier
+circd_end_creation_group()
+{
+    local group=$1 circ circ_type pp_func
+    eval local circuits=\$circd_creation_group_${group}
+    for circ in $circuits
+    do
+        circd_circuit_postprocessing $circ
+        circuit_read_field $circ circ_type
+        pp_func="${circ_type//-/_}_post_processing"
+        if type $pp_func >/dev/null 2>&1
+        then
+            $pp_func $circ
+        fi
+        circuit_write_field $circ circ_creation_group ""
+    done
+    circd_creation_groups=${circd_creation_groups// $group / }
+}
+
+# Clones a multi-instance circuit. If this circuit is part of a bundle,
+# the bundle is also cloned, providing a unique bundle for the new instance.
+# This requires the circuit to be cloned to have circ_multi=yes.
+#
+# The new circuit is an identical clone of the old one with the following
+# exceptions:
+# - circ_origin is set to the old circuit
+# - circ_name is set to the old circ_name, suffixed by ":" and a number which
+#   makes the name unique
+# - circ_up and circ_dialmode are set to "yes" and "auto", respectively
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = name of a function that may adapt the settings of the circuit before
+#        it is cloned
+#        - its most important task is to change $circ_type
+#        - if empty, "-instance" is simply appended to the circuit type
+#        - note that the variables mentioned above are already changed when
+#          this function is called
+#   $3 = user-defined value passed as first argument to the adaptor function
+#        specified in $2
+#   $4 = variable receiving the circuit identifier of the new instance
+#   $5 = variable receiving an error message (if any)
+# Output:
+#   ${$4} = circuit identifier
+# Exit code:
+#   0 if successful
+#   1 if circ_multi is not "yes" for the circuit to be cloned
+#   2 if the associated bundle circuit could not be cloned (can only happen to
+#     circuits which are part of a bundle)
+#   3 if the circuit itself could not be cloned
+#   In case of any failure, $5 is set to an error message.
+# Synchronization:
+#   Takes a read lock on the circuit to be cloned.
+circd_clone()
+{
+    local _id=$1 _adaptor=$2 _adaptor_arg=$3 _res=$4 _errvar=$5
+    circuit_resolve_alias _id
+
+    local _circ_multi
+    circuit_read_field $_id circ_multi _circ_multi
+    if [ "$_circ_multi" != yes ]
+    then
+        eval $_errvar="\"circuit $_id to be cloned is not a multi-instance circuit\""
+        return 1
+    fi
+
+    local _bundle_id _circ_id _vars _varnames
+    circuit_read_field $_id circ_bundle _bundle_id
+    if [ -n "$_bundle_id" ]
+    then
+        # first clone bundle circuit
+        _vars=$(circuit_get_data $_bundle_id)
+        _varnames=$(echo "$_vars" | extract_variable_names)
+        local $_varnames
+        eval "$_vars"
+
+        # this is a clone of another bundle circuit
+        local circ_origin=$_bundle_id
+        # change circuit name to make the circuit unique
+        circuit_allocate_device $circ_name: circ_name 1
+        # start circuit automatically
+        local circ_up=yes
+        local circ_dialmode=auto
+
+        circd_circuit_add _circ_id $_errvar || return 2
+
+        # the circuit to be cloned needs to reference the bundle circuit we
+        # have just created above
+        _bundle_id=$_circ_id
+        unset $_varnames
+    fi
+
+    local _vars=$(circuit_get_data $_id)
+    local _varnames=$(echo "$_vars" | extract_variable_names)
+    local $_varnames
+    eval "$_vars"
+
+    # this is a clone of another circuit
+    local circ_origin=$_id
+    local circ_bundle=$_bundle_id
+    # change circuit name to make the circuit unique
+    circuit_allocate_device $circ_name: circ_name 1
+    # start circuit automatically
+    local circ_up=yes
+    local circ_dialmode=auto
+
+    # adapt settings above, especially the circuit type!
+    if [ -n "$_adaptor" ]
+    then
+        eval \$_adaptor "$_adaptor_arg"
+    else
+        circ_type="${circ_type}-instance"
+    fi
+
+    if ! circd_circuit_add _circ_id $_errvar
+    then
+        if [ -n "$_bundle_id" ]
+        then
+            circuit_event_id=$_bundle_id \
+            down_link_circuit_event_force_hangup= \
+            mom_unicast_message \
+                circd \
+                down_link_circuit_event >/dev/null
+        fi
+        return 3
+    fi
+
+    eval $_res=\$_circ_id
+    return 0
+}
+
+# Attaches a circuit to a bundle. This is necessary for servers where bundle
+# circuits have to be created on-the-fly.
+# Input:
+#   $1 = circuit identifier
+#   $2 = bundle circuit identifier
+# Exit code:
+#   0 if successful, 1 otherwise
+# Synchronization:
+#   Takes a read/write lock on the circuit to be attached.
+circd_attach_to_bundle()
+{
+    local idchild=$1 idbundle=$2 circ_bundle
+    circuit_resolve_alias idbundle
+
+    circuit_lock $idchild circd_attach_to_bundle
+    circuit_read_field $idchild circ_bundle
+    if [ -n "$circ_bundle" ]
+    then
+        if [ "$circ_bundle" = "$idbundle" ]
+        then
+            # no-op, attaching to bundle the circuit is already part of
+            circuit_unlock $idchild circd_attach_to_bundle
+            return 0
+        else
+            # detach from old circuit
+            circd_detach_from_bundle $idchild
+        fi
+    fi
+    circuit_write_field $idchild circ_bundle $idbundle
+    circuit_unlock $idchild circd_attach_to_bundle
+
+    sync_lock_resource bundle_db circd_attach_to_bundle
+    echo "$idbundle $idchild" >> $links_file
+    sync_unlock_resource bundle_db circd_attach_to_bundle
+    return 0
+}
+
+# Detaches a circuit from its bundle. This is necessary for servers where bundle
+# circuits have to be created (and destroyed) on-the-fly.
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   0 if successful, 1 otherwise
+# Synchronization:
+#   Takes a read/write lock on the circuit to be detached.
+circd_detach_from_bundle()
+{
+    local idchild=$1 circ_bundle
+
+    circuit_lock $idchild circd_detach_from_bundle
+    circuit_read_field $idchild circ_bundle
+    if [ -z "$circ_bundle" ]
+    then
+        circuit_unlock $idchild circd_detach_from_bundle
+        return 1
+    fi
+    circuit_write_field $idchild circ_bundle ""
+    circuit_unlock $idchild circd_detach_from_bundle
+
+    sync_lock_resource bundle_db circd_detach_from_bundle
+    sed -i "/^$circ_bundle $idchild$/d" $links_file
+    sync_unlock_resource bundle_db circd_detach_from_bundle
+
+    # handles the case when a bundle circuit has been created on the server
+    # side which never went online (e.g. because its very first link was never
+    # established successfully); in order to prevent it from lingering around
+    # in the 'ready' state we explicitly hang it up
+    if circuit_exists $circ_bundle &&
+        [ -z "$(circuit_get_bundle_links $circ_bundle)" ]
+    then
+        circd_finalize_hangup $circ_bundle
+    fi
+
+    return 0
+}
+
+# Starts a queue process serializing calls to the circuit control script of
+# some circuit.
+#
+# Input:
+#   $1 = circuit identifier
+circd_start_queue()
+{
+    local circ_id="$1"
+    rm -f /var/run/circuits/$circ_id.queue
+    {
+        mom_id="$circ_id:q"
+        mom_process="$mom_id"
+        fork_call_handlers
+        exit_trap_ignore_all_signals
+        # otherwise MOM communication does not work in child processes!
+        exit_trap_install_for_signal TERM false
+        exit_trap_add circd_notify_parent_about_child_exit
+
+        script="$mom_id[$PID]"
+        echo -n "$mom_id" > /proc/self/task/$PID/comm
+
+        mom_register_handler handle_dialup_circuit_queue_message dialup_circuit_queue_message
+        mom_register_handler handle_hangup_circuit_queue_message hangup_circuit_queue_message
+        mom_register_handler handle_quit_circuit_queue_message quit_circuit_queue_message
+        mom_register_handler handle_circuit_queue_message circuit_queue_message
+        > /var/run/circuits/$circ_id.queue
+
+        mom_run_message_loop
+    } &
+    circd_children="$circd_children$circ_id:q "
+    log_info "circd_start_queue[$circ_id]: started child $circ_id:q"
+}
+
+# Waits until the circuit's queue process serializing calls to the circuit
+# control script is ready.
+#
+# Input:
+#   $1 = circuit identifier
+circd_wait_for_queue()
+{
+    local circ_id="$1"
+
+    # wait until queue process can receive messages
+    while [ ! -f /var/run/circuits/$circ_id.queue ]
+    do
+        usleep 100000
+    done
+}
+
+# Stops a queue process serializing calls to the circuit control script of some
+# circuit.
+#
+# Note: This function may only be called when circd is shutting down or if a
+# circuit is being removed, i.e. if it can be guaranteed that
+# circd_start_queue() is not called afterwards. This is to avoid race
+# conditions.
+#
+# Input:
+#   $1 = circuit identifier
+circd_stop_queue()
+{
+    local circ_id="$1"
+    mom_unicast_message \
+        $circ_id:q quit_circuit_queue_message >/dev/null
+}
+
+#######################
+# DIAL MODE MANAGEMENT
+#######################
+
+# contains information about the current global dialmode
+dialmode_file=/var/run/circuits/dialmode.global
+
+# contains information about local dialmodes of circuits
+local_dialmodes_file=/var/run/circuits/dialmodes.local
+
+# Returns the global dial mode.
+#
+# Output:
+#   The dial mode.
+circd_get_global_dialmode()
+{
+    local old_mode=
+    read old_mode < $dialmode_file
+    echo $old_mode
+}
+
+# Stores the global dial mode.
+#
+# Input:
+#   $1 = global dial mode
+circd_set_global_dialmode()
+{
+    echo "$1" > $dialmode_file
+}
+
+# Returns the local dial mode for a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The circuit's local dial mode.
+circd_get_local_dialmode()
+{
+    sed -n "s/^$1 \(.*\)$/\1/p" $local_dialmodes_file
+}
+
+# Stores the local dial mode for a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = circuit's local dial mode
+circd_set_local_dialmode()
+{
+    sed -i "/^$1 /d" $local_dialmodes_file
+    [ -n "$2" ] && echo "$1 $2" >> $local_dialmodes_file
+}
+
+# Returns the effective dial mode for a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The dial mode.
+circd_get_effective_dialmode()
+{
+    case $(circd_get_global_dialmode):$(circd_get_local_dialmode $1) in
+    off:*|*:off)
+        echo off;;
+    manual:*|*:manual)
+        echo manual;;
+    auto:*|*:auto)
+        echo auto;;
+    *)
+        echo off;;
+    esac
+}
+
+# Returns the effective dial modes of all circuits. Each line returned is
+# formatted as follows:
+#   <circuit-id> <effective-dialmode>
+#
+# Output:
+#   A (possibly empty) list of lines formatted as described above.
+circd_get_effective_dialmodes()
+{
+    local oldeffmodes=
+    local circ
+    for circ in $(circd_get_by_state all)
+    do
+        echo -n "$circ "
+        circd_get_effective_dialmode $circ
+    done
+}
+
+###################
+# STATE MANAGEMENT
+###################
+
+# Checks whether all dependencies of a circuit are met. Each dependee needs to
+# be online.
+#
+# Input:
+#   $1... = dependencies (may be empty)
+# Exit code:
+#   0 if all dependencies are online and not being hung up, 1 otherwise
+#
+# Note: a dependency specified by a class mapped to multiple circuits is
+# fulfilled if at least one of those circuits fulfils it
+circd_check_dependencies()
+{
+    local de l3prot
+    for dep in "$@"
+    do
+        case $dep in
+        */*)
+            l3prot=${dep##*/}
+            dep=${dep%/*}
+            ;;
+        *)
+            l3prot=
+            ;;
+        esac
+
+        local circ ok=
+        for circ in $(circuit_resolve $dep)
+        do
+            # TODO: remove that code once all servers are rewritten to use
+            # the MOM instead of misusing the circuit system
+            if [ "$circ_server" = yes ]
+            then
+                local circ_other_server
+                circuit_read_field $circ circ_server circ_other_server
+                if [ "$circ_other_server" = yes ] &&
+                    circd_is_at_least_ready $circ
+                then
+                    ok=1
+                    break
+                fi
+            fi
+
+            if circd_is_online $circ $l3prot
+            then
+                ok=1
+                break
+            fi
+        done
+        [ -z "$ok" ] && return 1
+    done
+    return 0
+}
+
+# Checks whether all weak dependencies of a circuit are met. Each dependee
+# needs to be at least ready.
+#
+# Input:
+#   $1    = nonempty if dependent circuit wants to go online
+#   $2... = dependencies (may be empty)
+# Exit code:
+#   0 if all dependencies are at least ready and not being hung up, 1 otherwise
+circd_check_weak_dependencies()
+{
+    local hangup_check=$1 dep
+    shift
+    for dep in "$@"
+    do
+        circd_is_at_least_ready $dep $hangup_check || return 1
+    done
+    return 0
+}
+
+# Changes the state of a circuit. If dial mode is 'auto', any state change to
+# 'active' triggers dialing.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = new state
+# Exit code:
+#   0 if circuit exists, a nonzero value otherwise
+# Synchronization:
+#   Takes a read lock on the circuit.
+circd_change_state()
+{
+    local id=$1 oldstate= newstate=$2
+    circuit_resolve_alias id
+
+    local tgtprefix=$circuit_state_dir/$newstate
+    local state changed=
+    for state in $circuit_states
+    do
+        local srcprefix=$circuit_state_dir/$state
+        if [ -f $srcprefix/$id ]
+        then
+            oldstate="$state"
+            break
+        fi
+    done
+
+    case $oldstate in
+    deleted)
+        log_error \
+            "circd_change_state: deleted circuit $id cannot have its state changed to $newstate"
+        return 1
+        ;;
+    '')
+        oldstate=unknown
+        ln -s ../all/$id $tgtprefix/$id
+        ;;
+    *)
+        if [ "$oldstate" != "$newstate" ]
+        then
+            mv $srcprefix/$id $tgtprefix/$id
+            touch $tgtprefix/$id
+        fi
+        ;;
+    esac
+
+    if [ "$oldstate" != "$newstate" ]
+    then
+        log_info \
+            "circd_change_state: circuit $id changes state from $oldstate to $newstate"
+
+        circuit_event_id=$id \
+            state_changed_circuit_event_old_state=$oldstate \
+            state_changed_circuit_event_new_state=$newstate \
+            mom_broadcast_message state_changed_circuit_event >/dev/null
+
+        local old_router_state
+        read old_router_state < $router_state_file
+
+        case $old_router_state:$newstate in
+        offline:online)
+            if circd_router_is_online
+            then
+                echo online > $router_state_file
+                state_changed_router_event_old_state=offline \
+                    state_changed_router_event_new_state=online \
+                    mom_broadcast_message state_changed_router_event >/dev/null
+            fi
+            ;;
+        online:online)
+            ;;
+        online:*)
+            if ! circd_router_is_online
+            then
+                echo offline > $router_state_file
+                state_changed_router_event_old_state=online \
+                    state_changed_router_event_new_state=offline \
+                    mom_broadcast_message state_changed_router_event >/dev/null
+            fi
+            ;;
+        esac
+        
+        circd_handle_state_change $id $oldstate $newstate
+    fi
+
+    if [ -n "$circd_shutting_down" ]
+    then
+        if [ "$newstate" = "inactive" -o "$newstate" = "failed" ]
+        then
+            # circd_check_exit() need not be called here as circd_stop_queue()
+            # eventually leads to a child_exited_circd_event whose handler
+            # calls circd_check_exit()
+            circd_stop_queue $id
+        fi
+    fi
+    return 0
+}
+
+# Determines derived actions due to circuit state changes.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = old state
+#   $3 = new state
+circd_handle_state_change()
+{
+    local id=$1 oldstate=$2 newstate=$3
+
+    eval local dependees=\$circd_revdeps_$(circd_make_varname $id)
+
+    # take circuit classes into account
+    local circ_class_n circ_class i
+    circuit_read_field $id circ_class_n
+    for i in $(seq 1 $circ_class_n)
+    do
+        circuit_read_field $id circ_class_$i circ_class
+        eval local class_dependees=\$circd_revdeps_$(circd_make_varname $circ_class)
+        dependees="$dependees $class_dependees"
+    done
+
+    local circ_id
+    for circ_id in $id $dependees
+    do
+        local dialmode=$(circd_get_effective_dialmode $circ_id)
+        local state
+        [ "$circ_id" = "$id" ] && state=$newstate || state=$(circd_get_state $circ_id)
+
+        case $state:$dialmode in
+        active:auto)
+            circd_circuit_autodialup $circ_id
+            ;;
+        ready:*|semionline:*|online:*)
+            circd_circuit_autohangup $circ_id
+            ;;
+        esac
+    done
+}
+
+# Returns all circuits with a given state.
+#
+# Input:
+#   $1... = states
+# Output:
+#   A list of circuits belonging to passed states. May be empty.
+circd_get_by_state()
+{
+    local state
+    for state
+    do
+        for f in $circuit_state_dir/$state/*
+        do
+            [ -f $f ] && basename $f
+        done
+    done | sort -unk1.$((circuit_prefix_len+1))
+}
+
+# Returns the state of a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   The circuit state.
+# Exit code:
+#   0 if circuit exists and has a known state, a nonzero value otherwise
+circd_get_state()
+{
+    local id=$1
+    circuit_resolve_alias id
+
+    for state in $circuit_states
+    do
+        local file=$circuit_state_dir/$state/$id
+        if [ -f $file ]
+        then
+            echo $state
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Determines if a given circuit is at least ready. This is used for bundle
+# members and server circuit instances which weakly depend on their bundle
+# circuit or server circuit, respectively.
+# Note that a circuit is not considered to be ready if it is in the middle of
+# a hangup operation.
+# Input:
+#   $1 = circuit identifier
+#   $2 = If nonempty, the circuit may not be being hung up. This is necessary
+#        for dependency checks when a dependent circuit wants to go online.
+# Exit code:
+#   0 if the circuit is at least ready, 1 otherwise
+# Synchronization:
+#   Takes a read lock on the circuit.
+circd_is_at_least_ready()
+{
+    local id=$1 hangup_check=$2 res=1
+    circuit_read_lock $id circd_is_at_least_ready
+
+    case $(circd_get_state $id) in
+    ready|semionline|online)
+        if [ -n "$hangup_check" ]
+        then
+            local circ_current_operation
+            circuit_read_field $id circ_current_operation
+            [ "$circ_current_operation" != "hangup" ] && res=0
+        else
+            res=0
+        fi
+        ;;
+    esac
+
+    circuit_read_unlock $id circd_is_at_least_ready
+    return $res
+}
+
+# Determines the online state for a given circuit and a given layer-3 protocol.
+# If no layer-3 protocol is given, all configured layer-3 protocols have to be
+# up for the circuit to be online.
+# Note that a circuit is not considered to be online if it is in the middle of
+# a hangup operation.
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol (may be empty)
+# Exit code:
+#   0 if the circuit/layer-3 protocol combination is online, 1 otherwise
+# Synchronization:
+#   Takes a read lock on the circuit.
+circd_is_online()
+{
+    local id=$1 l3prot=$2 res=1 state=
+    circuit_read_lock $id circd_is_online
+
+    if [ -n "$l3prot" ]
+    then
+        circuit_is_l3prot_up $id $l3prot && state="online"
+    else
+        state=$(circd_get_state $id)
+    fi
+
+    case $state in
+    online)
+        local circ_current_operation
+        circuit_read_field $id circ_current_operation
+        [ "$circ_current_operation" != "hangup" ] && res=0
+        ;;
+    esac
+
+    circuit_read_unlock $id circd_is_online
+    return $res
+}
+
+# Determines if the router is online.
+circd_router_is_online()
+{
+    local rc=1
+    local circ_id
+    while read circ_id
+    do
+        local state=$(circd_get_state $circ_id)
+        case $state in
+        online)
+            return 0
+            ;;
+        esac
+    done < $when_online_file
+    return 1
+}
+
+# Determines the "maximum" state of all circuits. If no circuits are available,
+# "inactive" is returned.
+circd_get_composite_state()
+{
+    local rc=1
+    local state
+    for state in $circuit_states
+    do
+        if [ -n "$(circd_get_by_state $state)" ]
+        then
+            echo $state
+            return 0
+        fi
+    done
+    echo "inactive"
+    return 0
+}
+
+# Processes a change of a circuit's effective dial mode.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = old effective dial mode
+#   $3 = new effective dial mode
+circd_handle_effective_dialmode_change()
+{
+    local circ_id=$1 oldeffmode=$2 neweffmode=$3
+
+    dialmode_event_old_mode=$oldeffmode \
+        dialmode_event_new_mode=$neweffmode \
+        effective_dialmode_changed_event_id=$circ_id \
+        mom_broadcast_message effective_dialmode_changed_event >/dev/null
+
+    case $neweffmode in
+    auto)
+        # dial active circuit
+        case $(circd_get_state $circ_id) in
+        active)
+            circd_circuit_autodialup $circ_id
+            ;;
+        esac
+    ;;
+    manual)
+        # hangup ready circuit
+        case $(circd_get_state $circ_id) in
+        ready)
+            circd_circuit_hangup $circ_id active
+            ;;
+        esac
+    ;;
+    off)
+        # put circuit down
+        case $(circd_get_state $circ_id) in
+        ready|semionline|online)
+            circd_circuit_hangup $circ_id active
+            ;;
+        esac
+    ;;
+    esac
+}
+
+# Associates passed circuit with passed layer-3 protocol and changes the
+# circuit's state accordingly ("online" if all configured layer-3 protocols are
+# up, else "semionline").
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_go_online_if_possible()
+{
+    local id=$1 l3prot=$2 circ_protocols circ_protocols_up prot prot_up all_up=1
+    circuit_lock $id circd_go_online_if_possible
+
+    circuit_read_field $id circ_protocols_up
+    if [ "$circ_protocols_up" != "${circ_protocols_up/ $l3prot/}" ]
+    then
+        # layer-3 protocol is already online; this can happen as both ip(v6)-up
+        # and prefix(v6)-up call circd_go_online_if_possible() for now
+        circuit_unlock $id circd_go_online_if_possible
+        return
+    fi
+
+    circ_protocols_up="$circ_protocols_up $l3prot"
+    circuit_write_field $id circ_protocols_up "$circ_protocols_up"
+
+    circuit_read_field $id circ_protocols
+    for prot in $circ_protocols
+    do
+        local found=
+        for prot_up in $circ_protocols_up
+        do
+            if [ "$prot" = "$prot_up" ]
+            then
+                found=1
+                break
+            fi
+        done
+        if [ -z "$found" ]
+        then
+            all_up=
+            break
+        fi
+    done
+
+    if [ -n "$all_up" ]
+    then
+        # all layer-3 protocols are up, the circuit is online
+        circd_change_state $id online
+
+        # clear current dial operation if necessary
+        local circ_current_operation
+        circuit_read_field $id circ_current_operation
+        if [ "$circ_current_operation" = "dial" ]
+        then
+            circuit_write_field $id circ_current_operation ""
+        fi
+    else
+        # not all layer-3 protocols are up, the circuit is semionline
+        circd_change_state $id semionline
+    fi
+
+    circuit_unlock $id circd_go_online_if_possible
+}
+
+# Disssociates passed circuit from passed layer-3 protocol and changes the
+# circuit's state accordingly ("semionline" if at least one other layer-3
+# protocol is up yet, else the circuit is hung up).
+# Input:
+#   $1 = circuit identifier
+#   $2 = layer-3 protocol
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_go_offline_if_necessary()
+{
+    local id=$1 l3prot=$2 circ_protocols circ_protocols_up
+    circuit_lock $id circd_go_offline_if_necessary
+
+    circuit_read_field $id circ_protocols_up
+    if [ "$circ_protocols_up" = "${circ_protocols_up/ $l3prot/}" ]
+    then
+        # layer-3 protocol is already offline; this can happen as both
+        # ip(v6)-down and prefix(v6)-down call circd_go_offline_if_necessary()
+        # for now
+        circuit_unlock $id circd_go_offline_if_necessary
+        return
+    fi
+
+    circ_protocols_up="${circ_protocols_up/ $l3prot/}"
+    circuit_write_field $id circ_protocols_up "$circ_protocols_up"
+
+    if [ -z "$circ_protocols_up" ]
+    then
+        # all layer-3 protocols are down, finish hanging up circuit
+        circd_finalize_hangup $id
+    else
+        # not all layer-3 protocols are down, the circuit is semionline
+        circd_change_state $id semionline
+    fi
+
+    circuit_unlock $id circd_go_offline_if_necessary
+}
+
+# Initiates dialling up a circuit by calling the corresponding circuit control
+# script.
+#
+# Input:
+#   $1 = circuit identifier
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_initiate_dialup()
+{
+    local circ_id=$1
+
+    circuit_lock $circ_id circd_initiate_dialup
+    circd_change_state $circ_id ready
+    circuit_write_field $circ_id circ_current_operation "dial"
+    circuit_unlock $circ_id circd_initiate_dialup
+
+    circd_wait_for_queue $circ_id
+    mom_unicast_message \
+        $circ_id:q dialup_circuit_queue_message >/dev/null
+}
+
+# Initiates hanging up a circuit by calling the corresponding circuit control
+# script.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = target state (typically "active" for "hangup" and "inactive" for
+#        "down")
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_initiate_hangup()
+{
+    local circ_id=$1 hangup_state=$2
+
+    circuit_lock $circ_id circd_initiate_hangup
+    circuit_write_field $circ_id circ_current_operation "hangup"
+    circuit_write_field $circ_id circ_hangup_state $hangup_state
+    circuit_unlock $circ_id circd_initiate_hangup
+
+    circd_wait_for_queue $circ_id
+    mom_unicast_message \
+        $circ_id:q hangup_circuit_queue_message >/dev/null
+}
+
+# Finalizes hanging up a circuit. This function is called indirectly from
+# ip-down/ipv6-down/link-down.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = If empty and this is a daemon-controlled circuit, finalizing the
+#        circuit hangup is delayed until the controlling daemon terminates. If
+#        nonempty, hanging up the circuit is finalized immediately.
+# Synchronization:
+#   Takes a read/write lock on the circuit.
+circd_finalize_hangup()
+{
+    local id=$1 force=$2 circ_force_hangup circ_protocols_up
+
+    circuit_lock $id circd_finalize_hangup
+
+    # merge the "force hangup" flag
+    circuit_read_field $id circ_force_hangup
+    : ${force:=$circ_force_hangup}
+    circuit_write_field $id circ_force_hangup $force
+
+    circuit_read_field $id circ_protocols_up
+    if [ -n "$circ_protocols_up" ]
+    then
+        # there are still layer-3 procotols running
+        # we assume we will be called again when all these protocols are down
+        circuit_unlock $id circd_finalize_hangup
+        return 0
+    fi
+
+    local pid=$(circd_daemon_get_hangup_pid $id)
+    if [ -n "$pid" -a -z "$force" ]
+    then
+        # delay hangup
+        circuit_unlock $id circd_finalize_hangup
+        return 0
+    fi
+
+    local circ_origin
+    circuit_read_field $id circ_origin
+
+    local state=$(circd_get_state $id)
+    if [ "$state" != "deleted" ]
+    then
+        # mark circuit clones (i.e. circuits created on-the-fly) as deleted;
+        # if the last reference to it is dropped, the circuit will be removed
+        if [ -n "$circ_origin" ]
+        then
+            circd_change_state $id deleted
+        else
+            local circ_hangup_state
+            circuit_read_field $id circ_hangup_state
+            : ${circ_hangup_state:=active}
+
+            case $state:$circ_hangup_state in
+            inactive:active|failed:active|active:active)
+                # nothing to do
+                ;;
+            *)
+                circd_change_state $id $circ_hangup_state
+                ;;
+            esac
+        fi
+
+        # clear current hangup operation if necessary
+        local circ_current_operation
+        circuit_read_field $id circ_current_operation
+        if [ "$circ_current_operation" = "hangup" ]
+        then
+            circuit_write_field $id circ_current_operation ""
+        fi
+    fi
+
+    # clear "force hangup" flag
+    circuit_write_field $id circ_force_hangup ""
+    # clear hangup state
+    circuit_write_field $id circ_hangup_state ""
+
+    # deregister daemon if necessary (this happens if a daemon terminates by
+    # itself, calling this function indirectly from within ip*-down/link-down)
+    circd_daemon_hung_up $id
+
+    # if hanging up a circuit clone (i.e. circuits created on-the-fly), the
+    # circuit's reference counter is decremented; if it reaches zero, the
+    # circuit will be removed => hung up circuit clones will be eventually
+    # removed from the list of circuits
+    if [ -n "$circ_origin" ]
+    then
+        circd_unref $id
+    fi
+
+    circuit_unlock $id circd_finalize_hangup
+}
+
+# Activates a circuit.
+#
+# Input:
+#   $1 = circuit identifier
+# Exit code:
+#   0 if activation succeeded, a non-zero value otherwise
+circd_circuit_activate()
+{
+    local id=$1
+    circd_change_state $id active
+}
+
+# Dials a circuit if possible, i.e. if dependencies are fulfilled. This
+# function assumes the circuit's effective dial mode is "auto" and the
+# circuit's state is "active".
+#
+# Input:
+#   $1 = circuit identifier
+circd_circuit_autodialup()
+{
+    local id=$1 circ_deps circ_bundle circ_origin circ_server
+
+    circuit_read_lock $id circd_circuit_autodialup
+    circuit_read_field $id circ_deps
+    circuit_read_field $id circ_bundle
+    circuit_read_field $id circ_origin
+    circuit_read_field $id circ_server
+    circuit_read_unlock $id circd_circuit_autodialup
+
+    if circd_check_dependencies $circ_deps &&
+        circd_check_weak_dependencies 1 $circ_bundle $circ_origin
+    then
+        log_info "circd_circuit_autodialup: dialling up $id"
+        circd_initiate_dialup $id
+    fi
+}
+
+# Hangs up a circuit if necessary, i.e. if dependencies are not fulfilled. This
+# function assumes the circuit's state is "ready", "semionline" or "online".
+#
+# Input:
+#   $1 = circuit identifier
+circd_circuit_autohangup()
+{
+    local id=$1 circ_deps circ_bundle circ_origin circ_server
+
+    circuit_read_lock $id circd_circuit_autohangup
+    circuit_read_field $id circ_deps
+    circuit_read_field $id circ_bundle
+    circuit_read_field $id circ_origin
+    circuit_read_field $id circ_server
+    circuit_read_unlock $id circd_circuit_autohangup
+
+    if ! circd_check_dependencies $circ_deps ||
+        ! circd_check_weak_dependencies "" $circ_bundle $circ_origin
+    then
+        circd_circuit_hangup $id active
+    fi
+}
+
+# Hangs up a circuit if necessary. This function assumes the circuit's state is
+# "ready", "semionline" or "online". It does not check the circuit's
+# dependencies.
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = target state for the circuit after hangup
+circd_circuit_hangup()
+{
+    local id=$1 target_state=$2 circ_current_operation
+
+    circuit_read_field $id circ_current_operation
+    case $circ_current_operation in
+    hangup)
+        # circuit is already being hung up, do nothing
+        ;;
+    *)
+        log_info "circd_circuit_hangup: hanging up $id"
+        circd_initiate_hangup $id $target_state
+        ;;
+    esac
+}
+
+####################
+# DAEMON MANAGEMENT
+####################
+
+# Associates a daemon with a circuit. If either the circuit or the daemon are
+# already part of a registration, the old registration is removed. It follows
+# that at most one daemon can be associated with at most one circuit at any
+# time.
+# Input:
+#   $1 = circuit identifier
+#   $2 = daemon PID
+circd_daemon_register()
+{
+    local id=$1 pid=$2
+    circuit_resolve_alias id
+    sync_lock_resource daemons_db circd_daemon_register
+    sed -i "/^$id /d;/^.* $pid$/d" $daemons_file
+    echo "$id TERM $pid" >> $daemons_file
+    echo "$id HANGUP $pid" >> $daemons_file
+    sync_unlock_resource daemons_db circd_daemon_register
+}
+
+# Returns the PID for a daemon-controlled circuit in the context of circuit
+# hangup.
+# Input:
+#   $1 = circuit identifier
+# Output:
+#   the daemon PID or nothing if this circuit is not controlled by a daemon or
+#   if the circuit has already been hung up
+circd_daemon_get_hangup_pid()
+{
+    local id=$1
+    circuit_resolve_alias id
+    sync_lock_resource daemons_db circd_daemon_get_hangup_pid
+    sed -n "s|^$id HANGUP \([0-9]\+\)$|\1|p" $daemons_file
+    sync_unlock_resource daemons_db circd_daemon_get_hangup_pid
+}
+
+# Disassociates a daemon from a circuit because the circuit has been hung up.
+# Input:
+#   $1 = circuit identifier
+circd_daemon_hung_up()
+{
+    local id=$1
+    circuit_resolve_alias id
+    sync_lock_resource daemons_db circd_daemon_hung_up
+    sed -i "/^$id HANGUP [0-9]\+$/d" $daemons_file
+    sync_unlock_resource daemons_db circd_daemon_hung_up
+    # remember time of hangup
+    # note that we do not have to acquire the circuit lock as we are called by
+    # circd_finalize_hangup() which already holds the lock
+    circuit_write_field $id circ_hangup_time $(date +%s)
+}
+
+# Disassociates a daemon from a circuit because the daemon has terminated,
+# Input:
+#   $1 = daemon PID
+circd_daemon_terminated()
+{
+    local pid=$1
+    sync_lock_resource daemons_db circd_daemon_terminated
+    sed -i "/^\([^ ]\+\) TERM $pid$/d" $daemons_file
+    sync_unlock_resource daemons_db circd_daemon_terminated
+}
+
+# Hangs up a daemon-controlled circuit if the circuit has not been hung up yet.
+# Input:
+#   $1 = daemon PID
+circd_daemon_hangup()
+{
+    local pid=$1
+    sync_lock_resource daemons_db circd_daemon_hangup
+    local id=$(sed -n "s|^\([^ ]\+\) HANGUP $pid$|\1|p" $daemons_file)
+    [ -n "$id" ] && sed -i "/^$id HANGUP $pid$/d" $daemons_file
+    sync_unlock_resource daemons_db circd_daemon_hangup
+    [ -n "$id" ] && circd_finalize_hangup $id
+}
+
+# Terminates the daemon controlling a circuit if not already done so.
+# Input:
+#   $1 = circuit identifier
+#   $2 = (optional) signal name, e.g. HUP. If nothing is passed, TERM is used.
+# Output:
+#   the daemon PID or nothing if no daemon has been associated with passed
+#   circuit
+circd_daemon_terminate()
+{
+    local id=$1
+    circuit_resolve_alias id
+    sync_lock_resource daemons_db circd_daemon_terminate
+    local pid=$(sed -n "s|^$id TERM \([0-9]\+\)$|\1|p" $daemons_file)
+    [ -n "$pid" ] && sed -i "/^$id TERM $pid$/d" $daemons_file
+    sync_unlock_resource daemons_db circd_daemon_terminate
+    if [ -n "$pid" ]
+    then
+        kill -${2:-TERM} $pid
+        echo "$pid"
+    fi
+}
+
+# Returns 0 if passed circuit is configured for dial-on-demand, a non-zero
+# value otherwise.
+# Input:
+#   $1 = circuit identifier
+circd_is_dial_on_demand()
+{
+    local id=$1
+    local hup_timeout=0
+    circuit_read_field $id circ_hup_timeout
+    [ $circ_hup_timeout -gt 0 -a "$(circd_get_effective_dialmode $id)" = auto ]
+    local rc=$?
+    return $rc
+}
+
+# Adds routes needed for dial-on-demand circuits.
+# Note that there is no equivalent function for route removal as dial-on-demand
+# circuits require a controlling daemon using newly created interfaces, so
+# the routes will disappear anyway when the interface is deleted by the daemon.
+# Input:
+#   $1 = circuit identifier
+#   $2 = protocol (4 or 6)
+# Synchronization:
+#   Takes a read lock on the circuit.
+circd_add_dial_on_demand_routes()
+{
+    local id=$1 circ_bundle circ_dev circ_nets_n
+    circuit_resolve_alias id
+
+    # dial-on-demand circuits that are part of a bundle do not have any
+    # associated networks as they are configured at bundle level
+    circuit_read_field $id circ_bundle
+    if [ -n "$circ_bundle" ]
+    then
+        circuit_resolve_alias circ_bundle
+        id=$circ_bundle
+    fi
+
+    circuit_read_lock $id circd_add_dial_on_demand_routes
+    circuit_read_field $id circ_dev
+    circuit_read_field $id circ_nets_ipv${2}_n circ_nets_n
+
+    sync_lock_resource routes_db circd_add_dial_on_demand_routes
+    local i net
+    for i in $(seq 1 ${circ_nets_n:-0})
+    do
+        circuit_read_field $id circ_nets_ipv${2}_$i net
+        ip -$2 route append $net dev $circ_dev
+    done
+    sync_unlock_resource routes_db circd_add_dial_on_demand_routes
+    circuit_read_unlock $id circd_add_dial_on_demand_routes
+}
+
+# Circuit daemon wrapper. Starts a daemon, waits for it to exit, sets the
+# correct state after termination and takes care of the PID file. Note that
+# the script assumes that the daemon does not fork itself into the background!
+#
+# Input:
+#   $1 = circuit identifier
+#   $2 = name of the daemon
+#   $3 = name of cleanup function to be called when daemon exits (may be empty);
+#        please be aware that the function is called in the context of the
+#        daemon wrapper, not in the context of circd
+#   $4... = daemon arguments
+# Exit code:
+#   The exit code of the daemon.
+# Synchronization:
+#   Takes a read lock on the circuit while installing dial-on-demand routes.
+circd_daemon_wrapper()
+{
+    local id=$1 daemon=$2 cleanup_func=$3
+    shift 3
+
+    # OK, this is a bit tricky: It can happen that a server daemon wants
+    # to call a daemon to handle an incoming connection, and that the
+    # server daemon wants to communicate with the connection daemon through
+    # stdin/stdout using a master/slave PTY pair (e.g. pptpd does this to
+    # communicate with the pppd it launches for each incoming PPTP
+    # connection). In this case, the wrapper calls fdsend to pass the file
+    # descriptors and sets circ_fdpass to "yes". We have to read circ_fdpass
+    # here and if set to "yes", call fdrecv as wrapper around the daemon.
+    local circ_fdpass prog
+    circuit_read_field $id circ_fdpass
+    if [ "$circ_fdpass" = yes ]
+    then
+        local circ_fdpass_path=$(circuit_build_fdpass_path $id)
+        prog="fdrecv $circ_fdpass_path 30 $(type -p $daemon)"
+    else
+        prog="$daemon"
+    fi
+
+    circd_ref $id
+
+    (
+        mom_id="$id:d"
+        mom_process="$mom_id"
+        fork_call_handlers
+        exit_trap_ignore_all_signals
+        # otherwise MOM communication does not work in child processes!
+        exit_trap_install_for_signal TERM false
+        exit_trap_add circd_notify_parent_about_child_exit
+
+        script="$mom_id[$PID]"
+        echo -n "$mom_id" > /proc/self/task/$PID/comm
+
+        log_info "starting $daemon $*..."
+        mknod $circd_fifo_dir/$id p
+        logmsg "$script" $circuit_logfacility.notice < $circd_fifo_dir/$id &
+        $prog "$@" >$circd_fifo_dir/$id 2>&1 &
+        local pid=$!
+        circd_daemon_register $id $pid
+        > /var/run/circuits/$id.daemon
+
+        # establish dial-on-demand routes if necessary
+        if circd_is_dial_on_demand $id
+        then
+            # let the daemon create the necessary device
+            sleep 1
+            circuit_read_lock $id "$script"
+            circd_add_dial_on_demand_routes $id 4
+            circd_add_dial_on_demand_routes $id 6
+            circuit_read_unlock $id "$script"
+        fi
+
+        log_info "waiting for $daemon with PID $pid"
+
+        wait $pid
+        local rc=$?
+        rm -f $circd_fifo_dir/$id
+
+        log_info "$daemon died with exit code $rc, asking circd to clean up"
+
+        if [ -n "$cleanup_func" ]
+        then
+            if type $cleanup_func >/dev/null 2>&1
+            then
+                $cleanup_func $id $rc
+            else
+                log_error \
+                    "$id: cleanup function \"$cleanup_func\" does not exist"
+            fi
+        fi
+
+        circuit_event_id=$id \
+        daemon_circuit_event_pid=$pid \
+        daemon_exited_circuit_event_status_code=$rc \
+            mom_unicast_message \
+                circd \
+                daemon_exited_circuit_event >/dev/null
+    ) &
+    circd_children="$circd_children$id:d "
+    log_info "circd_daemon_wrapper[$id]: started child $id:d"
+
+    # wait until daemon has been started and registered
+    while [ ! -f /var/run/circuits/$id.daemon ]
+    do
+        sleep 1
+    done
+    rm -f /var/run/circuits/$id.daemon
+
+    return 0
+}
+
+####################################
+# EVENT HANDLERS: LIFETIME MESSAGES
+####################################
+
+handle_create_circuit_message()
+{
+    log_info \
+        "handle_create_circuit_message($message_id#$message_sender:$message_type): type=$create_circuit_message_type"
+
+    if [ -z "$circd_shutting_down" ]
+    then
+        local _var
+        for _var
+        do
+            local _newvar=circ_${_var#create_circuit_message_}
+            eval local $_newvar=\$$_var
+        done
+
+        local _id= _errmsg=
+        if circd_circuit_add _id _errmsg; then
+            log_info \
+                "handle_create_circuit_message($message_id#$message_sender:$message_type): ACK, id=$_id"
+            ack_create_circuit_reply_message_id=$_id reply_message_for=$message_id \
+                mom_unicast_message $message_sender ack_create_circuit_reply_message >/dev/null
+        else
+            log_info \
+                "handle_create_circuit_message($message_id#$message_sender:$message_type): NAK, errmsg=$_errmsg"
+            nak_create_circuit_reply_message_errmsg=$_errmsg reply_message_for=$message_id \
+                mom_unicast_message $message_sender nak_create_circuit_reply_message >/dev/null
+        fi
+    else
+        log_info \
+            "handle_create_circuit_message($message_id#$message_sender:$message_type): NAK, errmsg=$circd_shutting_down_message"
+        nak_create_circuit_reply_message_errmsg=$circd_shutting_down_message reply_message_for=$message_id \
+            mom_unicast_message $message_sender nak_create_circuit_reply_message >/dev/null
+    fi
+}
+
+handle_clone_circuit_message()
+{
+    log_info \
+        "handle_clone_circuit_message($message_id#$message_sender:$message_type): id=$clone_circuit_message_id adaptor=$clone_circuit_message_adaptor adaptor_arg=$clone_circuit_message_adaptor_arg"
+
+    if [ -z "$circd_shutting_down" ]
+    then
+        local _clone_id= _clone_errmsg=
+        if circd_clone $clone_circuit_message_id "$clone_circuit_message_adaptor" "$clone_circuit_message_adaptor_arg" _clone_id _clone_errmsg
+        then
+            log_info \
+                "handle_clone_circuit_message($message_id#$message_sender:$message_type): ACK, id=$_clone_id"
+            ack_clone_circuit_reply_message_id=$_clone_id reply_message_for=$message_id \
+                mom_unicast_message $message_sender ack_clone_circuit_reply_message >/dev/null
+        else
+            log_info \
+                "handle_clone_circuit_message($message_id#$message_sender:$message_type): NAK, errmsg=$_clone_errmsg"
+            nak_clone_circuit_reply_message_errmsg=$_clone_errmsg reply_message_for=$message_id \
+                mom_unicast_message $message_sender nak_clone_circuit_reply_message >/dev/null
+        fi
+    else
+        log_info \
+            "handle_clone_circuit_message($message_id#$message_sender:$message_type): NAK, errmsg=$circd_shutting_down_message"
+        nak_clone_circuit_reply_message_errmsg=$circd_shutting_down_message reply_message_for=$message_id \
+            mom_unicast_message $message_sender nak_clone_circuit_reply_message >/dev/null
+    fi
+}
+
+# TODO: deactivate circuit with target state "deleted"
+handle_destroy_circuit_message()
+{
+    log_info \
+        "handle_destroy_circuit_message($message_id#$message_sender:$message_type): id=$destroy_circuit_message_id"
+    circd_circuit_remove $destroy_circuit_message_id
+}
+
+handle_start_creation_group_circuit_message()
+{
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_start_creation_group_circuit_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    local group=
+    circd_start_creation_group group
+    start_creation_group_circuit_reply_message_id=$group reply_message_for=$message_id \
+        mom_unicast_message $message_sender start_creation_group_circuit_reply_message >/dev/null
+}
+
+handle_end_creation_group_circuit_message()
+{
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_end_creation_group_circuit_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    circd_end_creation_group $end_creation_group_circuit_message_id
+}
+
+#####################################
+# EVENT HANDLERS: DIAL MODE MESSAGES
+#####################################
+
+handle_get_global_dialmode_message()
+{
+    local _mode=$(circd_get_global_dialmode)
+    get_global_dialmode_reply_message_mode=$_mode reply_message_for=$message_id \
+        mom_unicast_message $message_sender get_global_dialmode_reply_message >/dev/null
+}
+
+handle_set_global_dialmode_message()
+{
+    log_info \
+        "handle_set_global_dialmode_message($message_id#$message_sender:$message_type): mode=$set_global_dialmode_message_mode"
+
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_set_global_dialmode_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    local _old_mode=$(circd_get_global_dialmode) \
+        _oldeffmodes="$(circd_get_effective_dialmodes)"
+
+    circd_set_global_dialmode $set_global_dialmode_message_mode
+
+    dialmode_event_old_mode=$_old_mode \
+        dialmode_event_new_mode=$set_global_dialmode_message_mode \
+        mom_broadcast_message global_dialmode_changed_event >/dev/null
+
+    echo "$_oldeffmodes" | while read _circ _oldeffmode
+    do
+        local _neweffmode=$(circd_get_effective_dialmode $_circ)
+        if [ "$_oldeffmode" != "$_neweffmode" ]
+        then
+            log_info \
+                "handle_set_global_dialmode_message($message_id#$message_sender:$message_type): effective dial mode changed for circuit $_circ from $_oldeffmode to $_neweffmode"
+            circd_handle_effective_dialmode_change \
+                $_circ $_oldeffmode $_neweffmode
+        fi
+    done
+}
+
+handle_get_local_dialmode_message()
+{
+    local _mode=$(circd_get_local_dialmode $get_local_dialmode_message_id)
+    get_local_dialmode_reply_message_id=$get_local_dialmode_message_id \
+        get_local_dialmode_reply_message_mode=$_mode \
+        reply_message_for=$message_id \
+        mom_unicast_message $message_sender get_local_dialmode_reply_message >/dev/null
+}
+
+handle_set_local_dialmode_message()
+{
+    log_info \
+        "handle_set_local_dialmode_message($message_id#$message_sender:$message_type): id=$set_local_dialmode_message_id mode=$set_local_dialmode_message_mode"
+
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_set_local_dialmode_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    local _old_mode=$(circd_get_local_dialmode $set_local_dialmode_message_id) \
+        _oldeffmode=$(circd_get_effective_dialmode $set_local_dialmode_message_id)
+
+    circd_set_local_dialmode $set_local_dialmode_message_id $set_local_dialmode_message_mode
+
+    dialmode_event_old_mode=$_old_mode \
+        dialmode_event_new_mode=$set_local_dialmode_message_mode \
+        local_dialmode_changed_event_id=$set_local_dialmode_message_id \
+        mom_broadcast_message local_dialmode_changed_event >/dev/null
+
+    local _neweffmode=$(circd_get_effective_dialmode $set_local_dialmode_message_id)
+    if [ "$_oldeffmode" != "$_neweffmode" ]
+    then
+        log_info \
+            "handle_set_local_dialmode_message($message_id#$message_sender:$message_type): effective dial mode changed for circuit $set_local_dialmode_message_id from $_oldeffmode to $_neweffmode"
+        circd_handle_effective_dialmode_change \
+            $set_local_dialmode_message_id $_oldeffmode $_neweffmode
+    fi
+}
+
+handle_get_effective_dialmode_message()
+{
+    local _mode=$(circd_get_effective_dialmode $get_effective_dialmode_message_id)
+    get_effective_dialmode_reply_message_id=$get_effective_dialmode_message_id \
+        get_effective_dialmode_reply_message_mode=$_mode \
+        reply_message_for=$message_id \
+        mom_unicast_message $message_sender get_effective_dialmode_reply_message >/dev/null
+}
+
+handle_dialmode_message()
+{
+    log_warn \
+        "handle_dialmode_message($message_id#$message_sender:$message_type): received but ignored"
+}
+
+#################################
+# EVENT HANDLERS: STATE MESSAGES
+#################################
+
+handle_get_by_state_circuit_message()
+{
+    local _circuits=$(circd_get_by_state $get_by_state_circuit_message_states)
+    get_by_state_circuit_reply_message_states=$get_by_state_circuit_message_states \
+        get_by_state_circuit_reply_message_circuits=$_circuits \
+        reply_message_for=$message_id \
+        mom_unicast_message $message_sender get_by_state_circuit_reply_message >/dev/null
+}
+
+handle_get_state_circuit_message()
+{
+    local _state=$(circd_get_state $get_state_circuit_message_id)
+    get_state_circuit_reply_message_id=$get_state_circuit_message_id \
+        get_state_circuit_reply_message_state=$_state \
+        reply_message_for=$message_id \
+        mom_unicast_message $message_sender get_state_circuit_reply_message >/dev/null
+}
+
+handle_get_all_states_circuit_message()
+{
+    local _circ _i=1
+    for _circ in $(circd_get_by_state all)
+    do
+        eval local get_all_states_circuit_reply_message_circuit_${_i}_id=\$_circ
+        local get_all_states_circuit_reply_message_circuit_${_i}_name \
+            get_all_states_circuit_reply_message_circuit_${_i}_alias \
+            get_all_states_circuit_reply_message_circuit_${_i}_type \
+            get_all_states_circuit_reply_message_circuit_${_i}_dev \
+            get_all_states_circuit_reply_message_circuit_${_i}_class_n \
+            get_all_states_circuit_reply_message_circuit_${_i}_deps \
+            get_all_states_circuit_reply_message_circuit_${_i}_state \
+            get_all_states_circuit_reply_message_circuit_${_i}_local_dialmode \
+            get_all_states_circuit_reply_message_circuit_${_i}_effective_dialmode
+
+        circuit_read_field $_circ circ_name get_all_states_circuit_reply_message_circuit_${_i}_name
+        circuit_read_field $_circ circ_alias get_all_states_circuit_reply_message_circuit_${_i}_alias
+        circuit_read_field $_circ circ_type get_all_states_circuit_reply_message_circuit_${_i}_type
+        circuit_read_field $_circ circ_dev get_all_states_circuit_reply_message_circuit_${_i}_dev
+        circuit_read_field $_circ circ_deps get_all_states_circuit_reply_message_circuit_${_i}_deps
+        eval get_all_states_circuit_reply_message_circuit_${_i}_state="\$(circd_get_state \$_circ)"
+        eval get_all_states_circuit_reply_message_circuit_${_i}_local_dialmode="\$(circd_get_local_dialmode \$_circ)"
+        eval get_all_states_circuit_reply_message_circuit_${_i}_effective_dialmode="\$(circd_get_effective_dialmode \$_circ)"
+
+        local circ_class_n _j
+        circuit_read_field $_circ circ_class_n
+        eval get_all_states_circuit_reply_message_circuit_${_i}_class_n=\$circ_class_n
+        for _j in $(seq 1 $circ_class_n)
+        do
+            local get_all_states_circuit_reply_message_circuit_${_i}_class_${_j}
+            circuit_read_field $_circ circ_class_$_j get_all_states_circuit_reply_message_circuit_${_i}_class_${_j}
+        done
+
+        _i=$((_i+1))
+    done
+    local get_all_states_circuit_reply_message_circuit_n=$((_i-1))
+    reply_message_for=$message_id \
+    mom_unicast_message \
+        $message_sender \
+        get_all_states_circuit_reply_message >/dev/null
+}
+
+handle_is_online_circuit_message()
+{
+    log_info \
+        "handle_is_online_circuit_message($message_id#$message_sender:$message_type): id=$is_online_circuit_message_id l3prot=$is_online_circuit_message_l3prot"
+
+    if circd_is_online \
+            $is_online_circuit_message_id \
+            $is_online_circuit_message_l3prot; then
+        log_info \
+            "handle_is_online_circuit_message($message_id#$message_sender:$message_type): ACK"
+        is_online_circuit_reply_message_id=$is_online_circuit_message_id \
+        is_online_circuit_reply_message_l3prot=$is_online_circuit_message_l3prot \
+        reply_message_for=$message_id \
+            mom_unicast_message $message_sender ack_is_online_circuit_reply_message >/dev/null
+    else
+        log_info \
+            "handle_is_online_circuit_message($message_id#$message_sender:$message_type): NAK"
+        is_online_circuit_reply_message_id=$is_online_circuit_message_id \
+        is_online_circuit_reply_message_l3prot=$is_online_circuit_message_l3prot \
+        reply_message_for=$message_id \
+            mom_unicast_message $message_sender nak_is_online_circuit_reply_message >/dev/null
+    fi
+}
+
+###########################################
+# EVENT HANDLERS: GENERAL CIRCUIT MESSAGES
+###########################################
+
+handle_activate_circuit_message()
+{
+    log_info \
+        "handle_activate_circuit_message($message_id#$message_sender:$message_type): id=$activate_circuit_message_id"
+
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_activate_circuit_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    local circ_id=$activate_circuit_message_id
+    if ! circuit_exists $circ_id
+    then
+        log_error \
+            "handle_activate_circuit_message($message_id#$message_sender:$message_type): circuit $circ_id does not exist"
+        return 1
+    fi
+
+    circuit_resolve_alias circ_id
+    local state=$(circd_get_state $circ_id)
+
+    case $state in
+    deleted)
+        ;;
+    inactive|failed)
+        circd_circuit_activate $circ_id
+        ;;
+    esac
+}
+
+handle_dialup_circuit_message()
+{
+    log_info \
+        "handle_dialup_circuit_message($message_id#$message_sender:$message_type): id=$dialup_circuit_message_id"
+
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_dialup_circuit_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    local circ_id=$dialup_circuit_message_id circ_dev
+    if ! circuit_exists $circ_id
+    then
+        log_error \
+            "handle_dialup_circuit_message($message_id#$message_sender:$message_type): circuit $circ_id does not exist"
+        return 1
+    fi
+
+    circuit_resolve_alias circ_id
+    local state=$(circd_get_state $circ_id)
+    local dialmode=$(circd_get_effective_dialmode $circ_id)
+    circuit_read_field $circ_id circ_dev
+
+    case $state:$dialmode in
+    deleted:*)
+        log_error "$circ_id[$circ_dev]: cannot dial using a deleted circuit"
+        return 1
+    ;;
+    inactive:*|failed:*)
+        log_error "$circ_id[$circ_dev]: cannot dial using an inactive circuit"
+        return 1
+    ;;
+    active:off)
+        log_error "$circ_id[$circ_dev]: cannot dial as dialmode is 'off'"
+        return 1
+    ;;
+    active:*)
+        local circ_deps circ_bundle circ_origin circ_server
+        circuit_read_field $circ_id circ_deps
+        circuit_read_field $circ_id circ_bundle
+        circuit_read_field $circ_id circ_origin
+        circuit_read_field $circ_id circ_server
+
+        if circd_check_dependencies $circ_deps &&
+            circd_check_weak_dependencies 1 $circ_bundle $circ_origin
+        then
+            circd_initiate_dialup $circ_id
+        fi
+    ;;
+    esac
+}
+
+# $1 = name calling function
+# $2 = circuit identifier
+# $3 = desired target state
+handle_hangup_or_deactivate_circuit_message()
+{
+    local caller=$1 circ_id=$2 target_state=$3 msg_type=$4
+    if ! circuit_exists $circ_id
+    then
+        log_error \
+            "$caller($message_id#$message_sender:$message_type): circuit $circ_id does not exist"
+        return 1
+    fi
+
+    circuit_resolve_alias circ_id
+    local state=$(circd_get_state $circ_id)
+
+    case $state in
+    ready|semionline|online)
+        circd_circuit_hangup $circ_id $target_state
+        ;;
+    deleted)
+        ;;
+    *)
+        circuit_write_field $circ_id circ_hangup_state $target_state
+        circd_finalize_hangup $circ_id
+        ;;
+    esac
+}
+
+handle_hangup_circuit_message()
+{
+    log_info \
+        "handle_hangup_circuit_message($message_id#$message_sender:$message_type): id=$hangup_circuit_message_id"
+
+    handle_hangup_or_deactivate_circuit_message \
+        "handle_hangup_circuit_message" \
+        $hangup_circuit_message_id \
+        active \
+        hangup_circuit_message
+}
+
+handle_deactivate_circuit_message()
+{
+    log_info \
+        "handle_deactivate_circuit_message($message_id#$message_sender:$message_type): id=$deactivate_circuit_message_id"
+
+    handle_hangup_or_deactivate_circuit_message \
+        "handle_deactivate_circuit_message" \
+        $deactivate_circuit_message_id \
+        inactive \
+        deactivate_circuit_message
+}
+
+handle_fail_circuit_message()
+{
+    log_info \
+        "handle_fail_circuit_message($message_id#$message_sender:$message_type): id=$fail_circuit_message_id"
+
+    handle_hangup_or_deactivate_circuit_message \
+        "handle_fail_circuit_message" \
+        $fail_circuit_message_id \
+        failed \
+        fail_circuit_message
+}
+
+handle_start_daemon_circuit_message()
+{
+    log_info \
+        "handle_start_daemon_circuit_message($message_id#$message_sender:$message_type): id=$start_daemon_circuit_message_id daemon=$start_daemon_circuit_message_daemon daemon_args=$start_daemon_circuit_message_daemon_args cleanup_func=$start_daemon_circuit_message_cleanup_func"
+
+    if [ -n "$circd_shutting_down" ]
+    then
+        log_error \
+            "handle_start_daemon_circuit_message($message_id#$message_sender:$message_type): $circd_shutting_down_message"
+        return 1
+    fi
+
+    if ! circuit_exists $start_daemon_circuit_message_id
+    then
+        log_error \
+            "handle_start_daemon_circuit_message($message_id#$message_sender:$message_type): circuit $start_daemon_circuit_message_id does not exist"
+        return 1
+    fi
+
+    eval circd_daemon_wrapper \
+        \$start_daemon_circuit_message_id \
+        \$start_daemon_circuit_message_daemon \
+        \"\$start_daemon_circuit_message_cleanup_func\" \
+        "$start_daemon_circuit_message_daemon_args"
+}
+
+handle_stop_daemon_circuit_message()
+{
+    log_info \
+        "handle_stop_daemon_circuit_message($message_id#$message_sender:$message_type): id=$stop_daemon_circuit_message_id signal=$stop_daemon_circuit_message_signal"
+
+    if ! circuit_exists $stop_daemon_circuit_message_id
+    then
+        log_error \
+            "handle_stop_daemon_circuit_message($message_id#$message_sender:$message_type): circuit $stop_daemon_circuit_message_id does not exist"
+        return 1
+    fi
+
+    circd_daemon_terminate \
+        $stop_daemon_circuit_message_id \
+        $stop_daemon_circuit_message_signal
+}
+
+handle_attach_to_bundle_circuit_message()
+{
+    log_info \
+        "handle_attach_to_bundle_circuit_message($message_id#$message_sender:$message_type): idchild=$attach_to_bundle_circuit_message_idchild idbundle=$attach_to_bundle_circuit_message_idbundle"
+
+    if ! circuit_exists $attach_to_bundle_circuit_message_idchild
+    then
+        log_error \
+            "handle_attach_to_bundle_circuit_message($message_id#$message_sender:$message_type): circuit $attach_to_bundle_circuit_message_idchild does not exist"
+        return 1
+    fi
+    if ! circuit_exists $attach_to_bundle_circuit_message_idbundle
+    then
+        log_error \
+            "handle_attach_to_bundle_circuit_message($message_id#$message_sender:$message_type): circuit $attach_to_bundle_circuit_message_idbundle does not exist"
+        return 1
+    fi
+
+    circd_attach_to_bundle \
+        $attach_to_bundle_circuit_message_idchild \
+        $attach_to_bundle_circuit_message_idbundle
+}
+
+handle_circuit_message()
+{
+    log_warn \
+        "handle_circuit_message($message_id#$message_sender:$message_type): received but ignored"
+}
+
+##################################################
+# EVENT HANDLERS: LAYER-3 PROTOCOL CIRCUIT EVENTS
+##################################################
+
+handle_up_l3prot_circuit_event()
+{
+    log_info \
+        "handle_up_l3prot_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id l3prot=$l3prot_circuit_event_l3prot"
+
+    if ! circuit_exists $circuit_event_id
+    then
+        log_error \
+            "handle_up_l3prot_circuit_event($message_id#$message_sender:$message_type): circuit $circuit_event_id does not exist"
+        return 1
+    fi
+
+    circd_go_online_if_possible $circuit_event_id $l3prot_circuit_event_l3prot
+}
+
+handle_down_l3prot_circuit_event()
+{
+    log_info \
+        "handle_down_l3prot_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id l3prot=$l3prot_circuit_event_l3prot"
+
+    if ! circuit_exists $circuit_event_id
+    then
+        log_error \
+            "handle_down_l3prot_circuit_event($message_id#$message_sender:$message_type): circuit $circuit_event_id does not exist"
+        return 1
+    fi
+
+    circd_go_offline_if_necessary $circuit_event_id $l3prot_circuit_event_l3prot
+}
+
+handle_l3prot_circuit_event()
+{
+    log_warn \
+        "handle_l3prot_circuit_event($message_id#$message_sender:$message_type): received but ignored"
+}
+
+######################################
+# EVENT HANDLERS: LINK CIRCUIT EVENTS
+######################################
+
+handle_up_link_circuit_event()
+{
+    log_info \
+        "handle_up_link_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id"
+
+    if ! circuit_exists $circuit_event_id
+    then
+        log_error \
+            "handle_up_link_circuit_event($message_id#$message_sender:$message_type): circuit $circuit_event_id does not exist"
+        return 1
+    fi
+
+    circd_change_state $circuit_event_id online
+}
+
+handle_down_link_circuit_event()
+{
+    log_info \
+        "handle_down_link_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id force_hangup=$down_link_circuit_event_force_hangup"
+
+    if ! circuit_exists $circuit_event_id
+    then
+        log_error \
+            "handle_down_link_circuit_event($message_id#$message_sender:$message_type): circuit $circuit_event_id does not exist"
+        return 1
+    fi
+
+    circd_finalize_hangup $circuit_event_id $down_link_circuit_event_force_hangup
+}
+
+handle_link_circuit_event()
+{
+    log_warn \
+        "handle_link_circuit_event($message_id#$message_sender:$message_type): received but ignored"
+}
+
+###############################
+# EVENT HANDLERS: STATE EVENTS
+###############################
+
+handle_dialup_control_circuit_event()
+{
+    log_info \
+        "handle_dialup_control_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id status_code=$control_circuit_event_status_code"
+
+    if ! circuit_exists $circuit_event_id
+    then
+        log_error \
+            "handle_dialup_control_circuit_event($message_id#$message_sender:$message_type): circuit $circuit_event_id does not exist"
+        return 1
+    fi
+
+    if [ $control_circuit_event_status_code -ne 0 ]
+    then
+        circd_change_state $circuit_event_id active
+        circuit_write_field $circuit_event_id circ_current_operation ""
+    fi
+}
+
+handle_hangup_control_circuit_event()
+{
+    log_info \
+        "handle_hangup_control_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id status_code=$control_circuit_event_status_code"
+
+    if ! circuit_exists $circuit_event_id
+    then
+        log_error \
+            "handle_hangup_control_circuit_event($message_id#$message_sender:$message_type): circuit $circuit_event_id does not exist"
+        return 1
+    fi
+
+    if [ $control_circuit_event_status_code -ne 0 ]
+    then
+        circd_finalize_hangup $circuit_event_id
+    fi
+}
+
+handle_control_circuit_event()
+{
+    log_warn \
+        "handle_control_circuit_event($message_id#$message_sender:$message_type): received but ignored"
+}
+
+################################
+# EVENT HANDLERS: DAEMON EVENTS
+################################
+
+handle_daemon_exited_circuit_event()
+{
+    log_info \
+        "handle_daemon_exited_circuit_event($message_id#$message_sender:$message_type): id=$circuit_event_id pid=$daemon_circuit_event_pid status_code=$daemon_exited_circuit_event_status_code"
+
+    local \
+        id=$circuit_event_id \
+        pid=$daemon_circuit_event_pid \
+        status_code=$daemon_exited_circuit_event_status_code
+
+    circd_daemon_terminated $pid
+
+    # hangup circuit if necessary (this happens if a daemon is terminated
+    # without having established a connection, such that ip*-down/link-down
+    # and, consequently, circd_finalize_hangup() were never called; or if
+    # circuit hangup has been delayed)
+    circd_daemon_hangup $pid
+    circd_unref $id
+}
+
+handle_daemon_circuit_event()
+{
+    log_warn \
+        "handle_daemon_circuit_event($message_id#$message_sender:$message_type): received but ignored"
+}
+
+###################################
+# EVENT HANDLERS: SERVICE MESSAGES
+###################################
+
+handle_stop_service_message()
+{
+    log_info \
+        "handle_stop_service_message($message_id#$message_sender:$message_type): shutting down"
+
+    if [ $message_sender != circd ]
+    then
+        circd_shutting_down_requestors="$circd_shutting_down_requestors $message_sender:$message_id"
+    fi
+
+    if [ -z "$circd_shutting_down" ]
+    then
+        circd_shutting_down=1
+
+        # count all circuits that have to be activated or failed when restarting
+        circd_activate=
+        circd_fail=
+
+        for circ_id in $(circd_get_by_state all)
+        do
+            case $(circd_get_state $circ_id) in
+            inactive)
+                ;;
+            failed)
+                circd_fail="$circd_fail $circ_id"
+                ;;
+            *)
+                circd_activate="$circd_activate $circ_id"
+                ;;
+            esac
+            deactivate_circuit_message_id=$circ_id \
+                mom_unicast_message circd deactivate_circuit_message >/dev/null
+        done
+        circd_check_exit
+    #else: nothing to do, circd is already shutting down
+    fi
+}
+
+handle_service_message()
+{
+    log_warn \
+        "handle_service_message($message_id#$message_sender:$message_type): received but ignored"
+}
+
+###############################
+# EVENT HANDLERS: CHILD EVENTS
+###############################
+
+# Handles a terminating child process by removing its PID from the
+# circd_children list and calling circd_check_exit() if circd is shutting down.
+handle_child_exited_circd_event()
+{
+    log_info \
+        "handle_child_exited_circd_event($message_id#$message_sender:$message_type)"
+    circd_children=${circd_children/ $message_sender / }
+    [ -n "$circd_shutting_down" ] && circd_check_exit
+}
+
+handle_circd_event()
+{
+    log_warn \
+        "handle_circd_event($message_id#$message_sender:$message_type): received but ignored"
+}
+
+#################################
+# EVENT HANDLERS: QUEUE MESSAGES
+#################################
+
+handle_dialup_circuit_queue_message()
+{
+    log_info \
+        "handle_dialup_circuit_queue_message($message_id#$message_sender:$message_type)"
+
+    local vars=$(circuit_get_data $circ_id)
+    local varnames=$(echo "$vars" | extract_variable_names)
+    local $varnames
+    eval "$vars"
+    export $varnames
+
+    circ_dev=$(circuit_get_interface $circ_dev)
+    if [ "$circ_newif" != yes ] &&
+        ! translate_net_if "$circ_dev" circ_dev 1
+    then
+        log_error "unknown interface $circ_dev"
+        circuit_event_id=$circ_id \
+        control_circuit_event_status_code=127 \
+        mom_unicast_message \
+            circd dialup_control_circuit_event >/dev/null
+        return
+    else
+        circuit_write_field $circ_id circ_dev_translated $circ_dev
+    fi
+
+    local circuit_script=${circ_type}-circuit-ctrl.sh
+    if type -p $circuit_script >/dev/null
+    then
+        set -o pipefail
+        $circuit_script dial 2>&1 | logmsg "$script" $circuit_logfacility.notice
+        local rc=$?
+        set +o pipefail
+
+        circuit_event_id=$circ_id \
+        control_circuit_event_status_code=$rc \
+        mom_unicast_message \
+            circd dialup_control_circuit_event >/dev/null
+    else
+        # no control script
+        circuit_event_id=$circ_id \
+        control_circuit_event_status_code=127 \
+        mom_unicast_message \
+            circd dialup_control_circuit_event >/dev/null
+    fi
+}
+
+handle_hangup_circuit_queue_message()
+{
+    log_info \
+        "handle_hangup_circuit_queue_message($message_id#$message_sender:$message_type)"
+
+    local vars=$(circuit_get_data $circ_id)
+    local varnames=$(echo "$vars" | extract_variable_names)
+    local $varnames
+    eval "$vars"
+    export $varnames
+
+    if [ -n "$circ_dev_translated" ]
+    then
+        circ_dev=$circ_dev_translated
+    else
+        circ_dev=$(circuit_get_interface $circ_dev)
+        if [ "$circ_newif" != yes ] &&
+            ! translate_net_if "$circ_dev" circ_dev 1
+        then
+            log_error "unknown interface $circ_dev"
+            # TODO: change state to "failed"
+            circuit_event_id=$circ_id \
+            control_circuit_event_status_code=127 \
+            mom_unicast_message \
+                circd hangup_control_circuit_event >/dev/null
+            return
+        fi
+    fi
+
+    local circuit_script=${circ_type}-circuit-ctrl.sh
+    if type -p $circuit_script >/dev/null
+    then
+        set -o pipefail
+        $circuit_script hangup 2>&1 | logmsg "$script" $circuit_logfacility.notice
+        local rc=$?
+        set +o pipefail
+
+        circuit_event_id=$circ_id \
+        control_circuit_event_status_code=$rc \
+        mom_unicast_message \
+            circd hangup_control_circuit_event >/dev/null
+    else
+        # no control script, ask circd to finalize circuit hangup
+        circuit_event_id=$circ_id \
+        control_circuit_event_status_code=127 \
+        mom_unicast_message \
+            circd hangup_control_circuit_event >/dev/null
+    fi
+}
+
+handle_quit_circuit_queue_message()
+{
+    log_info \
+        "handle_quit_circuit_queue_message($message_id#$message_sender:$message_type)"
+
+    mom_quit_message_loop 0
+}
+
+handle_circuit_queue_message()
+{
+    log_info \
+        "handle_circuit_queue_message($message_id#$message_sender:$message_type): received but ignored"
+}
+
+###############
+# MAIN PROGRAM
+###############
+
+log_info "starting"
+
+# register message handlers
+mom_register_handler handle_create_circuit_message create_circuit_message
+mom_register_handler handle_clone_circuit_message clone_circuit_message
+# TODO: ignore until it works
+#mom_register_handler handle_destroy_circuit_message destroy_circuit_message
+mom_register_handler handle_start_creation_group_circuit_message start_creation_group_circuit_message
+mom_register_handler handle_end_creation_group_circuit_message end_creation_group_circuit_message
+
+mom_register_handler handle_get_global_dialmode_message get_global_dialmode_message
+mom_register_handler handle_set_global_dialmode_message set_global_dialmode_message
+mom_register_handler handle_get_local_dialmode_message get_local_dialmode_message
+mom_register_handler handle_set_local_dialmode_message set_local_dialmode_message
+mom_register_handler handle_get_effective_dialmode_message get_effective_dialmode_message
+mom_register_handler handle_dialmode_message dialmode_message
+
+mom_register_handler handle_get_by_state_circuit_message get_by_state_circuit_message
+mom_register_handler handle_get_state_circuit_message get_state_circuit_message
+mom_register_handler handle_get_all_states_circuit_message get_all_states_circuit_message
+mom_register_handler handle_is_online_circuit_message is_online_circuit_message
+
+mom_register_handler handle_activate_circuit_message activate_circuit_message
+mom_register_handler handle_dialup_circuit_message dialup_circuit_message
+mom_register_handler handle_hangup_circuit_message hangup_circuit_message
+mom_register_handler handle_deactivate_circuit_message deactivate_circuit_message
+mom_register_handler handle_fail_circuit_message fail_circuit_message
+mom_register_handler handle_start_daemon_circuit_message start_daemon_circuit_message
+mom_register_handler handle_stop_daemon_circuit_message stop_daemon_circuit_message
+mom_register_handler handle_attach_to_bundle_circuit_message attach_to_bundle_circuit_message
+mom_register_handler handle_circuit_message circuit_message
+
+mom_register_handler handle_up_l3prot_circuit_event up_l3prot_circuit_event
+mom_register_handler handle_down_l3prot_circuit_event down_l3prot_circuit_event
+mom_register_handler handle_l3prot_circuit_event l3prot_circuit_event
+mom_register_handler handle_up_link_circuit_event up_link_circuit_event
+mom_register_handler handle_down_link_circuit_event down_link_circuit_event
+mom_register_handler handle_link_circuit_event link_circuit_event
+mom_register_handler handle_dialup_control_circuit_event dialup_control_circuit_event
+mom_register_handler handle_hangup_control_circuit_event hangup_control_circuit_event
+mom_register_handler handle_control_circuit_event control_circuit_event
+mom_register_handler handle_daemon_exited_circuit_event daemon_exited_circuit_event
+mom_register_handler handle_daemon_circuit_event daemon_circuit_event
+
+mom_register_handler handle_stop_service_message stop_service_message
+mom_register_handler handle_service_message service_message
+
+mom_register_handler handle_child_exited_circd_event child_exited_circd_event
+mom_register_handler handle_circd_event circd_event
+
+# initialization of circuit system
+>> $local_dialmodes_file
+[ -f $router_state_file ] || echo "offline" > $router_state_file
+[ -f $dialmode_file ] || circd_set_global_dialmode off
+[ -f $circd_state_file ] && circd_restore_state
+
+# setup pre-existing circuits
+for circ_id in $(circd_get_by_state all)
+do
+    circd_start_queue $circ_id
+done
+for circ_id in $circd_fail
+do
+    circuit_exists $circ_id &&
+        fail_circuit_message_id=$circ_id \
+            mom_unicast_message circd fail_circuit_message >/dev/null
+done
+for circ_id in $circd_activate
+do
+    circuit_exists $circ_id &&
+        activate_circuit_message_id=$circ_id \
+            mom_unicast_message circd activate_circuit_message >/dev/null
+done
+
+# run the message loop
+log_info "entering message loop"
+mom_run_message_loop
+
+log_info "exiting"
+circd_save_state
+
+for requestor in $circd_shutting_down_requestors
+do
+    reply_message_for=${requestor#*:} \
+    mom_unicast_message \
+        ${requestor%:*} stop_service_reply_message >/dev/null
+done

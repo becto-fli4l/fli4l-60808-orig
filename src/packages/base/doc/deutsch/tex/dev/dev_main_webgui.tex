@@ -1,0 +1,549 @@
+% Last Update: $Id$
+
+\section{CGI-Erstellung für das \emph{httpd}-Paket}
+
+\subsection{Allgemeines zum Webserver}
+Der Webserver, der bei fli4l verwendet wird, ist der \texttt{mini\_httpd} von ACME
+Labs. Die Quellen können unter
+\altlink{http://www.acme.com/software/mini_httpd/} heruntergeladen werden.
+Allerdings wurden für fli4l ein paar Änderungen vorgenommen. 
+Die Anpassungen befinden sich im \emph{src}-Paket im Verzeichnis
+\texttt{src/""fbr/""buildroot/""package/""mini\_httpd}.
+
+\subsection{Skriptnamen}
+
+Der Skriptname sollte möglichst vielsagend sein, damit er von
+anderen Skripten leichter zu unterscheiden ist und es keine
+Namensüberschneidungen bei verschiedenen OPTs gibt.
+
+Damit die Skripte ausführbar gemacht werden und DOS-Zeilenumbrüche in
+Unix-Zeilen\-um\-brüche umgewandelt werden, muss in der \texttt{opt/<PAKET>.txt}
+ein entsprechender Eintrag gemacht werden, siehe
+Tabelle~\jump{table:options}{\ref{table:options}}.
+
+\subsection{Menü-Einträge}
+
+Um einen Eintrag im Menü vorzunehmen, muss eine Eintragung in der Datei
+\texttt{/etc/httpd/menu} vorgenommen werden. Dieser Mechanismus erlaubt es OPTs,
+auch im laufendem Betrieb Änderungen am Menü vorzunehmen. Dies sollte nur mit
+dem Skript \texttt{httpd-menu.sh} gemacht werden, da dieses darauf achtet, dass
+das Dateiformat dieser Datei immer konsistent ist. Um neue Menüpunkte
+einzufügen, wird es folgendermaßen aufgerufen:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh add [-p <priority>] <link> <name> [section] [realm]
+\end{verbatim}
+\end{example}
+
+So wird ein Eintrag mit dem Namen \texttt{<name>} in den Abschnitt
+\texttt{[section]} eingetragen. Wenn \texttt{[section]} weggelassen wird, wird
+es standardmäßig in den Abschnitt "`OPT-Pakete"' eingetragen. \texttt{<link>}
+gibt das Ziel des neuen Links an. \texttt{<priority>} spezifiziert die Priorität
+eines Menüeintrags in seinem Abschnitt. Wird sie nicht angegeben, wird die
+Standardpriorität 500 benutzt. Die Priorität sollte eine dreistellige Nummer
+sein. Je kleiner die Priorität, desto weiter oben steht der Link in dem
+Abschnitt. Soll ein Eintrag möglichst weit nach unten, so ist z.\,B. die Priorität
+900 zu wählen. Bei gleicher Priorität werden die Einträge nach dem Ziel des
+Links sortiert. Bei \texttt{[realm]} wird der Bereich angegeben, für den ein
+angemeldeter Benutzer mindestens die Berechtigung \emph{view} haben muss, damit
+der Menüpunkt angezeigt wird. Wird \texttt{[realm]} nicht angegeben, wird der
+Menüpunkt immer angezeigt. Siehe hierzu auch den Abschnitt
+\jump{sec:rights}{"`Benutzerrechte"'}.
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh add "neuedatei.cgi" "Hier klicken" "Tools" "tools"
+\end{verbatim}
+\end{example}
+
+Dieses Beispiel erzeugt im Abschnitt "`Tools"' einen Link mit dem Titel 
+"`Hier klicken"' und dem Link-Ziel "`neuedatei.cgi"' und legt den Abschnitt,
+falls dieser nicht vorhanden ist, an.
+
+Das Skript kann auch Einträge aus dem Menü wieder entfernen:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh rem <link>
+\end{verbatim}
+\end{example}
+
+Mit diesem Aufruf wird der Eintrag mit dem Link \texttt{<link>} wieder
+entfernt.
+
+\wichtig{Wenn mehrere Menüeinträge auf die gleiche Datei verweisen,
+werden alle diese Einträge aus dem Menü entfernt.}
+
+Da Abschnitte auch Prioritäten haben können, können diese auch manuell angelegt
+werden. Wird ein Abschnitt automatisch beim Hinzufügen eines Eintrages
+angelegt, erhält er automatisch die Priorität 500. Der Syntax zum Anlegen von
+Abschnitten lautet:
+
+\begin{example}
+\begin{verbatim}
+    httpd-menu.sh addsec <priority> <name>
+\end{verbatim}
+\end{example}
+
+Auch hier sollte \texttt{<priority>} nur dreistellige numerische Werte annehmen.
+
+Um sinnvolle Prioritäten in Erfahrung zu bringen, lohnt es sich, auf
+einem laufenden fli4l in die Datei \texttt{/etc/httpd/menu} zu schauen, die
+Prioritäten stehen in der zweiten Spalte.
+
+Der Vollständigkeit halber wird hier kurz auf das Dateiformat der Menüdatei
+eingegangen. Wem die Funktion von \texttt{httpd-menu.sh} reicht, der kann diesen
+Abschnitt überspringen. Die Datei \texttt{/etc/httpd/menu} hat den folgenden
+Aufbau: Sie ist in vier Spalten eingeteilt. In der ersten Spalte steht ein
+Kennbuchstabe, der Überschriften und Einträge unterscheidet. In der zweiten
+Spalte steht die Sortierungspriorität. Die dritte Spalte enthält bei Einträgen
+das Ziel des Links und bei Überschriften einen Bindestrich, da dieses Feld bei
+Überschriften keine Bedeutung hat. Im Rest der Zeile steht der Text, der
+nachher im Menü erscheint.
+
+Überschriften benutzen den Kennbuchstaben "`t"', dann wird ein neuer
+Menüabschnitt begonnen. Normale Menüeinträge benutzen den Kennbuchstaben "`e"'.
+Ein Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    t 300 - Mein tolles OPT
+    e 200 meinopt.cgi Mach etwas Tolles
+    e 500 meinopt.cgi?mehr=ja Mach mehr Tolles
+\end{verbatim}
+\end{example}
+
+Beim Bearbeiten dieser Datei muss man darauf achten, dass das
+\texttt{httpd-menu.sh}-Skript die Datei immer sortiert abspeichert. Die
+einzelnen Abschnitte sind sortiert und die Einträge pro Abschnitt sind in diesem
+Abschnitt sortiert. Der genaue Sortieralgorithmus kann aus
+\texttt{httpd-menu.sh} übernommen werden~-- besser wäre allerdings, dieses
+Skript um mögliche neue Funktionen zu erweitern, damit alle Menü-Bearbeitungen
+an zentraler Stelle passieren.
+
+\subsection{Aufbau eines CGI-Skriptes}
+
+\subsubsection{Die Kopfzeilen}
+Alle Skripte des Webservers sind einfache Shell-Skripte (Interpreter wie z.\,B.
+Perl, PHP, etc.\ sind viel zu groß für fli4l). Sie sollten mit dem
+obligatorischen Skript-Header anfangen (Verweis auf den Interpreter,
+Name, Sinn des Skriptes, Autor, Lizenz).
+
+\subsubsection{Das Hilfsskript "'cgi-helper"'}
+Gleich nach den Kopfzeilen sollte dann schon das Hilfsskript \texttt{cgi-helper}
+mit folgendem Aufruf eingebunden werden:
+
+\begin{example}
+\begin{verbatim}
+    . /srv/www/include/cgi-helper
+\end{verbatim}
+\end{example}
+
+Wichtig ist ein Leerzeichen zwischen Punkt und Schrägstrich!
+
+Dieses Skript stellt diverse Hilfsfunktionen bereit, die das Erstellen von CGIs
+für fli4l wesentlich vereinfachen sollen. Außerdem werden mit dem Einbinden
+des \texttt{cgi-helper} auch noch Standardaufgaben ausgeführt, wie
+beispielsweise das Parsen von Variablen, die mit Formularen oder über die URL
+übergebenen wurden, oder das Laden von Sprach- und CSS-Dateien.
+
+Tabelle~\ref{tab:dev:cgi-helper} gibt einen Überblick über die Funktionen des
+\texttt{cgi-helper}-Skriptes.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Funktionen des \texttt{cgi-helper}-Skriptes}
+  \label{tab:dev:cgi-helper}
+  \begin{small}
+    \begin{tabular}{|l|p{0.8\textwidth}|}
+      \hline
+      Name                         & Funktion         \\
+      \hline
+      \texttt{check\_rights}      & Überprüfung der Benutzerrechte \\
+      \texttt{http\_header}       & Ausgabe eines Standard-HTTP-Headers oder eines speziellen HTTP-Headers, beispielsweise zum Download von Dateien\\
+      \texttt{show\_html\_header} & Ausgabe des kompletten Seitenheaders (inkl. HTTP-Header, Kopfzeile und Menü)\\
+      \texttt{show\_html\_footer} & Ausgabe des Abschlusses der HTML-Seite \\
+      \texttt{show\_tab\_header}  & Ausgabe eines Inhalt-Fensters mit Reitern\\
+      \texttt{show\_tab\_footer}  & Ausgabe des Abschlusses des Inhaltsfensters\\
+      \texttt{show\_error}        & Ausgabe einer Box für Fehlermeldungen (Hintergrundfarbe: rot)\\
+      \texttt{show\_warn}         & Ausgabe einer Box für Warnmeldungen (Hintergrundfarbe: gelb)\\
+      \texttt{show\_info}         & Ausgabe einer Box für Informationen oder Erfolgsmeldungen (Hintergrundfarbe: grün)\\
+      \hline
+    \end{tabular}
+  \end{small}
+\end{table}
+
+\subsubsection{Der Inhalt eines CGI-Skriptes}
+
+Um ein einheitliches Design und vor allem die Kompatibilität
+mit zukünftigen fli4l-Versionen zu gewährleisten, ist es sehr zu empfehlen, die
+Funktionen des Hilfsskriptes \texttt{cgi-helper} zu benutzen, auch wenn man in
+einem CGI theoretisch alle Ausgaben selbst generieren kann.
+
+Eine einfaches CGI-Skript könnte wie folgt aussehen:
+
+\begin{example}
+\begin{verbatim}
+    #!/bin/sh
+    # --------------------
+    # Header (c) Autor Datum
+    # --------------------
+    # get main helper functions
+    . /srv/www/include/cgi-helper
+
+    show_html_header "Mein erstes CGI"
+    echo '   <h2>Willkommen</h2>'
+    echo '   <h3>Dies ist ein Beispiel-CGI-Skript</h3>'
+    show_html_footer
+\end{verbatim}
+\end{example}
+
+\subsubsection{Die Funktion \texttt{show\_html\_header}}
+
+Die Funktion \texttt{show\_html\_header} erwartet eine Zeichenkette als
+Parameter. Diese Zeichenkette stellt den Titel der zu generierenden Seite dar.
+Die Funktion generiert automatisch das Menü und bindet ebenso automatisch zum
+Skript gehörende CSS- und Sprachdateien ein. Voraussetzung dafür ist, dass
+diese sich in den Verzeichnissen \texttt{/srv/www/css}
+bzw.\ \texttt{/srv/www/lang} befinden und denselben Namen (aber natürlich eine
+andere Endung) wie das Skript haben. Ein Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    /srv/www/admin/OpenVPN.cgi
+    /srv/www/css/OpenVPN.css
+    /srv/www/lang/OpenVPN.de
+\end{verbatim}
+\end{example}
+
+Sowohl das Benutzen von Sprachdateien als auch von CSS-Dateien ist optional.
+Immer eingebunden werden \texttt{css/main.css} und \texttt{lang/main.<lang>},
+wobei \texttt{<lang>} der gewählten Sprache entspricht.
+
+Der Funktion \texttt{show\_html\_header} können aber neben dem Titel noch
+weitere Parameter übergeben werden. Ein Aufruf mit allen möglichen Parametern
+könnte so aussehen:
+
+\begin{example}
+\begin{verbatim}
+    show_html_header "Titel" "refresh=$time;url=$url;cssfile=$cssfile;showmenu=no"
+\end{verbatim}
+\end{example}
+
+Alle zusätzlichen Parameter müssen, wie im Beispiel gezeigt, mit
+Anführungszeichen umschlossen und durch ein Semikolon getrennt werden. Eine
+Überprüfung der Syntax erfolgt \emph{nicht}! Es ist also notwendig, sehr genau
+auf die Parameterübergabe zu achten.
+
+Hier eine kurze Übersicht über die Funktion der Parameter:
+
+\begin{itemize}
+ \item \texttt{refresh=}\emph{time}: Zeit in Sekunden in der die Seite vom
+    Browser neu geladen werden soll
+ \item \texttt{url=}\emph{url}: die URL, die bei einem Refresh neu geladen wird
+ \item \texttt{cssfile=}\emph{cssfile}: Name einer CSS-Datei, wenn diese vom
+    Namen des CGIs abweicht
+ \item \texttt{showmenu=no}: unterdrückt die Anzeige des Menüs und des Headers
+\end{itemize}
+
+Sonstige Richtlinien zum Inhalt:
+
+\begin{itemize}
+ \item Fasst euch kurz :-)
+ \item Schreibt sauberes HTML (SelfHTML\footnote{siehe
+    \altlink{http://de.selfhtml.org/}} ist da ein guter Ansatzpunkt).
+ \item Verzichtet auf hochmodernen Schnick-Schnack (JavaScript ist i.\,O., wenn
+    es nicht stört, sondern den Benutzer unterstützt, das Ganze muss auch ohne
+    JavaScript funktionieren).
+\end{itemize}
+
+\subsubsection{Die Funktion \texttt{show\_html\_footer}}
+
+Die Funktion \texttt{show\_html\_footer} schließt den Block im CGI-Skript ab,
+der durch die Funktion \texttt{show\_html\_header} eingeleitet wurde.
+
+\subsubsection{Die Funktion \texttt{show\_tab\_header"'}}
+
+Damit der Inhalt eurer mit Hilfe des CGIs erzeugten Webseite auch hübsch
+geordnet aussieht, könnt ihr die \texttt{cgi-helper}-Funktion
+\texttt{show\_tab\_header} nutzen. Sie erzeugt dann anklickbare Reiter ("`Tabs"'
+genannt), so dass ihr eure Seite in mehrere logisch voneinander getrennte
+Bereiche unterteilen könnt.
+
+Der \texttt{show\_tab\_header}-Funktion werden Parameter immer in Paaren
+übergeben. Der erste Wert entspricht dem Titel eines Reiters, der zweite dem
+Link. Wird als Link die Zeichenkette "`no"' übergeben, wird lediglich der Titel
+ausgegeben und der Reiter ist nicht anklickbar (und blau).
+
+Im folgenden Beispiel wird ein "`Fenster"' mit dem Titel "`Ein tolles Fenster"'
+erzeugt. Im Fenster steht "`foo bar"':
+
+\begin{example}
+\begin{verbatim}
+    show_tab_header "Ein tolles Fenster" "no"
+    echo "foo"
+    echo "bar"
+    show_tab_footer
+\end{verbatim}
+\end{example}
+
+Im nächsten Beispiel werden zwei anklickbare Reiter generiert, die dem
+Skript die Variable \var{action} mit verschiedenen Werten übergibt.
+
+\begin{example}
+\begin{verbatim}
+    show_tab_header "1. Auswahltab" "$myname?action=machdies" \
+                    "2. Auswahltab" "$myname?action=machjenes"
+    echo "foo"
+    echo "bar"
+    show_tab_footer
+\end{verbatim}
+\end{example}
+
+Nun kann das Skript den Inhalt der Variablen \var{FORM\_action} (siehe weiter
+unten zur Variablenauswertung) auswerten und je nachdem unterschiedliche Inhalte
+bereitstellen. Damit der angeklickte Reiter auch ausgewählt erscheint und nicht
+mehr angeklickt werden kann, müsste der Funktion statt dem Link wie schon
+erwähnt ein "`no"' übergeben werden. Das geht aber auch einfacher, wenn man sich
+an die Konvention in folgendem Beispiel hält:
+
+\begin{example}
+\begin{verbatim}
+    _opt_machdies="1. Auswahltab"
+    _opt_machjenes="2. Auswahltab"
+    show_tab_header "$_opt_machdies" "$myname?action=opt_machdies" \
+                    "$_opt_machjenes" "$myname?action=opt_machjenes"
+    case $FORM_action in
+        opt_machdies) echo "foo" ;;
+        opt_machjenes) echo "bar" ;;
+    esac
+    show_tab_footer
+\end{verbatim}
+\end{example}
+
+Wird also für den Titel eine Variable verwendet, deren Namen dem Inhalt der
+Variablen \var{action} mit führendem Unterstrich (\texttt{\_}) entspricht, wird
+der entsprechende Reiter ausgewählt dargestellt.
+
+\subsubsection{Die Funktion \texttt{show\_tab\_footer}}
+
+Die Funktion \texttt{show\_tab\_footer} schließt den Block im CGI-Skript ab,
+der durch die Funktion \texttt{show\_tab\_header} eingeleitet wurde.
+
+\subsubsection{Mehrsprachfähigkeit}
+
+Das Hilfsskript \texttt{cgi-helper} enthält weiterhin Funktionen, um CGI-Skripte
+mehrsprachfähig zu machen. Dazu müssen "`nur"' für alle Textausgaben Variablen
+mit führenden Unterstrichen (\texttt{\_}) verwendet und diese Variablen in den
+entsprechenden Sprachdateien definiert werden.
+
+Beispiel:
+
+\texttt{lang/opt.de} enthalte:
+
+\begin{example}
+\begin{verbatim}
+    _opt_machdies="Eine Ausgabe"
+\end{verbatim}
+\end{example}
+
+\texttt{lang/opt.en} enthalte:
+
+\begin{example}
+\begin{verbatim}
+    _opt_machdies="An Output"
+\end{verbatim}
+\end{example}
+
+\texttt{admin/opt.cgi} enthalte:
+
+\begin{example}
+\begin{verbatim}
+    ...
+    echo $_opt_machdies
+    ...
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Formular-Auswertung}
+
+Um Formulare zu verarbeiten, muss man noch einige Dinge wissen. Egal ob die
+Formular-Methode \var{GET} oder \var{POST} verwendet wird, die Parameter finden
+sich nach dem Einbinden des \texttt{cgi-helper}-Skripts (welches wiederum das
+Hilfsprogramm proccgi aufruft) in den Variablen \var{FORM\_<Parameter>} wieder.
+Wenn das Formularfeld also den Namen "`eingabe"' hatte, kann im CGI-Skript
+mit \var{\$FORM\_eingabe} darauf zugegriffen werden.
+
+Weitere Informationen zum Programm \texttt{proccgi} finden sich unter
+\altlink{http://www.fpx.de/fp/Software/ProcCGI.html}.
+
+\marklabel{sec:rights}{
+    \subsubsection{Benutzerrechte: Die Funktion \texttt{check\_rights}}
+}
+
+Um zu prüfen, ob der Benutzer ausreichende Rechte zur Nutzung eines CGI-Skripts
+besitzt, muss am Anfang des CGI-Skripts die Funktion \texttt{check\_rights}
+wie folgt aufgerufen werden:
+
+\begin{example}
+\begin{verbatim}
+    check_rights <Bereich> <Aktion>
+\end{verbatim}
+\end{example}
+
+Das CGI-Skript wird dann nur ausgeführt, wenn der aktuell angemeldete Benutzer
+\begin{itemize}
+\item alle Rechte hat (\verb+HTTPD_RIGHTS_x='all'+), oder
+\item alle Rechte für den angegebenen Bereich hat
+    (\verb+HTTPD_RIGHTS_x='<Bereich>:all'+), oder
+\item das Recht hat, die angegebene Aktion im angegebenen Bereich auszuführen\\
+    (\verb+HTTPD_RIGHTS_x='<Bereich>:<Aktion>'+).
+\end{itemize}
+
+% More examples?
+
+\subsubsection{Die Funktion \texttt{show\_error}}
+
+Diese Funktion gibt eine Fehlermeldung in einer roten Box aus. Sie erwartet
+zwei Parameter: einen Titel sowie eine Meldung. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    show_error "Error: No key" "No key was specified!"
+\end{verbatim}
+\end{example}
+
+\subsubsection{Die Funktion \texttt{show\_warn}}
+
+Diese Funktion gibt eine Warnmeldung in einer gelben Box aus. Sie erwartet
+zwei Parameter: einen Titel sowie eine Meldung. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    show_info "Warnung" "Derzeit besteht keine Verbindung!"
+\end{verbatim}
+\end{example}
+
+\subsubsection{Die Funktion \texttt{show\_info}}
+
+Diese Funktion gibt eine Informations- oder Erfolgsmeldung in einer grünen Box
+aus. Sie erwartet zwei Parameter: einen Titel sowie eine Meldung. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    show_info "Info" "Aktion wurde erfolgreich ausgeführt!"
+\end{verbatim}
+\end{example}
+
+\subsubsection{Das Hilfsskript "'cgi-helper-ip4"'}
+
+Gleich nach den Hilfsskript "cgi-helper" kann dann das Hilfsskript cgi-helper-ip4
+mit folgendem Aufruf eingebunden werden:
+
+\begin{example}
+\begin{verbatim}
+. /srv/www/include/cgi-helper-ip4
+\end{verbatim}
+\end{example}
+
+Wichtig ist ein Leerzeichen zwischen Punkt und Schrägstrich!
+
+Dieses Skript stellt Hilfsfunktionen bereit, um Prüfungen von IPv4-Adressen
+vornehmen zu können.
+
+\subsubsection{Die Funktion \texttt{ip4\_isvalidaddr}}
+
+Diese Funktion überprüft, ob eine gültige IPv4-Adresse übergeben wurde.
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    if ip4_isvalidaddr ${FORM_inputip}
+    then
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+\subsubsection{Die Funktion \texttt{ipv4\_normalize}}
+
+Diese Funktion entfernt aus der übergebenen IPv4-Adresse führende Nullen.
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    ip4_normalize ${FORM_inputip}
+    IP=$res
+    if [ -n "$IP" ]
+    then
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+\subsubsection{Die Funktion \texttt{ipv4\_isindhcprange}}
+
+Diese Funktion prüft, ob die übergebene IPv4-Adresse sich im Bereich der
+übergebenen Start- und Zieladresse befindet. Beispiel:
+ 
+\begin{example}
+\begin{verbatim}
+    if ip4_isindhcprange $FORM_inputip $ip_start $ip_end
+    then
+        ...
+    fi
+\end{verbatim}
+\end{example}
+
+\subsection{Sonstiges}
+
+Dies und das (ja, das ist auch noch wichtig!):
+
+\begin{itemize}
+ \item Der \texttt{mini\_httpd} schützt Unterverzeichnisse nicht mit einem
+    Passwort. Es muss für jedes Verzeichnis eine eigene \texttt{.htaccess}-Datei
+    oder ein Link auf eine andere \texttt{.htaccess}-Datei angelegt werden.
+ \item KISS - Keep it simple, stupid!
+ \item Diese Angaben können sich jederzeit ohne Vorankündigung ändern!
+\end{itemize}
+
+\subsection{Fehlersuche}
+
+Um die Fehlersuche innerhalb eines CGI-Skripts zu erleichtern, kann man vor
+der Einbindung des \texttt{cgi-helper}-Skripts den Debugging-Modus aktivieren.
+Dazu muss die Variable \var{set\_debug} auf den Wert "`yes"' gesetzt werden.
+Dies führt zur Erstellung der Datei \texttt{debug.log}, die über die URL
+\texttt{http://<fli4l-Host>/admin/debug.log} heruntergeladen werden kann.
+Diese enthält alle Aufrufe des CGIs. Die \texttt{set\_debug}-Variable ist nicht
+global, muss also in jedem Problem-CGI erneut gesetzt werden. Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    set_debug="yes"
+    . /srv/www/include/cgi-helper
+\end{verbatim}
+\end{example}
+
+Alternativ kann auch die jeweilige CGI-URL um den Parameter \texttt{debug=yes}
+ergänzt werden, etwa \texttt{http://<fli4l-Host>/admin/meinopt.cgi?debug=yes}.
+
+Des Weiteren eignet sich cURL\footnote{siehe
+\altlink{http://de.wikipedia.org/wiki/CURL}} hervorragend zur Fehlersuche,
+insbesondere wenn die HTTP-Kopfzeilen nicht korrekt zusammengesetzt werden oder
+der Browser nur weiße Seiten anzeigt. Auch ist das Cachingverhalten moderner
+Webbrowser bei der Fehlersuche hinderlich.
+
+Beispiel: Mit dem folgenden Aufruf wird der HTTP-Header ("`\emph{d}ump"',
+\texttt{-D}) sowie die normale Ausgabe des CGIs \texttt{admin/mein.cgi}
+ausgegeben. Es soll der Benutzername ("`\emph{u}ser"', \texttt{-u}) "`admin"'
+verwendet werden.
+
+\begin{example}
+\begin{verbatim}
+    curl -D - http://fli4l/admin/mein.cgi -u admin
+\end{verbatim}
+\end{example}

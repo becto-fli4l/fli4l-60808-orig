@@ -1,0 +1,76 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/mdev.d/mdev999.default - mdev default rules               __FLI4LVER__
+#
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+cat <<"EOF"
+#
+# mdev999.default
+#
+
+# memory devices
+# --------------
+SUBSYSTEM=mem;mem|kmem|port                 0:0 640
+
+# TTY devices
+# -----------
+SUBSYSTEM=tty;console                       0:0 600
+SUBSYSTEM=tty;tty[0-9]+                     0:0 620
+# these "DOS compatibility" rules suck but they are used in the wild :-(
+SUBSYSTEM=tty;ttyS0                         0:0 660 @ln -sf $MDEV com1
+SUBSYSTEM=tty;ttyS1                         0:0 660 @ln -sf $MDEV com2
+SUBSYSTEM=tty;ttyS2                         0:0 660 @ln -sf $MDEV com3
+SUBSYSTEM=tty;ttyS3                         0:0 660 @ln -sf $MDEV com4
+SUBSYSTEM=tty;ttyS[0-9]+                    0:0 660
+
+# RTC devices
+# -----------
+SUBSYSTEM=rtc;rtc0                          0:0 660 @ln -sf $MDEV rtc
+
+# block devices
+# -------------
+SUBSYSTEM=block;sr0                         0:0 660 @ln -sf $MDEV cdrom
+SUBSYSTEM=block;ram0                        0:0 660 @ln -sf $MDEV ram
+
+# sound devices
+# -------------
+SUBSYSTEM=sound;pcm.*                       0:0 660 =snd/
+SUBSYSTEM=sound;control.*                   0:0 660 =snd/
+SUBSYSTEM=sound;midi.*                      0:0 660 =snd/
+SUBSYSTEM=sound;seq                         0:0 660 =snd/
+SUBSYSTEM=sound;timer                       0:0 660 =snd/
+
+# DRM devices
+# -----------
+SUBSYSTEM=drm;card.*                        0:0 660 =dri/
+
+# miscellaneous devices
+# ---------------------
+SUBSYSTEM=misc;agpgart                      0:0 660 >misc/
+
+# input devices
+# -------------
+SUBSYSTEM=input;event[0-9]+                 0:0 640
+SUBSYSTEM=input;mice                        0:0 640
+SUBSYSTEM=input;mouse[0-9]+                 0:0 640
+SUBSYSTEM=input;ts[0-9]+                    0:0 600
+
+# v4l devices
+# -----------
+SUBSYSTEM=video4linux;vbi[0-9]+             0:0 660 >v4l/
+SUBSYSTEM=video4linux;video[0-9]+           0:0 660 >v4l/
+
+# net devices
+# -----------
+SUBSYSTEM=net;tun                           0:0 666 =net/
+
+# fallback rule if DEVMODE is present
+MAJOR=.+;MINOR=.+;DEVMODE=.+;.+             0:0 660 @chmod $DEVMODE $MDEV
+
+# mdev's fallback rule:
+# MAJOR=.+;MINOR=.+;.+                      0:0 660
+
+EOF

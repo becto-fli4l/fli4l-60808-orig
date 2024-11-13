@@ -1,0 +1,83 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/addrv6-up - called whenever a circuit receives a local IPv6 address
+#
+# Input:
+#   $1 = network interface
+#   $2 = circuit identifier
+#   $3 = local IPv6 address
+#   $4 = if non-empty, we are called from within ipv6-up
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/forking.inc
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/locking.inc
+. /etc/boot.d/networking.inc
+
+script_name="$(basename $0)"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+logmsgprio=$facility.notice
+. /usr/share/logfunc.sh
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+interface=$1
+circ_id=$2
+address=$3
+ipup=$4
+
+{
+fork_call_handlers
+sync_lock_resource addrv6updown-$circ_id "$script"
+
+echo "$circ_id[$interface]: IPv6 address $address has appeared"
+
+is_default_route=no
+circuit_read_field $circ_id circ_nets_ipv6_n
+for i in $(seq 1 $circ_nets_ipv6_n)
+do
+    circuit_read_field $circ_id circ_nets_ipv6_$i net
+    if [ "$net" = "::/0" ]
+    then
+        is_default_route=yes
+        break
+    fi
+done
+
+if [ "$is_default_route" = yes ]
+then
+    # a local address connected to a gateway is assumed to be externally
+    # visible, so put it into dynamic.ip
+    sync_lock_resource dynamic.ipv6 addrv6-up
+    echo $address >> /var/run/dynamic.ipv6
+    sync_unlock_resource dynamic.ipv6 addrv6-up
+fi
+
+addresses=$(circuit_get_local_addresses $circ_id ipv6)
+circuit_register_local_address $circ_id ipv6 $address
+
+setup-dynamic-ip6tables.sh
+
+# Call all custom addrv6-ups
+lazy_begin
+for j in /etc/ppp/addrv6-up[0-9][0-9][0-9].*
+do
+    if [ -f $j ]
+    then
+        echo "executing $j"
+        . $j
+    fi
+done
+lazy_end
+
+if [ -z "$addresses" -a -z "$ipup" ]
+then
+    # call ipv6-up when the first address has appeared
+    /etc/ppp/ipv6-up $interface /dev/null 0 $address "" $circ_id 1 &
+fi
+
+sync_unlock_resource addrv6updown-$circ_id "$script"
+} 2>&1 | logmsg "$script" $logmsgprio

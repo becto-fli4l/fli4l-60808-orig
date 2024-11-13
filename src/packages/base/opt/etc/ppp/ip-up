@@ -1,0 +1,113 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ip-up - called whenever a circuit connection goes online
+#
+# Input:
+#   $1 = network interface
+#   $2 = TTY device (mostly useless, often set to /dev/null if there is no TTY)
+#   $3 = TTY speed (may be empty, see above)
+#   $4 = local IPv4 address (optionally with subnet mask in CIDR notation)
+#   $5 = remote IPv4 address (if this is a point-to-point connection)
+#   $6 = circuit identifier
+#   $7 = if non-empty, we are called from within addr-up
+#
+# Creation:        29.03.2000  fm
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/networking.inc
+
+run_ip_up ()
+{
+    circuit_lock ipv4updown-$circ_id "$script"
+    circuit_lock $circ_id "$script"
+
+    local is_default_route=no i=
+    for i in $(seq 1 $circ_nets_ipv4_n)
+    do
+        eval local net=\$circ_nets_ipv4_$i gateway=\$circ_nets_ipv4_${i}_gateway
+        if [ "$net" = "0.0.0.0/0" ]
+        then
+            is_default_route=yes
+            : ${remote:=$gateway}
+            break
+        fi
+    done
+
+    echo "circuit $circ_id[$interface] comes up"
+    [ -n "$local" ] && echo "$circ_id: local IPv4 address: $local"
+    [ -n "$remote" ] && echo "$circ_id: remote IPv4 address: $remote"
+
+    eval local $(grep "^\(IP_NET_N\|IP_NET_[0-9]\+\(_DEV\)\?\)=" /etc/rc.cfg)
+    for i in $(seq 1 $circ_nets_ipv4_n)
+    do
+        eval local net=\$circ_nets_ipv4_$i gateway=\$circ_nets_ipv4_${i}_gateway
+        : ${gateway:=$remote}
+        local route_spec="dev $interface"
+        if [ -n "$gateway" ]
+        then
+            route_spec="via $gateway $route_spec"
+            local gwif
+            if ! translate_ipv4_to_dev $gateway gwif 1 ||
+                [ "$gwif" != "$interface" ]
+            then
+                route_spec="$route_spec onlink"
+            fi
+        fi
+        circuit_add_route $circ_id 4 "$net $route_spec"
+        circuit_register_routed_network $circ_id ipv4 $net
+        [ -f /var/run/imond.pid ] && imond-stat "$circ_id up $net"
+    done
+
+    setup-dynamic-iptables.sh
+
+    # now the circuit is (at least semi)online
+    circuit_go_online_if_possible $circ_id ipv4
+    circuit_unlock $circ_id "$script"
+
+    # Call all custom ip-ups
+    lazy_begin
+    for j in /etc/ppp/ip-up[0-9][0-9][0-9].*
+    do
+        if [ -f $j ]
+        then
+            echo "executing $j"
+            . $j
+        fi
+    done
+    lazy_end
+
+    if [ ! -f /var/run/ip-up.ppp-once ]
+    then
+        lazy_begin
+        for j in /etc/ppp-once/ip-up[0-9][0-9][0-9].*
+        do
+            if [ -f $j ]
+            then
+                echo "executing $j"
+                . $j
+            fi
+        done
+        lazy_end
+    fi
+
+    circuit_unlock ipv4updown-$circ_id "$script"
+}
+
+interface=$1
+tty=$2
+speed=$3
+local=${4:+$(netcalc canonicalize $4)}
+remote=$5
+circ_id=$6
+addrup=$7
+
+if [ -n "$local" -a -z "$addrup" ]
+then
+    /etc/ppp/addr-up $interface $circ_id "$local" 1 &
+fi
+
+ip=ip
+script_op=up
+. /etc/ppp/ip-up-down

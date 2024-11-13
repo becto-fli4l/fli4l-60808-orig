@@ -1,0 +1,27 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc310.ipv6.filter - configuration of IPv6 PPP active filter
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_IPV6" = "yes" -a -e "$PPP_FILTER_FILE" ]
+then
+    begin_script IPV6_FILTER "configuring PPP active filter for IPv6 heartbeat tunnels..."
+
+    # extract all tunnels using heartbeat
+    targets=
+    for circid in $(circuit_get_by_state all)
+    do
+        circuit_read_field $circid circ_type
+        circuit_read_field $circid circ_tun6in4_type
+    done
+
+    # make target list unique and extend the PPP active filter
+    echo "$targets" | sort -u | sed '/^$/d' | while read ip port
+    do
+        log_info "  ignoring heartbeat packets to $ip:$port"
+        ppp_filter_append "and not (udp and dst host $ip and dst port $port)"
+    done
+
+    end_script
+fi

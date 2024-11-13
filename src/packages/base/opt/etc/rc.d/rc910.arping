@@ -1,0 +1,57 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc910.arping
+#
+# Creation:     2007-03-14  lanspezi
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$HTTPD_ARPING" = "yes" -o -f /var/run/do_arping ]
+then
+    begin_script ARPING "check state of hosts ..."
+
+    [ 0$HOST_N -eq 0 ] || for i in `seq 1 $HOST_N`
+    do
+        eval ipaddr='$HOST_'$i'_IP4'
+        eval hname='$HOST_'$i'_NAME'
+        translate_ip_net $ipaddr HOST_${i}_IP4 ipaddr || continue
+        ipdev=`ip route get $ipaddr | sed -n "/dev /s/^.*dev \([^ ]*\) .*$/\1/p"`
+
+        case $ipdev in
+            tun*|lo|ppp*|ippp*)
+                continue
+            ;;
+        esac
+        ignore_entry=no
+        [ 0$HTTPD_ARPING_IGNORE_N -eq 0 ] || for n in `seq 1 $HTTPD_ARPING_IGNORE_N`
+        do
+            eval ignore='$HTTPD_ARPING_IGNORE_'$n
+            if [ "$ignore" = "$ipaddr" ]
+            then
+                ignore_entry=yes
+            fi
+            if [ "$ignore" = "$hname" ]
+            then
+                ignore_entry=yes
+            fi
+        done
+        if [ "$ignore_entry" = "no" ]
+        then
+            if [ -n "$ipaddr" -a -n "$ipdev" ]
+            then
+                echo "${ipaddr} ${ipdev} ${hname}" >> /var/run/arping.ip
+            fi
+        fi
+    done
+
+    # echo 100 > /proc/sys/net/ipv4/neigh/*/locktime
+    # echo 60 > /proc/sys/net/ipv4/neigh/*/gc_stale_time
+
+    if [ -f /var/run/arping.ip ]
+    then
+        log_info "start daemon to check online/offline state of hosts"
+        service-restart.sh 5 /usr/local/bin/arping.sh &
+    fi
+
+    end_script
+fi

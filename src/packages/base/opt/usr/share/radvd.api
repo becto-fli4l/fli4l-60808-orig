@@ -1,0 +1,216 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/share/radvd.api - public API for configuring radvd
+#
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+if [ -z "$radvd_api" ]
+then
+radvd_api=yes
+
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/list.inc
+. /etc/boot.d/locking.inc
+. /usr/share/circuits/api
+
+# contains the radvd configuration
+radvd_conf_file=/etc/radvd.conf
+# contains circuit-specific configuration parts
+radvd_conf_dir=/var/run/radvd
+# contains the radvd PID file
+radvd_pid_file=/var/run/radvd.pid
+
+# Removes the radvd configuration for a given circuit.
+# Input:
+#   $1 = associated circuit
+radvd_remove_configuration()
+{
+    lazy_execute_early --idempotent radvd_do_remove_configuration "$@"
+    lazy_execute_late --idempotent radvd_reload
+}
+
+# Removes the radvd configuration for a given circuit (implementation).
+# Input:
+#   $1 = associated circuit
+radvd_do_remove_configuration()
+{
+    local id=$1
+
+    sync_lock_resource "radvd-$id" radvd_remove_configuration
+    rm -f "$radvd_conf_dir/$id.conf"
+    sync_unlock_resource "radvd-$id" radvd_remove_configuration
+}
+
+# Requests advertisement of a prefix.
+# Input:
+#   $1 = associated circuit
+#   $2 = prefix with netmask length
+#   $3 = valid lifetime of prefix in seconds, or "forever"
+#   $4 = preferred lifetime of prefix in seconds, or "forever"
+#   $5 = "yes" if prefix is on-link, "no" if link state is unknown
+#   $6 = "yes" if lifetimes should be decremented, "no" if the lifetimes
+#        should not change across the router advertisements
+#        (evaluated only if both lifetimes are neither "forever" nor zero)
+radvd_advertise_prefix()
+{
+    lazy_execute --idempotent radvd_do_advertise_prefix "$@"
+    lazy_execute_late --idempotent radvd_reload
+}
+
+# Requests advertisement of a prefix (implementation).
+# Input:
+#   $1 = associated circuit
+#   $2 = prefix with netmask length
+#   $3 = valid lifetime of prefix in seconds, or "forever"
+#   $4 = preferred lifetime of prefix in seconds, or "forever"
+#   $5 = "yes" if prefix is on-link, "no" if link state is unknown
+#   $6 = "yes" if lifetimes should be decremented, "no" if the lifetimes
+#        should not change across the router advertisements
+#        (evaluated only if both lifetimes are neither "forever" nor zero)
+radvd_do_advertise_prefix()
+{
+    local id=$1 prefix=$2 validlft=$3 preflft=$4 onlink=$5 aging=$6
+
+    # use radvd's terminology
+    [ $validlft = "forever" ] && validlft=infinity
+    [ $preflft = "forever" ] && preflft=infinity
+
+    mkdir -p "$radvd_conf_dir"
+    sync_lock_resource "radvd-$id" radvd_advertise_prefix
+    {
+        echo "    prefix $prefix {"
+        echo "      AdvAutonomous on;"
+        echo "      AdvValidLifetime $validlft;"
+        echo "      AdvPreferredLifetime $preflft;"
+
+        if [ "$aging" = "yes" \
+                -a $validlft != "infinity" -a $validlft != 0 \
+                -a $preflft != "infinity" -a $preflft != 0 ]
+        then
+            echo "      DecrementLifetimes on;"
+        fi
+
+        if [ "$onlink" = "yes" ]
+        then
+            echo "      AdvOnLink on;"
+        else
+            echo "      AdvOnLink off;"
+        fi
+
+        echo "    };"
+    } >> "$radvd_conf_dir/$id.conf"
+    sync_unlock_resource "radvd-$id" radvd_advertise_prefix
+}
+
+# Requests advertisement of a DNS server.
+# Input:
+#   $1 = associated circuit
+#   $2 = address of DNS server
+#   $3 = lifetime of address in seconds, or "forever"; if not set,
+#        a default lifetime (twice the maximum time between two router
+#        advertisements) is used
+radvd_advertise_dns()
+{
+    lazy_execute --idempotent radvd_do_advertise_dns "$@"
+    lazy_execute_late --idempotent radvd_reload
+}
+
+# Requests advertisement of a DNS server (implementation).
+# Input:
+#   $1 = associated circuit
+#   $2 = address of DNS server
+#   $3 = lifetime of address in seconds, or "forever"; if not set,
+#        a default lifetime (twice the maximum time between two router
+#        advertisements) is used
+radvd_do_advertise_dns()
+{
+    local id=$1 addr=$2 lifetime=$3
+
+    # use radvd's terminology
+    [ $lifetime = "forever" ] && lifetime=infinity
+
+    mkdir -p "$radvd_conf_dir"
+    sync_lock_resource "radvd-$id" radvd_advertise_dns
+    {
+        echo "    RDNSS $addr {"
+
+        # if lifetime is not set, use radvd's default (2*MaxRtrAdvInterval)
+        if [ -n "$lifetime" ]
+        then
+            echo "      AdvRDNSSLifetime $lifetime;"
+        fi
+
+        echo "    };"
+    } >> "$radvd_conf_dir/$id.conf"
+    sync_unlock_resource "radvd-$id" radvd_advertise_dns
+}
+
+# Generates the configuration for radvd and reloads the daemon.
+# Combines all temporary configuration bits created by radvd_advertise_prefix().
+radvd_reload()
+{
+    sync_lock_resource "radvd_db" radvd_reload
+
+    local devs conf transformed_dev
+    for conf in "$radvd_conf_dir"/*.conf
+    do
+        [ -f "$conf" ] || continue
+        local circ_id=$(basename "$conf" .conf) circ_dev
+        circuit_read_field $circ_id circ_dev
+        circ_dev=$(circuit_get_interface $circ_dev)
+        if [ -n "$circ_dev" ]
+        then
+            transformed_dev=$(to_shell_id "$circ_dev")
+            if ! list_is_in $transformed_dev $devs
+            then
+                devs="$devs $transformed_dev"
+                eval local dev_${transformed_dev}="\"\$circ_dev\""
+                eval local circuits_${transformed_dev}=
+            fi
+
+            eval local circuits_${transformed_dev}="\"\$circuits_${transformed_dev} \$circ_id\""
+        fi
+    done
+
+    for transformed_dev in $devs
+    do
+        eval local dev=\$dev_${transformed_dev}
+        echo "interface $dev {"
+        echo "    IgnoreIfMissing on;"
+        echo "    AdvSendAdvert on;"
+
+        eval local circ_ids=\$circuits_${transformed_dev} circ_id
+        for circ_id in $circ_ids
+        do
+            local input="$radvd_conf_dir/$circ_id.conf"
+            [ -f $input ] || continue
+            cat $input
+        done
+
+        echo "};"
+    done > "$radvd_conf_file"
+
+    if [ -s "$radvd_conf_file" ]
+    then
+        if [ -s "$radvd_pid_file" ]
+        then
+            local pid
+            read pid < "$radvd_pid_file"
+            kill -HUP $pid
+        else
+            radvd -C "$radvd_conf_file" -p "$radvd_pid_file" -m syslog >/dev/null 2>&1 &
+        fi
+    else
+        if [ -s "$radvd_pid_file" ]
+        then
+            local pid
+            read pid < "$radvd_pid_file"
+            kill $pid
+        fi
+    fi
+
+    sync_unlock_resource "radvd_db" radvd_reload
+}
+
+fi # radvd_api

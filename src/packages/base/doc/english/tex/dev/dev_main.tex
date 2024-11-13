@@ -1,0 +1,293 @@
+% Synchronized to r53804
+
+\chapter{Documentation for Developers}
+
+\section{Common Rules}
+
+In order to include a new package in the OPT database on the fli4l homepage
+some rules must be obeyed. Packages that do not comply with these rules may
+be removed from the database without warning.
+
+  \begin{enumerate}
+    \item \emph{No} file copy actions by the user! fli4l provides a
+     sophisticated system to include the fli4l packages into the installation
+     archives. All files that should go to the router are located in \texttt{opt/}.
+
+    \item Pack and compress packets properly: packages must be constructed
+    in a way to allow effortless unpacking into the fli4l directory.
+
+    \item Packages must be \emph{completely} configurable via the config file.
+    Further editing of configuration files shall not be required by the user.
+    Keep difficult decisions away from the users and move them to another part
+    at the end of the configuration file. \emph{Note: ONLY MODIFY IF YOU KNOW WHAT
+    YOU DO}.
+
+    \item Another hint for config files: by its name it has to be seen clearly
+    which OPT it belongs to. For example \var{OPT\_\-HTTPD} contains the variables
+    \var{OPT\_\-HTTPD}, \var{HTTPD\_\-USER\_\-N}, a.s.o.
+
+    \item Please built binaries as small as possible! If you compile them yourself
+    in FBR please remember to deactive any unneeded feature.
+
+    \item Check for Copyrights! If using template files please keep in mind to
+    change the Copyright accordingly. This applies also for config-, check- and
+    Opt text files. Replace the Copyright with your own name. A documentation
+    that was only copied of course has to keep the Copyright of the orginal author!
+
+    \item Please use only free formats as archive types. These are:
+    \begin{itemize}
+      \item ZIP  (\texttt{.zip})
+      \item GZIP (\texttt{.tgz} or \texttt{.tar.gz})
+    \end{itemize}
+    Please don't use other formats like RAR, ACE, Blackhole, LHA \ldots
+    Windows-Installer files (\texttt{.msi}) or self-extracting archives and
+    installers (\texttt{.exe}) should \emph{not} be used.
+  \end{enumerate}
+
+\marklabel{sec:libc}{
+  \section{Compiling Programs}
+}
+
+The environment needed for compiling programs is available in the separate
+package ``src"'. There it is also documented how to compile own programs for fli4l.
+
+\input {dev_main_modular}
+
+\input {dev_main_scripting}
+
+\input {dev_main_pf}
+
+\input {dev_main_webgui}
+
+\input {dev_main_boot_dial}
+
+\section{Package ``template"'}
+
+To illustrate some of the things described before the fli4l distribution provides the package
+``template"'. This explains by small examples how:
+
+\begin{itemize}
+\item a configuration files has to look like (\texttt{config/template.txt})
+\item a check files is designed (\texttt{check/template.txt})
+\item the extended checking mechanisms are used (\texttt{check/template.ext})
+\item configuration variables are stored for later use \\(\texttt{opt/etc/rc.d/rc999.template})
+\item stored configuration variables are processed \\(\texttt{opt/usr/bin/template\_show\_config})
+\end{itemize}
+
+
+
+\section{Structure of the Boot Medium}
+
+As of version 1.5 the program \texttt{syslinux} is used for booting.
+Its advantage is that a DOS-compatible file system is available on
+the boot medium.
+
+The boot medium contains the following files:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}[h!]{lp{10cm}}
+\texttt{ldlinux.sys}             & the ``boot loader"' \texttt{syslinux} \\
+\texttt{syslinux.cfg}            & config file for \texttt{syslinux} \\
+\texttt{kernel}                  & Linux kernel\\
+\texttt{rootfs.img}              & RootFS: programs needed for booting\\
+\texttt{opt.img}                 & Optional files: drivers and packages\\
+\texttt{rc.cfg}                  & config file containing the variables from all
+files in fli4l's configuration directory\\
+\texttt{boot.msg}                & Text for the \texttt{syslinux} boot menu \\
+\texttt{boot\_s.msg}             & Text for the \texttt{syslinux} boot menu \\
+\texttt{boot\_z.msg}             & Text for the \texttt{syslinux} boot menu \\
+\texttt{hd.cfg}                  & config file to assign partitions \\
+\end{tabular}
+\end{table}
+
+The script \texttt{mkfli4l.sh} (resp. \texttt{mkfli4l.bat}) at first generates the
+files \texttt{opt.img}, \texttt{syslinux.cfg} and \texttt{rc.cfg} as well as \texttt{rootfs.img}.
+The files needed are determined by the program \var{mkfli4l} (in the \texttt{unix}- resp.
+\texttt{windows}-directory). The kernel and other packages are included in those archives.
+The file \texttt{rc.cfg} can be found as well in the Opt-archive as on the
+boot medium.\footnote{The one in the Opt-archive is needed during early boot,
+because no boot volume is mounted at that time.}
+
+Subsequently, the files \texttt{kernel}, \texttt{rootfs.img}, \texttt{opt.img}
+and \texttt{rc.cfg} together with the \texttt{syslinux}-files are copied to the disk.
+
+During boot fli4l uses the script \texttt{/etc/rc} to evaluate the file \texttt{rc.cfg} and
+integrate the compressed \texttt{opt.img}-archive into the RootFS-RAM-Disk (depending on
+the installation type the files are extracted directly into the rootfs ramdisk or integrated
+via symbolic links).
+Then the scripts in \texttt{/etc/rc.d/} are run in alphanumeric order and thus the drivers
+are loaded and all services get started.
+
+\section{Configuration Files}
+
+Here a short list of the files generated  by fli4l
+``on-the-fly'' at boot time.
+
+\begin{enumerate}
+\item Provider configuration
+  \begin{itemize}
+  \item         \texttt{etc/ppp/pap-secrets}
+
+  \item         \texttt{etc/ppp/chap-secrets}
+
+  \end{itemize}
+\item DNS configuration
+  \begin{itemize}
+  \item         \texttt{etc/resolv.conf}
+
+  \item         \texttt{etc/dnsmasq.conf}
+
+  \item         \texttt{etc/dnsmasq\_dhcp.conf}
+
+  \item         \texttt{etc/resolv.dnsmasq}
+
+  \end{itemize}
+
+
+\item Hosts-File
+  \begin{itemize}
+  \item         \texttt{etc/hosts}
+  \end{itemize}
+
+
+
+\item imond-configuration
+  \begin{itemize}
+  \item \texttt{etc/imond.conf}
+  \end{itemize}
+
+\end{enumerate}
+
+
+\subsection{Provider Configuration}
+
+For the providers chosen User-ID and password are adapted in \texttt{etc/ppp/pap-secrets}.
+
+Example for Provider Planet-Interkom:
+
+\begin{example}
+\begin{verbatim}
+# Secrets for authentication using PAP
+# client        server  secret                  IP addresses
+"anonymer"      *       "surfer"                *
+\end{verbatim}
+\end{example}
+
+In this example ``anonymer"' is the USER-ID. As a remote server in principle anybody is
+allowed (hence ``*"'). ``surfer"' is the password for the Provider Planet-Interkom.
+
+
+\subsection{DNS Configuration}
+
+
+You can use fli4l as a DNS server. Why this is meaningful (and for Windows PCs
+in the LAN even mandatory) is explained in the documentation of the ``base"' package.
+
+The resolver file \texttt{etc/resolv.conf} contains the domain name and the
+name server to use. It has the following contents (where ``domain.de"' only
+is a placeholder for the value of the configuration variable
+\var{DOMAIN\_\-NAME}):
+
+\begin{example}
+\begin{verbatim}
+        search domain.de
+        nameserver 127.0.0.1
+\end{verbatim}
+\end{example}
+
+The DNS server dnsmasq is configured by the file \texttt{etc/dnsmasq.conf}.
+It is automatically generated during boot by processing the scripts \texttt{rc040.dns-local}
+and \texttt{rc370.dnsmasq} and might look like this:
+
+\begin{example}
+\begin{verbatim}
+user=dns
+group=dns
+resolv-file=/etc/resolv.dnsmasq
+no-poll
+no-negcache
+bogus-priv
+log-queries
+domain-suffix=lan.fli4l
+local=/lan.fli4l/
+domain-needed
+expand-hosts
+filterwin2k
+conf-file=/etc/dnsmasq_dhcp.conf
+\end{verbatim}
+\end{example}
+
+
+
+
+
+\subsection{Hosts File}
+
+    This file contains a mapping of host names to IP addresses. This
+    assignment, however, is used only locally on the flil4 and is not visible
+    for other computers in the LAN. This file is actually redundant if
+    a local DNS server is started in addition.
+
+
+\subsection{imond Configuration}
+
+The file \texttt{etc/imond.conf} is constructed amongst others from the configuration variables
+\var{CIRC\_x\_NAME}, \var{CIRC\_x\_ROUTE}, \var{CIRC\_x\_CHARGEINT}
+and \var{CIRC\_x\_TIMES}. It can consist of up to 32 lines
+(except for comment lines). Each line has eight columns:
+
+\begin{enumerate}
+\item  Range weekday to weekday
+\item  Range hour to hour
+\item  Device (\texttt{ippp}\emph{X} or \texttt{isdn}\emph{X})
+\item  Circuit with default route: ``yes"'/``no"'
+\item  Phone number
+\item  Name of the circuits
+\item  Phone charges per minute in Euros
+\item  Charge interval in seconds
+\end{enumerate}
+
+    Here an example:
+
+\begin{example}
+\begin{verbatim}
+#day  hour  device  defroute  phone        name        charge  ch-int
+Mo-Fr 18-09 ippp0   yes       010280192306 Addcom      0.0248  60
+Sa-Su 00-24 ippp0   yes       010280192306 Addcom      0.0248  60
+Mo-Fr 09-18 ippp1   yes       019160       Compuserve  0.019   180
+Mo-Fr 09-18 isdn2   no        0221xxxxxxx  Firma       0.08    90
+Mo-Fr 18-09 isdn2   no        0221xxxxxxx  Firma       0.03    90
+Sa-Su 00-24 isdn2   no        0221xxxxxxx  Firma       0.03    90
+\end{verbatim}
+\end{example}
+
+Further explanations for Least-Cost-Routing can be found in the documentation of the package ``base"'.
+    
+\subsection{The File \texttt{/etc/.profile}}
+
+The file \texttt{/etc/.profile} contains user-defined settings for the
+shell. To overwrite the default settings you have to create a file \texttt{etc/.profile}
+below the configuration directory. You may enter settings for the command prompt or abbreviations
+(so-called ``Aliases"') here.
+
+\wichtig{This file may not contain an \texttt{exit}!}
+
+Examples:
+
+\begin{example}
+\begin{verbatim}
+alias ll='ls -al'
+\end{verbatim}
+\end{example}
+
+\subsection{\mtr{Scripts in \texttt{/etc/profile.d/}}}
+
+In the directory \texttt{/etc/profile.d/} one may store scripts that will be executed
+when starting a shell and thus may influence the shell's environment. 
+Typically OPT packages will place scripts there to define special evironment variables
+necessary for the programs they contain.
+
+If both scripts in \texttt{/etc/profile.d/} and the
+file \texttt{/etc/.profile} exist, scripts in \texttt{/etc/profile.d/}
+will be executed \emph{after} the script \texttt{/etc/.profile}.

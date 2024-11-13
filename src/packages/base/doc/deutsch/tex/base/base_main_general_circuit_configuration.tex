@@ -1,0 +1,1179 @@
+% Last Update: $Id$
+\marklabel{sect:circuits}{\section{Circuit-Konfiguration}}
+
+\newcommand{\circstatetrans}[2]{\emph{#1} $\rightarrow$ \emph{#2}}
+\newcommand{\dialmodetrans}[2]{\emph{#1} $\rightarrow$ \emph{#2}}
+
+\subsection{Circuits allgemein}\label{sec:circuits:general}
+
+Der fli4l-Router erlaubt ab Version 4.0, Verbindungen nach ``außen'' flexibel
+über so genannte ``Circuits'' zu konfigurieren. Der Begriff ``Circuit'' kommt
+aus dem Englischen und bedeutet in diesem Zusammenhang so viel wie ``Leitung''.
+Seine Verwendung in fli4l entstammt dem Wählen und Auflegen von
+ISDN-Verbindungen, das seit der ersten fli4l-Version möglich ist; da ISDN
+ein leitungsvermittelnder (``circuit-switched'') Dienst ist, hat sich der
+Begriff etabliert und wird heute in allen anderen Verbindungs-Situationen
+verwendet, auch wenn es meistens nicht mehr um leitungsvermittelnde, sondern um
+paketvermittelnde Dienste geht. Auch in dieser Dokumentation wird der Begriff
+des Circuits durchgängig verwendet.
+
+Ein konfigurierter Circuit erlaubt es dem fli4l-Router, irgendeine Form der
+Verbindung zwischen dem Router und einem anderen Netzwerk-Kommunikationspartner
+herzustellen. Meistens, aber nicht immer, geht es dabei um die Herstellung
+einer Internet-Anbindung. Im Folgenden wird eine kurze Übersicht darüber
+gegeben, welche Circuit-Typen der fli4l-Router beherrscht (die meisten davon
+werden jedoch von anderen Paketen angeboten, dies ist aber entsprechend in der
+Tabelle vermerkt).
+
+\begin{longtable}{|l|l|l|p{0.4\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Typ}} &
+    \multicolumn{1}{|l}{\textbf{Paket}} &
+    \multicolumn{1}{|l}{\textbf{OPT}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+
+route & base & - &
+Mit Hilfe von route-Circuits können Routen in andere Netze konfiguriert werden.
+Dies entspricht im Wesentlichen der Funktionalität der Variablen
+\var{IP\_ROUTE\_\%} (siehe \jump{IPROUTEN}{\var{IP\_ROUTE\_N}}), geht jedoch
+etwas darüber hinaus. Intern werden alle per \var{IP\_ROUTE\_\%} konfigurierte
+Routen in route-Circuits abgebildet.
+    \\
+    \hline
+
+dhcp & dhcp\_client & \var{OPT\_DHCP\_CLIENT} &
+Mit Hilfe von dhcp-Circuits lassen sich IPv4- und IPv6-Adressinformationen von
+einem DHCP-Server ermitteln. Dies ist vor allem dann sinnvoll, wenn der fli4l
+nicht selbsttätig eine Internet-Verbindung aufbaut, sondern sich hinter einem
+anderen Router befindet, der dies für einen erledigt, etwa hinter einem
+Kabelmodem.
+    \\
+    \hline
+
+isdn & isdn & \var{OPT\_ISDN} &
+Mit Hilfe von isdn-Circuits ist eine Einwahl in ein anderes Netz (z.\,B. ein
+Firmennetz) über ISDN möglich.
+    \\
+    \hline
+
+ppp & ppp (+ diverse) & \var{OPT\_PPP} (+ diverse) &
+Mit Hilfe von ppp-Circuits ist eine Einwahl ins Internet oder ein Firmennetz
+über eine Reihe diverser Kanäle mit Hilfe des Point-to-Point-Protokolls (PPP)
+möglich. Mehr dazu ist in Abschnitt \ref{sect:ppp-circuits} zu finden.
+    \\
+    \hline
+
+    \caption{Verfügbare Circuit-Typen}\marklabel{circuit:types}{}
+\end{longtable}
+
+Alle Circuits werden der Übersichtlichkeit halber in der Datei
+\texttt{circuits.txt} konfiguriert. Die Anzahl der konfigurierten Circuits wird
+dabei in der Variable \var{CIRC\_N} festgehalten:
+
+\begin{description}
+
+\config{CIRC\_N}{CIRC\_N}{CIRCN}
+
+Diese Variable gibt die Anzahl der konfigurierten Circuits an.
+
+Standard-Einstellung: \verb+CIRC_N='0'+
+
+Beispiel: \verb+CIRC_N='4'+
+
+\end{description}
+
+Darüber hinaus besitzt jeder Circuit, egal von welchem Typ, einige allgemeine
+Attribute. Zuerst operiert \emph{jeder} Circuit auf einer
+\emph{Netzwerk-Schnittstelle}. Je nach Circuit-Typ ist diese Schnittstelle
+statisch vorhanden (dies gilt z.\,B. für Ethernet-Schnittstellen wie ``eth0''),
+oder sie wird dynamisch beim Einwählen erzeugt (das ist z.\,B. bei den
+``pppX''-Schnittstellen von ppp-Circuits der Fall), oder sie wird von einem
+anderen Circuit erzeugt und hier nur referenziert (das ist z.\,B. bei
+DHCPv6-over-PPPoE der Fall). Auf Grund dieser verschiedenen
+Möglichkeiten gibt es keine einheitliche Variable zur Angabe der Schnittstelle,
+stattdessen kümmert sich jeder Circuit-Typ selbst um die Konfiguration der
+Schnittstelle (und einige wie ppp verbieten die Angabe einer Schnittstelle
+gänzlich, da sie automatisch erzeugt und verwaltet wird).
+
+Weitere allgemeine Attribute werden über die folgenden Variablen konfiguriert.
+
+\begin{description}
+
+\config{CIRC\_x\_NAME}{CIRC\_x\_NAME}{CIRCxNAME}
+
+Jeder Circuit hat einen Namen. Dieser Name kann aus Buchstaben, Ziffern und dem
+Bindestrich (`-') bestehen und hilft dabei, den Circuit in der Web-GUI, in
+Protokollen etc. zu identifizieren. Der Name muss unter allen Circuits und
+Circuit-Klassen (siehe \jump{CIRCCLASSxNAME}{\var{CIRC\_CLASS\_x\_NAME}})
+eindeutig sein.
+
+Beispiel: \verb+CIRC_x_NAME='DSL-Telekom'+
+
+\config{CIRC\_x\_TYPE}{CIRC\_x\_TYPE}{CIRCxTYPE}
+
+Jeder Circuit hat einen Typ. Dieser Typ bestimmt, wie das Wählen und Auflegen
+funktioniert. Intern entscheidet der Typ, welches Skript zum Wählen und
+Auflegen verwendet wird.
+
+Es sind immer nur die Typen der aktivierten Pakete verfügbar. Wenn Sie also
+z.\,B. einen dhcp-Circuit verwenden möchten, dann müssen Sie das Paket
+dhcp\_client herunterladen und DHCP mit \verb+OPT_DHCP_CLIENT='yes'+
+aktivieren. Andernfalls bekommen Sie bei der Verwendung des Typs ``dhcp'' beim
+Bauen der Installationsarchive eine Fehlermeldung.
+
+Beispiel: \verb+CIRC_x_TYPE='dhcp'+
+
+\config{CIRC\_x\_ENABLED}{CIRC\_x\_ENABLED}{CIRCxENABLED}
+
+Die Variable \verb+CIRC_x_ENABLED+ aktiviert einen Circuit zur
+Konfigurationszeit. Damit der Circuit überhaupt Beachtung findet, muss diese
+Variable auf \verb+'yes'+ gesetzt werden. Gilt hingegen
+\verb+CIRC_x_ENABLED='no'+, dann wird der Circuit auf dem fli4l nicht
+konfiguriert. Auch kann zur Konfigurationszeit der Circuits nicht mit seinem
+Namen angesprochen werden, etwa in Firewall-Regeln.
+
+Standard-Einstellung: \verb+CIRC_x_ENABLED='no'+
+
+Beispiel: \verb+CIRC_x_ENABLED='yes'+
+
+\config{CIRC\_x\_DIALMODE}{CIRC\_x\_DIALMODE}{CIRCxDIALMODE}
+
+Jeder Circuit kann einen individuellen initialen \jump{sect:dialmode}{Wählmodus}
+erhalten, der dann über diese Variable konfiguriert werden kann.
+
+Standard-Einstellung: \verb+CIRC_x_DIALMODE='auto'+
+
+Beispiel: \verb+CIRC_x_DIALMODE='manual'+
+
+\configlabel{CIRC\_x\_NETS\_IPV4\_N}{CIRCxNETSIPV4N}
+\config{CIRC\_x\_NETS\_IPV4\_y}{CIRC\_x\_NETS\_IPV4\_y}{CIRCxNETSIPV4y}
+
+Ein Circuit ist nur dann sinnvoll, wenn er auch zu einer Netzanbindung führt.
+Dazu ist es in der Regel notwendig, dass Routen konfiguriert werden, sobald
+eine erfolgreiche Einwahl stattgefunden hat. Welche IPv4-Netze über den Circuit
+geroutet werden, kann über diese Variablen festgelegt werden.
+
+Im häufigsten Fall der Circuit-Nutzung, der Internet-Anbindung, muss die
+Default-Route über den Circuit gehen. Dazu muss das Netz 0.0.0.0/0 in die Liste
+eingetragen werden.
+
+Nur in Ausnahmefällen müssen keine Netze angegeben werden, etwa bei
+Server-Circuits, bei denen keine Routen zurück zu den Clients installiert werden
+sollen.
+
+Standard-Einstellung: \verb+CIRC_x_NETS_IPV4_N='0'+
+
+Beispiel 1:
+\begin{example}
+\begin{verbatim}
+    CIRC_x_NETS_IPV4_N='1'
+    CIRC_x_NETS_IPV4_1='0.0.0.0/0'
+\end{verbatim}
+\end{example}
+
+Beispiel 2:
+\begin{example}
+\begin{verbatim}
+    CIRC_x_NETS_IPV4_N='2'
+    CIRC_x_NETS_IPV4_1='10.15.16.0/24'
+    CIRC_x_NETS_IPV4_2='10.16.0.0/16'
+\end{verbatim}
+\end{example}
+
+\configlabel{CIRC\_x\_NETS\_IPV6\_N}{CIRCxNETSIPV6N}
+\config{CIRC\_x\_NETS\_IPV6\_y}{CIRC\_x\_NETS\_IPV6\_y}{CIRCxNETSIPV6y}
+
+Hier werden analog zu \var{CIRC\_x\_NETS\_IPV4\_y} IPv6-Netze angegeben, die
+nach der Einwahl über den Circuit geroutet werden sollen. Diese Variablen können
+nur bei aktivierter IPv6-Unterstützung (Paket ipv6, \verb+OPT_IPV6='yes'+)
+verwendet werden.
+
+Im häufigsten Fall der Circuit-Nutzung, der Internet-Anbindung, muss die
+Default-Route über den Circuit gehen. Dazu muss das Netz ::/0 in die Liste
+eingetragen werden.
+
+Nur in Ausnahmefällen müssen keine Netze angegeben werden, etwa bei
+Server-Circuits, bei denen keine Routen zurück zu den Clients installiert werden
+sollen.
+
+Standard-Einstellung: \verb+CIRC_x_NETS_IPV6_N='0'+
+
+Beispiel 1:
+\begin{example}
+\begin{verbatim}
+    CIRC_x_NETS_IPV6_N='1'
+    CIRC_x_NETS_IPV6_1='::/0'
+\end{verbatim}
+\end{example}
+
+Beispiel 2:
+\begin{example}
+\begin{verbatim}
+    CIRC_x_NETS_IPV6_N='2'
+    CIRC_x_NETS_IPV6_1='2001:db8:1::/48'
+    CIRC_x_NETS_IPV6_2='2001:db8:2::/48'
+\end{verbatim}
+\end{example}
+
+\config{CIRC\_x\_PROTOCOLS}{CIRC\_x\_PROTOCOLS}{CIRCxPROTOCOLS}
+
+In der Regel werden die Layer-3-Protokolle, die von einem Circuit unterstützt
+werden (IPv4 oder IPv6) aus den konfigurierten Netzen
+(\var{CIRC\_x\_NETS\_IPV4\_y} und \var{CIRC\_x\_NETS\_IPV6\_y}, siehe oben)
+abgeleitet. In manchen Fällen werden jedoch keine Netze angegeben, weil keine
+Routen aufgebaut werden sollen. Dies ist beispielsweise bei Server-Circuits der
+Fall. In solchen Fällen ist es nötig, die zu verwendenden Layer-3-Protokolle
+explizit einzustellen. Dazu wird in dieser Variable eine Liste von Protokollen
+notiert, die durch Leerzeichen voneinander getrennt sind. Erlaubte Protokolle
+sind \texttt{ipv4} und \texttt{ipv6}.
+
+Standard-Einstellung: abgeleitet aus \var{CIRC\_x\_NETS\_IPV4\_y} und
+\var{CIRC\_x\_NETS\_IPV6\_y}
+
+Beispiel: \verb+CIRC_x_PROTOCOLS='ipv4 ipv6'+
+
+\config{CIRC\_x\_UP}{CIRC\_x\_UP}{CIRCxUP}
+
+Ist \verb+CIRC_x_UP='yes'+, dann wird der entsprechende Circuit beim Booten
+aktiviert. Je nach \jump{sect:dialmode}{Wählmodus} kann dies bereits beim
+Booten zu einer Einwahl führen, oder die Einwahl kann später über die GUI oder
+das \texttt{fli4lctrl}-Programm veranlasst werden. Bei \verb+CIRC_x_UP='no'+
+muss der Circuit erst mit Hilfe der GUI oder mit dem \texttt{fli4lctrl}-Programm
+aktiviert werden, bevor eine Einwahl gestartet werden kann.
+
+Falls Circuits aktiviert werden, die sich in einem oder mehreren gerouteten
+Netzen überlappen, ist dies ein Fehler, der bereits beim Versuch, das
+Installationsarchiv zu bauen, von \texttt{mkfli4l} gemeldet
+wird.\footnote{In einer späteren Version ist angedacht, in einem solchen Fall
+den Datenverkehr für diese Netze gleichmäßig auf alle diese Circuits zu
+verteilen.}
+
+Diese Einstellung ist nur relevant mit \verb+OPT_CIRCD='no'+.
+
+Standard-Einstellung: \verb+CIRC_x_UP='no'+
+
+Beispiel: \verb+CIRC_x_UP='yes'+
+
+\config{CIRC\_x\_PRIORITY}{CIRC\_x\_PRIORITY}{CIRCxPRIORITY}
+
+Diese Variable gibt die Priorität des Circuits an. Höhere Werte bedeuten eine
+niedrigere Priorität. Prioritäten dienen dazu, Circuits nach Eignung zu
+gruppieren: Bei der Auswahl von Circuits\footnote{durch den Hintergrundprozess
+\texttt{circd}} werden alle Circuits prioritätsweise abgearbeitet. Nur wenn in
+der höchsten Prioritätsklasse keine Circuits in Frage kommen, kommen die
+Circuits der nächstniedrigeren Prioritätsklasse zum Zuge. Mehr zum
+Auswahlalgorithmus des \texttt{cird} finden Sie im Abschnitt
+\jump{sect:circd}{``Das Programm \texttt{circd}''}.
+
+Diese Einstellung ist nur relevant mit \verb+OPT_CIRCD='yes'+.
+
+Standard-Einstellung: \verb+CIRC_x_PRIORITY='1'+
+
+Beispiel: \verb+CIRC_x_PRIORITY='2'+
+
+\config{CIRC\_x\_TIMES}{CIRC\_x\_TIMES}{CIRCxTIMES}
+
+Ist \verb+OPT_CIRCD='yes'+, dann enthält diese Variable eine
+Zeitspezifikation, die angibt, wann der Circuit aktiviert werden soll und wann
+nicht, und wie viel der Circuit bei einer erfolgreichen Einwahl pro Minute
+kostet. Dadurch wird es möglich, zu verschiedenen Zeiten verschiedene Circuits
+zu verwenden (Least-Cost-Routing). Dabei kontrolliert der Dämon-Prozess
+\texttt{circd} das Aktivieren und Deaktivieren der Circuits.
+
+Der Inhalt der Variablen ist wie folgt aufgebaut:
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TIMES='W1-W2:hh-hh:Kosten:Typ [W1-W2:hh-hh:Kosten:Typ [...]]'
+\end{verbatim}
+\end{example}
+
+Jedes Feld besteht aus vier Unterfeldern, die mit Hilfe eines Doppelpunkts (':')
+voneinander getrennt sind:
+
+\begin{itemize}
+
+\item Feld \emph{W1--W2}: Wochentag-Zeitraum, z.\,B. Mo--Fr oder Sa--Su usw.
+Sowohl die deutsche als auch die englische Schreibweise sind erlaubt. Soll ein
+einzelner Wochentag eingetragen werden, ist W1--W1 zu schreiben, also z.\,B.
+Su--Su.
+
+\item Feld \emph{hh--hh}: Stunden-Bereich, z.\,B. 09--18 oder auch 18--09.
+18--09 ist gleichbedeutend mit 18--24 plus 00--09. 00--24 meint den ganzen Tag.
+Stunden müssen immer zweistellig (also notfalls mit führenden Nullen) angegeben
+werden.
+
+\item Feld \emph{Kosten}: Hier werden in Euro die Kosten pro Minute angegeben,
+z.\,B. 0.032 für 3,2 Cent pro Minute. Diese werden unter Berücksichtigung der
+Taktzeit in die tatsächlich anfallenden Kosten umgerechnet, welche dann im
+imon-Client oder der WebGUI angezeigt werden.
+
+\item Feld \emph{Typ}: Dieses Feld gibt den Typ des Zeitraums an:
+
+\begin{tabular}[h!]{lp{11cm}}
+    Y oder J: & Im angegebenen Zeitraum wird der Circuit aktiviert,
+                unabhängig von den anfallenden Kosten.\\
+    L:        & Im angegebenen Zeitraum wird der Circuit aktiviert,
+                wenn er zu den günstigsten Circuits gehört. (`L' steht für
+                `Least cost', also ``niedrigste Kosten''.)\\
+    N:        & Der angegebene Zeitbereich dient nur zum Berechnen
+                von Kosten, der Circuit wird in diesem Zeitraum jedoch
+                nicht aktiviert. Dies kann sinnvoll sein, wenn der
+                Circuit \emph{manuell} aktiviert wird, etwa wenn es sich um
+                einen Circuit zur Verbindung mit einem Firmennetz handelt,
+                der nur bei Bedarf hinzugeschaltet wird.
+\end{tabular}
+
+ Der Typ kann weggelassen werden, in diesem Fall wird `L' angenommen.
+\end{itemize}
+
+Standard-Einstellung: \verb+CIRC_2_TIMES='Mo-Su:00-24:0.0:N'+
+
+Beispiel 1:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_1_TIMES='Mo-Fr:09-18:0.049:N Mo-Fr:18-09:0.044:L Sa-Su:00-24:0.039:Y'
+\end{verbatim}
+\end{example}
+
+Beispiel 2 für diejenigen, die eine Flatrate nutzen:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_2_TIMES='Mo-Su:00-24:0.0:Y'
+\end{verbatim}
+\end{example}
+
+\wichtig{Wenn die Zeitbereiche aller aktivierten Circuits mit einer
+Default-Route zusammengenommen nicht die komplette Woche beinhalten, gibt es zu
+diesen Lückenzeiten keine Default-Route. Damit ist dann das Surfen im Internet
+zu diesen Zeiten ausgeschlossen!}
+
+Und noch eine letzte Bemerkung: \emph{Feiertage werden wie Sonntage behandelt.}
+
+\config{CIRC\_x\_CHARGEINT}{CIRC\_x\_CHARGEINT}{CIRCxCHARGEINT}
+
+Mit dieser Variable wird der Zeittakt in Sekunden angegeben. Dieser
+wird dann für die Kosten-Berechnung verwendet.
+
+Die meisten Provider rechnen minutengenau ab. In diesem Fall ist der Wert '60'
+richtig. Bei Providern mit sekundengenauer Abrechnung setzt man die Variable
+entsprechend auf '1'.
+
+Diese Variable ist nur möglich bzw. sinnvoll bei Circuits, die tatsächlich
+Kosten verursachen. Bei Circuits, die keine Einwahl im herkömmlichen Sinne
+durchführen (route, dhcp), ist diese Einstellung nicht möglich.
+
+Standard-Einstellung: \verb+CIRC_x_CHARGEINT='0'+
+
+Beispiel: \verb+CIRC_x_CHARGEINT='60'+
+
+\config{CIRC\_x\_HUP\_TIMEOUT}{CIRC\_x\_HUP\_TIMEOUT}{CIRCxHUPTIMEOUT}
+
+Hier kann die Zeit in Sekunden angegeben werden, nach welcher die Verbindung
+beendet werden soll, wenn kein Datenverkehr mehr über den Circuit läuft. Dabei
+steht ein Timeout von '0' für ``kein Timeout'', d.\,h. der Router legt nicht
+auf und wählt sich nach einem Zwangsauflegen auch sofort wieder neu ein.
+
+Momentan wird ein Hangup-Timeout > 0 nur für ppp-Circuits unterstützt.
+
+Diese Eigenschaft unterscheidet generell zwischen ``normalen'' Circuits, die
+sich bei der \texttt{fli4lctrl dial}-Operation sofort einwählen
+(Hangup-Timeout gleich null), und ``dial-on-demand''-Circuits, die nach der
+\texttt{fli4lctrl dial}-Operation nur bereit für eine (kommende) Einwahl sind
+(Hangup-Timeout größer null). Mehr Informationen hierzu finden sich in den
+Abschnitten \jump{sect:circstates}{``Circuit-Zustände''} und
+\jump{sect:fli4lctrl}{``Das Programm \texttt{fli4lctrl}''}.
+
+Standard-Einstellung: \verb+CIRC_x_HUP_TIMEOUT='0'+
+
+Beispiel: \verb+CIRC_x_HUP_TIMEOUT='600'+
+
+\config{CIRC\_x\_USEPEERDNS}{CIRC\_x\_USEPEERDNS}{CIRCxUSEPEERDNS}
+
+Hiermit wird festgelegt, ob die vom Provider bei der Einwahl übergebenen
+DNS-Namensserver für die Dauer der Verbindung in die Konfigurationsdatei des
+lokalen DNS-Servers (dnsmasq) eingetragen werden sollen.
+
+Sinnvoll ist die Nutzung dieser Option also nur bei Circuits, die entsprechende
+Informationen liefern. Dies betrifft i.\,d.\,R. Internet-Anbindungen via PPP
+und DHCP-Circuits.
+
+Diese Option bietet den Vorteil, immer mit den am nächsten liegenden
+DNS-Namensser\-vern arbeiten zu können, sofern der Provider die korrekten
+IP-Adressen übermittelt~-- dadurch geht die Namensauflösung schneller.
+
+Im Falle eines Ausfalls eines DNS-Servers beim Provider werden in der Regel die
+übergebenen DNS-Server-Adressen sehr schnell vom Provider korrigiert.
+
+Trotz allem ist vor jeder ersten Einwahl die Angabe eines gültigen
+Namensservers in \var{DNS\_\-FORWARDERS} zwingend erforderlich, da sonst die
+erste Anfrage nicht korrekt aufgelöst werden kann. Außerdem wird beim Beenden
+der Verbindung die originale Konfiguration des lokalen Namensservers wieder
+hergestellt.
+
+Standard-Einstellung: \verb+CIRC_x_USEPEERDNS='no'+
+
+Beispiel: \verb+CIRC_x_USEPEERDNS='yes'+
+
+\config{CIRC\_x\_WAIT}{CIRC\_x\_WAIT}{CIRCxWAIT}
+
+In der Regel wird das Wählen eines Circuits im Hintergrund durchgeführt. Will
+man jedoch beim Booten sicherstellen, dass sich ein Circuit erfolgreich
+eingewählt hat, kann man diese Variable auf die Anzahl der maximal zu wartenden
+Sekunden setzen. Bei `0' wird nicht gewartet.
+
+Ein Wert größer null kann bei ppp-Circuits (d.\,h. wenn
+\verb+CIRC_x_TYPE='ppp'+ gesetzt ist)
+nur verwendet werden, wenn es sich um keinen Dial-on-demand-Circuit handelt,
+wenn also \verb+CIRC_x_HUP_TIMEOUT='0'+ gesetzt ist (bzw. die Variable gar
+nicht definiert wird). Der Grund hierfür ist, dass ein Warten auf einen
+Dial-on-demand-Circuit wenig Sinn hat, weil der Wählvorgang erst bei
+entsprechender Netzwerkaktivität erfolgt.
+
+Standard-Einstellung: \verb+CIRC_x_WAIT='0'+
+
+Beispiel: \verb+CIRC_x_WAIT='15'+
+
+\config{CIRC\_x\_DEBUG}{CIRC\_x\_DEBUG}{CIRCxDEBUG}
+
+Mit dieser Variable können zusätzliche Debug-Ausgaben eingeschaltet werden.
+Dies ist Circuit-spezifisch und hat nicht zwangsläufig bei jedem Circuit-Typ
+sichtbare Auswirkungen.
+
+Standard-Einstellung: \verb+CIRC_x_DEBUG='no'+
+
+Beispiel: \verb+CIRC_x_DEBUG='yes'+
+
+\config{CIRC\_x\_DEPS}{CIRC\_x\_DEPS}{CIRCxDEPS}
+
+Mit dieser Variable können Abhängigkeiten zwischen Circuits spezifiziert
+werden. Ein Circuit A, der von einem Circuit B abhängig ist, kann nur dann
+online gehen, wenn Circuit B ebenfalls online ist. Dies ist insbesondere dann
+nützlich, wenn Circuit A über seine Netzanbindung Infrastruktur zur Verfügung
+stellt, die Circuit B benötigt, etwa wenn Circuit A eine IPv4-Internetanbindung
+herstellt und Circuit B einen 6in4-Tunnel aufbaut.
+
+Standard-Einstellung: \verb+CIRC_x_DEPS=''+
+
+Beispiel 1: \verb+CIRC_x_DEPS='internet'+
+
+Gelegentlich muss nicht der \emph{gesamte} Circuit mit all seinen konfigurierten
+Layer-3-Proto\-kollen online sein, damit eine Abhängigkeit erfüllt ist, sondern
+nur ein bestimmtes Protokoll, z.B. IPv4 oder IPv6. In diesem Fall kann man das
+Protokoll hinter dem Circuit angeben, mit einem Schrägstrich abgetrennt.
+Das folgende Beispiel zeigt eine Abhängigkeit zu einem Tag oder Circuit namens
+``internet'', wobei es ausreicht, wenn dessen IPv4-Anbindung online ist. Dies
+ist z.B. für 6in4-Tunnel völlig ausreichend, denn die IPv6-Konnektivität spielt
+bei 6in4 naturgemäß keine Rolle (schließlich stellt ein 6in4-Tunnel gerade eine
+IPv6-Anbindung über eine IPv4-Anbindung her).
+
+Beispiel 2: \verb+CIRC_x_DEPS='internet/ipv4'+
+
+\configlabel{CIRC\_x\_CLASS\_N}{CIRCxCLASSN}
+\config{CIRC\_x\_CLASS\_y}{CIRC\_x\_CLASS\_y}{CIRCxCLASSy}
+
+Mit diesen Variablen können einem Circuit \jump{sec:circuits:classes}{Klassen}
+zugeordnet werden. Durch Klassen sich Circuits logisch gruppieren, es wird
+somit eine Abstraktion geschaffen, die auf vielfältige Weise ausgenutzt werden
+kann. Eine mögliche Anwendung ist die Nutzung innerhalb von Abhängigkeiten
+zwischen Circuits (\var{CIRC\_x\_DEPS}, siehe oben), wenn mehrere Circuits eine
+Abhängigkeit erfüllen können.
+
+Jede hier angegebene Klasse muss via
+\jump{CIRCCLASSxNAME}{\var{CIRC\_CLASS\_x\_NAME}} definiert werden. Ist dies
+nicht der Fall, wird eine Fehlermeldung ausgegeben.
+
+Standard-Einstellung: \verb+CIRC_x_CLASS_N='0'+
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_1_NAME='DHCP-LAN'
+    CIRC_1_TYPE='dhcp'
+    CIRC_1_ENABLED='yes'
+    CIRC_1_DHCP_DEV='eth0'
+    CIRC_1_NETS_IPV4_N='1'
+    CIRC_1_NETS_IPV4_1='0.0.0.0/0'
+    CIRC_1_CLASS_N='1'
+    CIRC_1_CLASS_1='internet-v4'
+
+    CIRC_2_NAME='DSL-Telekom'
+    CIRC_2_TYPE='ppp'
+    CIRC_2_ENABLED='yes'
+    CIRC_2_PPP_TYPE='ethernet'
+    CIRC_2_PPP_USERID='anonymer'
+    CIRC_2_PPP_PASSWORD='surfer'
+    CIRC_2_PPP_ETHERNET_TYPE='kernel'
+    CIRC_2_PPP_ETHERNET_DEV='eth1'
+    CIRC_2_NETS_IPV4_N='1'
+    CIRC_2_NETS_IPV4_1='0.0.0.0/0'
+    CIRC_2_CLASS_N='1'
+    CIRC_2_CLASS_1='internet-v4'
+
+    CIRC_3_NAME='IPv6-Tunnel'
+    CIRC_3_TYPE='tun6in4-he'
+    CIRC_3_ENABLED='yes'
+    CIRC_3_NETS_IPV6_N='1'
+    CIRC_3_NETS_IPV6_1='::/0'
+    CIRC_3_CLASS_N='1'
+    CIRC_3_CLASS_1='internet-v6'
+    CIRC_3_DEPS='internet-v4'
+\end{verbatim}
+\end{example}
+
+In diesem Beispiel ist ein 6in4-HE-Tunnel (siehe Paket ipv6) abhängig von
+einem Circuit der Klasse ``internet-v4''. Ob das zur Laufzeit dann die
+DSL- (siehe Paket dsl) oder DHCP-Anbindung (siehe Paket dhcp\_client) ist, ist
+egal~-- sobald einer der beiden Circuits online ist, kann der Tunnel ebenfalls
+online gehen.
+
+\config{CIRC\_x\_BUNDLE}{CIRC\_x\_BUNDLE}{CIRCxBUNDLE}
+
+Ist \verb+CIRC_x_BUNDLE+ nicht leer und referenziert es einen anderen gültigen
+Circuit, dann wird der referenzierende Circuit Teil eines so genannten
+``Bündels''. Gebündelte Circuits bilden zusammen \emph{eine} logische
+Verbindung. Dies wird momentan nur vom Paket ppp unterstützt, siehe
+Abschnitt \jump{sect:multilink-ppp}{``Multilink PPP''}.
+
+Beispiel: \verb+CIRC_x_BUNDLE='internet-mp'+
+
+\end{description}
+
+\marklabel{sect:circstates}{\subsection{Circuit-Zustände}}
+
+Jeder Circuit hat, während der Router läuft, einen der folgenden Zustände:
+
+\begin{longtable}{|l|l|p{0.6\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Zustand}} &
+    \multicolumn{1}{|l}{\textbf{Interner Name}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+
+\emph{inaktiv} & inactive &
+Ein Circuit ist \emph{inaktiv}, wenn er nicht zur Einwahl herangezogen werden
+kann.
+    \\
+    \hline
+\emph{aktiv}   & active   &
+Ein Circuit ist \emph{aktiv}, wenn er zur Einwahl herangezogen werden kann.
+    \\
+    \hline
+\emph{bereit}  & ready    &
+Ein Circuit ist \emph{bereit}, wenn er sich bei Netzwerk-Aktivität automatisch
+einwählt
+(``dial-on-demand'').
+    \\
+    \hline
+\emph{online}  & online   &
+Ein Circuit ist \emph{online}, wenn die Verbindung erfolgreich aufgebaut werden
+konnte und die Netzwerk-Anbindung erfolgt ist.
+    \\
+    \hline
+\emph{ausgefallen}  & failed   &
+Ein Circuit ist \emph{ausgefallen}, wenn festgestellt wurde, dass die
+Verbindung über diesen Circuit nicht funktioniert. Dieser Zustand entspricht
+fast komplett dem Zustand \emph{inaktiv}, mit dem einzigen Unterschied, dass
+ein ausgefallener Zustand von \texttt{circd} ignoriert wird (siehe hierzu
+den Abschnitt \jump{sect:circd}{``Das Programm \texttt{circd}''}). Dieser
+Zustand ist somit vor allem für einen automatisierten Fallback-Mechanismus
+gedacht.
+    \\
+    \hline
+
+    \caption{Circuit-Zustände}\marklabel{circuit:states}{}
+\end{longtable}
+
+Die \emph{Übergänge} zwischen diesen Zuständen werden teilweise mit
+\jump{sect:fli4lctrl}{\texttt{fli4lctrl}} durchgeführt, teilweise
+erfolgen sie automatisch. Ihre Bedeutung ist wie folgt:
+
+\begin{longtable}{|l|p{0.7\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Zustandsübergang}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+
+\circstatetrans{inaktiv}{aktiv} &
+Ein Circuit wird aktiviert und kann sich je nach Wählmodus manuell oder
+automatisch einwählen. Zu diesem Zeitpunkt können noch keine Daten über den
+Circuit transportiert werden.
+
+Dieser Zustandsübergang kann in allen Wählmodi erfolgen. Er wird durch
+\texttt{fli4lctrl up} ausgelöst.
+    \\
+    \hline
+\circstatetrans{aktiv}{bereit} &
+Ein \emph{aktiver} Circuit wird in den Zustand \emph{bereit} versetzt, in dem
+eine Einwahl auf Grund von Netzwerk-Aktivität möglich ist. Zu diesem Zeitpunkt
+können noch keine Daten über den Circuit transportiert werden. In der Regel
+werden bei diesem Zustandsübergang Hintergrundprozesse gestartet, die für die
+folgenden Zustandsübergänge verantwortlich sind.
+
+Im Wählmodus \emph{auto} erfolgt dieser Zustandsübergang direkt nach dem
+Übergang \circstatetrans{inaktiv}{aktiv} oder \circstatetrans{bereit}{aktiv}.
+Im Wählmodus \emph{manual} muss dieser Zustandsübergang explizit durch
+\texttt{fli4lctrl dial} ausgelöst werden. Im Wählmodus \emph{off} ist dieser
+Zustandsübergang nicht möglich.
+    \\
+    \hline
+\circstatetrans{bereit}{online} &
+Über den Circuit im Zustand \emph{bereit} findet eine Einwahl statt. Nach deren
+erfolgreichem Abschluss können Daten über den Circuit transportiert werden,
+sofern für den Circuit entsprechende zu routende Netze (siehe
+\jump{CIRCxNETSIPV4y}{\var{CIRC\_x\_NETS\_IPV4\_y}} und
+\jump{CIRCxNETSIPV6y}{\var{CIRC\_x\_NETS\_IPV6\_y}}) konfiguriert sind.
+
+Je nach \jump{CIRCxHUPTIMEOUT}{Hangup-Timeout} erfolgt dieser Zustandsübergang
+direkt nach dem Zustandsübergang \circstatetrans{aktiv}{bereit}
+(Hangup-Timeout = 0), oder er wird durch eine Netzwerk-Aktivität ausgelöst
+(Hangup-Timeout > 0).
+    \\
+    \hline
+\circstatetrans{online}{bereit} &
+Die Wählverbindung wird beendet und die Netzwerk-Anbindung abgebaut. Danach
+können keine Daten mehr über den Circuit transportiert werden.
+
+Je nach \jump{CIRCxHUPTIMEOUT}{Hangup-Timeout} wird dieser Zustandsübergang
+entweder explizit vom Benutzer via \texttt{fli4lctrl hangup} angefordert
+(Hangup-Timeout = 0), oder er erfolgt automatisch nach einer gewissen
+Zeitspanne der Netzwerk-Inaktivität (Hangup-Timeout > 0).
+    \\
+    \hline
+\circstatetrans{bereit}{aktiv} &
+Ein Circuit im Zustand \emph{bereit} wird wieder in den Zustand \emph{aktiv}
+versetzt. Danach ist eine automatische (Wieder-)Einwahl auf Grund von
+Netzwerkaktivität nicht mehr möglich. In der Regel werden bei diesem
+Zustandsübergang Hintergrundprozesse beendet, die beim Zustandsübergang
+\circstatetrans{aktiv}{bereit} gestartet wurden.
+
+Im Wählmodus \emph{manual} erfolgt dieser Zustandsübergang direkt nach dem
+Übergang \circstatetrans{online}{bereit}. Im Wählmodus \emph{auto} muss
+dieser Zustandsübergang explizit durch \texttt{fli4lctrl hangup} ausgelöst
+werden. (Auf Grund der Semantik vom Wählmodus \emph{auto} wird sofort wieder in
+den Zustand \emph{bereit} gewechselt, siehe die Beschreibung von
+\circstatetrans{aktiv}{bereit} weiter oben.)
+    \\
+    \hline
+\circstatetrans{aktiv}{inaktiv} &
+Ein Circuit wird deaktiviert und kann künftig nicht mehr zur Einwahl
+herangezogen werden.
+
+Dieser Zustandsübergang kann in allen Wählmodi erfolgen. Er wird durch
+\texttt{fli4lctrl down} ausgelöst.
+    \\
+    \hline
+
+    \caption{Circuit-Zustandsübergänge}\marklabel{circuit:transitions}{}
+\end{longtable}
+
+Nicht jeder Circuit unterscheidet effektiv zwischen \emph{bereit} und
+\emph{online}. So fallen diese Konzepte z.\,B. bei DHCP zusammen, weil es dort
+nicht möglich ist, einen Hangup-Timeout > 0 zu konfigurieren.
+
+\marklabel{sect:dialmode}{\subsection{Wählmodus (DIALMODE)}}
+
+Der Wählmodus steuert, ob und auf welche Art und Weise der fli4l-Router für die
+Einwahl verantwortlich ist. Der Wählmodus ist zum einen eine globale
+Eigenschaft, die das generelle Wählverhalten des fli4l kontrolliert. Es gibt
+drei Varianten:
+
+\begin{longtable}{|l|p{0.75\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Wählmodus}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+
+off &
+In diesem Modus sind alle Circuits \emph{inaktiv} oder \emph{aktiv}. Der fli4l
+wählt weder von alleine (Netzwerkaktivität, \texttt{circd} etc.) noch auf
+Benutzerwunsch (\texttt{fli4lctrl dial}, WebGUI etc.).
+    \\
+    \hline
+
+manual &
+In diesem Modus können \emph{aktive} Circuits auf explizite Benutzeranfrage
+(via \texttt{fli4ctrl dial} oder über die WebGUI) in den Zustand \emph{online}
+wechseln. Sowohl bei \texttt{fli4lctrl hangup} als auch bei einem
+konfigurierten Hangup-Timeout > 0 und entsprechend langer Netzwerk-Inaktivität
+wird aufgelegt, der Circuit wechselt dabei wieder in den Zustand \emph{aktiv}.
+
+In diesem Wählmodus ignoriert \texttt{circd} die Zeitspezifikationen und
+schaltet keine Circuits um.
+    \\
+    \hline
+
+auto &
+In diesem Modus werden \emph{aktive} Circuits automatisch in den Zustand
+\emph{bereit} versetzt. Je nach konfiguriertem Hangup-Timeout wechselt ein
+solcher Circuit entweder sofort (Hangup-Timeout = 0) oder erst bei Bedarf
+(Hangup-Timeout > 0) in den Zustand \emph{online}, nämlich wenn
+Netzwerk-Aktivität verzeichnet wird. Bei einem konfigurierten Hangup-Timeout
+> 0 wird bei entsprechend langer Netzwerk-Inaktivität aufgelegt, der Circuit
+wechselt dabei wieder in den Zustand \emph{bereit}. Der Befehl
+\texttt{fli4lctrl dial} steuert hierbei \emph{nicht} direkt die Einwahl,
+sondern nur, ob der Circuit \emph{bereit} oder nicht \emph{bereit} (d.\,h. nur
+\emph{aktiv}) ist. Bei externen Verbindungsabbrüchen oder beim expliziten
+Auflegen wird danach gleich wieder eine erneute Einwahl versucht.
+
+In diesem Wählmodus schaltet \texttt{circd} je nach Zeitspezifikation die
+Circuits automatisch um. \emph{Ausgefallene} Circuits werden dabei jedoch
+ignoriert.
+    \\
+    \hline
+
+    \caption{Verfügbare Wählmodi}\marklabel{circuit:dialmodes}{}
+\end{longtable}
+
+Sowohl im Wählmodus \emph{manual} als auch im Wählmodus \emph{auto} muss ein
+Circuit via \texttt{fli4lctrl up} aktiviert werden, bevor er (automatisch oder
+manuell via \texttt{fli4lctrl dial}) in den Zustand bereit wechseln kann.
+
+Zum anderen ist der Wählmodus eine lokale Eigenschaft, die pro Circuit verwaltet
+wird. Der \emph{effektive} Wählmodus ist dann das Minimum beider Wählmodi, mit
+der Ordnung \emph{off} < \emph{manual} < \emph{auto}. Damit lässt sich z.\,B.
+erreichen, dass Circuits generell automatisch (z.\,B. ins Internet), einige
+Circuits (z.\,B. in die Firma) aber nur manuell gewählt werden; ein schnelles
+Auflegen aller Circuits ist weiterhin durch das Ändern des globalen Wählmodus
+auf \emph{off} einfach zu realisieren.
+
+Der lokale Wählmodus eines jeden Circuits ist, sofern nicht explizit via
+\jump{CIRCxDIALMODE}{\var{CIRC\_x\_DIALMODE}} anders konfiguriert, initial
+``auto'', so dass anfangs nur der globale Wählmodus eine Rolle spielt.
+
+\begin{description}
+
+\config{DIALMODE}{DIALMODE}{DIALMODE}
+
+Mit dieser Variable wird der initiale globale Wählmodus beim Booten festgelegt.
+Eine Änderung ist im Nachhinein mit Hilfe des \texttt{fli4lctrl}-Programms, der
+WebGUI oder dem imon-Client möglich.
+
+Standard-Einstellung: \verb+DIALMODE='auto'+
+
+Beispiel: \verb+DIALMODE='manual'+
+
+\end{description}
+
+\subsection{Circuit-Klassen}\label{sec:circuits:classes}
+
+Circuit-Klassen bieten eine Möglichkeit, ``artverwandte'' Circuits zu
+gruppieren. Wenn man z.\,B.\ mehrere Möglichkeiten der Anbindung des Routers
+ans Internet hat, so ist doch all diesen Circuits die Default-Route gemeinsam,
+d.\,h. dass \var{CIRC\_x\_NETS\_IPV4\_y='0.0.0.0/0'} (für IPv4) bzw.
+\var{CIRC\_x\_NETS\_IPV6\_y='::/0'} (für IPv6) gilt. Dies kann man
+``herausmultiplizieren'' und daraus eine eigene Klasse definieren, die man
+z.\,B.\ sinnigerweise ``Internet'' nennt:
+
+\begin{example}
+\begin{verbatim}
+CIRC_CLASS_N='1'
+CIRC_CLASS_1_NAME='Internet'
+CIRC_CLASS_1_NETS_IPV4_N='1'         # Circuits dieser Klasse installieren die
+CIRC_CLASS_1_NETS_IPV4_1='0.0.0.0/0' # Default-Route für IPv4...
+CIRC_CLASS_1_NETS_IPV6_N='1'
+CIRC_CLASS_1_NETS_IPV6_1='::/0'      # ...und für IPv6
+\end{verbatim}
+\end{example}
+
+Ein Circuit kann dieser Klasse ``Internet'' mit Hilfe der Variable
+\jump{CIRCxCLASSy}{\var{CIRC\_x\_CLASS\_y}} zugeordnet werden.
+
+Neben Routen können auch Firewall-Regeln in einer Klasse sinnvoll sein. So kann
+z.\,B.\ eine Port-Weiterleitung zentral für alle Internet-Circuits in der
+Klasse ``Internet'' konfiguriert werden:
+
+\begin{example}
+\begin{verbatim}
+# Fortsetzung von oben
+CIRC_CLASS_1_PF_PREROUTING_N='1'
+CIRC_CLASS_1_PF_PREROUTING_1='tmpl:http DNAT:@web-server'
+CIRC_CLASS_1_PF_FORWARD_N='1'
+CIRC_CLASS_1_PF_FORWARD_1='tmpl:http @web-server ACCEPT'
+\end{verbatim}
+\end{example}
+
+Diese Regeln sind dann für alle Circuits gültig, die zur Klasse ``Internet''
+gehören.
+
+\begin{description}
+
+\config{CIRC\_CLASS\_N}{CIRC\_CLASS\_N}{CIRCCLASSN}
+
+Diese Variable gibt die Anzahl der konfigurierten Circuit-Klassen an.
+
+Standard-Einstellung: \verb+CIRC_CLASS_N='0'+
+
+Beispiel: \verb+CIRC_CLASS_N='2'+
+
+\config{CIRC\_CLASS\_x\_NAME}{CIRC\_CLASS\_x\_NAME}{CIRCCLASSxNAME}
+
+Jede Circuit-Klasse hat einen Namen. Dieser Name kann aus Buchstaben, Ziffern
+und dem Bindestrich (`-') bestehen. Der Name muss unter allen Circuits
+(siehe \jump{CIRCxNAME}{\var{CIRC\_x\_NAME}}) und Circuit-Klassen eindeutig
+sein.
+
+Beispiel: \verb+CIRC_CLASS_x_NAME='Internet'+
+
+\end{description}
+
+\marklabel{sect:fli4lctrl}{\subsection{Das Programm \texttt{fli4lctrl}}}
+
+Das Programm \texttt{fli4lctrl} ist der Zugang zum Circuit-System über die
+Kommandozeile. Es kann verwendet werden, um die Zustandsübergänge der Circuits
+herbeizuführen und um den Wählmodus zu verändern. Die möglichen Befehle lauten:
+
+\begin{longtable}{|p{0.3\textwidth}|p{0.6\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Kommando}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+
+\texttt{up} <Circuit> &
+Der Circuit wird vom Zustand \emph{inaktiv} in den Zustand \emph{aktiv}
+überführt. Im Wählmodus \emph{auto} schließt sich unmittelbar ein \texttt{dial}
+<Circuit> an, s.\,u.
+    \\
+    \hline
+\texttt{dial} <Circuit> &
+Der Circuit wird vom Zustand \emph{aktiv} in den Zustand \emph{bereit}
+überführt. Bei einem Hangup-Timeout = 0 folgt unmittelbar ein Wählvorgang mit
+dem Ziel, den Circuit in den Zustand \emph{online} zu überführen. Bei einem
+Hangup-Timeout > 0 wird nicht sofort gewählt, sondern auf entsprechende
+Netzwerk-Aktivität gewartet.
+
+Im Wählmodus \emph{off} wird das Kommando ignoriert.
+    \\
+    \hline
+\texttt{autodial} <Circuit> &
+Der Circuit wird genauso wie beim Befehl \texttt{fli4lctrl dial} vom Zustand
+\emph{aktiv} in den Zustand \emph{bereit} versetzt, aber \emph{nur}, wenn der
+effektive Wählmodus des Circuits \emph{auto} ist. In allen anderen Fällen wird
+der Befehl ignoriert.
+    \\
+    \hline
+\texttt{dial} &
+Es findet die Initiierung der Einwahl auf allen aktiven Circuits statt.
+    \\
+    \hline
+\texttt{hangup} <Circuit> &
+Der Circuit wird von den Zuständen \emph{online} und \emph{bereit} in den
+Zustand \emph{aktiv} überführt. Im Wählmodus \emph{auto} erfolgt anschließend
+ein \texttt{dial} <Circuit>.
+    \\
+    \hline
+\texttt{hangup} &
+Es findet ein Auflegen aller Circuits statt, die in den Zuständen \emph{bereit}
+oder \emph{online} sind.
+    \\
+    \hline
+\texttt{down} <Circuit> &
+Der Circuit wird von allen anderen Zuständen in den Zustand \emph{inaktiv}
+überführt, unabhängig vom Wähl\-modus.
+
+Falls der Circuit vorher im Zustand \emph{bereit} oder \emph{online} war, wird
+vorher ein \texttt{hangup} <Circuit> ausgeführt, s.\,o.
+    \\
+    \hline
+\texttt{fail} <Circuit> &
+Der Circuit wird von allen anderen Zuständen in den Zustand \emph{ausgefallen}
+überführt, unabhängig vom Wählmodus.
+
+Falls der Circuit vorher im Zustand \emph{bereit} oder \emph{online} war, wird
+vorher ein \texttt{hangup} <Circuit> ausgeführt, s.\,o.
+    \\
+    \hline
+\texttt{dialmode global} <Wählmodus> &
+Der angegebene Wählmodus wird global eingestellt. Pro Circuit wird der
+\emph{effektive} Wählmodus als Minimum des globalen und lokalen (s.\,u.)
+Wählmodus bestimmt. Folgende Zustandsübergänge finden statt:
+
+\begin{itemize}
+\item Ein effektiver Moduswechsel \dialmodetrans{*}{off} impliziert ein
+\texttt{hangup} auf allen Circuits in den Zuständen \emph{bereit} oder
+\emph{online} (dies entspricht somit einem \texttt{fli4lctrl hangup}).
+\item Ein effektiver Moduswechsel \dialmodetrans{*}{manual} impliziert ein
+\texttt{hangup} auf allen Circuits im Zustand \emph{bereit}. Circuits im
+Zustand \emph{online} legen \emph{nicht} auf; hier greift der neue Wählmodus
+erst \emph{nach} dem nächsten Auflegen.
+\item Ein effektiver Moduswechsel \dialmodetrans{*}{auto} impliziert ein
+\texttt{dial} auf allen \emph{aktiven} Circuits (dies entspricht somit einem
+\texttt{fli4lctrl dial}).
+\end{itemize}
+    \\
+    \hline
+\texttt{dialmode local} <Circuit> <Wählmodus> &
+Der angegebene Wählmodus wird lokal für den Circuit eingestellt. Für die sich
+daraus ergebenden Zustandsänderungen siehe oben.
+    \\
+    \hline
+
+    \caption{\texttt{fli4lctrl}-Befehle}\marklabel{fli4lctrl:modifying-commands}{}
+\end{longtable}
+
+\begin{longtable}{|l|p{0.55\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Kommando}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+
+\texttt{status} <Circuit> &
+Es wird der aktuelle Zustand des zugehörigen Circuits ausgegeben.
+    \\
+    \hline
+\texttt{status} &
+Der aktuelle Online-Status des Routers wird ausgegeben. Der Rückgabecode ist 0,
+falls der Router \emph{online} ist, und 1, falls er \emph{offline} ist oder ein
+Fehler aufgetreten ist. Wann genau der Router \emph{online} ist, wird im
+Abschnitt \jump{sect:router-online}{Wann ist mein Router online?} erläutert.
+    \\
+    \hline
+\texttt{dialmode global} &
+Der aktuelle globale Wählmodus wird zurückgegeben.
+    \\
+    \hline
+\texttt{dialmode local} <Circuit> &
+Der aktuelle lokale Wählmodus für den angegebenen Circuit wird zurückgegeben.
+    \\
+    \hline
+\texttt{dialmode effective} <Circuit> &
+Der aktuelle effektive Wählmodus für den angegebenen Circuit wird zurückgegeben.
+    \\
+    \hline
+\texttt{list states} &
+Eine Liste aller Circuits mit den zugehörigen Zuständen wird ausgegeben.
+    \\
+    \hline
+\texttt{list dialmodes} &
+Eine Liste aller Circuits mit den zugehörigen lokalen und effektiven Wählmodi
+wird ausgegeben.
+    \\
+    \hline
+\texttt{list classes} &
+Eine Liste aller Circuits mit den zugehörigen Klassen wird ausgegeben.
+    \\
+    \hline
+\texttt{list deps} &
+Eine Liste aller Circuits mit den zugehörigen Abhängigkeiten wird ausgegeben.
+Erfüllte Abhängigkeiten werden entsprechend markiert.
+    \\
+    \hline
+\texttt{show} &
+Ein Alias für \texttt{list states}.
+    \\
+    \hline
+
+    \caption{\texttt{fli4lctrl}-Statusbefehle}\marklabel{fli4lctrl:query-commands}{}
+\end{longtable}
+
+Zu beachten ist, dass statt des Identifikators eines Circuits (z.\,B. ``circ1'')
+alternativ auch
+\begin{itemize}
+\item sein Alias (z.\,B. ``ppp0''),
+\item sein Name (z.\,B. ``T-Com DSL'') oder
+\item ein aktives, ihm zugeordnetes Schlagwort (z.\,B. ``internet-v4'')
+\end{itemize}
+verwendet werden kann.
+
+\marklabel{sect:circd}{\subsection{Das Programm \texttt{circd}}}
+
+Der \texttt{circd} ist ein Dämon, der anhand von Zeit-Spezifikationen Circuits
+automatisch im Hintergrund umschaltet. Dabei werden neben der Zeit- und
+Kosten-Spezifikation (\var{CIRC\_x\_TIMES}) auch die Priorität eines Circuits
+(\var{CIRC\_x\_PRIORITY}) sowie dessen Zustand (\emph{ausgefallen} oder
+nicht) berücksichtigt.
+
+Für einen beliebigen Zeitpunkt funktioniert das Auswählen wie folgt:
+
+\begin{enumerate}
+\item Zuerst werden alle Circuits gesucht, die für den betreffenden Zeitpunkt
+aktiviert sind (Typ `Y').
+\item\label{alg:circprio} Aus dieser Menge werden zuerst all jene betrachtet,
+die zur höchsten verwendeten Prioritätsklasse gehören (deren
+\var{CIRC\_x\_PRIORITY}-Wert also am niedrigsten ist).
+\item\label{alg:circfailed} Aus dieser Menge werden alle Circuits entfernt, die
+nicht nutzbar sind, die also im Zustand \emph{ausgefallen} sind.
+\item Wenn die resultierende Menge nicht leer ist, ist der
+Algorithmus beendet, und die resultierenden Circuits werden ausgewählt. Wenn
+die resultierende Menge leer ist, werden die Schritte \ref{alg:circprio} und
+\ref{alg:circfailed} für die nächst niedrigere Prioritätsklasse wiederholt.
+\item Falls alle via `Y' aktivierten Circuits nicht nutzbar sind, werden alle
+Circuits gesucht, die für den betreffenden Zeitpunkt als LCR-Circuits
+vorgemerkt sind (Typ `L').
+\item\label{alg:lcrcircprio} Aus dieser Menge werden zuerst all jene betrachtet,
+die zur höchsten verwendeten Prioritätsklasse gehören (deren
+\var{CIRC\_x\_PRIORITY}-Wert also am niedrigsten ist).
+\item\label{alg:lcrcircfailed} Aus dieser Menge werden alle Circuits entfernt,
+die nicht nutzbar sind, die also im Zustand \emph{ausgefallen} sind.
+\item\label{alg:lcrcirccosts} Aus dieser Menge werden diejenigen Circuits
+bestimmt, die am wenigsten kosten.
+\item Wenn die resultierende Menge nicht leer ist, ist der Algorithmus beendet,
+und die resultierenden Circuits werden ausgewählt. Wenn die resultierende Menge
+leer ist, werden die Schritte \ref{alg:lcrcircprio} bis \ref{alg:lcrcirccosts}
+für die nächst niedrigere Prioritätsklasse wiederholt.
+\item Falls danach immer noch keine Circuits übrig bleiben, wird kein Circuit
+ausgewählt.
+\end{enumerate}
+
+Einige Anmerkungen zum Algorithmus:
+\begin{itemize}
+\item Mit `Y' aktivierte Circuits ``drängeln'' sich immer vor alle mit `L'
+aktivierten Circuits. Damit ist der Nutzer in der Lage, für bestimmte Zeiträume
+die Least-cost-Funktionalität zu deaktivieren und die Menge der zu verwendenden
+Circuits explizit einzustellen. Dies ist immer dann nützlich, wenn man aus
+irgendwelchen Gründen auf einen bestimmten Circuit angewiesen ist, etwa weil
+man die Dienste des Providers in Anspruch nehmen will, auf die man nur dann
+Zugriff hat, wenn man sich über den Zugang des Providers einwählt.
+
+\item Bei mit `Y' aktivierten Circuits werden die Kosten bei der Auswahl
+ignoriert, es werden somit immer \emph{alle} Circuits derselben Prioritätsklasse
+\emph{gleichzeitig} ausgewählt. Das ist konsistent mit der Bedeutung des Typs
+`Y' (aktiviere den Circuit unabhängig von den Kosten). Will man teurere Circuits
+nicht mit günstigeren gleichzeitig aktivieren, muss man den teureren Circuits
+eine niedrigere Priorität zuordnen.
+
+\item Die Priorität wird \emph{vor} den Kosten berücksichtigt. Damit ist der
+Nutzer in der Lage, auch im Least-cost-Betrieb unabhängig von den tatsächlichen
+Kosten Circuits zu ordnen, da die Priorität eine benutzerdefinierte und nach
+Belieben veränderbare Einstellung ist, die Kosten jedoch vom Provider
+vorgegeben sind und für eine korrekte Abrechnung keine Veränderungen zulässig
+sind. Circuits zuerst nach Priorität zu ordnen ist insbesondere dann
+vorteilhaft, wenn ein Circuit zwar günstiger ist als andere (oder gar umsonst
+ist), aber dafür die Datenübertragungsrate sehr langsam ist. In diesem Fall
+möchte man den langsamen Circuit aller Voraussicht nach nur als Fallback
+nutzen, also falls alle schnelleren (und teureren) Circuits ausfallen. Bei
+einer umgekehrten Reihenfolge (erst Kosten, dann Priorität berücksichtigen)
+würde immer der kostenlose und langsame Circuit ausgewählt, ohne dass man mit
+der Priorität irgendetwas daran verändern könnte.
+
+\item Der Algorithmus kann durchaus mehrere Circuits als Ergebnis liefern. Dies
+ist unproblematisch, falls die von den Circuits gerouteten Netzwerke sich nicht
+überlappen. Überlappenden Netzwerke führen zu einem Fehler, und es wird nur
+ein Circuit aktiviert (siehe hierzu die Beschreibung der Variablen
+\var{CIRC\_x\_UP}); eine automatische Verteilung des Datenverkehrs auf
+mehrere Circuits (Stichwort ``Load Balancing'') ist momentan noch nicht möglich.
+\end{itemize}
+
+\marklabel{sect:router-online}{\subsection{Wann ist mein Router online?}}
+
+Was auf den ersten Blick trivial erscheint, ist auf den zweiten Blick eine
+recht knifflige Frage: Wann ist ein fli4l-Router ``online''? Ist nur ein
+Circuit definiert, ist die Frage relativ einfach zu beantworten: Der Router
+ist genau dann \emph{online}, wenn der Circuit im Zustand \emph{online} ist.
+Bei mehreren Circuits, die verschiedene Netze routen, sich teilweise
+gegenseitig ausschließen und auch u.\,U. keine Wählverbindung eingehen ist die
+Frage schon schwieriger zu beantworten. Auch einige auf der Hand liegende
+Ansätze liefern nicht immer die gewünschte Antwort:
+
+\begin{enumerate}
+\item\label{rule:atleastone} \emph{Der Router ist online, wenn mindestens ein
+Circuit online ist.} Diese Regelung ist ungünstig, weil bereits die Existenz
+einer einzigen Route den Router in den Zustand \emph{online} versetzt, da Routen
+intern über Circuits abgewickelt werden. Und ein Router ohne Routen ist nicht
+sehr interessant\dots
+\item \emph{Der Router ist online, wenn alle Circuits online sind.}
+Diese Regelung ist immer dann falsch, wenn sich Circuits gegenseitig
+ausschließen, wenn also beispielsweise zwei DSL-Circuits konfiguriert werden,
+die beide eine Internet-Anbindung herstellen und deshalb nicht parallel
+aktiviert werden können.
+\item \emph{Der Router ist online, wenn alle Dialup-Circuits online sind.}
+Diese Regelung ist besser als Regelung \ref{rule:atleastone}, weil sie
+Route-Circuits ausschließt, aber auch sie löst nicht das Problem der sich
+ausschließenden Circuits.
+\item \emph{Der Router ist online, wenn mindestens ein Dialup-Circuit online
+ist.} Dies versetzt den Router in den Zustand \emph{online}, wenn z.\,B. zwar
+eine Wählverbindung in die Firma besteht, aber die Internet-Verbindung inaktiv
+ist. Das kann gewünscht sein, muss aber nicht.
+\item\label{rule:default} \emph{Der Router ist online, wenn ein Circuit mit
+Default-Route online ist.} Diese Regelung entspricht dem Zustand vor fli4l 4.0.
+Dies versetzt den Router in den Zustand \emph{offline}, wenn eine Wählverbindung
+in die Firma besteht, aber die Internet-Verbindung inaktiv ist. Das kann
+gewünscht sein, muss aber nicht.
+\item \emph{Der Router ist online, wenn für jedes konfigurierte, zu routende
+Netz ein Circuit online ist.} Auch diese Regelung versetzt den Router in den
+Zustand \emph{offline}, wenn eine Wählverbindung in die Firma besteht, aber die
+Internet-Verbindung inaktiv ist. Das kann gewünscht sein, muss aber nicht.
+\end{enumerate}
+
+Anstatt nun eine feste Regel vorzugeben und im Zweifelsfall genau das zu tun,
+was der Benutzer \emph{nicht} erwartet, wurde ein zweistufiges Verfahren
+gewählt. Der Standard-Fall wählt die rückwärtskompatible Regelung
+\ref{rule:default}. Alternativ kann über die Variable \var{CIRC\_ONLINE}
+eine Menge von Circuits (oder Circuit-Schlagwörtern) spezifiziert werden, die
+für die Online-Bewertung berücksichtigt werden sollen. Sollen also sowohl
+Internet- als auch Firma-Anbindungen berücksichtigt werden, und werden die
+entsprechenden Circuits mit den Schlagwörtern ``internet'' und ``firma''
+gekennzeichnet, so ist bei \verb+CIRC_ONLINE='internet firma'+ der Router
+\emph{online}, wenn der ``internet''- oder der ``firma''-Circuit (oder beide)
+online sind; bei \verb+CIRC_ONLINE='internet'+ hat der Router
+den Zustand \emph{offline}, wenn keine Internet-Verbindung aktiv ist, unabhängig
+davon, ob eine Verbindung zur Firma besteht oder nicht.
+
+\begin{description}
+
+\config{CIRC\_ONLINE}{CIRC\_ONLINE}{CIRCONLINE}
+
+Diese Variable beinhaltet eine Liste von Circuits (oder Schlagwörtern), die
+bei der Bestimmung des Online-Zustands des Routers berücksichtigt werden. Ist
+die Variable vorhanden und die Liste nicht leer, ist der Router genau dann
+\emph{online}, wenn mindestens ein Circuit aus der Liste \emph{online} ist bzw.
+wenn mindestens ein Schlagwort aus der Liste aktiv ist. Ist die Liste leer oder
+die Variable nicht vorhanden, greift die rückwärtskompatible Regelung, nach
+welcher der Router \emph{online} ist, wenn die Default-Route aktiv ist.
+
+Standard-Einstellung: \verb+CIRC_ONLINE=''+
+
+\end{description}
+
+\subsection{Sonstige Einstellungen}
+
+\begin{description}
+
+\config{IP\_DYN\_ADDR}{IP\_DYN\_ADDR}{IPDYNADDR}
+
+Wird eine Verbindung mit dynamischer Adressvergabe verwendet, ist
+\var{IP\_\-DYN\_\-ADDR} auf `yes' zu stellen, ansonsten auf `no'. Die
+meisten Internet-Provider verwenden eine dynamische Adressvergabe.
+
+Standard-Einstellung: \verb+IP_DYN_ADDR='yes'+
+
+\config{OPT\_CIRCUIT\_STATUS}{OPT\_CIRCUIT\_STATUS}{OPTCIRCUITSTATUS}
+
+Diese Variable aktiviert einen Circuit-Status-Monitor auf der dritten
+fli4l-Console. Diese lässt sich mit der Tastenkombination \texttt{Alt+F3}
+aktivieren, ein Wechseln zurück zur Login-Konsole wird mit Hilfe der
+Tastenkombination \texttt{Alt+F1} bewerkstelligt. Der Monitor zeigt jeden
+Circuit mit Namen, Typ, Alias, Schnittstelle und Status an.
+
+Standard-Einstellung: \verb+OPT_CIRCUIT_STATUS='no'+
+
+Beispiel: \verb+OPT_CIRCUIT_STATUS='yes'+
+
+\end{description}

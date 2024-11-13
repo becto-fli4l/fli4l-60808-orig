@@ -1,0 +1,247 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/rc100.hdboot
+#
+# Creation:     2004-06-26 hs
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+fli4l_path=/opt/files
+
+integrate_opt () {
+    for i in $fli4l_path/*
+    do
+        case $i in
+            "$fli4l_path/lost+found") ;;
+            *) /etc/mklinks.sh $i /`basename $i` ;;
+        esac
+    done
+}
+
+# Returns the UUID for a partition device. blkid output is expected on stdin.
+# $1 = type of partition: data, opt, swap
+map_device_to_uuid()
+{
+    eval dev_name=\$hd_$1
+    sed -n "s#/dev/${dev_name}:.*UUID=\"\([-a-fA-F0-9]*\)\".*#\1#p"
+}
+
+# Returns the partition device for a UUID. blkid output is expected on stdin.
+# $1 = UUID
+map_uuid_to_device()
+{
+    sed -n "s#/dev/\([sh]d[a-z][1-9]\):.*UUID=\"$1\".*#\1#p"
+}
+
+# Remaps a device name giving its UUID.
+# $1 = type of partition: data, opt, swap
+# Result: hd_$1 is set to the new (mapped) device name
+remap_by_uuid()
+{
+    eval dev_name=\$hd_$1
+    eval dev_uuid=\$hd_$1_uuid
+    if [ -n "$dev_name" -a -n "$dev_uuid" ]
+    then
+        tv=$(map_uuid_to_device $dev_uuid </tmp/blkid.tmp)
+        if [ -n "$tv" ]
+        then
+            eval hd_$1=$tv
+        fi
+    fi
+}
+
+# Checks and mounts the OPT partition.
+# $1 = device
+# $2 = file system
+mount_opt()
+{
+    rm -rf /opt
+    mkdir /opt
+    echo "/dev/$1 /opt $2 ro,noatime 0 0" >>/etc/fstab
+    mount_volume /dev/$1 /opt $2 ||
+        stop "Could not mount OPT volume, check drivers!"
+}
+
+# search for boot-partition if no boot=... was found in append-line
+begin_script BOOT "mounting boot device ..."
+
+boot_fs_supported="vfat $extfs"
+
+boot_fs=''
+boot_fs1=''
+boot_dev=''
+boot_dev1=''
+boot_timeout=0
+if [ ! "$boot" ]
+then
+    while [ $boot_timeout -lt 10 ]
+    do
+        rcmd5=`md5sum </etc/rc.cfg | sed 's/ .*//'`
+        found=0
+        for i in `scandevices`
+        do
+            for fs in $boot_fs_supported
+            do
+                if mount -r /dev/$i /boot -t $fs
+                then
+                    if [ -f /boot/rootfs.img ]
+                    then
+                        if [ "$rcmd5" = `sed -n "s/FLI4L_MD5_RC_CFG='\([a-f0-9]\{32\}\)'/\1/p" /boot/$rcfile` ]
+                        then
+                            boot_fs=$fs
+                            boot_dev=/dev/$i
+                            umount /boot
+                            found=1
+                            break
+                        else
+                            # Note down first found partition - maybe we need to use it although md5sum doesn't match.
+                            : ${boot_fs1:="$fs"}
+                            : ${boot_dev1:="/dev/$i"}
+                        fi
+                    fi
+                    umount /boot
+                    break
+                fi
+            done
+            [ $found -eq 1 ] && break
+      done
+      if [ -z "$boot_dev" -a $boot_timeout -lt 2 ]
+      then
+        sleep 1
+      elif [ -z "$boot_dev1" -a -z "$boot_dev" ]
+      then
+        sleep 1
+      else
+        break
+      fi
+      boot_timeout=`expr $boot_timeout + 1`
+    done
+else
+    for fs in $boot_fs_supported
+    do
+        if mount -r $boot /boot -t $fs
+        then
+            boot_dev=$boot
+            boot_fs=$fs
+            umount /boot
+            break
+        fi
+    done
+fi
+if [ -z "$boot_dev" -a -n "$boot_dev1" ]
+then
+    boot_dev=$boot_dev1
+    boot_fs=$boot_fs1
+fi
+
+if [ ! "$boot_dev" ] || ! mount_volume $boot_dev /boot $boot_fs ro
+then
+    {
+        if [ ! "$boot" ]
+        then
+            echo "Unable to locate boot volume!"
+        else
+            echo "Unable to mount boot volume $boot!"
+        fi
+        echo "Available partitions:"
+        cat /proc/partitions
+    } | log_error
+    stop "Could not mount boot volume, check partitions and drivers!"
+fi
+
+end_script
+
+# manually formatted CFs without hd.cfg stops booting otherwise
+if [ -f /boot/hd.cfg ]
+then
+    read_config /boot/hd.cfg
+else
+    log_error "no /boot/hd.cfg found"
+fi
+
+# set hd_boot to $boot_dev if not set; this can happen if hd.cfg is missing or
+# corrupt for whatever reason
+[ -n "$hd_boot" ] || hd_boot=$boot_dev
+
+# Re-Map Devices of hd.cfg to match boot-device (only the ones with same base-device as hd_boot)
+cfg_basedev=`basename $hd_boot | sed 's/[0-9]\+$//'`
+boot_basedev=`basename $boot_dev | sed 's/[0-9]\+$//'`
+eval `set | sed -n "s/^hd_\(boot\|data\|swap\|opt\)='\?\(\/dev\/\)\?$cfg_basedev\([0-9]\+\)'\?/hd_\1='$boot_basedev\3'/p"`
+
+blkid >/tmp/blkid.tmp
+
+# remap devices if UUID is available
+remap_by_uuid swap
+remap_by_uuid opt
+remap_by_uuid data
+
+# activate swap partition created with opt_hdinstall typ a or b
+if [ -n "$hd_swap" ] && grep -q "$hd_swap" /proc/partitions
+then
+    log_info "activating swapspace..."
+    echo "/dev/$hd_swap swap swap defaults 0 0" >> /etc/fstab
+    swapon -a || log_error "can't activate swapspace"
+fi
+
+# compute UUIDs if not available
+hd_swap_uuid=$(map_device_to_uuid swap < /tmp/blkid.tmp)
+hd_opt_uuid=$(map_device_to_uuid opt < /tmp/blkid.tmp)
+hd_data_uuid=$(map_device_to_uuid data < /tmp/blkid.tmp)
+
+# write device changes back to hd.cfg if we are allowed to do so
+if [ "$MOUNT_BOOT" = "rw" ]
+then
+    mount -o remount,rw /boot
+    sed -i -e "s/^hd_boot=.*$/hd_boot='$hd_boot'/" -e "s/^hd_opt=.*$/hd_opt='$hd_opt'/" -e "s/^hd_data=.*$/hd_data='$hd_data'/" -e "/^hd_\(data\|swap\|opt\)_uuid=/d" /boot/hd.cfg
+    {
+        [ -n "$hd_swap_uuid" ] && echo "hd_swap_uuid='$hd_swap_uuid'"
+        [ -n "$hd_opt_uuid" ] && echo "hd_opt_uuid='$hd_opt_uuid'"
+        [ -n "$hd_data_uuid" ] && echo "hd_data_uuid='$hd_data_uuid'"
+    } >> /boot/hd.cfg
+    mount -o remount,ro /boot
+fi
+
+opt_fs=$extfs
+
+if [ -z "$hd_opt" -o "$fli4l_ramdisk" = "yes" ]
+then        # typ A
+    begin_script BOOT "unpacking opt archive ..."
+    extract_opt /boot/$opt_archive
+    end_script
+elif [ -f /boot/$opt_archive ]
+then        # typ B, fresh optfile exists
+    begin_script BOOT "unpacking opt new archive ..."
+    mount_opt "$hd_opt" $opt_fs
+    mount -w -o remount /opt
+    # remove old files first
+    rm -rf $fli4l_path
+    mkdir -p $fli4l_path
+    extract_opt /boot/$opt_archive $fli4l_path
+    mount -r -o remount /opt
+    mount -w -o remount $boot_dev /boot
+    mv /boot/$opt_archive /boot/opt.old
+    end_script
+else        # typ B, optfile already unpacked
+    begin_script BOOT "mounting opt partition ..."
+    if [ -n "$hd_opt_uuid" ]
+    then
+        tv=`sed -n "s#/dev/\([sh]d[a-z][1-9]\):.*UUID=\"${hd_opt_uuid}\".*#\1#p" </tmp/blkid.tmp`
+        if [ -n "$tv" ]
+        then
+            hd_opt=$tv
+        fi
+    fi
+    mount_opt "$hd_opt" $opt_fs
+    end_script
+fi
+
+if [ -f /tmp/blkid.tmp ]
+then
+    rm /tmp/blkid.tmp
+fi
+
+if [ "$hd_opt" -a "$fli4l_ramdisk" != "yes" ]
+then
+    begin_script BOOT "integrating mounted opt partition ..."
+    integrate_opt
+    end_script
+fi

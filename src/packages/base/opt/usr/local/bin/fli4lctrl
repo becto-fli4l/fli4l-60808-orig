@@ -1,0 +1,757 @@
+#! /bin/sh
+#----------------------------------------------------------------------------
+#   fli4lctrl - extend isdnctrl program for dsl and other connections
+#
+#   called by imond
+#
+#   commands:
+#
+#   fli4lctrl <options> list states      [<alias-prefix>]
+#   fli4lctrl <options> list dialmodes   [<alias-prefix>]
+#   fli4lctrl <options> list classes     [<alias-prefix>]
+#   fli4lctrl <options> list deps        [<alias-prefix>]
+#   fli4lctrl <options> list routed-nets [<alias-prefix>]
+#   fli4lctrl <options> show      [<circuit>]
+#   fli4lctrl <options> status    [<circuit>]
+#   fli4lctrl <options> up        <circuit>
+#   fli4lctrl <options> dial      [<circuit>]
+#   fli4lctrl <options> hangup    [<circuit>]
+#   fli4lctrl <options> down      <circuit>
+#   fli4lctrl <options> fail      <circuit>
+#   fli4lctrl <options> dialmode global [off|auto|manual]
+#   fli4lctrl <options> dialmode local <circuit> [off|auto|manual]
+#   fli4lctrl <options> dialmode effective <circuit>
+#   fli4lctrl <options> wait      (<state>|(<circuit>:<state>[:<max-seconds>])*)
+#
+# Creation:        14.11.2000  fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /etc/boot.d/env.inc
+. /etc/boot.d/forking.inc
+. /usr/share/circuits/api
+
+script=fli4lctrl
+facility=$circuit_logfacility
+. /usr/share/logfunc.sh
+
+# executes a command on a list of circuits
+# $1 = command with arguments
+# $2... = circuit devices
+iterate()
+{
+    local cmd="$1"
+    shift
+
+    local rc=0
+    local id
+    for id in "$@"
+    do
+        set -- $cmd
+        local target_script=$1
+        local op=$2
+        shift 2
+        $target_script $op $id $* || rc=1
+    done
+    return $rc
+}
+
+handle_dialmode_global()
+{
+    local newmode=$1
+    if [ -n "$newmode" ]
+    then
+        circuit_set_global_dialmode "$newmode"
+    else
+        circuit_get_global_dialmode
+    fi
+}
+
+handle_dialmode_local()
+{
+    if [ -n "$circ_id" ]
+    then
+        local newmode=$1
+        if [ -n "$newmode" ]
+        then
+            circuit_set_local_dialmode $circ_id "$newmode"
+        else
+            circuit_get_local_dialmode $circ_id
+        fi
+    else
+        log_error "command 'dialmode local' requires a circuit"
+    fi
+}
+
+handle_dialmode_effective()
+{
+    if [ -n "$circ_id" ]
+    then
+        circuit_get_effective_dialmode $circ_id
+    else
+        log_error "command 'dialmode effective' requires a circuit"
+    fi
+}
+
+handle_up()
+{
+    if [ -n "$circ_id" ]
+    then
+        activate_circuit_message_id=$circ_id \
+            mom_unicast_message circd activate_circuit_message >/dev/null
+    else
+        log_error "command 'up' requires a circuit"
+    fi
+}
+
+handle_dial()
+{
+    if [ -n "$circ_id" ]
+    then
+        dialup_circuit_message_id=$circ_id \
+            mom_unicast_message circd dialup_circuit_message >/dev/null
+    else
+        iterate "handle_command dial $@" $(circuit_get_by_state active)
+    fi
+}
+
+# $1 = (optional) hangup state
+handle_hangup()
+{
+    if [ -n "$circ_id" ]
+    then
+        hangup_circuit_message_id=$circ_id \
+            mom_unicast_message circd hangup_circuit_message >/dev/null
+    else
+        iterate "handle_command hangup $@" $(circuit_get_by_state all)
+    fi
+}
+
+handle_down()
+{
+    if [ -n "$circ_id" ]
+    then
+        deactivate_circuit_message_id=$circ_id \
+            mom_unicast_message circd deactivate_circuit_message >/dev/null
+    else
+        log_error "command 'down' requires a circuit"
+    fi
+}
+
+handle_fail()
+{
+    if [ -n "$circ_id" ]
+    then
+        fail_circuit_message_id=$circ_id \
+            mom_unicast_message circd fail_circuit_message >/dev/null
+    else
+        log_error "command 'fail' requires a circuit"
+    fi
+}
+
+handle_status()
+{
+    if [ -n "$circ_id" ]
+    then
+        local state=$(circuit_get_state $circ_id)
+        echo $state
+
+        case $state in
+        online)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+        esac
+    else
+        local state
+        read state < $router_state_file
+        echo $state
+
+        case $state in
+        online)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+        esac
+    fi
+}
+
+handle_show()
+{
+    if [ -n "$1" ]
+    then
+        circuit_get_data $1 | sort
+    else
+        handle_list_states
+    fi
+}
+
+handle_state_changed_circuit_event()
+{
+    case $circuit_event_id%$state:$state_changed_circuit_event_new_state in
+    $circ_id%online:online)
+        mom_quit_message_loop 0
+        ;;
+    $circ_id%active:active|$circ_id%offline:active)
+        mom_quit_message_loop 0
+        ;;
+    $circ_id%inactive:inactive|$circ_id%offline:inactive)
+        mom_quit_message_loop 0
+        ;;
+    $circ_id%failed:failed|$circ_id%offline:failed)
+        mom_quit_message_loop 0
+        ;;
+    $circ_id%deleted:deleted|$circ_id%offline:deleted)
+        mom_quit_message_loop 0
+        ;;
+    esac
+}
+
+handle_wait()
+{
+    case $1 in
+    \**)
+        local suffix=${1#\*}
+        local circ args=
+        for circ in $(circuit_get_by_state all)
+        do
+            args="$args $circ$suffix"
+        done
+        handle_wait $args
+        ;;
+    *)
+        local arg wait_pids=
+        for arg
+        do
+            case $arg in
+            *:*:*)
+                timeout=${arg##*:}
+                arg=${arg%:*}
+                ;;
+            esac
+            case $arg in
+            *:*)
+                state=${arg##*:}
+                arg=${arg%:*}
+                ;;
+            esac
+
+            local circ_id=$arg
+            : ${state:=online}
+            : ${timeout:=0}
+
+            if ! circuit_exists "$circ_id"
+            then
+                log_error "circuit '$circ_id' does not exist"
+                continue
+            fi
+
+            if [ $timeout -gt 0 ]
+            then
+                echo "waiting max. $timeout seconds for $circ_id to become $state..."
+            else
+                echo "waiting indefinitely for $circ_id to become $state..."
+            fi
+
+            (
+                fork_call_handlers
+
+                cur_state=$(circuit_get_state $circ_id)
+                mom_register_handler handle_state_changed_circuit_event state_changed_circuit_event
+                circuit_event_id=$circ_id \
+                state_changed_circuit_event_old_state=$cur_state \
+                state_changed_circuit_event_new_state=$cur_state \
+                mom_unicast_message \
+                    $PID state_changed_circuit_event >/dev/null
+
+                local starttime=$(date +%s)
+                if mom_run_message_loop $timeout
+                then
+                    local time=$(($(date +%s) - starttime))
+                    [ -n "$quiet" ] || echo "$circ_id is $state (which took $time seconds)"
+                    exit 0
+                else
+                    [ -n "$quiet" ] || echo "$circ_id: timeout of $timeout seconds reached, giving up"
+                    exit 1
+                fi
+            ) &
+            wait_pids="$wait_pids $!"
+        done
+
+        rc=0
+        local pid
+        for pid in $wait_pids
+        do
+            wait $pid || rc=1
+        done
+        return $rc
+        ;;
+    esac
+}
+
+handle_list_states()
+{
+    local prefix="$1"
+
+    local _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd get_all_states_circuit_message \
+                    get_all_states_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+
+        local format="%-6s %-10s %-15s %-10s %-24s %s\n"
+        printf "$format" "Id" "Alias" "Type" "Interface" "Name" "State"
+        echo "==============================================================================="
+
+        local i
+        for i in $(seq 1 $get_all_states_circuit_reply_message_circuit_n)
+        do
+            eval local circ_id=\$get_all_states_circuit_reply_message_circuit_${i}_id
+            eval local circ_alias=\$get_all_states_circuit_reply_message_circuit_${i}_alias
+            eval local circ_type=\$get_all_states_circuit_reply_message_circuit_${i}_type
+            eval local circ_dev=\$get_all_states_circuit_reply_message_circuit_${i}_dev
+            eval local circ_name=\$get_all_states_circuit_reply_message_circuit_${i}_name
+            eval local circ_state=\$get_all_states_circuit_reply_message_circuit_${i}_state
+
+            case "$circ_alias" in
+            $prefix*) ;;
+            *) continue ;;
+            esac
+
+            msg="$(printf "$format" "$circ_id" "$circ_alias" "$circ_type" "$circ_dev" "$circ_name" "$circ_state")"
+            if [ "$nocolor" != yes ]
+            then
+                local color
+                case $circ_state in
+                active)     color="bl 0 br" ;;
+                ready)      color=cy ;;
+                semionline) color="br 0 br" ;;
+                online)     color=gn ;;
+                failed)     color="rd 0 br" ;;
+                *)          color="b  0 br" ;;
+                esac
+                colecho "$msg" $color
+            else
+                echo "$msg"
+            fi
+        done
+        return 0
+    else
+        log_error "Timeout while waiting for a reply from circd"
+        return 1
+    fi
+}
+
+handle_list_dialmodes()
+{
+    local prefix="$1"
+
+    local _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd get_all_states_circuit_message \
+                    get_all_states_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+
+        local format="%-6s %-10s %-15s %-14s %-9s %-9s\n"
+        printf "$format" "Id" "Alias" "Type" "Name" "Local" "Effective"
+        echo "==============================================================================="
+
+        local i
+        for i in $(seq 1 $get_all_states_circuit_reply_message_circuit_n)
+        do
+            eval local circ_id=\$get_all_states_circuit_reply_message_circuit_${i}_id
+            eval local circ_alias=\$get_all_states_circuit_reply_message_circuit_${i}_alias
+            eval local circ_type=\$get_all_states_circuit_reply_message_circuit_${i}_type
+            eval local circ_name=\$get_all_states_circuit_reply_message_circuit_${i}_name
+            eval local circ_local_dialmode=\$get_all_states_circuit_reply_message_circuit_${i}_local_dialmode
+            eval local circ_effective_dialmode=\$get_all_states_circuit_reply_message_circuit_${i}_effective_dialmode
+
+            case "$circ_alias" in
+            $prefix*) ;;
+            *) continue ;;
+            esac
+
+            msg="$(printf "$format" "$circ_id" "$circ_alias" "$circ_type" "$circ_name" "$circ_local_dialmode" "$circ_effective_dialmode")"
+            if [ "$nocolor" != yes ]
+            then
+                local color
+                case $circ_effective_dialmode in
+                auto)   color=gn ;;
+                manual) color="br 0 br" ;;
+                off)    color="rd 0 dk" ;;
+                esac
+                colecho "$msg" $color
+            else
+                echo "$msg"
+            fi
+        done
+        return 0
+    else
+        log_error "Timeout while waiting for a reply from circd"
+        return 1
+    fi
+}
+
+handle_list_classes()
+{
+    local prefix="$1"
+
+    local _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd get_all_states_circuit_message \
+                    get_all_states_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+
+        local format="%-6s %-10s %-15s %-16s%s"
+        printf "$format\n" "Id" "Alias" "Type" "Name" " Classes"
+        echo "==============================================================================="
+
+        local i j
+        for i in $(seq 1 $get_all_states_circuit_reply_message_circuit_n)
+        do
+            case "$circ_alias" in
+            $prefix*) ;;
+            *) continue ;;
+            esac
+
+            eval local circ_id=\$get_all_states_circuit_reply_message_circuit_${i}_id
+            eval local circ_alias=\$get_all_states_circuit_reply_message_circuit_${i}_alias
+            eval local circ_type=\$get_all_states_circuit_reply_message_circuit_${i}_type
+            eval local circ_name=\$get_all_states_circuit_reply_message_circuit_${i}_name
+            eval local circ_class_n=\$get_all_states_circuit_reply_message_circuit_${i}_class_n
+
+            local circ_classes=
+            for j in $(seq 1 $circ_class_n)
+            do
+                eval local circ_class=\$get_all_states_circuit_reply_message_circuit_${i}_class_${j}
+                circ_classes="$circ_classes $circ_class"
+            done
+
+            msg="$(printf "$format" "$circ_id" "$circ_alias" "$circ_type" "$circ_name" "${circ_classes# }")"
+            echo "$msg"
+        done
+        return 0
+    else
+        log_error "Timeout while waiting for a reply from circd"
+        return 1
+    fi
+}
+
+handle_list_deps()
+{
+    local prefix="$1"
+
+    local _result
+    if _result=$(mom_unicast_message_and_receive_reply \
+                    circd get_all_states_circuit_message \
+                    get_all_states_circuit_reply_message \
+                    $circd_timeout)
+    then
+        local _varnames=$(echo "$_result" | extract_variable_names)
+        local $_varnames
+        eval "$_result"
+
+        local format="%-6s %-10s %-15s %-16s%s"
+        printf "$format\n" "Id" "Alias" "Type" "Name" " Dependencies"
+        echo "==============================================================================="
+
+        local i
+        for i in $(seq 1 $get_all_states_circuit_reply_message_circuit_n)
+        do
+            eval local circ_id=\$get_all_states_circuit_reply_message_circuit_${i}_id
+            eval local circ_alias=\$get_all_states_circuit_reply_message_circuit_${i}_alias
+            eval local circ_type=\$get_all_states_circuit_reply_message_circuit_${i}_type
+            eval local circ_name=\$get_all_states_circuit_reply_message_circuit_${i}_name
+            eval local circ_deps=\$get_all_states_circuit_reply_message_circuit_${i}_deps
+
+            case "$circ_alias" in
+            $prefix*) ;;
+            *) continue ;;
+            esac
+
+            msg="$(printf "$format" "$circ_id" "$circ_alias" "$circ_type" "$circ_name" "")"
+            echo -n "$msg"
+
+            local dep depid l3prot
+            for dep in $circ_deps
+            do
+                case $dep in
+                */*)
+                    depid=${dep%/*}
+                    l3prot=${dep##*/}
+                    ;;
+                *)
+                    depid=$dep
+                    l3prot=
+                    ;;
+                esac
+
+                local prefix= color="rd 0 dk"
+
+                local circ deps=
+                for circ in $(circuit_resolve $depid)
+                do
+                    # a dependency specified by a class mapped to multiple circuits
+                    # is fulfilled if at least one of those circuits fulfils it
+                    if circuit_is_online $circ $l3prot
+                    then
+                        deps="$deps,$circ"
+                    fi
+                done
+
+                deps=${deps#,}
+                if [ -n "$deps" ]
+                then
+                    dep="$dep:$deps"
+                    prefix='*'
+                    color=gn
+                fi
+
+                dep="$prefix$dep"
+                if [ "$nocolor" != yes ]
+                then
+                    colecho -n " $dep" $color
+                else
+                    echo -n " $dep"
+                fi
+            done
+            echo
+        done
+        return 0
+    else
+        log_error "Timeout while waiting for a reply from circd"
+        return 1
+    fi
+}
+
+handle_list_routed_nets()
+{
+    local prefix="$1"
+
+    local nets_ipv4=
+    local nets_ipv6=
+
+    local net
+    local circ_id
+    for circ_id in $(circuit_get_by_state all)
+    do
+        local circ_nets_ipv4_n circ_nets_ipv6_n
+        circuit_read_field $circ_id circ_nets_ipv4_n
+        circuit_read_field $circ_id circ_nets_ipv6_n
+
+        local i net
+        for i in $(seq 1 $circ_nets_ipv4_n)
+        do
+            circuit_read_field $circ_id circ_nets_ipv4_$i net
+            if ! echo "$nets_ipv4" | grep -q "\(^\| \)$net\($\| \)"
+            then
+                nets_ipv4="${nets_ipv4} $net"
+            fi
+        done
+        for i in $(seq 1 $circ_nets_ipv6_n)
+        do
+            circuit_read_field $circ_id circ_nets_ipv6_$i net
+            if ! echo "$nets_ipv6" | grep -q "\(^\| \)$net\($\| \)"
+            then
+                nets_ipv6="${nets_ipv6} $net"
+            fi
+        done
+    done
+
+    local format="%-44s%s\n"
+    printf "$format" "Net" " Circuits"
+    echo "==============================================================================="
+
+    local type
+    for type in nets_ipv4 nets_ipv6
+    do
+        eval local nets=\$$type
+        local field=circ_${type}
+        for net in $nets
+        do
+            msg="$(printf "$format" "$net" "")"
+            echo -n "$msg"
+
+            for circ_id in $(circuit_get_by_state all)
+            do
+                circuit_read_field $circ_id circ_alias
+                circuit_read_field $circ_id ${field}_n
+                eval local circ_nets_n=\$${field}_n
+
+                case "$circ_alias" in
+                $prefix*) ;;
+                *) continue ;;
+                esac
+
+                local i
+                for i in $(seq 1 $circ_nets_n)
+                do
+                    circuit_read_field $circ_id ${field}_$i
+                    eval local circ_net=\$${field}_$i
+                    if [ "$circ_net" = "$net" ]
+                    then
+                        local marker=
+                        local color
+                        if [ "$(circuit_get_state $circ_id)" = online ]
+                        then
+                            marker='*'
+                            color=gn
+                        else
+                            color="rd 0 dk"
+                        fi
+
+                        if [ "$nocolor" != yes ]
+                        then
+                            colecho -n " $marker$circ_alias" $color
+                        else
+                            echo -n " $marker$circ_alias"
+                        fi
+                        break
+                    fi
+                done
+            done
+            echo
+        done
+        echo "-------------------------------------------------------------------------------"
+    done
+
+    return 0
+}
+
+# $1 = command
+# $2 = optional circuit identifier
+# $3... = optional command arguments
+handle_command()
+{
+    local cmd="$1"
+    shift
+
+    local circ_id=
+    case $cmd in
+    dialmode_global|list_*|show|wait)
+    ;;
+    *)
+        circ_id="$1"
+        shift
+
+        if [ -n "$circ_id" ]
+        then
+            # always normalize circuit identifier
+            circuit_resolve_alias circ_id
+
+            local vars=$(circuit_get_data $circ_id)
+            if [ -n "$vars" ]
+            then
+                local varnames=$(echo "$vars" | extract_variable_names)
+                local $varnames
+                eval "$vars"
+            else
+                [ "$cmd" != status ] &&
+                    log_error "$circ_id: circuit not found"
+                return 1
+            fi
+        fi
+    ;;
+    esac
+
+    local func=handle_$cmd
+    if type $func >/dev/null 2>&1
+    then
+        $func "$@"
+    else
+        log_error "unknown command '$cmd'"
+        return 1
+    fi
+}
+
+# $1 = command
+# $2 = subcommand
+# $3... = command arguments
+handle_subcommand()
+{
+    local cmd=$1
+    local subcmd=$2
+    shift 2
+    if [ -n "$subcmd" ]
+    then
+        handle_command "${cmd}_${subcmd//-/_}" "$@"
+    else
+        log_error "missing subcommand for command '$cmd'"
+        return 1
+    fi
+}
+
+run()
+{
+    local cmd=$1
+    shift
+
+    if [ -z "$cmd" ]
+    then
+        cat >&2 <<EOF
+$script usage:
+  $script <options> list states      [<alias-prefix>]
+  $script <options> list dialmodes   [<alias-prefix>]
+  $script <options> list classes     [<alias-prefix>]
+  $script <options> list deps        [<alias-prefix>]
+  $script <options> list routed-nets [<alias-prefix>]
+  $script <options> show      [<circuit>]
+  $script <options> status    [<circuit>]
+  $script <options> up        <circuit>
+  $script <options> dial      [<circuit>]
+  $script <options> hangup    [<circuit>]
+  $script <options> down      <circuit>
+  $script <options> fail      <circuit>
+  $script <options> dialmode global [off|auto|manual]
+  $script <options> dialmode local <circuit> [off|auto|manual]
+  $script <options> dialmode effective <circuit>
+  $script <options> wait      (<state>|(<circuit>:<state>[:<max-seconds>])*)
+EOF
+        return 2
+    fi
+
+    case $cmd in
+        dialmode|list)
+            handle_subcommand $cmd "$@"
+        ;;
+        *)
+            handle_command $cmd "$@"
+        ;;
+    esac
+}
+
+while true
+do
+    case $1 in
+    --*)
+        if echo $1 | grep -q '='
+        then
+            eval ${1#--}
+        else
+            eval ${1#--}=yes
+        fi
+        shift
+        ;;
+    *)
+        break
+        ;;
+    esac
+done
+
+run "$@"

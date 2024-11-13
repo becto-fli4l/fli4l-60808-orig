@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# wrap deprecated utilities
+#
+
+begin_script BASE "basic setup for booting..."
+wrap_dir=/usr/local/bin/wrapped
+modwrap=/usr/local/bin/modwrap.sh
+
+mkdir -p $wrap_dir
+> /var/log/wrapper.log
+
+for i in /sbin/route /sbin/ifconfig /bin/ps ; do
+    [ -f $i ] && mv $i $wrap_dir
+    ln -s /usr/local/bin/wrapper.sh $i
+done
+
+case "$DEBUG_MODULES" in
+    yes | error)
+        log_info "Wrapping modutils ..."
+        if [ -x $modwrap ]; then
+            for i in /sbin/modprobe /sbin/insmod; do
+                mv $i $wrap_dir
+                ln -s $modwrap $i
+            done
+            [ "$DEBUG_MODULES" = yes ] && > /var/run/debug_modules_all
+        fi
+        ;;
+    *)  log_info "Wrapping of modutils disabled ($debug_modules)" ;;
+esac
+
+# Pre-Load libata if NO DMA wanted
+if [ "$LIBATA_DMA" = "disabled" ]
+then
+  do_modprobe_if_exists kernel/drivers/ata libata dma=0
+fi
+
+mkdir -p -m 777 $sync_rwlock_dir
+
+user_group_init_id_files
+
+end_script

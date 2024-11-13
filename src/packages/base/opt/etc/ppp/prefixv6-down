@@ -1,0 +1,60 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/prefixv6-down
+# called whenever an IPv6 network prefix disappears
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+# $1 = interface
+# $2 = circuit name
+# $3 = network prefix
+
+. /etc/boot.d/forking.inc
+. /etc/boot.d/lazy.inc
+. /etc/boot.d/locking.inc
+. /etc/boot.d/networking.inc
+
+script_name="prefixv6-down"
+script="$script_name[$$]"
+facility=$circuit_logfacility
+logmsgprio=$facility.notice
+. /usr/share/logfunc.sh
+
+export PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+interface=$1
+circ_id=$2
+prefix=$3
+
+{
+fork_call_handlers
+sync_lock_resource prefixv6updown-$circ_id "$script"
+
+echo "$circ_id[$interface]: IPv6 prefix $prefix has disappeared"
+
+ip -6 route del unreachable $prefix
+circuit_deregister_prefix $circ_id ipv6 $prefix
+setup-dynamic-ip6tables.sh
+
+# Call all custom prefixv6-downs
+lazy_begin
+for j in /etc/ppp/prefixv6-down[0-9][0-9][0-9].*
+do
+    if [ -f $j ]
+    then
+        echo "executing $j"
+        . $j
+    fi
+done
+lazy_end
+
+curprefixes=$(circuit_get_prefixes $circ_id ipv6)
+if [ -z "$curprefixes" ]
+then
+    # now the circuit is at most semionline
+    circuit_go_offline_if_necessary $circ_id ipv6
+fi
+
+sync_unlock_resource prefixv6updown-$circ_id "$script"
+} 2>&1 | logmsg "$script" $logmsgprio

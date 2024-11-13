@@ -1,0 +1,27 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc000.ipv6
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script RC000_BASE "basic IPv6 setup..."
+
+#----------------------------------------------------------------------------
+# setup ip6tables
+#----------------------------------------------------------------------------
+if [ "$OPT_IPV6" = "yes" -a "$DEBUG_IPTABLES" = "yes" ]
+then
+    mv -f /sbin/ip6tables /sbin/ip6tables.real
+    {
+        echo "#!/bin/sh"
+        echo "echo -n \"ip6tables \$@\" >> /var/log/ip6tables.log"
+        echo "/sbin/ip6tables.real ip6tables \"\$@\""
+        echo "rc=\$?"
+        echo "echo \" --> \$rc\" >> /var/log/ip6tables.log"
+        echo "exit \$rc"
+    } > /sbin/ip6tables
+    chmod +x /sbin/ip6tables
+fi
+
+end_script

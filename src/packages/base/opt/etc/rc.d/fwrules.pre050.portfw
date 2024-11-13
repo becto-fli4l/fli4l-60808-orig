@@ -1,0 +1,66 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/fwrules.pre050.portfw
+#
+# Creation:     2007-02-19 jw5
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+pf_fwd_portfw_default () {
+    fw_append_rule filter FORWARD 'state:NEW PORTFWACCESS' PF_FORWARD_ACCEPT_DEF
+}
+
+#
+# redirection chains
+#
+fw_add_chain nat PORTFW
+fw_append_rule nat PREROUTING 'PORTFW'
+
+#
+# access chains
+#
+fw_add_chain filter PORTFWACCESS
+fw_add_chain filter PORTREDIRACCESS
+
+case $PF_FORWARD_ACCEPT_DEF in
+    yes)
+        pf_fwd_add_default pf_fwd_portfw_default
+        ;;
+    no)
+        [ 0$PF_FORWARD_N -eq 0 ] || for idx in `seq 1 $PF_FORWARD_N`
+        do
+            var=PF_FORWARD_$idx
+            eval rule=\$$var
+            case "$rule" in
+                pfwaccess-chain)
+                    eval $var="'state:NEW PORTFWACCESS'"
+                    break
+                ;;
+            esac
+        done
+    ;;
+esac
+
+
+pf_in_portredir_default () {
+    fw_append_rule filter INPUT 'state:NEW PORTREDIRACCESS' PF_INPUT_ACCEPT_DEF
+}
+
+case $PF_INPUT_ACCEPT_DEF in
+    yes)
+        pf_in_add_default pf_in_portredir_default
+        ;;
+    no)
+        [ 0$PF_INPUT_N -eq 0 ] || for idx in `seq 1 $PF_INPUT_N`
+        do
+            var=PF_INPUT_$idx
+            eval rule=\$$var
+            case "$rule" in
+                redir-access-chain)
+                    eval $var="'state:NEW PORTREDIRACCESS'"
+                    break
+                ;;
+            esac
+        done
+    ;;
+esac

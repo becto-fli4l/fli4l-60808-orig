@@ -1,0 +1,34 @@
+#!/bin/sh
+# Revision: $Id$
+#
+# Broadcasts a message. The message data is passed in variables that are named
+# <message-type>_<parameter>.
+#
+# $1 = type of message to be broadcast
+# $2 = (optional) type of message to be received as a reply
+# $3 = (optional) timeout for waiting for the reply
+# Output: If no reply has been requested, the number of receivers is displayed.
+#         Otherwise, the parameters of each received reply message are printed.
+#         Furthermore, the two additional variables 'expected_count' and
+#         'actual_count' are printed, where the first one contains the number
+#         of receivers and the second one contains the number of replies that
+#         arrived in time.
+# Returns: 0 on success and non-zero on failure
+
+. /usr/share/mom/core
+
+type=$1
+reply_type=$2
+timeout=$3
+
+if [ -n "$reply_type" ]; then
+	mom_broadcast_message_and_receive_reply "$type" "$reply_type" $timeout
+else
+	result=$(mom_broadcast_message "$type")
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		set -- $result
+		echo $2
+	fi
+	exit $rc
+fi

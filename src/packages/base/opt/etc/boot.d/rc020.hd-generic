@@ -1,0 +1,74 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/rc020.hd-generic
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script BOOT "loading generic disk drivers ..."
+
+# load hd-modules
+
+do_modprobe_if_exists kernel/fs/$extfs $extfs
+do_modprobe_if_exists kernel/fs/isofs isofs
+
+do_modprobe sd_mod
+do_modprobe sr_mod
+
+if [ "$ARCH" = "x86" -o "$ARCH" = "x86_64" ]
+then
+  do_modprobe ata_generic all_generic_ide=1
+  do_modprobe ata_piix
+
+  # Only load the ISA-Legacy Drivers if both primary and secondary IDE are not occupied yet
+  if [ -z "$(sed -n '/^[[:space:]]*01[7f]0-01[7f]7[[:space:]]*:[[:space:]]*[a-z]/p' /proc/ioports)" ]
+  then
+    # /sbin/modprobe is used intentionally to avoid error-message on sata/usb only system without ide
+    do_modprobe -q pata_legacy all=1
+  fi
+
+  do_modprobe ahci
+fi
+
+if [ -f /proc/bus/usb/devices ]; then
+    num=`grep -c "^I:.*Cls=08" /proc/bus/usb/devices`
+    for i in `seq 1 20`; do
+        fin=`dmesg | grep -c "^usb-storage:.*device scan complete"`
+        [ $num -eq $fin ] && break
+        sleep 1
+    done
+fi
+
+wait_for_mdev
+# Disable DMA for Drives which are accesses via generic ATA Driver
+# As this seems to cause some trouble with newer DMA-Capable CF-Cards
+# and some IDE-Controllers
+# Use the native Chipset IDE-Drivers and the Problem should be gone.
+# Some IDE-to-CF Adapters don't have the DMA-Pins connected correctly
+# If you have such an Adapter you should use the generic PCI-IDE Driver and
+# live with the timeout at the startup or modify your adapter to be
+# DMA-Capable
+
+if [ -x /sbin/hdparm ]
+then
+  drivelist=''
+  for path in /sys/bus/pci/devices/*
+  do
+    [ -d "$path" ] || continue
+    if [ -n "`ls -l $path/ | grep driver | grep ata_generic`" ]
+    then
+      drivelist="$drivelist `find $path -type d -name sd\? -exec basename \{\} \;`"
+    fi
+  done
+  for drive in $drivelist
+  do
+    if [ -z "`/sbin/hdparm -d /dev/$drive | grep "using_dma.*=.*0"`" ]
+    then
+      /sbin/hdparm -Q 0 /dev/$drive >/dev/null 2>&1
+      /sbin/hdparm -d0 /dev/$drive >/dev/null 2>&1
+      /sbin/hdparm -X pio0 /dev/$drive >/dev/null 2>&1
+    fi
+  done
+fi
+
+end_script

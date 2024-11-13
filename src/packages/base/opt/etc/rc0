@@ -1,0 +1,30 @@
+#!/bin/sh
+exec > /dev/console 2>&1
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/bin:.; export PATH
+trap "" 1
+cd /
+
+. /etc/boot.d/base-helper
+. /etc/rc.cfg
+
+echo
+shuttingdown=yes
+for j in /etc/rc0.d/rc[0-9][0-9][0-9].*
+do
+    if [ -f $j ]
+    then
+        script=$j
+        . $j
+    fi
+done
+
+# registered trap functions may rely on locking functions and the /var/lock
+# directory, so execute them now before unmounting / (and hence /var/lock)
+exit_trap_call_on_exit
+
+umount -a
+
+sleep 2
+
+beep -f750 -l120 -n -f500 -l120

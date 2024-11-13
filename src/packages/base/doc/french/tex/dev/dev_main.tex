@@ -1,0 +1,303 @@
+% Synchronized to r53804
+\chapter{Documentation pour développeur}
+
+\section{Règles générales}
+
+Certaines règles doivent être respectées, lorsque vous ajoutez un nouveau
+paquetage dans la base de données OPT-fli4l, qui se trouve sur la page
+d'accueil du site fli4l. Le paquetage qui ne respectent pas à ces règles,
+sera supprimé de la base de données, sans avertissement préalable.
+
+  \begin{enumerate}
+    \item L'utilisateur ne doit faire, AUCUNE copie supplémentaire~! fli4l
+    fournit un système sophistiqué, Les données des paquetages-fli4l sont
+    décompressés dans les répertoires de l'installation, tous les fichiers
+	qui font fonctionner le routeur sont dans le répertoire \texttt{opt/}.
+
+    \item Les paquetages correctement empaqueter sont compressés~: de telle sorte,
+    que les paquetages soient facilement décompresser dans le répertoire-fli4l.
+
+    \item Les paquetages doivent être TOTALEMENT configurable dans le fichier de
+    configuration. L'utilisateur ne doit pas faire de modifications sur
+    d'autres fichiers de configurations. Vous ne devez pas mettre l'utilisateur
+    en difficulté, sur des décisions difficiles à prendre, par exemple
+    (à la fin du fichier de configuration avec une remarque en gros caractère~:
+    ONLY MODIFY IF YOU KNOW WHAT YOU DO).
+
+    \item Encore une remarque sur le fichier de configuration~: les nom des
+    variables doivent être claires et l'on doit savoir à quelle OPT elles
+    appartiennent, par exemple \var{OPT\_\-HTTPD} les nom des variables sont
+    \var{OPT\_\-HTTPD}, \var{HTTPD\_\-USER\_\-N}, etc.
+
+    \item S'il vous plaît, si vous avez compilé vous-même de petits (Programmes)
+    binaire~! Et si vous traduisez vous-même le FBR, pensez de désactiver les
+	fonctionnalités inutiles.
+
+    \item Contrôler votre Copyright~! Si vous utilisé un modèle de fichier,
+    merci de respecter les droit d'auteur. Le copyright doit est remplacé
+    ici par votre propre nom si vous créez vos fichiers. vérifié en particulié,
+    les fichiers dans config-, Check- et les fichiers textes dans opt-. Si vous
+    copiez la documentation mot à mot, le copyright de l'auteur d'origine
+    doit être naturellement gardé~!
+
+    \item Merci de diffuser seulement des types d'archivages, utilisant des
+    formats libres. Il s'agit notamment de~:
+    \begin{itemize}
+      \item ZIP  (\texttt{.zip})
+      \item GZIP (\texttt{.tgz} ou \texttt{.tar.gz})
+    \end{itemize}
+    S'il vous plaît n'utilisez pas les autres formats tels que RAR, ACE, Blackhole,
+	LHA, etc.
+	Vous ne devez pas utiliser les fichiers d'installation Windows (\texttt{.msi}) ou
+	les fichiers d'installation (\texttt{.exe}) et les archives auto-extractable.
+  \end{enumerate}
+
+
+\marklabel{sec:libc}{
+  \section{Compiler les programmes}
+}
+
+Pour pouvoir compiler des programmes vous allez avoir besoin du paquetage
+\og{}src\fg{} qui est disponible à part. Il y a également une documentation
+pour compiler vos propre programme pour fli4l.
+
+\input {dev_main_modular}
+
+\input{dev_main_scripting}
+
+\input {dev_main_pf}
+
+\input {dev_main_webgui}
+
+\input {dev_main_boot_dial}
+
+\section{Paquetage Template}
+
+Pour illustrer quelques-uns des objectifs décrits ci-dessus, vous avez un
+paquetage avec des modèles pour la distribution fli4l. Dans ce paquetage vous avez
+une série de petits exemples, tels que~:
+
+\begin{itemize}
+\item Voir un fichier config dans (\texttt{config/template.txt})
+\item Un fichier de contrôle qui est écrit dans (\texttt{check/template.txt})
+\item L’extension des fonctions de contrôle dans (\texttt{check/template.ext})
+\item Des variables de configuration pour une utilisation ultérieure
+  stockés dans\\ (\texttt{opt/etc/rc.d/rc999.template})
+\item Des variables de configuration pour être lu à nouveau stockés dans\\
+  (\texttt{opt/usr/bin/template\_show\_config})
+\end{itemize}
+
+\section{Construction du Boot sur un support de données}
+
+Depuis de la version 1.5 fli4l utilise le programme \texttt{syslinux} pour booter.
+Il a l'avantage d'avoir un système de fichier DOS compatible sur le support
+de données.
+
+Le support de données pour le boot contient les fichiers suivants~:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}[h!]{lp{10cm}}
+\texttt{ldlinux.sys}           & Le chargeur (\og{}Boot loader\fg{}) \texttt{syslinux} \\
+\texttt{syslinux.cfg}          & Fichier de configuration pour \texttt{syslinux} \\
+\texttt{kernel}                & Linux-Kernel\\
+\texttt{rootfs.img}            & RootFS: contient les programmes nécessaires pour le Boot \\
+\texttt{opt.img}               & Fichier Optionnel~: drivers et Opt-Paquetage \\
+\texttt{rc.cfg}                & Fichier de configuration des variables utilisées depuis
+le répertoire config \\
+\texttt{boot.msg}              & Texte pour le menu de démarrage \texttt{syslinux} \\
+\texttt{boot\_s.msg}           & Texte pour le menu de démarrage \texttt{syslinux} \\
+\texttt{boot\_z.msg}           & Texte pour le menu de démarrage \texttt{syslinux} \\
+\texttt{hd.cfg}                & Fichier de configuration pour l'attribution des partitions \\
+\end{tabular}
+\end{table}
+
+Au démarrage du script \texttt{mkfli4l.sh} (ou \texttt{mkfli4l.bat} pour DOS) les fichiers
+\texttt{opt.img}, \texttt{syslinux.cfg}, \texttt{rc.cfg}, ainsi que \texttt{rootfs.img}
+sont d'abord exécutés. Le programme \var{mkfli4l} exécute les fichiers nécessaires des
+(répertoires \texttt{unix} ou \texttt{windows} pour l'installation. Dans les deux archives,
+le Kernel et les autres paquetages à installer sont inclus. Le fichier \texttt{rc.cfg} se trouve
+à la fois dans l'archive opt et sur le boot disque (ou disque de démarrage).\footnote{Le
+contenue du fichier dans l'archive opt est nécessaire au début de la phase de boot, car à ce
+moment là le volume de boot n'est pas monté.}
+
+Ensuite, l’ensemble des fichiers du Kernel, \texttt{rootfs.img}, \texttt{opt.img} et \texttt{rc.cfg},
+sont copiés avec le fichier \texttt{syslinux} sur le support de données.
+
+Lors du boot de fli4l le script \texttt{rc.cfg} dans \texttt{/etc/rc} est analisé
+et l'archive \texttt{opt.img} compressée est intégrée à la racine du système de fichiers
+du disque virtuel (selon le type d'installation, les fichiers seront décompressés directement
+à la racine du système de fichiers du disque virtuel ou vers le lien symbolique inclus).
+Pour terminer, les scripts dans le répertoire \texttt{/etc/rc.d} sont exécutés dans l'ordre
+alphanumérique, ensuite les pilotes sont chargés et les services démarrent.
+
+\section{Fichiers de configurations}
+
+Voici les dossiers présélectionnés par le routeur fli4l on-the-fly, qui sont générés
+au moment du boot.
+
+\begin{enumerate}
+\item Configuration du fournisseur
+  \begin{itemize}
+  \item         \texttt{etc/ppp/pap-secrets}
+
+  \item         \texttt{etc/ppp/chap-secrets}
+  \end{itemize}
+
+\item Configuration du DNS
+  \begin{itemize}
+  \item         \texttt{etc/resolv.conf}
+
+  \item         \texttt{etc/dnsmasq.conf}
+
+  \item         \texttt{etc/dnsmasq\_dhcp.conf}
+
+  \item         \texttt{tc/resolv.dnsmasq}
+  \end{itemize}
+
+\item Fichier hôte
+  \begin{itemize}
+  \item         \texttt{etc/hosts}
+  \end{itemize}
+
+\item Configuration de imond
+  \begin{itemize}
+  \item         \texttt{etc/imond.conf}
+  \end{itemize}
+\end{enumerate}
+
+
+\subsection{Configuration du fournisseur}
+
+Pour paramètrer l'ID de l'utilisateur et le mot de passe pour le fournisseur d'accés
+cela doit se fait dans le fichier \texttt{etc/ppp/pap-secrets}.
+
+Exemple pour le fournisseur Planet-Interkom~:
+
+\begin{example}
+\begin{verbatim}
+# Secrets pour l'authentification en utilisant PAP
+# client        server      secret           IP addresse
+"anonymer"      *           "surfer"         *
+\end{verbatim}
+\end{example}
+
+Dans cette exemple, l'ID de l'utilisateur est \og{}anonymer\fg{}. l'accés au serveur
+distant sera permis à tous (avec \og{}*\fg{}). \og{}surfer\fg{} est le mot de passe
+pour le fournisseur Planet-Interkom.
+
+
+\subsection{Configuration DNS}
+
+Vous pouvez utiliser le routeur fli4l comme un serveur DNS.
+Pourquoi cette fontion est utile et même obligatoire dans un LAN avec des ordinateurs
+Windows~? Tout est expliqués dans la documentation du paquetage \og{}base\fg{}.
+
+Le fichier résolveur \texttt{etc/resolv.conf} contient les noms de domaine et
+les utilisateurs du serveur de nom. Vous pouvez voir ci-dessous le contenu
+(du \og{}domain.de\fg{}, vous avez seulement un espace réservé pour indiquer les
+paramètres c'est dans la variable de configuration \var{DOMAIN\_\-NAME})~:
+
+\begin{example}
+\begin{verbatim}
+        search domain.de
+        nameserver 127.0.0.1
+\end{verbatim}
+\end{example}
+
+Le serveur de noms dnsmasq est configuré en utilisant le fichier etc/dnsmasq.conf.
+Il boot à partir du script rc040.dns-local et du rc370.dnsmasq qui sont générés
+automatiquement cela pourrait ressembler à ceci~:
+
+\begin{example}
+\begin{verbatim}
+user=dns
+group=dns
+resolv-file=/etc/resolv.dnsmasq
+no-poll
+no-negcache
+bogus-priv
+log-queries
+domain-suffix=lan.fli4l
+local=/lan.fli4l/
+domain-needed
+expand-hosts
+filterwin2k
+conf-file=/etc/dnsmasq_dhcp.conf
+\end{verbatim}
+\end{example}
+
+
+\subsection{Fichier hôte}
+
+    Ce fichier contient l'ensemble des noms d'hôtes avec leurs adresses IP.
+	Donc, ce classement est applicable seulement pour un fli4l local, pour les autres
+	ordinateurs dans le LAN, il ne sera pas visible. Ce fichier n'est pas vraiment
+	nécessaire, si un serveur DNS local est déjà démarré.
+
+
+\subsection{Configuration de imond}
+
+Les variables de configurations pour le fichier \texttt{etc/imond}.conf doivent entre
+autre être activées, \var{CIRC\_x\_NAME}, \var{CIRC\_x\_ROUTE}, \var{CIRC\_x\_CHARGEINT}
+et \var{CIRC\_x\_TIMES}. Il peut être constituée d'un maximum de 32 lignes
+(à l'exclusion des lignes de commentaires). Chaque ligne est composée de 8 colonnes~:
+
+\begin{enumerate}
+\item  Plage journalière
+\item  Plage horraire
+\item  Dispositif (\texttt{ippp}\emph{X} ou \texttt{isdn}\emph{X})
+\item  Circuit pour Default-Route: \og{}yes\fg{}/\og{}no\fg{}
+\item  Numéro de Téléphone
+\item  Nom du Circuit
+\item  Prix de l'unité Téléphonique par Minute en EU
+\item  Compteur (interval d'unité-Tél) en seconde
+\end{enumerate}
+
+    Voici un exemple~:
+
+\begin{example}
+\begin{verbatim}
+#day  hour  device  defroute  phone        name        charge  ch-int
+Mo-Fr 18-09 ippp0   yes       010280192306 Addcom      0.0248  60
+Sa-Su 00-24 ippp0   yes       010280192306 Addcom      0.0248  60
+Mo-Fr 09-18 ippp1   yes       019160       Compuserve  0.019   180
+Mo-Fr 09-18 isdn2   no        0221xxxxxxx  Firma       0.08    90
+Mo-Fr 18-09 isdn2   no        0221xxxxxxx  Firma       0.03    90
+Sa-Su 00-24 isdn2   no        0221xxxxxxx  Firma       0.03    90
+\end{verbatim}
+\end{example}
+
+    D'autres explications peuvent être trouvées pour Least-Cost-Routing (ou routage au
+	moindre coût) dans la documentation du paquetage \og{}base\fg{}.
+
+
+\subsection{Le fichier \texttt{/etc/.profile}}
+
+Le fichier \texttt{/etc/.profile} contient les paramètres par défaut du Shell.
+Pour modifier le fichier \texttt{/etc/.profile} par défaut, il est nécessaire d'ajouter
+les paramètres en dessous des paramètres existant. Ces paramètres peuvent être utilisés
+pour paramètrer un raccourci d'une commande Prompt et ensuite (vous pourrez exécuter
+\og{}ce raccourci\fg{}).
+
+\wichtig{Ce fichier ne doit pas contenir le paramètre\texttt{exit}~!}
+
+Exemple~:
+
+\begin{example}
+\begin{verbatim}
+alias ll='ls -al'
+\end{verbatim}
+\end{example}
+
+
+\subsection{Les scripts dans \texttt{/etc/profile.d/}}
+
+Vous pouvez stocker un script dans le répertoire \texttt{/etc/profile.d/},
+ce script sera exécuté au démarrage du shell et ainsi influencer l’environnement
+du shell. Généralement, les développeurs de programme OPT, y placent des scripts
+qui définissent des variables d'environnement spéciales nécessaires au programme OPT.
+
+Si des scripts sont situés dans le répertoire \texttt{/etc/profile.d/} et s'il
+existe un fichier script \texttt{/etc/.profile}, les scripts du répertoire
+\texttt{/etc/profile.d/} seront exécutés après le fichier script \texttt{/etc/.profile}.

@@ -1,0 +1,209 @@
+% Last Update: $Id$
+\section{Netzwerk-Konfiguration (IPv6)}
+
+\subsection{Einleitung}
+
+Zusätzlich zu der im letzten Abschnitt vorgestellten Konfiguration von
+IPv4-Netzwerken ist es auch möglich, den fli4l-Router in vielerlei Hinsicht
+IPv6-tauglich zu machen. Dazu gehören Angaben über die IPv6-Adresse des
+Routers, die verwalteten IPv6-(Sub-)Netze sowie vordefinierte IPv6-Routen und
+Firewall-Regeln bzgl. IPv6-Paketen. IPv6 ist der Nachfolger des
+Internet-Protokolls IPv4. Hauptsächlich wurde es entwickelt, um die relativ
+kleine Menge von eindeutigen Internet-Adressen zu vergrößern: Während IPv4
+ungefähr \(2^{32}\) Adressen unterstützt,\footnote{nur ungefähr, weil einige
+Adressen speziellen Zwecken dienen, etwa für Broad- und Multicasting} sind es
+bei IPv6 bereits \(2^{128}\) Adressen. Dadurch kann mit IPv6 jedem
+kommunizierenden Host eine eindeutige Adresse zugeordnet werden, und man ist
+nicht mehr auf Techniken wie NAT, PAT, Masquerading etc. angewiesen.
+
+Neben diesem Aspekt spielten bei der Entwicklung des IPv6-Protokolls auch
+Themen wie Selbstkonfiguration und Sicherheit eine Rolle. Dies wird in späteren
+Abschnitten aufgegriffen.
+
+Das größte Problem bei IPv6 ist dessen Verbreitung: Momentan wird IPv6~--
+verglichen mit IPv4~-- nur sehr spärlich verwendet. Das liegt daran, dass IPv6
+und IPv4 technisch nicht miteinander kompatibel sind und somit alle Software-
+und Hardware-Komponenten, die an der Paket-Weiterleitung im Internet beteiligt
+sind, für IPv6 nachgerüstet werden müssen. Auch bestimmte Dienste wie DNS
+(Domain Name System) müssen für IPv6 entsprechend aufgebohrt werden.
+
+Hier tut sich also ein Teufelskreis auf: Die geringe Verbreitung von IPv6 bei
+Dienstanbietern im Internet führt zu Desinteresse seitens der
+Router-Hersteller, ihre Geräte mit IPv6-Funktionalität auszustatten, was
+wiederum dazu führt, dass Dienstanbieter die Umstellung auf IPv6 scheuen, weil
+sie fürchten, dass sich der Aufwand nicht lohnt. Erst langsam wendet sich das
+Blatt zugunsten von IPv6, nicht zuletzt unter dem immer stärkeren Druck der
+knappen Adressvorräte.\footnote{Inzwischen sind die letzten IPv4-Adressblöcke
+von der IANA vergeben worden.}
+
+\subsection{Adressformat}
+
+Eine IPv6-Adresse besteht aus acht Zwei-Byte-Werten, die hexadezimal notiert
+werden:
+
+\emph{Beispiel 1:} \verb*?2001:db8:900:551:0:0:0:2?
+
+\emph{Beispiel 2:} \verb*?0:0:0:0:0:0:0:1? (IPv6-Loopback-Adresse)
+
+Um die Adressen etwas übersichtlicher zu gestalten, werden aufeinander folgende
+Nullen zusammengelegt, indem sie entfernt werden und lediglich zwei unmittelbar
+aufeinander folgende Doppelpunkte verbleiben. Die obigen Adressen können also
+auch so geschrieben werden:
+
+\emph{Beispiel 1 (kompakt):} \verb*?2001:db8:900:551::2?
+
+\emph{Beispiel 2 (kompakt):} \verb*?::1?
+
+Eine solche Kürzung ist aber nur höchstens einmal erlaubt, um Mehrdeutigkeiten
+zu vermeiden. Die Adresse \verb*?2001:0:0:1:2:0:0:3? kann also entweder zu
+\verb*?2001::1:2:0:0:3? oder zu \verb*?2001:0:0:1:2::3? verkürzt werden, nicht
+aber zu \verb*?2001::1:2::3?, da jetzt unklar wäre, wie die vier Nullen jeweils
+auf die zusammengezogenen Bereiche verteilt werden sollen.
+
+Eine weitere Mehrdeutigkeit existiert, wenn eine IPv6-Adresse mit einem Port
+(TCP oder UDP) kombiniert werden soll: In diesem Fall darf man den Port nicht
+unmittelbar mit Doppelpunkt und Wert anschließen, weil der Doppelpunkt bereits
+innerhalb der Adresse verwendet wird und somit in manchen Fällen unklar wäre,
+ob die Port-Angabe nicht vielleicht doch eine Adress-Komponente darstellt.
+Deshalb muss in solchen Fällen die IPv6-Adresse in eckigen Klammern angegeben
+werden. Dies ist auch die Syntax, wie sie in URLs gefordert wird (etwa wenn
+im Web-Browser eine numerische IPv6-Adresse verwendet werden soll).
+
+\emph{Beispiel 3:} \verb*?[2001:db8:900:551::2]:1234?
+
+Ohne die Verwendung von Klammern entsteht die Adresse
+\verb*?2001:db8:900:551::2:1234?, die unverkürzt der Adresse
+\verb*?2001:db8:900:551:0:0:2:1234? entspricht und somit keine Port-Angabe
+besitzt.
+
+Wenn Sie keinen Internet-Zugang mit nativer IPv6-Anbindung nutzen können,
+benötigen Sie einen IPv6-Tunnel zu einem IPv6-Anbieter. Dies wird durch das
+Paket ``ipv6'' ermöglicht. Bitte lesen Sie die Dokumentation des ``ipv6''-Pakets
+für Details.
+
+\subsection{Konfiguration}
+
+\subsubsection{Allgemeine Einstellungen}
+
+Die allgemeinen Einstellungen beinhalten zum einen die Aktivierung der
+IPv6-Unterstützung und zum anderen die optionale Vergabe einer IPv6-Adresse an
+den Router.
+
+\begin{description}
+\config{OPT\_IPV6}{OPT\_IPV6}{OPTIPV6}{
+Aktiviert die IPv6-Unterstützung.
+
+Standard-Einstellung:
+}
+\verb*?OPT_IPV6='no'?
+
+\config{HOSTNAME\_IP6}{HOSTNAME\_IP6}{HOSTNAMEIP6}{(optional)
+Diese Variable stellt explizit die IPv6-Adresse des Routers ein. Falls die
+Variable nicht gesetzt wird, wird die IPv6-Adresse auf die Adresse des ersten
+konfigurierten IPv6-Subnetzes gesetzt (\var{IPV6\_NET\_x}, siehe unten).
+
+Beispiel:
+}
+\verb*?HOSTNAME_IP6='IPV6_NET_1_IPADDR'?
+\end{description}
+
+\subsubsection{Subnetz-Konfiguration}
+
+In diesem Abschnitt wird die Konfiguration von einem oder mehreren
+IPv6-Subnetzen vorgestellt. Ein IPv6-Subnetz ist ein IPv6-Adressraum, der über
+ein so genanntes Präfix spezifiziert wird und an eine bestimmte
+Netzwerk-Schnittstelle gebunden ist. Weitere Einstellungen betreffen das
+Veröffentlichen des Präfixes und des DNS-Dienstes innerhalb des Subnetzes
+sowie einen optionalen Router-Namen innerhalb dieses Subnetzes.
+
+\begin{description}
+\config{IPV6\_NET\_N}{IPV6\_NET\_N}{IPV6NETN}{
+Diese Variable enthält die Anzahl der verwendeten IPv6-Subnetze. Mindestens ein
+IPv6-Subnetz sollte definiert werden, um IPv6 im lokalen Netz nutzen zu können.
+
+Standard-Einstellung:
+}
+\verb*?IPV6_NET_N='0'?
+
+\config{IPV6\_NET\_x}{IPV6\_NET\_x}{IPV6NETx}{
+Diese Variable enthält für ein bestimmtes IPv6-Subnetz die IPv6-Adresse des
+Routers sowie die Größe der Netzmaske in CIDR-Notation. Soll das Subnetz
+öffentlich geroutet werden, so stammt es in der Regel vom Internet- bzw.
+Tunnel-Anbieter.
+
+\wichtig{Soll in dem Subnetz die zustandslose Selbstkonfiguration (siehe
+den Abschnitt zu \var{IPV6\_NET\_x\_ADVERTISE} weiter unten) aktiviert werden,
+dann muss die Länge des Sub\-netz-Präfixes 64 Bit betragen!}
+
+Ist das Subnetz an einen Tunnel angeschlossen oder wird DHCPv6 zum
+Ermitteln eines Präfixes verwendet, dann darf hier nur der Teil der
+Router-Adresse angegeben werden, der \emph{nicht} zum dem Tunnel zugeordneten
+bzw. vom DHCPv6-Server erhaltenen Subnetz-Präfixes  gehört, da jenes
+Präfix und diese Adresse miteinander kombiniert werden! Siehe die Dokumentation
+der ``ipv6''- (Tunnel) bzw. ``dns\_dhcp''-Pakete (DHCPv6) für Details.
+
+Beispiele:
+}
+
+\begin{example}
+\begin{verbatim}
+IPV6_NET_1='2001:db8:1743:42::1/64'       # statisch: komplette Adresse
+IPV6_NET_2='{he}+0:0:0:42::1/64'          # HE-Tunnel: partielle Adresse
+IPV6_NET_3='{dhcpv6}+0:0:0:43::1/64'      # DHCPv6: partielle Adresse
+\end{verbatim}
+\end{example}
+
+\config{IPV6\_NET\_x\_DEV}{IPV6\_NET\_x\_DEV}{IPV6NETxDEV}{
+Diese Variable enthält für ein bestimmtes IPv6-Subnetz den Namen der
+Netzwerk-Schnittstelle, an welche das IPv6-Netz gebunden wird. Dies
+kollidiert \emph{nicht} mit den in der Basis-Konfiguration (\texttt{base.txt})
+vergebenen Netzwerk-Schnittstellen, da einer Netzwerk-Schnittstelle sowohl
+IPv4- als auch IPv6-Adressen zugeordnet werden dürfen.
+
+Beispiel:
+}
+\verb*?IPV6_NET_1_DEV='eth0'?
+
+\config{IPV6\_NET\_x\_ADVERTISE}{IPV6\_NET\_x\_ADVERTISE}{IPV6NETxADVERTISE}{
+Diese Variable legt fest, ob das eingestellte Subnetz-Präfix im LAN mittels
+``Router Advertisements'' verbreitet wird. Dies wird für die so genannte
+``stateless autoconfiguration'' (zustandslose Selbstkonfiguration) verwendet
+und ist nicht mit DHCPv6 zu verwechseln. Mögliche Werte sind ``yes'' und
+``no''.
+
+Es ist empfehlenswert, diese Einstellung zu aktivieren, es sei denn, alle
+Adressen im Netz werden statisch vergeben oder ein anderer Router ist bereits
+dafür zuständig, das Subnetz-Präfix anzukündigen.
+
+\wichtig{Die automatische Verteilung des Subnetzes funktioniert nur, wenn das
+Subnetz ein /64-Netz ist, d.h. wenn die Länge des Subnetz-Präfixes 64 Bit
+beträgt! Der Grund hierfür ist, dass die anderen Hosts im Netzwerk ihre
+IPv6-Adresse aus dem Präfix und ihrer Host-MAC-Adresse berechnen und dies nicht
+funktioniert, wenn der Host-Anteil nicht 64 Bit beträgt. Wenn die
+Selbstkonfiguration fehlschlägt, sollte also geprüft werden, ob das
+Subnetz-Präfix nicht vielleicht falsch angegeben worden ist (z.B. als /48).}
+
+Standard-Einstellung:
+}
+\verb*?IPV6_NET_1_ADVERTISE='yes'?
+
+\config{IPV6\_NET\_x\_ADVERTISE\_DNS}{IPV6\_NET\_x\_ADVERTISE\_DNS}{IPV6NETxADVERTISEDNS}{
+Diese Variable legt fest, ob auch der lokale DNS-Dienst im IPv6-Subnetz
+mittels ``Router Advertisements'' (RDNSS-Option) angekündigt werden soll. Dies
+funktioniert aber nur, wenn die IPv6-Funktionalität des DNS-Dienstes mit Hilfe
+der Variable \var{DNS\_SUPPORT\_IPV6}='yes' aktiviert ist. Mögliche Werte sind
+``yes'' und ``no''.
+
+Standard-Einstellung:
+}
+\verb*?IPV6_NET_1_ADVERTISE_DNS='no'?
+
+\config{IPV6\_NET\_x\_NAME}{IPV6\_NET\_x\_NAME}{IPV6NETxNAME}{(optional)
+Diese Variable legt einen Interface-spezifischen Hostnamen für den Router in
+diesem IPv6-Subnetz fest.
+
+Beispiel:
+}
+\verb*?IPV6_NET_1_NAME='fli4l-subnet1'?
+
+\end{description}
