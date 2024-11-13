@@ -1,0 +1,30 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc110.wlan - initialize mac80211 subsystem		__FLI4LVER__
+#
+# Creation:	    05.08.2002 rresch
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+begin_script WLAN_MAC80211
+
+case $debug_active in
+    yes) wlanconfig_debug=-x ;;
+    *)   wlanconfig_debug=   ;;
+esac
+
+cat <<-EOF >/sbin/crda-wrapper.sh
+#!/bin/sh
+if [ "\$ACTION" = 'change' -a "\$MODALIAS" = 'platform:regulatory' ]
+then
+  /sbin/crda
+fi
+EOF
+
+chmod a+x /sbin/crda-wrapper.sh
+
+echo /sbin/crda-wrapper.sh >/proc/sys/kernel/hotplug
+
+do_modprobe_if_exists kernel/net/mac80211 mac80211
+
+end_script

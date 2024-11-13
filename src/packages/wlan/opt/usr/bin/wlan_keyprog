@@ -1,0 +1,44 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/bin/wlan_keyprog                                            __FLI4LVER__
+# Creation:     11.10.2014 cspiess
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+##HWSUPP## extension begin
+case "$#" in
+    0)
+        myname=`basename $0`
+        echo "Usage: $myname <devices>"
+    ;;
+    *)
+        . /var/run/hwsupp.conf
+        devices=$*
+        iplinks="down"
+        
+        for dev in $devices
+        do
+            if ip link show $dev 2>/dev/null | grep -q "[<,]UP[,>]"
+            then
+                iplinks="up"
+            fi
+        done
+        for dev in $@
+        do
+            if [ -n "$dev" ]
+            then
+                if [ $iplinks = "up" ] 
+                then
+                    log "shutting down wlan device $dev"
+                    #ip link set $dev down
+                    /usr/sbin/wlanconfig.sh $dev down
+                else
+                    log "activation wlan device $dev"
+                    #ip link set $dev up
+                    /usr/sbin/wlanconfig.sh $dev
+                fi
+            fi
+        done
+    ;;
+esac
+##HWSUPP## extension end

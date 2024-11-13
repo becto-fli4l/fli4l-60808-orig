@@ -1,0 +1,357 @@
+#!/bin/sh
+
+generic_hostapd_cryptconfig ()
+{
+  if [ "$WLAN_WPA_KEY_MGMT" ]
+  then
+  cat <<EOF
+wpa=$WLAN_WPA_TYPE
+wpa_passphrase=$WLAN_WPA_PSK
+wpa_key_mgmt=WPA-PSK
+wpa_pairwise=$WLAN_WPA_ENCRYPTION
+EOF
+  else
+    if [ $WLAN_ENC_N -gt 0 -a "$WLAN_ENC_MODE" != "off" ]
+    then
+      echo wep_default_key=`expr $WLAN_ENC_ACTIVE - 1`
+      case $WLAN_ENC_MODE in
+        open) auth_algs=1 ;;
+        on) auth_algs=3 ;;
+        restricted) auth_algs=2 ;;
+      esac
+      echo auth_algs=$auth_algs
+      for i in `seq 1 $WLAN_ENC_N`
+      do
+        eval wepkey=\$WLAN_ENC_$i
+        if [ -n "`echo $wepkey | sed -n '/^s:/p'`" ]
+        then
+          echo wep_key`expr $i - 1`=\"`echo $wepkey | sed 's/^s://'`\"
+        fi
+      done
+    fi
+  fi
+}
+
+generic_hostapd_aclconfig ()
+{
+  if [ -z "$idx" ]
+  then
+    aclfile=/etc/hostapd.${device}.acl
+  else
+    aclfile=/etc/hostapd.${device}_${idx}.acl
+  fi
+  if [ "$WLAN_ACL_MAC_N" -eq 0 ]
+  then
+    echo macaddr_acl=0
+  else
+    if [ "$WLAN_ACL_POLICY" == "allow" -o "$WLAN_ACL_POLICY" == "deny" ]
+    then
+      > $aclfile
+      if [ "$WLAN_ACL_POLICY" == "allow" ]
+      then
+        echo macaddr_acl=1
+        echo accept_mac_file=$aclfile
+      else
+        echo macaddr_acl=0
+        echo deny_mac_file=$aclfile
+      fi
+      for idx in `seq 1 $WLAN_ACL_MAC_N`
+      do
+        eval mac='$WLAN_ACL_MAC_'$idx
+        echo $mac >> $aclfile
+      done
+    else
+      echo macaddr_acl=0
+    fi
+  fi
+}
+
+generic_hostapd_essid ()
+{
+  if [ "$WLAN_NOESSID" = "yes" ]
+  then
+    echo ignore_broadcast_ssid=1
+  fi
+}
+
+generic_hostapd_wps ()
+{
+  if [ "$WLAN_PSKFILE" = "yes" -o -z "$WLAN_PSKFILE" ]
+  then
+    wpa_psk_file=$SAVEPATH/wlan/hostapd.$device.psk.$WLAN_ESSID
+    >>$wpa_psk_file
+    echo wpa_psk_file=$wpa_psk_file
+  fi
+  if [ "$WLAN_WPS" = "yes" ]
+  then
+    wps_pin_file=/var/run/hostapd.$device.wps_pin_requests
+    >/var/run/hostapd.$device.wps_pin_requests
+    version=`sed 's/^\([0-9]\{1,\}\)\.\([0-9]\{1,\}\)\.\([0-9]\{1,\}\).*/00\1.00\2.00\3.000/;s/[0-9]\+\([0-9][0-9]\)/\1/g;s/\.//g' /etc/version`
+    cat <<EOF
+eap_server=1
+wps_state=2
+pbc_in_m1=1
+ap_setup_locked=1
+uuid=$UUID
+wps_pin_requests=/var/run/hostapd.$device.wps_pin_requests
+device_name=$WLAN_ESSID
+manufacturer=fli4l
+model_name=fli4l
+model_number=123
+serial_number=12345
+device_type=6-0050F204-1
+os_version=$version
+config_methods=label virtual_display virtual_push_button physical_push_button physical_display keypad
+EOF
+  fi
+}
+#if [ "$WLAN_WPA_KEY_MGMT" -a "$WLAN_MODE" = master ]; then
+if [ "$WLAN_MODE" = master ]; then
+
+    case $drivername in
+        hostap) 
+            hostapd_driver=hostap 
+            WLAN_STANDARD='b'
+            ;;
+        *)
+        if [ "$ismac80211" != "yes" ]
+        then
+              log_error "hostapd: cannot find suitable driver for $drivername"
+              hostapd_driver=
+        else
+          hostapd_driver=nl80211
+        fi
+            ;;
+    esac
+    if [ "$WLAN_WPA_DEBUG" = yes ]
+    then
+      loglevel=0
+    else
+      loglevel=2
+    fi
+    if [ "$hostapd_driver" ]; then
+      cat <<EOF > /etc/hostapd.$device
+interface=$device
+driver=$hostapd_driver
+logger_syslog=-1
+logger_syslog_level=$loglevel
+logger_stdout=-1
+logger_stdout_level=$loglevel
+ctrl_interface=/var/run/hostapd.$device
+ctrl_interface_group=0
+ssid=$WLAN_ESSID
+auth_algs=3
+own_ip_addr=127.0.0.1
+eapol_version=1
+EOF
+    if [ -n "$bridge_devname" -a -z "$WLAN_BRIDGE" ]
+    then
+      echo bridge=$bridge_devname >> /etc/hostapd.$device
+    fi
+    if [ -n "$WLAN_BRIDGE" ]
+    then
+      echo bridge=$WLAN_BRIDGE >> /etc/hostapd.$device
+    fi
+    if [ $hostapd_driver = "nl80211" ]
+    then
+      echo wds_sta=1 >> /etc/hostapd.$device
+    fi
+    generic_hostapd_cryptconfig >> /etc/hostapd.$device
+    idx=''
+    generic_hostapd_aclconfig >> /etc/hostapd.$device
+    generic_hostapd_essid >> /etc/hostapd.$device
+    if [ -n "$WLAN_CHANNEL" ]
+    then
+        echo channel=$WLAN_CHANNEL >> /etc/hostapd.$device
+        if [ -n "$WLAN_STANDARD" ]
+        then
+        case $WLAN_STANDARD in
+          a|A) echo hw_mode=a >> /etc/hostapd.$device ;;
+          b|B) echo hw_mode=b >> /etc/hostapd.$device ;;
+          *) echo hw_mode=g >> /etc/hostapd.$device ;;
+        esac
+        else
+            if [ $WLAN_CHANNEL -gt 0 -a $WLAN_CHANNEL -lt 15 ]
+        then
+           WLAN_STANDARD='g'
+        else
+           WLAN_STANDARD='a'
+        fi
+        echo hw_mode=`echo $WLAN_STANDARD | sed 't/ABG/abg/'` >> /etc/hostapd.$device
+        fi
+    fi
+    if [ "$WLAN_RATE" != "auto" -a -n "$WLAN_RATE" ]
+    then
+      case $WLAN_STANDARD in
+        b|B) ratelist="10 20 55 110" ;;
+        g|G) ratelist="10 20 55 60 90 110 120 180 240 360 480 540" ;;
+        a|A) ratelist="60 90 120 180 240 360 480 540" ;;
+        *) ratelist="" ;;
+      esac
+      maxrate="${WLAN_RATE}0"
+      if [ "$maxrate" == "5.50" ]
+      then
+        maxrate=55
+      fi
+      if [ -n "$ratelist" ]
+      then
+        rates=''
+        for rate in $ratelist
+        do
+          if [ "$rate" -le "$maxrate" ]
+          then
+        rates="$rates ${rate}"
+          fi
+          if [ "$rate" -ge "$maxrate" ]
+          then
+        break
+          fi
+        done
+        if [ -n "$rates" ]
+        then
+          rates=`echo $rates | sed 's/^ //'`
+          echo supported_rates=$rates >> /etc/hostapd.$device
+        fi
+      fi
+    fi
+    SAVEPATH=/var/lib/persistent
+    if [ ! -d $SAVEPATH/wlan ]
+    then
+      mkdir -p $SAVEPATH/wlan
+    fi
+    if [ -f $SAVEPATH/wlan/hostapd.$device.uuid ]
+    then
+      . $SAVEPATH/wlan/hostapd.$device.uuid
+    else
+      UUID=`cat /proc/sys/kernel/random/uuid`
+      echo UUID=$UUID >$SAVEPATH/wlan/hostapd.$device.uuid
+    fi
+        generic_hostapd_wps  >> /etc/hostapd.$device
+    if [ "$cando_n" = "yes" -a -n "$WLAN_N" ]
+    then
+      echo ieee80211n=1 >> /etc/hostapd.$device
+      # Actvate other available HT-Mode when Uppercase 'N' is selected and HW-Supported
+      HTCAP=''
+      if [ "$WLAN_N" = "N" ]
+      then
+        if [ -f /usr/local/wlan/gethtcaps.sh ]
+        then
+          HTCAP=`/usr/local/wlan/gethtcaps.sh $WLAN_CHANNEL $phy`
+        fi
+      fi
+      if [ "$HTCAP" ]
+      then
+        echo ht_capab=$HTCAP >> /etc/hostapd.$device
+        echo wmm_enabled=1 >> /etc/hostapd.$device
+      fi
+    else
+        echo ieee80211n=0 >> /etc/hostapd.$device
+    fi
+    
+    # VAP?
+    num=`sed -n '$=' <$WLAN_IDX`
+    if [ 0$num -gt 1 -a "$cando_vap" = "yes" ]
+    then
+      BMAC=`echo $WLAN_MAC | sed 'y/abcdef/ABCDEF/'`
+      PHY=`sed -n "s/=$BMAC//p" /var/run/wlanphy.conf`
+      idex=1
+      managed_n=0
+      cat $WLAN_IDX |\
+      while read filename
+      do
+        if [ $idex -ne 1 -a $idex -le $vapmax ] # Skip first line as we alread did this one
+        then
+          . $filename
+          if [ "$WLAN_MODE" = "master" ]
+          then
+            echo ""
+            echo "# VAP ${device}v${idex}"
+            echo bss=${device}v${idex}
+            WLAN_MAC=`echo $WLAN_MAC | sed 'y/abcdef/ABCDEF/'`
+            echo bssid=$WLAN_MAC
+            echo ctrl_interface=/var/run/hostapd.$device
+            echo ctrl_interface_group=0
+            rm -f /var/run/wlan_${device}v${idex}.conf
+            ln -s /var/run/wlan_$WLAN_MAC.conf /var/run/wlan_${device}v${idex}.conf
+            rm -f /var/run/wlan_${device}v${idex}_idx.conf
+            ln -s /var/run/wlan_${BMAC}_idx.conf /var/run/wlan_${device}v${idex}_idx.conf
+            echo ssid=$WLAN_ESSID
+            if [ -n "$WLAN_BRIDGE" ]
+            then
+              echo bridge=$WLAN_BRIDGE
+            fi
+            generic_hostapd_cryptconfig
+            generic_hostapd_aclconfig
+            generic_hostapd_essid
+            device_backup=$device
+            device=${device}v${idex}
+            generic_hostapd_wps
+            device=${device_backup}
+          else
+            if [ -f /usr/local/wlan/post_600_generic_wpa_supplicant -a -n "$PHY" -a $managed_n = 0 -a "$WLAN_MODE" = 'managed' ]
+            then
+              managed_n=1
+              iw phy $PHY interface add ${device}v1 type managed
+              ip link set dev ${device}_1 addr $WLAN_MAC
+              rm -f /var/run/wlan_${device}v1.conf
+              ln -s /var/run/wlan_$WLAN_MAC.conf /var/run/wlan_${device}v1.conf
+              rm -f /var/run/wlan_${device}v1_idx.conf
+              ln -s /var/run/wlan_${BMAC}_idx.conf /var/run/wlan_${device}v1_idx.conf
+              device_backup=$device
+              device=${device}v1
+              . /usr/local/wlan/post_600_generic_wpa_supplicant
+              device=${device_backup}
+            fi
+          fi
+        fi
+        idex=`expr $idex + 1`
+      done >>/etc/hostapd.$device
+    fi
+    pidf=/var/run/hostapd_$device.pid
+    if [ -f $pidf -a "$WLAN_RELOAD" != yes ]; then
+        kill $( cat $pidf ) || log_error "hostapd: cannot kill/restart hostapd for $device"
+        # hostapd startet nicht, wenn das device vorher UP ist.
+        ip link set dev $device down
+        sleep 2
+    fi
+    
+    # debugging is enabled in config file and goes to stderr;
+    # if hostapd goes into background, debuggin to stdout is
+    # automatically disabled
+    if [ "$WLAN_RELOAD" = yes ]
+    then
+      if [ ! -f $pidf ]
+      then
+        pid=`ps | grep $pidf | grep -v grep | sed 's/^ *\([0-9]\+\) *.*/\1/'`
+        if [ -n "$pid" ]
+        then
+          echo $pid >$pidf
+          kill -HUP $pid
+        fi
+        unset $pid
+      else
+        kill -HUP `cat $pidf`
+      fi
+    else
+      if [ "$WLAN_WPA_DEBUG" = yes ]
+      then
+        debug='-dd'
+      else
+        debug=''
+      fi
+      /usr/sbin/hostapd $debug -B -P $pidf /etc/hostapd.$device
+      if [ $? -ne 0 ]
+      then
+        ip link set dev $device down
+        exit 42
+      fi
+    fi
+    unset pidf
+    fi
+fi
+
+# Available drivers:
+# hostap = Host AP driver (Intersil Prism2/2.5/3) [default]
+#       (this can also be used with Linuxant DriverLoader)
+# nl80211 = MAC80211 (new Linux WLAN Interface)
+# wired = wpa_supplicant wired Ethernet driver

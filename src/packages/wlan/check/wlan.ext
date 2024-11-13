@@ -1,0 +1,268 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for wlan
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2003-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_wlan)
+then
+    provides wlan version 4.0.0
+    depends on fli4l version 4.0
+
+    set found_master="no"
+    set found_hostap="no"
+    set found_wlandrv="no"
+    set found_mac80211="no"
+
+    foreach i in net_drv_n
+    do
+        set driver=net_drv_%[i]
+        if (driver =~ "^(RE:WLAN_USB_DRV)$" && !opt_usb)
+        then
+            error "You have to activate OPT_USB in order to use the network driver NET_DRV_$i='$driver'"
+        fi
+        if (driver =~ "^(RE:WLAN_PCMCIA_DRV)$" && !opt_pcmcia)
+        then
+            error "You have to activate OPT_PCMCIA in order to use the network driver NET_DRV_$i='$driver'"
+        fi
+        if (driver =~ "rt2500" )
+        then
+            if (net_drv_%_option[i] =~ ".*ifname=.*")
+            then
+                error "Illegal option ifname in NET_DRV_${i}_OPTION. Do not use with $driver driver."
+            fi
+        fi
+    done
+
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+        
+        # webgui files
+        add_to_opt "srv/www/admin/status_wlan.cgi" "mode=555 flags=sh"
+        add_to_opt "usr/local/wlan/mcstable.sed" "mode=444 flags=utxt"
+        add_to_opt "srv/www/img/online.png"
+        add_to_opt "srv/www/img/offline.png"
+        
+        # language files
+        set files="status_wlan"
+        if ( defined (httpd_gui_lang) && httpd_gui_lang != "auto" )
+        then
+            set gui_lang=httpd_gui_lang
+        else
+            set gui_lang=locale
+        fi
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            split (files, files_tmp_%, ' ')
+            foreach file in files_tmp_%
+            do
+                stat("opt/srv/www/lang/$file.$lang", langfile)
+                if( langfile_res == "OK" )
+                then
+                    add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+                else
+                    warning "could not find 'srv/www/lang/$file.$lang', perhaps this file isn't translated yet. Falling back to English."
+                    add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+                fi
+            done
+        done
+        if (opt_rrdtool)
+        then
+            add_to_opt "srv/www/include/rrd-wlan.inc" "mode=444 flags=sh"
+        fi
+    fi
+
+    foreach i in net_drv_%
+    do
+        if (i =~ "^(RE:WLAN_DRV_MASTER)$")
+        then
+            set found_master
+        fi
+        if (i =~ "^(RE:WLAN_DRV_MAC80211)$")
+        then
+            set found_mac80211
+        fi
+        if (i =~ "hostap_(cs|pci|plx)")
+        then
+            set found_hostap
+        fi
+        if (i =~ "^(RE:WLAN_NET_DRV)$")
+        then
+            set found_wlandrv
+        fi
+    done
+
+    if (!found_wlandrv)
+    then
+        error "no wlan driver found"
+        error "OPT_WLAN='yes' requires you to add a wlan driver to NET_DRV_%"
+    fi
+
+    if (found_mac80211)
+    then
+        add_to_opt "sbin/crda" "mode=555"
+        add_to_opt "usr/lib/crda/regulatory.bin" "mode=555"
+        add_to_opt "usr/sbin/iw" "mode=555"
+        add_to_opt "etc/rc.d/rc110.wlan" "mode=555 flags=sh"
+    fi
+
+    foreach idx in wlan_n
+    do
+        if (wlan_%_mode[idx] == "master")
+        then
+            if (!found_master)
+            then
+                error "master mode doesn't work for every wlan-driver"
+                error "install a master-capable wlan-driver"
+            fi
+            add_to_opt "usr/sbin/hostapd" "mode=555"
+            add_to_opt "usr/bin/hostapd_cli" "mode=555"
+            add_to_opt "usr/local/wlan/post_600_generic_hostapd" "mode=555 flags=sh"
+        fi
+        if (wlan_%_mode[idx] == "managed")
+        then
+            add_to_opt "usr/sbin/wpa_cli" "mode=555"
+            add_to_opt "usr/sbin/wpa_supplicant" "mode=555"
+            add_to_opt "usr/local/wlan/post_600_generic_wpa_supplicant" "mode=555 flags=sh"
+        fi
+        if (found_hostap)
+        then
+            if (wlan_%_ap[idx] ?: "" != "")
+            then
+                add_to_opt "usr/local/wlan/post_600_hostap_ap" "mode=555 flags=sh"
+            fi
+        fi
+
+        if (wlan_%_mode[idx] != "managed")
+        then
+            if (wlan_%_channel[idx] =~ "^0[abg]?$")
+            then
+                error "WLAN_${idx}_CHANNEL may only be '0' when WLAN_${idx}_MODE='managed'"
+            fi
+        fi
+
+        if (wlan_%_channel[idx] =~ "[0-9]*N")
+        then
+            if (wlan_%_wpa_encryption[idx] == "TKIP")
+            then
+                warning "802.11n HT40-WLAN not possible when WLAN_${idx}_WPA_ENCRYPTION is 'TKIP', falling back to low speed"
+            fi
+        fi
+        
+        if (wlan_%_ap[idx] ?: "" != "")
+        then
+            add_to_opt "usr/local/wlan/post_600_generic_ap" "mode=555 flags=sh"
+        fi
+        set encnum=wlan_%_enc_n[idx]
+        foreach idx1 in encnum
+        do
+            if ( wlan_%_enc_%[idx][idx1] =~ "^[Pp]:." )
+            then
+                add_to_opt "usr/local/wlan/pre_050_generic" "mode=555 flags=sh"
+            fi
+            if ( wlan_%_enc_%[idx][idx1] =~ "^[Ww].?:." )
+            then
+                add_to_opt "usr/local/wlan/pre_950_generic" "mode=555 flags=sh"
+            fi
+        done
+        if (wlan_%_acl_mac_n[idx] != "0" && wlan_%_mode[idx] != "master")
+        then
+            error "acl needs WLAN_${idx}_MODE='master'"
+        fi
+        if (wlan_%_enc_n[idx] > 0)
+        then
+            if (wlan_%_enc_active[idx] == "")
+            then
+                error "WLAN_${idx}_ENC_ACTIVE must be set if WLAN_${idx}_ENC_N is >0"
+            else
+                if (wlan_%_enc_n[idx] < wlan_%_enc_active[idx])
+                then
+                    if (wlan_%_enc_n[idx] != "0")
+                    then
+                        error "WLAN_${idx}_ENC_ACTIVE must be less than or equal to WLAN_${idx}_ENC_N"
+                    fi
+                fi
+            fi
+        fi
+        if (wlan_%_enc_n[idx] > 4)
+        then
+            error "WLAN_${idx}_ENC_N may not be greater than 4"
+        fi
+        if (wlan_%_wpa_key_mgmt[idx] != "")
+        then
+            if (wlan_%_enc_n[idx] > 0)
+            then
+                error "You can't combine WEP and WPA encryption; either set WLAN_${idx}_ENC_N='0' or WLAN_${idx}_WPA_KEY_MGMT='' to select one"
+            fi
+            if (wlan_%_wpa_psk[idx] == "")
+            then
+                error "Please add a valid password in WLAN_${idx}_WPA_PSK if you want to use WPA"
+            fi
+            if (! wlan_%_mode[idx] =~ "managed|master")
+            then
+                error "WPA is only possible in managed or master mode, so please set WLAN_${idx}_MODE to managed or master"
+            fi
+        fi
+        
+        if (wlan_%_wpa_type[idx] == "1" && wlan_%_wpa_encryption[idx] == "CCMP")
+        then
+            warning "The combination WPA1 and CCMP may prevent clients to connect successfully"
+        fi
+        if (wlan_%_wpa_type[idx] == "2" && wlan_%_wpa_encryption[idx] == "TKIP")
+        then
+            warning "The combination WPA2 and TKIP may prevent clients to connect successfully"
+        fi
+    done
+    
+##HWSUPP## extension begin
+    if (opt_hwsupp)
+    then
+        depends on hwsupp version 4.0
+ 
+        add_to_opt "etc/rc.d/rc999.wlan" "mode=555 flags=sh"
+
+        foreach i in hwsupp_led_n
+        do
+            set action=hwsupp_led_%[i]
+            set param=hwsupp_led_%_param[i] ?: ""
+            if (action == "wlan")
+            then
+                add_to_opt "usr/bin/wlan_setleds" "mode=555 flags=sh"
+                if (!(param =~ "(RE:WLAN_LED_PARAM)"))
+                then
+                    error "When HWSUPP_LED_${i}='wlan', a list of wlan devcies must be entered in HWSUPP_LED_${i}_PARAM" 
+                fi
+            fi
+        done
+        
+        foreach i in hwsupp_button_n
+        do
+            set action=hwsupp_button_%[i]
+            set param=hwsupp_button_%_param[i]
+            if (action == "wlan")
+            then
+                add_to_opt "usr/bin/wlan_keyprog" "mode=555 flags=sh"
+                if (!(param =~ "(RE:WLAN_BUTTON_PARAM)"))
+                then
+                    error "When HWSUPP_BUTTON_${i}='wlan', a list of wlan devcies must be entered in HWSUPP_BUTTON_${i}_PARAM" 
+                fi
+            fi
+        done
+    fi
+##HWSUPP## extension end
+    
+else
+    # wlan not active
+    foreach i in net_drv_%
+    do
+        if (i =~ "^(RE:WLAN_NET_DRV)$")
+        then
+            error "If you want to use a wlan driver ($i) you have to set OPT_WLAN to yes"
+        fi
+    done
+fi

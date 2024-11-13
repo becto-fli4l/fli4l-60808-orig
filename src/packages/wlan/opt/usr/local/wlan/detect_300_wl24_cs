@@ -1,0 +1,37 @@
+if [ "$drivername" = "other" ]
+then
+  scan='reset:8BE0 mibset:8BE8 mibget:8BE9 getdbg:8BE3 setdbg:8BE2 sitereq:8BE4 bsslist:8BE5 get_llc:8BE7 set_llc:8BE6'
+  found=0 # Must be 9 after Search
+  for i in $scan
+  do
+    first=`echo $i | cut -d ':' -f 1`
+    second=`echo $i | cut -d ':' -f 2`
+    line1=`iwpriv $device 2>/dev/null | grep $first`
+    case "x$line1" in
+      x) ;;
+      *)
+        line2=`echo $line1 | grep $second`
+        case "x$line2" in
+          x) ;;
+          *)
+            found=`expr $found + 1`
+            ;;
+        esac
+        ;;  
+    esac
+  done
+
+ if [ $found -eq 9 ]
+  then
+    # We found all Lines in iwpriv output
+    drivername="wl24_cs"
+    candomaster="no"
+  fi
+
+  unset found
+  unset i
+  unset first
+  unset second
+  unset line1
+  unset line2
+fi

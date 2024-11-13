@@ -1,0 +1,43 @@
+#!/bin/sh
+
+drivername=`grep $device /var/run/netdrivers.conf | sed "s/^$device=//"`
+
+# Get corresponding phy-device with the mac from /var/run/wlanphy.conf
+if [ -f /var/run/wlanphy.conf ]
+then
+  # get the mac-address of the selected device
+  mac=`ip link show $device | sed -n 'y/abcdef/ABCDEF/;s/.*\(\([0-9A-F]\{2\}:\)\{5\}[0-9A-F]\{2\}\).\+/\1/p'`
+  # strip the first byte because this one changes in VAP-Usage only from 00
+  mac5=`echo $mac | sed 's/^...//'`
+  # read phy-device-name
+  phy=`sed -n "s/=[0-9A-F]\{2\}:$mac5//p" /var/run/wlanphy.conf | sed -n '1p'`
+  # If found we have a cfg80211 device - now we ask iw for details
+  if [ -n "$phy" ]
+  then
+    ismac80211="yes"
+    candowpa="yes"	# All cfg80211 drivers should be able to do WPA
+    if [ -n "`iw phy $phy info | sed -n 's/.*\* AP$/AP/p'`" ]
+    then
+      candomaster="yes"
+    fi
+    if [ -n "`iw phy $phy info | grep -i HT[24]0`" ]
+    then
+      cando_n="yes"
+    fi
+    cando_vap="no"
+    case $drivername in
+      ath5k) cando_vap="yes"
+             vapmax=4
+             ;;
+      ath9k) cando_vap="yes"
+             vapmax=8
+             ;;
+      ath9k_htc) cando_vap="yes"
+             vapmax=4
+             ;;
+      ath10k_pci) cando_vap="yes"
+             vapmax=8
+             ;;
+    esac
+  fi
+fi

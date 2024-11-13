@@ -1,0 +1,36 @@
+# Calculation of Hex-WEP-Key if Passphrase with P: or p: is given
+
+case "x$WLAN_ENC_N" in
+  x) ;;
+  *)
+    IDX=1
+    while [ $IDX -le $WLAN_ENC_N ]
+    do
+        eval PASSPHRASE='$WLAN_ENC_'$IDX
+        PASSPHRASE=`echo $PASSPHRASE | sed -n 's/P://p'`
+        BYTES=26
+        if [ -z "$PASSPHRASE" ]
+        then
+            eval PASSPHRASE='$WLAN_ENC_'$IDX
+            PASSPHRASE=`echo $PASSPHRASE | sed -n 's/p://p'`
+            BYTES=10
+        fi
+        case "x$PASSPHRASE" in
+          x) ;;
+          *)
+            MDSTRING=$PASSPHRASE
+            LENGTH=`expr length "$MDSTRING"`
+            while [ $LENGTH -lt 64 ]
+            do
+                MDSTRING=${MDSTRING}$PASSPHRASE
+                LENGTH=`expr length "$MDSTRING"`
+            done
+            MDSTRING=`expr substr "$MDSTRING" 1 64` 
+            MDSTRING=`echo -n $MDSTRING | md5sum`
+            eval 'WLAN_ENC_'$IDX=`echo "$MDSTRING" | sed 's/\(....\)\(....\)\(....\)\(....\)\(....\)\(....\)\(..\).*/\1-\2-\3-\4-\5-\6-\7/'`
+            ;;
+        esac
+        IDX=`expr $IDX + 1`
+    done
+    ;;
+esac

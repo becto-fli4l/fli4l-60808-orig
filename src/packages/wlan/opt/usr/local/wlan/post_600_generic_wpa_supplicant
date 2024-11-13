@@ -1,0 +1,137 @@
+#!/bin/sh
+start_wpa_supplicant ()
+{
+    case $drivername in
+	hostap)	
+	    wpa_driver=hostap 
+	    ;;
+	atmel)	
+	    wpa_driver=atmel
+	    ;;
+	ipw2100|ipw2200)
+	    wpa_driver=wext
+	    ;;
+	*) 
+	    case "$candowpa" in
+		yes) 
+		    if [ "$ismac80211" != "yes" ]
+		    then
+		      wpa_driver=wext
+		    else
+		      wpa_driver=nl80211
+		    fi
+		    ;;
+		*)
+		    log_error "wpa_supplicant: cannot find suitable driver for $drivername"
+		    wpa_driver=
+		    ;;
+	    esac
+	    ;;
+    esac
+
+    if [ "$wpa_driver" -a "$WLAN_WPA_KEY_MGMT" ]
+    then
+	cat <<EOF > /etc/wpa_supplicant.$device
+ctrl_interface=/var/run/wpa_supplicant
+network={
+    ssid="$WLAN_ESSID"
+    scan_ssid=1
+    key_mgmt=WPA-PSK
+    psk="$WLAN_WPA_PSK"
+}
+EOF
+    else
+	cat <<EOF > /etc/wpa_supplicant.$device
+ctrl_interface=/var/run/wpa_supplicant
+network={
+    ssid="$WLAN_ESSID"
+    scan_ssid=1
+    key_mgmt=NONE
+EOF
+        if [ $WLAN_ENC_N -gt 0 ]
+        then
+            for i in `seq 1 $WLAN_ENC_N`
+            do
+                j=`expr $i - 1`
+                eval k=\$WLAN_ENC_$i
+                echo wep_key$j=$k >> /etc/wpa_supplicant.$device
+            done
+            if [ $WLAN_ENC_ACTIVE -lt 1 -o $WLAN_ENC_ACTIVE -gt $WLAN_ENC_N ]
+            then
+                n=0
+            else
+                n=`expr $WLAN_ENC_ACTIVE - 1`
+            fi
+            echo wep_tx_keyidx=$n >> /etc/wpa_supplicant.$device
+        fi
+        echo "}" >> /etc/wpa_supplicant.$device
+    fi
+    if [ "$wpa_driver" ]
+    then
+	pidf=/var/run/wpa_supplicant_$device.pid
+	if [ -f $pidf -a "$WLAN_RELOAD" != yes ]; then
+	    kill -9 `cat $pidf` || log_error "wpa_supplicant: cannot kill/restart wpa_supplicant for $device"
+	fi
+	if [ "$WLAN_RELOAD" = yes ]
+	then
+	  if [ ! -f $pidf ]
+	  then
+	    pid=`ps | grep $pidf | grep -v grep | sed 's/^ *\([0-9]\+\) *.*/\1/'`
+	    if [ -n "$pid" ]
+	      then
+	      echo $pid >$pidf
+	      kill -HUP $pid
+	    fi
+	    unset $pid
+	  else
+	    kill -HUP `cat $pidf`
+	  fi
+	else
+	  if [ "$WLAN_WPA_DEBUG" = yes ]
+	  then
+	    debug='-dd'
+	  else
+	    debug=''
+	  fi
+	  bridge=''
+	  if [ -n "$bridge_devname" -a -z "$WLAN_BRIDGE" ]
+	  then
+	    bridge="-b $bridge_devname"
+	  fi
+	  if [ -n "$WLAN_BRIDGE" ]
+	  then
+	    bridge="-b $WLAN_BRIDGE"
+	  fi
+	  if [ -n "$bridge" -a $wpa_driver = "nl80211" ]
+	  then
+	    iw dev $device set 4addr on
+	  fi
+	  wpa_supplicant $debug $bridge -B -i$device -P$pidf -c/etc/wpa_supplicant.$device -D$wpa_driver
+	  if [ $? -ne 0 ]
+	  then
+	    ip link set dev $device down
+	    exit 43
+	  fi
+	fi
+	unset pidf
+    fi
+}
+
+if [ "$WLAN_MODE" = managed ]; then
+    start_wpa_supplicant 
+fi
+
+# Available drivers:
+# hostap = Host AP driver (Intersil Prism2/2.5/3) [default]
+#	(this can also be used with Linuxant DriverLoader)
+# hermes = Agere Systems Inc. driver (Hermes-I/Hermes-II)
+# atmel = ATMEL AT76C5XXx (USB, PCMCIA)
+# wext = Linux wireless extensions (generic)
+# broadcom = Broadcom wl.o driver
+# ipw = Intel ipw2100/2200 driver
+# wired = wpa_supplicant wired Ethernet driver
+# bsd = BSD 802.11 support (Atheros, etc.)
+# ndis = Windows NDIS driver
+
+# Configured drivers:
+# hostap, atmel, wext, ipw, wext

@@ -1,0 +1,200 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc130.wlan - write wlan-config to /var/run/wlan.conf	__FLI4LVER__
+#                        and configure wlan
+#
+# Creation:	    05.08.2002 rresch
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+. /etc/rc.d/wireless-helper
+
+begin_script WLAN
+
+case $debug_active in
+    yes) wlanconfig_debug=-x ;;
+    *)   wlanconfig_debug=   ;;
+esac
+
+# setup wireless tools
+for i in iwlist iwspy iwpriv iwgetid; do
+    ln -s iwconfig /sbin/$i
+done
+
+# Saving complete WLAN-Config to CFG-Files
+CONFIG_FILE="/var/run/wlan.conf"
+CONFIG_DIR="/var/run"
+case $OPT_WLAN in
+  yes)
+    if [ $WLAN_N -lt 1 ]
+    then
+      OPT_WLAN='no'
+    fi
+    ;;
+esac
+
+# Saving WLAN-Options to $CONFIG_FILE
+case $OPT_WLAN in
+  yes)
+    # generate /var/run/wlanphy.conf
+    for dev in $(wlan_get_wireless_devices)
+    do
+      phy=$(wlan_map_wireless_device_to_phy_device "$dev")
+      macaddr=$(get_mac_address_from_ethernet_interface "$dev" | sed 'y/abcdef/ABCDEF/')
+      if [ -n "$phy" -a -n "$macaddr" ]
+      then
+        echo "$phy=$macaddr"
+      fi
+    done > /var/run/wlanphy.conf
+  
+    # Add wlan to the right place
+    if [ "$OPT_HTTPD" = "yes" ]
+    then 
+        httpd-menu.sh add -p 200 status_wlan.cgi "WLAN" '$_MT_stat' wlan
+    fi
+    # Simplify useage of hostapd_cli on fli4l with only one ap.
+    if [ "$WLAN_1_MODE" = "master" -a "$WLAN_N" -eq 1 ]
+    then
+      ln -s /var/run/hostapd.wlan0 /var/run/hostapd
+    fi
+
+    cat <<EOF >$CONFIG_FILE
+MAC_ADD=\`ip link show \$device | sed -n 'y/abcdef/ABCDEF/;s/.*\(\([0-9A-F]\{2\}:\)\{5\}[0-9A-F]\{2\}\).\+/\1/p'\`
+MAC_ADDR=\`echo \$MAC_ADD | sed 's/://g'\`
+case \$MAC_ADDR in
+EOF
+
+    for idx in `seq 1 $WLAN_N`
+    do
+      eval MAC=\$WLAN_${idx}_MAC
+      MAC=`echo $MAC | tr abcdef ABCDEF`
+      if [ ! -f $CONFIG_DIR/wlan_$MAC.conf ]
+      then
+        {
+          echo "    $MAC)" | sed 's/[:-]//g'
+          echo "      . $CONFIG_DIR/wlan_$MAC.conf"
+          echo "      if [ -f $CONFIG_DIR/wlan_\${device}_idx.conf ]; then rm $CONFIG_DIR/wlan_\${device}_idx.conf; fi"
+          echo "      ln -s $CONFIG_DIR/wlan_${MAC}_idx.conf $CONFIG_DIR/wlan_\${device}_idx.conf"
+          echo "      if [ -f $CONFIG_DIR/wlan_\${device}.conf ]; then rm $CONFIG_DIR/wlan_\${device}.conf; fi"
+          echo "      ln -s $CONFIG_DIR/wlan_${MAC}.conf $CONFIG_DIR/wlan_\${device}.conf"
+          echo '      ;;'
+        } >>$CONFIG_FILE
+        echo "OPT_WLAN='yes'" >$CONFIG_DIR/wlan_$MAC.conf
+        set | sed -n "/WLAN_${idx}_/s/WLAN_${idx}_/WLAN_/p" |\
+          sed '/^WLAN_MAC=/y/abcdef/ABCDEF/' |\
+          sed '/^WLAN_ACL_MAC_/y/abcdef/ABCDEF/'   >>$CONFIG_DIR/wlan_$MAC.conf
+        echo "WLAN_IDX='$CONFIG_DIR/wlan_${MAC}_idx.conf'" >>$CONFIG_DIR/wlan_$MAC.conf
+        if [ ! -f $CONFIG_DIR/wlan_${MAC}_idx.conf ]
+        then
+          >$CONFIG_DIR/wlan_${MAC}_idx.conf
+        fi
+        echo $CONFIG_DIR/wlan_${MAC}.conf >>$CONFIG_DIR/wlan_${MAC}_idx.conf
+        if [ $idx -eq 1 ]
+        then
+          ln -s $CONFIG_DIR/wlan_$MAC.conf $CONFIG_DIR/wlan_default.conf
+        fi
+      else
+        num=`sed -n '$=' $CONFIG_DIR/wlan_${MAC}_idx.conf`
+        num=`expr $num + 1`
+        case $num in
+          2) mf='06' ;;
+          3) mf='0A' ;;
+          4) mf='0E' ;;
+          5) mf='12' ;;
+          6) mf='16' ;;
+          7) mf='1A' ;;
+          8) mf='1E' ;;
+          *) mf='00' ;;
+        esac
+        MACN=`echo $MAC | sed "s/..\(.*\)/$mf\1/"`
+        {
+          echo "    $MACN)" | sed 's/[:-]//g'
+          echo "      log_warn \"Cannot configure VAP-Interface directly - Please use device \`ls -l /var/run/ | sed -n \"s/.*\(wlan[0-9]\+\)\.conf.*$MAC.*/\1/p\"\`"\"
+          echo '      exit 1'
+          echo '      ;;'
+        } >>$CONFIG_FILE
+        set | sed -n "/WLAN_${idx}_/s/WLAN_${idx}_/WLAN_/p" |\
+            sed "s/\(WLAN_MAC=\).*/\1\'$MACN\'/" |\
+            sed '/^WLAN_ACL_MAC_/y/abcdef/ABCDEF/' >>$CONFIG_DIR/wlan_${MACN}.conf
+        echo "WLAN_IDX='$CONFIG_DIR/wlan_${MAC}_idx.conf'" >>$CONFIG_DIR/wlan_$MACN.conf
+        echo $CONFIG_DIR/wlan_${MACN}.conf >>$CONFIG_DIR/wlan_${MAC}_idx.conf
+      fi
+    done
+    {
+      cat <<EOF
+    *)
+      log_warn "Unknown mac address \$MAC_ADD, using WLAN_1_* as default configuration for device \$device"
+      log_warn "Change your Config to: WLAN_x_MAC='\$MAC_ADD' for device \$device"
+      if [ -f $CONFIG_DIR/wlan_\${device}.conf ]; then rm $CONFIG_DIR/wlan_\${device}.conf; fi
+      ln -s $CONFIG_DIR/wlan_default.conf $CONFIG_DIR/wlan_\${device}.conf
+      if [ -f $CONFIG_DIR/wlan_\${device}_idx.conf ]; then rm $CONFIG_DIR/wlan_\${device}_idx.conf; fi
+      echo /var/run/wlan_default.conf >$CONFIG_DIR/wlan_\${MAC_ADD}_idx.conf
+      ln -s $CONFIG_DIR/wlan_\${MAC_ADD}_idx.conf $CONFIG_DIR/wlan_\${device}_idx.conf
+      . $CONFIG_DIR/wlan_default.conf
+      ;;
+esac
+EOF
+    } >>$CONFIG_FILE
+    ;;
+  *)
+    echo "OPT_WLAN='no'" >$CONFIG_FILE
+    ;;
+esac
+
+devices="`iwconfig 2>/dev/null | sed -n '/^wlan[0-9]/s/ .*$//p'`"
+[ "$devices" ] || log_error "No wlan devices found, skipping initialization of wlan subsystem."
+
+if type -p iw >/dev/null
+then
+  if [ -n "$WLAN_REGDOMAIN" ]
+  then
+    iw reg set $WLAN_REGDOMAIN
+  else
+    iw reg set DE
+  fi
+fi
+
+for dev in $devices
+do
+  # if use bridge with wlan interface then add bridge-devname 
+  case $OPT_BRIDGE_DEV in
+    yes)
+      [ 0"$BRIDGE_DEV_N" -eq 0 ] || for bridge_idx in `seq 1 $BRIDGE_DEV_N`
+      do
+        eval bridge_devname='$BRIDGE_DEV_'$bridge_idx'_DEVNAME'
+        eval bridge_devn='$BRIDGE_DEV_'$bridge_idx'_DEV_N'
+        for bridge_ddx in `seq 1 $bridge_devn`
+        do
+          eval bridge_dev_dev='$BRIDGE_DEV_'$bridge_idx'_DEV_'$bridge_ddx'_DEV'
+          [ "$bridge_dev_dev" = "$dev" ] && echo "BRIDGE_DEVNAME_${dev}='$bridge_devname'" >>$CONFIG_FILE
+        done
+      done
+      ;;
+  esac
+
+  # Calling /usr/sbin/wlanconfig.sh for each wlan-device found
+  log_info "configuring wlan on $dev ..."
+  /usr/sbin/wlanconfig.sh $wlanconfig_debug $dev
+  errorcode=$?
+  if [ $errorcode -ne 0 ]
+  then
+    log_error "Error $errorcode while setting up $dev"
+    case $errorcode in
+      42) log_error "Could not start hostapd - disabling device for safety reasons"
+          ;;
+      43) log_error "Could not start wpa_supplicant - disabling device for safety reasons"
+          ;;
+    esac
+    # error-codes 17 and above are fatal - skip this device
+    if [ $errorcode -ge 17 ]
+    then
+        if [ ! -f /var/run/wlan.dontuse ]; then > /var/run/wlan.dontuse; fi
+        echo $dev >>/var/run/wlan.dontuse
+        ip link set dev $device down
+    fi
+  fi
+  sleep 2
+done
+
+echo >/var/run/wlanconfig.done
+end_script

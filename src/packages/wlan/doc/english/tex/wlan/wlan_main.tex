@@ -1,0 +1,481 @@
+% Synchronized to r37137
+\marklabel{sec:opt-wlan }
+{
+\section {WLAN - Support For Wireless-LAN}
+}
+
+When using  PCI Cards please be sure to use a mainboard that at least 
+complies to the specifications of PCI 2.2. Older mainboards that only 
+support PCI 2.1 or less can produce diverse errors. Either the computer 
+does not start at all (it even can't be switched on) or the WLAN card 
+is not found on PCI scan.
+
+WLAN cards are adressed as wlanX in base.txt's \var{IP\_NET\_X\_DEV}. If only 
+one WLAN card is installed its name is wlan0.
+
+\subsection{WLAN Configuration}
+
+\begin{description}
+\config{OPT\_WLAN}{OPT\_WLAN}{OPTWLAN}
+
+        Default setting: \var{OPT\_\-WLAN}='no'
+
+        Activates package Wireless LAN.
+
+\config{WLAN\_REGDOMAIN}{WLAN\_REGDOMAIN}{WLANREGDOMAIN}
+
+	This variable determines the country settings. Valid values are 
+	ISO 3166-1 alpha-2 country codes i.e. 'DE' for Germany.
+	In most countries different legal presets apply for frequency channels 
+	and transmission power.
+
+\config{WLAN\_N}{WLAN\_N}{WLANN}
+
+        Number of independent WLAN Configurations. If this is set to '1' 
+        behavior is like in earlier fli4l versions when only one configuration 
+        was allowed. 
+        
+\config{WLAN\_x\_MAC}{WLAN\_x\_MAC}{WLANxMAC}
+
+         MAC address of the WLAN card in this notation:
+         
+         XX:XX:XX:XX:XX:XX
+
+         Each X is a Hex Digit of the MAC Address for the card that belongs to 
+         this configuration. If none of the MAC addresses entered here matches 
+         a particular card the configuration in \var{WLAN\_1\_*} will be applied 
+         to this card and a warning message containing the card's MAC address will 
+         be displayed. Enter this address in the config file to assure that the web 
+         interface will work without problems.
+  
+\config{WLAN\_x\_MAC\_OVERRIDE}{WLAN\_x\_MAC\_OVERRIDE}{WLANxMACOVERRIDE}
+
+         This setting changes the MAC address of the WLAN card. This is used to 
+         connect to a WLAN where MAC-filtering is active without changing the filters.
+         This is useful for WAN connections that are fixed to i.e. the MAC address 
+         of the WLAN-USB-stick delivered by the provider.
+
+\config{WLAN\_x\_ESSID}{WLAN\_x\_ESSID}{WLANxESSID}
+
+        The Service Set Identifier (SSID) is the name for your wireless lan.
+        The string has a maximum length of 32 characters and is also called 
+        ``Network Name''. It is configured in the access point of a wireless 
+        lan and is used by all clients accessing it. The SSID has to be identical 
+        for all joining nodes also for Ad-Hoc networking.
+
+
+\config{WLAN\_x\_MODE}{WLAN\_x\_MODE}{WLANxMODE}
+
+        Sets the WLAN mode to be used by the card.
+
+        Default setting: \var{WLAN\_x\_\-MODE}='ad-hoc'
+
+        Possible values:
+
+        \begin{tabular}[h]{ll}
+            ad-hoc        & wireless net without Access-Point \\
+            managed       & managed wireless net with several cells\\
+            master        & the WLAN card is working as an Access-Point\\
+        \end{tabular}
+
+        \var{WLAN\_x\_MODE}='master' will only working with adequate WLAN drivers.
+
+\config{WLAN\_x\_NOESSID}{WLAN\_x\_NOESSID}{WLANxNOESSID}
+
+        Deactivates sending ESSID during beacon frames.
+        Only valid with hostap\_* driver and Firmware $>$= 1.6.3 in WLAN\_MODE='master'
+
+        This feature is optional and has to be added manually in config/wlan.txt.
+
+\config{WLAN\_x\_CHANNEL}{WLAN\_x\_CHANNEL}{WLANxCHANNEL}
+
+        Sets the transmission channel of the network.
+
+        Default setting: \var{WLAN\_x\_\-CHANNEL}='1'
+
+        Possible values: 1-13 and 36,40,44,48,52,56,60,64,100,104,108,112,116,120,124,128,132, 136,140
+
+        Please read the documentation of your WLAN card to find out which 
+        channels are allowed to use in your country. You are responsible 
+        for any rights violation by using channels not allowed. In Germany 
+        channels 1-13 in 2,4 GHz frequency range (Modes: b and g) are allowed.
+        Channels 36-140 (see above) are legally allowed in 5 GHz frequency range.
+    
+        Value '0' is also valid if \var{WLAN\_x\_\-MODE}='managed' is set. This 
+        does not set a particular channel explicitely but searches for an AP an all 
+        valid channels.
+        You may add the character a,b or g to the channel (i.e. 5g) which will then 
+        determine the operating mode and frequency range.
+
+        Adding 'n' or 'N' triggers usage of 802.11n for according WLAN cards.
+        Lower case means: 20 MHz channel width, upper Case means: 40 MHz channel width.
+        
+        Upper case for a/b/g will activate proprietary WLAN turbo modes with some drivers 
+        (at the moment only ath\_pci). This option is experimental and may be removed at 
+        any time.
+
+\config{WLAN\_x\_RATE}{WLAN\_x\_RATE}{WLANxRATE}
+
+        Sets transmission speed of the network.
+
+        Default setting: \var{WLAN\_x\_\-RATE}='auto'
+
+        Possible values: 1,2,5.5,11,auto - rates in Megabit/s\\
+        Depending on the card this rates can be chosen in addition: 6,9,12,18,24,36,48 and 54.
+        Some 54 MBit cards don't accept rate settings. In this case specify 'auto' here.
+        
+\config{WLAN\_x\_RTS}{WLAN\_x\_RTS}{WLANxRTS}
+
+        Activates RTS/CTS handshake. This option is useful in bigger WLANs with a lot of clients 
+        if those clients can't receive each other but only the AP. If this option is activated 
+        the client will start each transmission with a RTS query to get permission for the actual 
+        data transmission. It gets a CTS from the AP then providing permission to send. This way 
+        every client knows another client is transmitting without receiving the other client. 
+        Collisions are minimized because it is ensured that only one client is transmitting 
+        data at a time. This option only makes sense in the situation described above because of 
+        additional overhead and thus decreasing bandwidth. Bandwidth can raise by avoiding 
+        collision though. 
+        
+        This feature is optional and has to be added manually in config/wlan.txt.
+        
+\config{WLAN\_x\_ENC\_N (deprecated)}{WLAN\_x\_ENC\_N}{WLANxENCN}
+
+        Sets the number of Wireless Encryption Key's (WEP).
+
+        Possible values: 0-4
+
+\config{WLAN\_x\_ENC\_x (deprecated)}{WLAN\_x\_ENC\_x}{WLANxENCx}
+
+        Sets Wireless Encryption Keys.
+
+        Possible values:
+
+        \begin{tabular}[h]{ll}
+        XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX &       128 Bit Hex-Key (X=0-F) \\
+        XXXX-XXXX-XX                     &        64 Bit Hex-Key (X=0-F) \\
+        s:$<$5 characters$>$             &        64 Bit\\
+        s:$<$6-13 characters$>$          &       128 Bit\\
+        P:$<$1-64 characters$>$          &       128 Bit\\
+        \end{tabular}
+
+        Using s:text is \textbf{not} compatible with the passphrase of the Windows drivers. 
+        Use a hex key instead!
+        Windows mostly uses hex keys \textbf{without} hyphens '-'.
+        Using P:$<$text$>$ is compatible to passphrases of most (if not all) Windows 
+        WLAN drivers but \textbf{only} in 128 Bit mode.
+        Linux allows to mix key length which Windows drivers usually do \textbf{not}!
+
+\config{WLAN\_x\_ENC\_ACTIVE (deprecated)}{WLAN\_x\_ENC\_ACTIVE}{WLANxENCACTIVE}
+
+        Sets the active wireless encryption key.
+
+        Possible values: 1-4
+        
+        This variable must be set if \var{WLAN\_x\_ENC\_N} is greater than 0. In other 
+        cases it's optional.
+
+\config{WLAN\_x\_ENC\_MODE (deprecated)}{WLAN\_x\_ENC\_MODE}{WLANxENCMODE}
+
+        Activates the encryption mode.
+
+        Possible values:
+
+        \begin{tabular}[h]{ll}
+          on/off &         with or without encryption\\
+          open   &         also accepts unencrypted packets\\
+          restricted &     only accepts encrypted packets\\
+        \end{tabular}
+
+        Most reasonable value: 'restricted'
+        
+        This feature is optional and has to be added manually in config/wlan.txt.
+        If this variable is not set the default 'off' will be assumed if no WEP key 
+        was defined and 'restricted' if at least one key is defined.
+
+\config{WLAN\_x\_WPA\_KEY\_MGMT}{WLAN\_x\_WPA\_KEY\_MGMT}{WLANxWPAKEYMGMT}
+
+If you want wo use WPA instead of WEP encryption set the WPA mode here. 
+At the moment only WPA with a pre-shared key between client and AP 
+(WPA-PSK) is supported. This key should be chosen carefully and not too 
+short because that would allow for dictionary attacks.
+
+In \emph{managed} mode all cards supported by WPA-Supplicant
+(\altlink{http://hostap.epitest.fi/wpa_supplicant/} 
+and in \emph{master} mode all cards supported by Hostapd
+(\altlink{http://hostap.epitest.fi/hostapd/}) are accepted.
+
+Cards based on chipsets by Atheros and on the hostap-driver were tested successfully 
+in managed and master mode. In theory also atmel and some other cards are possible 
+if developers of third-party opt-packages adapt their packages accordingly. 
+
+\config{WLAN\_x\_WPA\_PSK}{WLAN\_x\_WPA\_PSK}{WLANxWPAPSK}
+
+      Specify the pre-shared key to be used for communication between client and 
+      Access-Point here. The key is provided as a passphrase at a minimum length 
+      of 16 characters and a maximum length of 63 characters. 
+      The following characters are supported:
+
+      a-z A-Z 0-9 ! \# \$ \% \& ( ) * + , - . / : ; {\textless} = {\textgreater} ? @ [ {\textbackslash} ] \^{} \_ \`{} \{ | \} {\textasciitilde}
+
+\config{WLAN\_x\_WPA\_TYPE}{WLAN\_x\_WPA\_TYPE}{WLANxWPATYPE}
+
+      Choose between '1' for WPA1 mode, '2' for WPA2 (IEEE 802.11i) mode 
+      and '3' for both - the client can decide to use WPA1 or WPA2. Only 
+      WPA2 should be used if the hardware supports it.
+      
+\config{WLAN\_x\_WPA\_ENCRYPTION}{WLAN\_x\_WPA\_ENCRYPTION}{WLANxWPAENCRYPTION}
+
+      Encryption protocols TKIP and the enhanced version CCMP (AES-CTR/CBC-MAC Protocol, 
+      mostly called AES in short) can be used. CCMP eventually won't be supported by 
+      older WLAN hardware. You may also specifiy both.
+      
+\config{WLAN\_x\_WPA\_DEBUG}{WLAN\_x\_WPA\_DEBUG}{WLANxWPADEBUG}
+
+      In case of problems with WPA set this variable to 'yes' for the daemon 
+      to provide more verbose output for debugging.
+
+\config{WLAN\_x\_AP}{WLAN\_x\_AP}{WLANxAP}
+
+        Registers the node with an Access-Point.
+
+        Specifiy the MAC address of the Access-Points here.
+        If WLAN mode ``master'' was chosen before keep this variable empty.
+        This option only makes sense if fli4l can't find the AP by itself or 
+        should be bound to a preferred Access-Point. Only to be used in WLAN 
+        mode ``managed''.
+
+        This feature is optional and has to be added manually in config/wlan.txt.
+
+\config{WLAN\_x\_ACL\_POLICY}{WLAN\_x\_ACL\_POLICY}{WLANxACLPOLICY}
+
+        Access Control List (ACL) Policy.
+
+        Default setting: \var{WLAN\_x\_ACL\_\-POLICY}='allow'
+
+        Describes what action should be taken for the provided MAC addresses:
+
+        \begin{tabular}[h]{ll}
+          deny  & None of the addresses listed here gets access\\
+          allow & Only the addresses listed here get access\\
+          open  & All MAC addresses get access independent on filter\\
+        \end{tabular}
+        
+        Unfortunately WLAN\_ACLs are only supported well by the hostap\_* driver.
+        As an alternative you may use the firewall rules that have improved a lot 
+        since fli4l version 3.0.x.
+
+\config{WLAN\_x\_ACL\_MAC\_N}{WLAN\_x\_ACL\_MAC\_N}{WLANxACLMACN}
+
+        Number of restricted WLAN stations.
+
+        Default setting: \var{WLAN\_x\_ACL\_MAC\_N}='0'
+
+        A number greater than 0 activates the Access Control List.
+        
+\config{WLAN\_x\_ACL\_MAC\_x}{WLAN\_x\_ACL\_MAC\_x}{WLANxACLMACx}
+
+        MAC address in notation XX:XX:XX:XX:XX:XX \\
+        (example: 00:00:E8:83:72:92)
+
+\config{WLAN\_x\_DIVERSITY}{WLAN\_x\_DIVERSITY}{WLANxDIVERSITY}
+
+        Trigger manual antenna diversity.
+
+        Default setting: \var{WLAN\_x\_DIVERSITY}='no' (automatic)
+
+\config{WLAN\_x\_DIVERSITY\_RX}{WLAN\_x\_DIVERSITY\_RX}{WLANxDIVERSITYRX}
+
+        The receiving antenna to be used.
+
+        Default setting: \var{WLAN\_x\_DIVERSITY\_RX}='1'
+
+        \begin{tabular}[h]{ll}
+        0 = Automatic\\
+        1 = Antenna 1\\
+        2 = Antenna 2\\
+        \end{tabular}
+
+\config{WLAN\_x\_DIVERSITY\_TX}{WLAN\_x\_DIVERSITY\_TX}{WLANxDIVERSITYTX}
+
+        The transmitting antenna to be used.
+
+        Default setting: \var{WLAN\_x\_DIVERSITY\_TX}='1'
+
+\config{WLAN\_x\_WPS}{WLAN\_x\_WPS}{WLANxWPS}
+
+        Activates WPS support. Push-Button and PIN are possible.
+        If you don't only want to use the console it makes sense to activate 
+        WLAN\_WEBGUI.
+
+        Default setting: \var{WLAN\_x\_WPS}='no'
+
+\config{WLAN\_x\_PSKFILE}{WLAN\_x\_PSKFILE}{WLANxPSKFILE}
+
+        With PSKFILE activated other client related keys can be used beside 
+        \var{WLAN\_x\_WPA\_PSK} pre-shared keys. At the moment the function 
+        \var{WLAN\_x\_WPS} uses this file to provide individual keys to clients. 
+        
+        If the file is deactivated WPS clients using it can not connect to the 
+        Access Point anymore.
+
+        WPS-Clients connected with deactivated file are not affected.
+
+        Default setting: \var{WLAN\_x\_PSKFILE}='yes'
+
+\config{WLAN\_x\_BRIDGE}{WLAN\_x\_BRIDGE}{WLANxBRIDGE}
+
+        As an alternative to package ADVANCED\_NETWORKING you may specifiy the 
+        bridge to which the WLAN should be bound here.
+        
+        Example: \var{WLAN\_x\_BRIDGE}='br0'
+
+        Attention: Use either ADVANCED\_NETWORKING or this setting and \textbf{not both}!
+
+\end{description}
+
+% ##TRANSLATE## : FFL-1666: begin automatic webgui
+\subsection {Web GUI}
+
+    The package also provides a Web GUI for mini-httpd.
+    The Web GUI is automatically activated with \var{OPT\_HTTPD='yes'}.
+% ##TRANSLATE## : FFL-1666: end automatic webgui
+    
+\subsection{Examples}
+\subsubsection{Connecting to an Access Point via WPA}
+
+\begin{example}
+\begin{verbatim}
+OPT_WLAN='yes'
+WLAN_N='1'
+WLAN_1_MAC='00:0F:A3:xx:xx:xx'
+WLAN_1_ESSID='foo'
+WLAN_1_MODE='managed'           # connection to an Access Point
+WLAN_1_CHANNEL='1'
+WLAN_1_RATE='auto'
+#
+# WPA Configuration
+#
+WLAN_1_ENC_N='0'                # no WEP
+WLAN_1_WPA_KEY_MGMT='WPA-PSK'   # WPA pre shared key
+WLAN_1_WPA_TYPE='1'             # WPA 1
+WLAN_1_WPA_ENCRYPTION='TKIP'
+WLAN_1_WPA_PSK='your best passphrase choice ever (16-63 characters)'
+#
+# irrelevant in WPA context
+#
+WLAN_1_ENC_N='0'
+WLAN_1_ENC_ACTIVE='1'
+WLAN_1_ACL_POLICY='allow'
+WLAN_1_ACL_MAC_N='0'
+\end{verbatim}
+\end{example}
+
+\subsubsection{Access Point with WPA2 Encryption}
+
+\begin{example}
+\begin{verbatim}
+OPT_WLAN='yes'
+WLAN_N='1'
+WLAN_1_MAC='00:0F:A3:xx:xx:xx'
+WLAN_1_ESSID='foo'
+WLAN_1_MODE='master'            # Access Point
+WLAN_1_CHANNEL='1g'             # Channel 1, Mode 'g' on an
+                                # Atheros card
+WLAN_1_RATE='auto'
+#
+# WPA Configuration
+#
+WLAN_1_ENC_N='0'                # no WEP
+WLAN_1_WPA_KEY_MGMT='WPA-PSK'   # WPA pre shared key
+WLAN_1_WPA_TYPE='2'             # WPA 2
+WLAN_1_WPA_ENCRYPTION='CCMP'
+WLAN_1_WPA_PSK='your best passphrase choice ever (16-63 characters)'
+#
+# MAC based Access Control to AP
+#
+WLAN_1_ACL_POLICY='allow'
+WLAN_1_ACL_MAC_N='0'
+#
+# irrelevant in WPA context
+#
+WLAN_1_ENC_ACTIVE='1'
+\end{verbatim}
+\end{example}
+
+\subsubsection{Access Point with WEP Encryption}
+\begin{example}
+\begin{verbatim}
+OPT_WLAN='yes'
+WLAN_N='1'
+WLAN_1_MAC='00:0F:A3:xx:xx:xx'
+WLAN_1_ESSID='foo'
+WLAN_1_MODE='master'            # Access Point
+WLAN_1_CHANNEL='1'
+WLAN_1_RATE='auto'
+#
+# WEP Configuration
+#
+WLAN_1_WPA_KEY_MGMT=''          # no WPA 
+WLAN_1_ENC_N='4'                # 4 WEP-Keys
+WLAN_1_ENC_1='...'
+WLAN_1_ENC_2='...'
+WLAN_1_ENC_3='...'
+WLAN_1_ENC_4='...'
+WLAN_1_ENC_ACTIVE='1'           # first key is active
+#
+# MAC based Access Control to AP
+#
+WLAN_1_ACL_POLICY='allow'
+WLAN_1_ACL_MAC_N='0'
+# 
+# irrelevant for WEP Configuration
+#
+WLAN_1_WPA_TYPE='2'
+WLAN_1_WPA_ENCRYPTION='CCMP'
+WLAN_1_WPA_PSK='...'
+
+\end{verbatim}
+\end{example}
+
+\subsection{Virtual Accesspoint (VAP) (experimental)}
+
+Certain WLAN cards (driver: ath\_pci, ath5k, ath9k, ath9k\_htc) can be split into 
+a maximum of 4 virtual WLAN cards. (VAP)
+
+WLAN configuration of virtual APs is arbitrary except for one condition:
+Channel and MAC address have to be the same. Based on the multiplexed MAC address 
+the card that should be splitted is identified. If more physical cards are 
+present this can be done repeatedly for each of them.
+
+The base device's name is still wlan0, the next in VAP mode will be wlan0v2 a.s.o.
+For binding to a bridge please use WLAN\_x\_BRIDGE='br0'!
+
+The maximum at the moment is up to 8x master depending on card and driver.
+
+\subsection{Switching WLAN on and off based on daytime with easycron}
+
+By using the package \jump{sec:opt-easycron}{\emph{easycron}} WLAN may be 
+switched on and off based on a time schedule.
+
+\begin{example}
+\begin{verbatim}
+EASYCRON_N='2'
+EASYCRON_1_CUSTOM  = ''     # switch off every evening at 12PM
+EASYCRON_1_COMMAND = '/usr/sbin/wlanconfig.sh wlan0 down'
+EASYCRON_1_TIME    = '* 24 * * *'
+
+EASYCRON_2_CUSTOM  = ''     # and  on at 8 AM.
+EASYCRON_2_COMMAND = '/usr/sbin/wlanconfig.sh wlan0'
+EASYCRON_2_TIME    = '* 8 * * *'
+\end{verbatim}
+\end{example}
+
+\subsection{Donations}
+
+Due to a generous donation of 2 Ralink 2500 based WLAN cards with RT25xx chipset 
+those cards can be used in ad-hoc and managed modes. Use rt2500 as the driver in 
+base.txt.\\
+
+The cards where donated by:
+
+Computer Contor, Pilgrimstein 24a, 35037 Marburg

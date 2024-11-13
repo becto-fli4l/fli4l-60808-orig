@@ -1,0 +1,35 @@
+if [ "$drivername" = "other" ]
+then
+  scan='set_debug:8BE0 list_reg_domain:8BE1 set_reg_domain:8BE2 get_reg_domain:8BE3'
+  found=0 # Must be 4 after Search
+  for i in $scan
+  do
+    first=`echo $i | cut -d ':' -f 1`
+    second=`echo $i | cut -d ':' -f 2`
+    line1=`iwpriv $device 2>/dev/null | grep $first`
+    case "x$line1" in
+      x) ;;
+      *)
+        line2=`echo $line1 | grep $second`
+        case "x$line2" in
+          x) ;;
+          *)
+            found=`expr $found + 1`
+            ;;
+        esac
+        ;;  
+    esac
+  done
+  if [ $found -eq 4 ]
+  then
+    # We found all Lines in iwpriv output
+    drivername="acx100"
+    candomaster="no"
+  fi
+  unset found
+  unset i
+  unset first
+  unset second
+  unset line1
+  unset line2
+fi

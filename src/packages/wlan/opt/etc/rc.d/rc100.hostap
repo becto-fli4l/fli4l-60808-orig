@@ -1,0 +1,31 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc100.hostap - preload some hostap Driver modules		__FLI4LVER__
+#
+# Creation:	    05.07.2002 Ralf Hoverath
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+begin_script hostap_prepare "loading hostap encryption modules ..."
+
+do_modprobe_if_exists kernel/net/ieee80211 ieee80211_crypt_wep
+do_modprobe_if_exists kernel/net/ieee80211 ieee80211_crypt_tkip
+do_modprobe_if_exists kernel/net/ieee80211 ieee80211_crypt_ccmp
+
+for idx in `seq 1 $NET_DRV_N`
+do
+  eval drv='$NET_DRV_'$idx
+  eval opt='$NET_DRV_'$idx'_OPTION'
+  case $drv in
+    hostap_cs)
+      opt="dev_template=wlan%d ignore_cis_vcc=1 $opt"
+      eval 'NET_DRV_'$idx'_OPTION='\"$opt\"
+      ;;
+    hostap_*)
+      opt="dev_template=wlan%d $opt"
+      eval 'NET_DRV_'$idx'_OPTION='\"$opt\"
+      ;;
+  esac
+done
+  
+end_script

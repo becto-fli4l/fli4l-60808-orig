@@ -1,0 +1,43 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+#                                                                  __FLI4LVER__
+# /usr/bin/wlan_setleds
+# Creation:     15.01.2013 carsten
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+##HWSUPP## extension begin
+if [ -f /var/run/hwsupp.conf ]
+then
+    . /var/run/hwsupp.conf
+    [ 0$hwsupp_led_n -eq 0 ] || for i in `seq 1 $hwsupp_led_n`
+    do
+        eval action=\$hwsupp_led_${i}
+        eval param=\$hwsupp_led_${i}_param
+        if [ "$action" = "wlan" ]
+        then
+            count=0
+            up=0
+            for dev in $param
+            do
+                count=$(($count+1))
+                if ip link show $dev 2>/dev/null | grep -q "[<,]UP[,>]"
+                then
+                    up=$(($up+1))
+                fi
+            done
+            if [ $up = 0 ]
+            then
+                /usr/bin/hwsupp_setled $i off
+            else
+                if [ $up = $count ]
+                then
+                    /usr/bin/hwsupp_setled $i on
+                else
+                    /usr/bin/hwsupp_setled $i blink
+                fi
+            fi
+        fi
+    done
+fi
+##HWSUPP## extension end
