@@ -1,0 +1,23 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ip-up100.tunnel - IPv6 tunnel endpoint update         __FLI4LVER__
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+tunnels=/var/run/ipv6.dyntunnels
+if [ "$is_default_route" = "yes" -a -f "$tunnels" -a -n "$local" ]
+then
+    localip="${local%/*}"
+    for circid in $(cat $tunnels)
+    do
+        tunnel_dev=$(circuit_get_interface "{$circid}")
+        if [ -n "$tunnel_dev" ]
+        then
+            circuit_read_field $circid circ_type tunnel_type
+            circuit_read_field $circid circ_tun6in4_type tunnel_6in4_type
+            echo "changing local endpoint of $tunnel_type/$tunnel_6in4_type tunnel on $tunnel_dev to $localip"
+            ip tunnel change name $tunnel_dev local $localip
+        fi
+    done
+fi

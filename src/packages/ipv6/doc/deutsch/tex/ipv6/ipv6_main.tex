@@ -1,0 +1,227 @@
+% Last Update: $Id$
+\section{IPv6 - Unterstützung von IPv6-Tunneln durch IPv4-Netzwerke}
+
+\subsection{Einleitung}
+
+Dieses Paket unterstützt das Aufbauen von Tunneln zu IPv6-Anbietern. Dies ist
+immer dann interessant bzw. nötig, wenn man gern IPv6-Verbindungen ins Internet
+nutzen möchte, der eigene Internet-Anbieter aber keine native IPv6-Unterstützung
+anbietet. Momentan erlaubt das Paket die Nutzung von so genannten 6in4-Tunneln,
+wie sie etwa der Anbieter ``Hurricane Electric'' unterstützt. Andere
+Technologien (AYIYA, 6to4, Teredo) werden zur Zeit nicht unterstützt.
+
+Sie müssen für die Nutzung von Tunneln die generelle IPv6-Unterstützung mit
+Hilfe der Variable \verb+OPT_IPV6='yes'+ aktivieren.
+
+\subsection{Konfiguration}
+
+\subsubsection{Tunnel-Konfiguration}
+
+\wichtig{Dieser Abschnitt ist falsch, weil veraltet! Für die Nutzung von
+6in4-Tunneln müssen Circuits vom Typ ``tun6in4'' konfiguriert werden! Schauen
+Sie sich hierzu die Beispiel-Konfigurationen in der
+\texttt{\textup{config/ipv6.txt}} an!}
+
+Dieser Abschnitt stellt die Konfiguration von 6in4-IPv6-Tunneln vor. Ein
+solcher Tunnel bietet sich an, wenn der eigene Internet-Anbieter kein IPv6
+von Haus aus unterstützt. In diesem Fall wird mit einem bestimmten
+Internet-Host eines Tunnel-Brokers, dem so genannten PoP (Point of Presence),
+via IPv4 eine bidirektionale Verbindung aufgebaut, über die dann alle
+IPv6-Pakete verpackt geroutet werden (deswegen 6 ``in'' 4, weil die
+IPv6-Pakete innerhalb von IPv4-Paketen gekapselt werden).\footnote{Es handelt
+sich um das IPv4-Protokoll 41, ``IPv6 encapsulation''.} Damit das funktioniert,
+muss zum einen der Tunnel aufgebaut und zum anderen der Router so konfiguriert
+werden, dass die IPv6-Pakete, die ins Internet sollen, auch über den Tunnel
+geroutet werden. Der erste Teil wird in diesem Abschnitt konfiguriert, der
+zweite Teil wird im nächsten Abschnitt beschrieben.
+
+\begin{description}
+\config{IPV6\_TUNNEL\_N}{IPV6\_TUNNEL\_N}{IPV6TUNNELN}{
+Diese Variable enthält die Anzahl der aufzubauenden 6in4-Tunnel.
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_N='1'?
+
+\config{IPV6\_TUNNEL\_x\_TYPE}{IPV6\_TUNNEL\_x\_TYPE}{IPV6TUNNELxTYPE}{
+Diese Variable bestimmt den Typ des Tunnels. Momentan werden die Werte ``raw''
+für ``rohe'' Tunnel, ``static'' für statische Tunnel und ``he'' für Tunnel des
+Anbieters Hurricane Electric unterstützt. Mehr zu Heartbeat-Tunneln steht im
+nächsten Absatz.
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_TYPE='he'?
+
+
+\config{IPV6\_TUNNEL\_x\_DEFAULT}{IPV6\_TUNNEL\_x\_DEFAULT}{IPV6TUNNELxDEFAULT}{
+Diese Variable legt fest, ob IPv6-Pakete, die nicht an das lokale bzw. die
+lokalen Netze adressiert sind, über diesen Tunnel geroutet werden sollen. Es
+kann nur einen solchen Tunnel geben (weil nur eine Default-Route existieren
+kann). Mögliche Werte sind ``yes'' und ``no''.
+
+\wichtig{Genau ein Tunnel sollte ein Default-Gateway für nausgehende IPv6-Daten
+sein, da andernfalls eine Kommunikation mit IPv6-Hosts im Internet nicht
+möglich ist! Die ausschließliche Verwendung von Nicht-Default-Tunneln ist nur
+sinnvoll, wenn ausgehende IPv6-Daten über eine separat konfigurierte
+Default-Route geschickt werden, die nicht mit einem Tunnel zusammenhängt. Siehe
+hierzu auch die Einleitung zum Unterabschnitt ``Routen-Konfiguration'' sowie
+die Beschreibung der Variable \var{IPV6\_ROUTE\_x} weiter unten.}
+
+Standard-Konfiguration:
+}
+\verb*?IPV6_TUNNEL_1_DEFAULT='no'?
+
+\config{IPV6\_TUNNEL\_x\_PREFIX}{IPV6\_TUNNEL\_x\_PREFIX}{IPV6TUNNELxPREFIX}{
+Diese Variable enthält den IPv6-Subnetzpräfix des Tunnels in CIDR-Notation,
+d.h. es wird sowohl eine IPv6-Adresse als auch die Länge des Präfixes angegeben.
+Diese Angabe wird in der Regel vom Tunnelanbieter vorgegeben. Bei
+Tunnel\-anbietern, die den Präfix beim Tunnelaufbau jedes Mal neu vergeben, ist
+diese Angabe unnötig. (Momentan werden solche Anbieter aber noch nicht
+unterstützt.) Diese Variable muss auch bei rohen (``raw'') Tunneln leer bleiben.
+
+\wichtig{Diese Variable \emph{darf} leer bleiben, wenn dem Tunnel noch kein
+Subnetz-Präfix zugewiesen worden ist. Allerdings kann dieser Tunnel dann nicht
+einem IPv6-Subnetz (\var{IPV6\_NET\_x}) zugeordnet werden, weil die
+IPv6-Adressen im Subnetz nicht berechnet werden können. Sinnvoll ist eine
+solche Konfiguration also nur übergangsweise, etwa wenn der Tunnel einige Zeit
+aktiv sein muss, bevor der Tunnelanbieter einem ein Subnetz-Präfix zuweist.}
+
+Beispiele:
+}
+
+\begin{example}
+\begin{verbatim}
+IPV6_TUNNEL_1_PREFIX='2001:db8:1743::/48'      # /48-Subnetz
+IPV6_TUNNEL_2_PREFIX='2001:db8:1743:5e00::/56' # /56-Subnetz
+\end{verbatim}
+\end{example}
+
+\config{IPV6\_TUNNEL\_x\_LOCALV4}{IPV6\_TUNNEL\_x\_LOCALV4}{IPV6TUNNELxLOCALV4}{
+Diese Variable enthält die lokale IPv4-Adresse des Tunnels oder den Wert
+`dynamic', wenn die dynamisch zugewiesene IPv4-Adresse des aktiven WAN-Circuits
+verwendet werden soll. Letzteres ist nur sinnvoll, wenn es sich um einen
+Heartbeat-Tunnel handelt (siehe \var{IPV6\_TUNNEL\_x\_TYPE} weiter unten).
+
+Beispiele:
+}
+
+\begin{example}
+\begin{verbatim}
+IPV6_TUNNEL_1_LOCALV4='172.16.0.2'
+IPV6_TUNNEL_2_LOCALV4='dynamic'
+\end{verbatim}
+\end{example}
+
+\config{IPV6\_TUNNEL\_x\_REMOTEV4}{IPV6\_TUNNEL\_x\_REMOTEV4}{IPV6TUNNELxREMOTEV4}{
+Diese Variable enthält die entfernte IPv4-Adresse des Tunnels. Diese Angabe
+wird in der Regel vom Tunnel-Anbieter vorgegeben.
+
+Beispiel (entspricht dem PoP deham01 von Easynet):
+}
+
+\begin{example}
+\begin{verbatim}
+IPV6_TUNNEL_1_REMOTEV4='212.224.0.188'
+\end{verbatim}
+\end{example}
+
+\wichtig{Wenn \var{PF\_INPUT\_ACCEPT\_DEF} auf ``no'' steht, d.h. wenn die
+IPv4-Firewall manuell konfiguriert wird, dann wird eine Regel benötigt, die
+alle IPv6-in-IPv4-Pakete (IP-Protokoll 41) vom Tunnelendpunkt akzeptiert. Für
+den o.g. Tunnelendpunkt sähe die entsprechende Regel wie folgt aus:}
+
+\begin{example}
+\begin{verbatim}
+PF_INPUT_x='prot:41 212.224.0.188 ACCEPT'
+\end{verbatim}
+\end{example}
+
+\config{IPV6\_TUNNEL\_x\_LOCALV6}{IPV6\_TUNNEL\_x\_LOCALV6}{IPV6TUNNELxLOCALV6}{
+Diese Variable legt die lokale IPv6-Adresse des Tunnels inklusive verwendeter
+Netzmaske in CIDR-Notation fest. Diese Angabe wird vom Tunnelanbieter
+vorgegeben. Bei Tunnelanbietern, welche die Tunnelendpunkte beim Tunnelaufbau
+jedes Mal neu vergeben, ist diese Angabe unnötig. (Momentan werden solche
+Anbieter aber noch nicht unterstützt.)
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_LOCALV6='2001:db8:1743::2/112'?
+
+\config{IPV6\_TUNNEL\_x\_REMOTEV6}{IPV6\_TUNNEL\_x\_REMOTEV6}{IPV6TUNNELxREMOTEV6}{
+Diese Variable legt die entfernte IPv6-Adresse des Tunnels fest. Diese Angabe
+wird vom Tunnelanbieter vorgegeben. Eine Netzmaske wird nicht benötigt, da sie
+der Variable \var{IPV6\_TUNNEL\_x\_LOCALV6} entnommen wird. Bei
+Tunnelanbietern, welche die Tunnelendpunkte beim Tunnelaufbau jedes Mal neu
+vergeben, ist diese Angabe unnötig. (Momentan werden solche Anbieter aber noch
+nicht unterstützt.)
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_REMOTEV6='2001:db8:1743::1'?
+
+\config{IPV6\_TUNNEL\_x\_DEV}{IPV6\_TUNNEL\_x\_DEV}{IPV6TUNNELxDEV}{
+(optional) Diese Variable enthält den Namen der zu erstellenden
+Tunnel-Netzwerkschnittstelle. Verschiedene Tunnel müssen unterschiedlich
+benannt werden, damit alles funktioniert. Falls die Variable nicht definiert
+ist, wird ein Tunnelname automatisch generiert (``v6tun'' + Tunnelindex).
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_DEV='6in4'?
+
+\config{IPV6\_TUNNEL\_x\_MTU}{IPV6\_TUNNEL\_x\_MTU}{IPV6TUNNELxMTU}{
+(optional) Diese Variable enthält die Größe der MTU (Maximum Transfer Unit) in
+Bytes, d.h. des größten Pakets, das noch getunnelt werden kann. Diese Angabe
+wird in der Regel vom Tunnelanbieter vorgegeben. Die Standard-Einstellung,
+falls nichts angegeben wird, lautet ``1280'' und sollte mit allen Tunneln
+funktionieren.
+
+Standard-Konfiguration:
+}
+\verb*?IPV6_TUNNEL_1_MTU='1280'?
+
+\end{description}
+
+Einige Tunnelanbieter verlangen, dass über den Tunnel permanent ein
+Lebenszeichen vom Router an den Anbieter gesandt wird, um zu verhindern, dass
+ein Host einen Tunnel in Anspruch nimmt, obwohl er ihn nicht nutzt. Dazu wird
+ein so genanntes Heartbeat-Protokoll (dt. ``Herzschlag'') verwendet. Zusätzlich
+verlangen Anbieter in der Regel eine erfolgreiche Anmeldung mit Benutzernamen
+und Passwort, um Missbrauch zu vermeiden. Soll ein solcher Heartbeat-Tunnel
+genutzt werden, dann müssen entsprechende Angaben gemacht werden, die im Folgenden
+beschrieben werden.
+
+\begin{description}
+\config{IPV6\_TUNNEL\_x\_USERID}{IPV6\_TUNNEL\_x\_USERID}{IPV6TUNNELxUSERID}{
+Diese Variable enthält den Namen des Benutzers, der beim Tunnel-Login
+erforderlich ist.
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_USERID='USERID'?
+
+\config{IPV6\_TUNNEL\_x\_PASSWORD}{IPV6\_TUNNEL\_x\_PASSWORD}{IPV6TUNNELxPASSWORD}{
+Diese Variable enthält das Passwort für den oben angegebenen Benutzernamen. Es
+darf keine Leerzeichen enthalten.
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_PASSWORD='passwort'?
+
+\config{IPV6\_TUNNEL\_x\_TUNNELID}{IPV6\_TUNNEL\_x\_TUNNELID}{IPV6TUNNELxTUNNELID}{
+Diese Variable enthält den Identifikator des Tunnels.
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_TUNNELID='TunnelID'?
+
+\config{IPV6\_TUNNEL\_x\_TIMEOUT}{IPV6\_TUNNEL\_x\_TIMEOUT}{IPV6TUNNELxTIMEOUT}{
+(optional) Diese Variable enthält die Zeitspanne in Sekunden, die beim
+Tunnelaufbau maximal gewartet wird. Der Standard-Wert ist abhängig vom
+eingestellten Tunnelanbieter.
+
+Beispiel:
+}
+\verb*?IPV6_TUNNEL_1_TIMEOUT='30'?
+\end{description}

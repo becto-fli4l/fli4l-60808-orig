@@ -1,0 +1,85 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/tun6in4 - 6in4 tunnel circuits
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+ipv6_pops_file=/var/run/ipv6.pops
+
+>> $ipv6_pops_file
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+tun6in4_circuit_add()
+{
+    circuit_allocate_device $circ_tun6in4_type circ_alias
+
+    circ_dev=$circ_alias
+    circ_newif=yes
+
+    # call 6in4 type dependent add function
+    local func="tun6in4_${circ_tun6in4_type//-/_}_circuit_add"
+    if type $func >/dev/null 2>&1 && ! $func $1 $2
+    then
+        return 1
+    fi
+
+    # according to RFC 2460, this MTU must always work
+    local circ_tun6in4_mtu=${circ_tun6in4_mtu:-1280}
+
+    case $circ_tun6in4_localv4 in
+    dynamic)
+        circ_tun6in4_localv4="127.0.0.1"
+        echo $circ_id >> /var/run/ipv6.dyntunnels
+        ;;
+    127.*.*.*)
+        echo $circ_id >> /var/run/ipv6.dyntunnels
+        ;;
+    esac
+
+    echo "$circ_tun6in4_remotev4" >> $ipv6_pops_file
+
+    ip tunnel add name $circ_dev mode sit local $circ_tun6in4_localv4 remote $circ_tun6in4_remotev4 ttl 64
+    echo 0 > /proc/sys/net/ipv6/conf/$circ_dev/disable_ipv6
+    ip link set dev $circ_dev mtu $circ_tun6in4_mtu up
+
+    cat >> $1 <<EOF
+circ_tun6in4_type=$circ_tun6in4_type
+circ_tun6in4_localv4=$circ_tun6in4_localv4
+circ_tun6in4_remotev4=$circ_tun6in4_remotev4
+circ_tun6in4_mtu=$circ_tun6in4_mtu
+EOF
+
+    return 0
+}
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+tun6in4_static_circuit_add()
+{
+    cat >> $1 <<EOF
+circ_tun6in4_static_localv6=$circ_tun6in4_static_localv6
+circ_tun6in4_static_remotev6=$circ_tun6in4_static_remotev6
+circ_tun6in4_static_prefix=$circ_tun6in4_static_prefix
+EOF
+}
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+tun6in4_he_circuit_add()
+{
+    local tun6in4_he_password_md5=$(echo -n "$circ_tun6in4_he_password" | md5sum | cut -d ' ' -f 1)
+
+    cat >> $1 <<EOF
+circ_tun6in4_he_localv6=$circ_tun6in4_he_localv6
+circ_tun6in4_he_remotev6=$circ_tun6in4_he_remotev6
+circ_tun6in4_he_prefix=$circ_tun6in4_he_prefix
+circ_tun6in4_he_userid="$circ_tun6in4_he_userid"
+circ_tun6in4_he_password="$circ_tun6in4_he_password"
+circ_tun6in4_he_tunnelid="$circ_tun6in4_he_tunnelid"
+tun6in4_he_password_md5="$tun6in4_he_password_md5"
+EOF
+
+    return 0
+}
