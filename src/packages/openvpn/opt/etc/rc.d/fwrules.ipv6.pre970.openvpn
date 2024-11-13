@@ -1,0 +1,38 @@
+#!/bin/sh
+case $OPT_IPV6 in
+    yes)
+	fw_add_chain6 filter in-ovpn
+	fw_add_chain6 filter fw-ovpn
+	case $PF6_INPUT_ACCEPT_DEF in
+	    no)
+		[ 0$PF6_INPUT_N -eq 0 ] || for idx in `seq 1 $PF6_INPUT_N`
+		do
+		    var=PF6_INPUT_$idx
+		    eval rule=\$$var
+		    case "$rule" in
+			ovpn-chain)
+			    eval $var="'if:tun+:any in-ovpn'"
+			    break
+			;;
+		    esac
+		done
+		;;
+	esac
+
+	case $PF6_FORWARD_ACCEPT_DEF in
+	    no)
+		[ 0$PF6_FORWARD_N -eq 0 ] || for idx in `seq 1 $PF6_FORWARD_N`
+		do
+		    var=PF6_FORWARD_$idx
+		    eval rule=\$$var
+		    case "$rule" in
+			ovpn-chain)
+			    eval $var="'if:tun+:any fw-ovpn BIDIRECTIONAL'"
+			    break
+			    ;;
+		    esac
+		done
+		;;
+	esac
+	;;
+esac

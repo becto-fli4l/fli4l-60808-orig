@@ -1,0 +1,56 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc380.openvpn_dns - set dns-setting for openvpn-tunnels
+#
+# Creation:     2008-12-19 lanspezi
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "${OPT_OPENVPN}${OPT_DNS}" = "yesyes" ]; then
+    begin_script OPENVPN "configuring DNS and RDNS for OpenVPN"
+    {
+        [ 0$OPENVPN_N -eq 0 ] || for n in `seq 1 $OPENVPN_N`; do
+            eval route_n='$OPENVPN_'$n'_ROUTE_N'
+            [ 0$route_n -eq 0 ] && continue
+
+            eval rvpnip='$OPENVPN_'$n'_REMOTE_VPN_IP'
+            eval tdnsip='$OPENVPN_'$n'_DNSIP'
+            eval ipv6='$OPENVPN_'$n'_IPV6''$OPT_IPV6'
+            if [ "$ipv6" != "yesyes" -a -n "`echo $tdnsip | grep :`" ]
+            then
+              tdnsip=$rvpnip
+            fi
+            eval tdomains='$OPENVPN_'$n'_DOMAIN'
+            for n2 in `seq 1 $route_n`; do
+                eval network='$OPENVPN_'$n'_ROUTE_'$n2
+                [ "$network" = "0.0.0.0.0/0" ] && continue 
+
+                eval dnsip='$OPENVPN_'$n'_ROUTE_'$n2'_DNSIP'
+                eval domains='$OPENVPN_'$n'_ROUTE_'$n2'_DOMAIN'
+
+                if [ "$ipv6" != "yesyes" -a -n "`echo $dnsip | grep :`" ]
+                then
+                  dnsip=$rvpnip
+                fi
+
+                : ${dnsip:=$tdnsip}
+                : ${dnsip:=$rvpnip}
+                : ${domains:=$tdomains}
+
+                [ "$dnsip" ] || continue
+                [ "$domains" ] || continue
+
+                for dom in $domains; do
+                    echo "server=/$dom/$dnsip"
+                    echo "rebind-domain-ok=$dom"
+                done
+                for dnsrev in $(netcalc dnsrev $network)
+                do
+                    echo "server=/$dnsrev/$dnsip"
+                done
+            done
+        done
+    } > /etc/dnsmasq.d/dns_delegate_ovpn.conf
+    end_script
+fi
+

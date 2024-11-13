@@ -1,0 +1,1010 @@
+﻿##-----------------------------------------------------------------------------
+## openvpn.ext - fli4l extended configuration check                __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##                      S E E   R E A D M E . T X T
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##              L E S E N ,  S I E H E   R E A D M E . T X T
+##
+## Creation:     20.12.2003  babel
+## Last Update:  $Id$
+##
+## Copyright (c) 2001 Frank Meyer <frank@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_openvpn)
+then
+  provides openvpn version 4.0.0
+  depends on fli4l version 4.0
+
+  set default_route_via_vpn="no"
+
+  if (openvpn_n == 0 && (!defined(openvpn_expert) || openvpn_expert=="no"))
+  then
+    error "OpenVPN: OPENVPN_N cannot be 0 if OPT_OPENVPN is set to 'yes' and OPENVPN_EXPERT is not set to 'yes'!"
+  fi
+
+  if (openvpn_n > 0 && openvpn_expert == "yes")
+  then
+    error "OpenVPN: OPENVPN_N cannot be greater than 0 if OPT_OPENVPN is set to 'yes' and OPENVPN_EXPERT is set to 'yes'!"
+  fi
+
+  # always keep synchronized with documentation of OPENVPN_DEFAULT_CIPHER!
+  set cipher_%[1]="none"
+  set cipher_%[2]="DES-CBC"
+  set cipher_%[3]="RC2-CBC"
+  set cipher_%[4]="DES-EDE-CBC"
+  set cipher_%[5]="DES-EDE3-CBC"
+  set cipher_%[6]="DESX-CBC"
+  set cipher_%[7]="RC2-40-CBC"
+  set cipher_%[8]="RC2-64-CBC"
+
+  # always keep synchronized with documentation of OPENVPN_DEFAULT_DIGEST!
+  set digest_%[1]="none"
+  set digest_%[2]="MD5"
+  set digest_%[3]="RSA-MD5"
+  set digest_%[4]="SHA"
+  set digest_%[5]="RSA-SHA"
+  set digest_%[6]="SHA1"
+  set digest_%[7]="RSA-SHA1"
+  set digest_%[8]="DSA-SHA"
+  set digest_%[9]="DSA-SHA1-old"
+  set digest_%[10]="DSA-SHA1"
+  set digest_%[11]="RSA-SHA1-2"
+  set digest_%[12]="DSA"
+  set digest_%[13]="MD4"
+  set digest_%[14]="RSA-MD4"
+
+  foreach cipher in cipher_%
+  do
+    if (openvpn_default_cipher ?: "" == cipher)
+    then
+      warning "OPENVPN_DEFAULT_CIPHER is set to $openvpn_default_cipher: "
+      warning "You are using OpenVPN without or with weak encryption! Be sure this is what you want!"
+    fi
+  done
+  foreach digest in digest_%
+  do
+    if (openvpn_default_digest ?: "" == digest)
+    then
+      warning "OPENVPN_DEFAULT_DIGEST is set to $openvpn_default_digest: "
+      warning "You are using OpenVPN without or with weak hashing algorithm! Be sure this is what you want!"
+    fi
+  done
+
+  foreach n in OPENVPN_N
+  do
+    set openvpn_name=openvpn_%_name[n]
+
+    if (!defined(openvpn_%_cipher[n]) && !defined(openvpn_default_cipher))
+    then
+      error "Neither OPENVPN_${n}_CIPHER nor OPENVPN_DEFAULT_CIPHER is set! This is not supported. Please choose a suitable cipher algorithm, e.g. AES-256-CBC."
+    fi
+    if (openvpn_%_activ[n] == "yes")
+    then
+      set openvpn_cipher=openvpn_%_cipher[n] ?: ""
+      foreach cipher in cipher_%
+      do
+        if (openvpn_cipher == cipher)
+        then
+          warning "OPENVPN_${n}_CIPHER ($openvpn_name) is set to $cipher!"
+          warning "You are using OpenVPN without or with weak encryption! Be sure this is what you want!"
+        fi
+      done
+    fi
+
+    if (!defined(openvpn_%_digest[n]) && !defined(openvpn_default_digest))
+    then
+      error "Neither OPENVPN_${n}_DIGEST nor OPENVPN_DEFAULT_DIGEST is set! This is not supported. Please choose a suitable digest algorithm, e.g. SHA256."
+    fi
+    if (openvpn_%_activ[n] == "yes")
+    then
+      set openvpn_digest=openvpn_%_digest[n] ?: ""
+      foreach digest in digest_%
+      do
+        if (openvpn_digest == digest)
+        then
+          warning "OPENVPN_${n}_DIGEST ($openvpn_name) is set to $digest!"
+          warning "You are using OpenVPN without or with weak hashing algorithm! Be sure this is what you want!"
+        fi
+      done
+    fi
+  done
+
+  if (openvpn_webgui == "yes")
+  then
+    depends on httpd version 4.0
+
+    if defined (httpd_gui_lang)
+    then
+      if httpd_gui_lang == "auto"
+      then
+        set gui_lang=locale
+      else
+        set gui_lang=httpd_gui_lang
+      fi
+
+      split (gui_lang, lang_tmp_%, ' ')
+      foreach lang in lang_tmp_%
+      do
+        stat("opt/srv/www/lang/status_OpenVPN.$lang", langfile)
+        if(langfile_res == "OK")
+        then
+          add_to_opt "srv/www/lang/status_OpenVPN.$lang" "mode=444 flags=sh"
+        else
+          warning "could not find 'srv/www/lang/status_OpenVPN.$lang', perhaps this file isn't translated yet. Falling back to English."
+          add_to_opt "srv/www/lang/status_OpenVPN.en" "mode=444 flags=sh"
+        fi
+      done
+    fi
+  fi
+
+  # we check later if the masq modul is used
+  set masq_ftp="no"
+  foreach i in masq_module_%
+  do
+    if (i == "ftp")
+    then
+      set masq_ftp="yes"
+    fi
+  done
+
+  if (defined(openvpn_default_tun_mtu) && defined(openvpn_default_link_mtu))
+  then
+    error "OpenVPN: You can't specify OPENVPN_DEFAULT_LINK_MTU and OPENVPN_DEFAULT_TUN_MTU at the same time! Remove one entry from the configuration file."
+  fi
+
+  set ovpn_chain="no"
+  foreach i in pf_input_n
+  do
+    if (pf_input_%[i] == "ovpn-chain")
+    then
+      if (ovpn_chain == "yes")
+      then
+        error "OpenVPN: You can't have more than one ovpn-chain entry in your PF_INPUT!  Please remove the entry in PF_INPUT_${i}."
+      fi
+      set ovpn_chain="yes"
+    fi
+  done
+
+  if (pf_input_accept_def == "no" && ovpn_chain == "no")
+  then
+    error "OpenVPN: You must have one PF_INPUT_x='ovpn-chain' entry in your PF_INPUT!"
+  fi
+
+  if (pf_input_accept_def == "yes" && ovpn_chain == "yes")
+  then
+    error "OpenVPN: You can't have an PF_INPUT_x='ovpn-chain' entry in your PF_INPUT with PF_INPUT_ACCEPT_DEF='yes'!"
+  fi
+
+  set ovpn_chain="no"
+  foreach i in pf_forward_n
+  do
+    if (pf_forward_%[i] == "ovpn-chain")
+    then
+      if (ovpn_chain == "yes")
+      then
+        error "OpenVPN: You can't have more than one ovpn-chain entry in your PF_FORWARD! Please remove the entry in PF_FORWARD_${i}."
+      fi
+      set ovpn_chain="yes"
+    fi
+  done
+
+  if (pf_forward_accept_def == "no" && ovpn_chain == "no")
+  then
+    error "OpenVPN: You must have one PF_FORWARD_x='ovpn-chain' entry in your PF_FORWARD!"
+  fi
+
+  if (pf_forward_accept_def == "yes" && ovpn_chain == "yes")
+  then
+    error "OpenVPN: You can't have an PF_FORWARD_x='ovpn-chain' entry in your PF_FORWARD with PF_FORWARD_ACCEPT_DEF='yes'!"
+  fi
+
+  if (defined(openvpn_default_verbose) && (openvpn_default_verbose < 0 || openvpn_default_verbose > 11))
+  then
+    error "OpenVPN: OPENVPN_DEFAULT_VERBOSE must have a value between 0 and 11!"
+  fi
+
+  if (!defined(openvpn_expert) || openvpn_expert == "no")
+  then
+    foreach rule in openvpn_%_pf_prerouting_% openvpn_%_pf_postrouting_% openvpn_%_pf_input_% openvpn_%_pf_forward_% openvpn_%_pf6_input_% openvpn_%_pf6_forward_%
+    do
+      if (rule =~ "tmpl:([^[:space:]]+).*BIDIRECTIONAL")
+      then
+        error "%rule: using templates and BIDIRECTIONAL simultaneously is not allowed"
+      fi
+    done
+
+    foreach i in openvpn_n
+    do
+      if (openvpn_%_activ[i] == "no")
+      then
+        set dummy="dummy"
+      else
+        if (openvpn_default_create_secret == "yes" || openvpn_%_create_secret[i] == "yes")
+        then
+          set dummy="dummy"
+        else
+          set kf=openvpn_%_secret[i]
+          stat("$config_dir/etc/openvpn/$kf", keyfile)
+          if (keyfile_res == "OK")
+          then
+            add_to_opt "etc/openvpn/$kf" "mode=400 flags=utxt"
+          else
+            if (openvpn_default_create_secret != "webgui" && openvpn_%_create_secret[i] != "webgui")
+            then
+              error "OpenVPN: Missing secretfile $config_dir/etc/openvpn/$kf"
+           fi
+          fi
+        fi
+
+        set tmpl_ftp="no"
+        #
+        # evtl. tmpl:<datei> mit ins opt.img aufnehmen
+        # evtl. benötigte iptables targets mit ins opt.img aufnehmen
+        #
+        set fwrules_inputs=openvpn_%_pf_input_n[i]
+        foreach n in fwrules_inputs
+        do
+          set rule=openvpn_%_pf_input_%[i][n]
+          if (rule =~ "tmpl:([^[:space:]]+)")
+          then
+            foreach m in match_%
+            do
+              if(m == "ftp")
+              then
+                set tmpl_ftp="yes"
+              fi
+              stat("$config_dir/etc/fwrules.tmpl/$m", tmplfile)
+              if(tmplfile_res == "OK")
+              then
+                add_to_opt "etc/fwrules.tmpl/$m" "flags=utxt"
+              else
+                stat("opt/etc/fwrules.tmpl/$m", tmplfile)
+                if(tmplfile_res == "OK")
+                then
+                  add_to_opt "etc/fwrules.tmpl/$m" "flags=utxt"
+                else
+                  fgrep("opt/etc/fwrules.tmpl/templates", "^$m[[:space:]]+")
+                  if (fgrep_match_n == 0)
+                  then
+                    error "OpenVPN: Can't find tmpl:$m for OPENVPN_${i}_PF_INPUT_${n}='$rule'!"
+                  fi
+                fi
+              fi
+            done
+          fi
+        done
+
+        set fwrules_forwards=openvpn_%_pf_forward_n[i]
+        foreach n in fwrules_forwards
+        do
+          set rule=openvpn_%_pf_forward_%[i][n]
+          if (rule =~ "tmpl:([^[:space:]]+)")
+          then
+            foreach m in match_%
+            do
+              if(m == "ftp")
+              then
+                set tmpl_ftp="yes"
+              fi
+              stat("$config_dir/etc/fwrules.tmpl/$m", tmplfile)
+              if(tmplfile_res == "OK")
+              then
+                add_to_opt "etc/fwrules.tmpl/$m" "flags=utxt"
+              else
+                stat("opt/etc/fwrules.tmpl/$m", tmplfile)
+                if(tmplfile_res == "OK")
+                then
+                  add_to_opt "etc/fwrules.tmpl/$m" "flags=utxt"
+                else
+                  fgrep("opt/etc/fwrules.tmpl/templates", "^$m[[:space:]]+")
+                  if (fgrep_match_n == 0)
+                  then
+                    error "OpenVPN: Can't find tmpl:$m for OPENVPN_${i}_PF_FORWARD_${n}='$rule'!"
+                  fi
+                fi
+              fi
+            done
+          fi
+        done
+
+        # check if tmpl:ftp is used
+        if(tmpl_ftp == "yes" && masq_ftp == "no")
+        then
+          warning "You're using a tmpl:ftp without the ftp masq module. You have to open the data port 20 (tcp) to use active ftp."
+        fi
+
+        set vpn_routes=openvpn_%_route_n[i]
+        foreach r in vpn_routes
+        do
+          set vpnnet=openvpn_%_route_%[i][r]
+          if(vpnnet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+          then
+            set vpnnet=match_1
+          fi
+        done
+
+        if (openvpn_%_check_config[i] == "no")
+        then
+          set dummy="dummy"
+        else
+          # make sure each config has a unique name
+          foreach j in openvpn_n
+          do
+            if (openvpn_%_activ[j] == "no" || openvpn_%_check_config[j] == "no")
+            then
+              set dummy="dummy"
+            else
+              if (i != j)
+              then
+                if (openvpn_%_name[i] == openvpn_%_name[j])
+                then
+                  set e1=openvpn_%_name[i]
+                  set e2=openvpn_%_name[j]
+                  error "OpenVPN: OPENVPN_%%_NAME entries must be unique. OPENVPN_${i}_NAME='$e1' and OPENVPN_${j}_NAME='$e2' are identical!"
+                fi
+
+                if (openvpn_%_local_port[i] == openvpn_%_local_port[j])
+                then
+                  set e1=openvpn_%_local_port[i]
+                  set e2=openvpn_%_local_port[j]
+                  error "OpenVPN: OPENVPN_%%_LOCAL_PORT entries must be unique, OPENVPN_${i}_LOCAL_PORT='$e1' and OPENVPN_${j}_LOCAL_PORT='$e2' are identical!"
+                fi
+
+                if (openvpn_%_type[i] == "tunnel" && openvpn_%_type[j] == "tunnel")
+                then
+                  if (openvpn_%_remote_vpn_ip[i] == openvpn_%_remote_vpn_ip[j])
+                  then
+                    set e1=openvpn_%_remote_vpn_ip[i]
+                    set e2=openvpn_%_remote_vpn_ip[j]
+                    error "OpenVPN: OPENVPN_%%_REMOTE_VPN_IP entries must be unique, OPENVPN_${i}_REMOTE_VPN_IP='$e1' and OPENVPN_${j}_REMOTE_VPN_IP='$e2' are identical!"
+                  fi
+
+                  if (openvpn_%_remote_vpn_ip[i] == openvpn_%_local_vpn_ip[j])
+                  then
+                    set e1=openvpn_%_remote_vpn_ip[i]
+                    set e2=openvpn_%_local_vpn_ip[j]
+                    error "OpenVPN: You can't have a vpn ip with OPENVPN_${j}_LOCAL_VPN_IP='$e2' and a remote vpn ip with OPENVPN_${i}_REMOTE_VPN_IP='$e1'!"
+                  fi
+                fi
+              fi
+
+              set ir=openvpn_%_route_n[i]
+              foreach n in ir
+              do
+                set local_vpn_ip=openvpn_%_local_vpn_ip[i]
+                set remote_vpn_ip=openvpn_%_remote_vpn_ip[i]
+
+                set jr=openvpn_%_route_n[j]
+                foreach r in jr
+                do
+                  set inet=openvpn_%_route_%[i][n]
+                  set jnet=openvpn_%_route_%[j][r]
+                  if ( inet =~ ":" || jnet =~ ":" )
+                  then
+                    set dummy="dummy"
+                  else
+                    if(inet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+                    then
+                      set inet=match_1
+                    fi
+
+                    if(jnet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+                    then
+                      set jnet=match_1
+                    fi
+
+                    if(i == j && n == r)
+                    then
+                      set dummy="dummy"
+                    else
+                      if(samenet("$inet", "$jnet"))
+                      then
+                        error "OpenVPN: You can't route the same network via two different VPN routes. The routes from OPENVPN_${i}_ROUTE_${n}='$inet' and OPENVPN_${j}_ROUTE_${r}='$jnet' will route the same network!"
+                      else
+                        if(inet != "0.0.0.0/0" && jnet != "0.0.0.0/0")
+                        then
+                          if(subnet("$inet", "$jnet"))
+                          then
+                            error "OpenVPN: You can't route a network and one of its subnets via two different VPN tunnels. The route from OPENVPN_${i}_ROUTE_${n}='$inet' is a subnet of OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                          fi
+                          if(subnet("$jnet", "$inet"))
+                          then
+                            error "OpenVPN: You can't route a network and one of its subnets via two different VPN tunnels. The route from OPENVPN_${j}_ROUTE_${r}='$jnet' is a subnet of OPENVPN_${i}_ROUTE_${n}='$inet'!"
+                          fi
+                        fi
+                      fi
+
+                      # jetzt OPENVPN_x_LOCAL_VPN_IP pruefen
+                      if(samenet("$jnet", "$local_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${n}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is routed with OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                      else
+                        if(jnet != "0.0.0.0/0")
+                        then
+                          if(subnet("$local_vpn_ip", "$jnet"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${n}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is routed with OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                          fi
+                          if(subnet("$jnet", "$local_vpn_ip"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${n}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is routed with OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                          fi
+                        fi
+                     fi
+
+                      # jetzt OPENVPN_x_REMOTE_VPN_IP pruefen
+                      if(samenet("$jnet", "$remote_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${n}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is routed with OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                      else
+                        if(jnet != "0.0.0.0/0")
+                        then
+                          if(subnet("$remote_vpn_ip", "$jnet"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${n}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is routed with OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                          fi
+                          if(subnet("$jnet", "$remote_vpn_ip"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${n}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is routed with OPENVPN_${j}_ROUTE_${r}='$jnet'!"
+                          fi
+                        fi
+                      fi
+                    fi
+                  fi
+                done
+              done
+            fi
+          done
+
+          # warn if shapping is used
+          if (defined(openvpn_%_shaper[i]))
+          then
+            warning "OpenVPN: Your OPENVPN_${i}_SHAPER configuration may cause OpenVPN to work badly or not at all at least. See documentation for details."
+          fi
+
+          # verbose level must be >= 0 and < 12
+          if (defined(openvpn_%_verbose[i]) && (openvpn_%_verbose[i] < 0 || openvpn_%_verbose[i] > 15))
+          then
+            error "OpenVPN: OPENVPN_${i}_VERBOSE must have a value between 0 and 15!"
+          fi
+
+          # local port must be >1024 and < 65535
+          if (openvpn_%_local_port[i] < 1025 || openvpn_%_local_port[i] > 65534)
+          then
+            error "OpenVPN: OPENVPN_${i}_LOCAL_PORT must have a value between 1025 and 65534!"
+          fi
+
+          if (defined(openvpn_%_remote_port[i]))
+          then
+            set rport=openvpn_%_remote_port[i]
+            if (rport < 1 || rport > 65534)
+            then
+              error "OpenVPN: OPENVPN_${i}_REMOTE_PORT must have a value between 1 and 65534!"
+            fi
+          fi
+
+          if (!defined(openvpn_%_remote_port[i]) && defined(openvpn_%_remote_host[i]))
+          then
+            error "OpenVPN: OPENVPN_${i}_REMOTE_PORT must be set if OPENVPN_${i}_REMOTE_HOST is set!"
+          fi
+
+          if (defined(openvpn_%_remote_port[i]) && !defined(openvpn_%_remote_host[i]))
+          then
+            error "OpenVPN: OPENVPN_${i}_REMOTE_HOST must be set if OPENVPN_${i}_REMOTE_PORT is set!"
+          fi
+
+          if (defined(openvpn_%_protocol[i]) && (openvpn_%_protocol[i] == "tcp-server" || openvpn_%_protocol[i] == "tcp-client" ))
+          then
+            if (defined(openvpn_%_fragment[i]) || defined(openvpn_%_tun_mtu[i]))
+            then
+              error "OpenVPN: OPENVPN_${i}_FRAGMENT are only allowed if you're using OPENVPN_${i}_PROTOCOL='udp'!"
+            fi
+          fi
+
+          if (defined(openvpn_%_link_mtu[i]) && defined(openvpn_%_tun_mtu[i]))
+          then
+            error "OpenVPN: You can't only set one of OPENVPN_${i}_LINK_MTU and OPENVPN_${i}_TUN_MTU! Remove one entry from the configuration file."
+          fi
+
+          # check if there's a machting ISDN_CIRC_NAME for each OPENVPN_%_ISDN_CIRC_NAME
+          if (defined(openvpn_%_isdn_circ_name[i]))
+          then
+            if (isdn_circ_n == 0)
+            then
+              error "OpenVPN: OPENVPN_${i}_ISDN_CIRC_NAME cannot be used without at least one configured ISDN_CIRCUIT!"
+            fi
+
+            set found="no"
+            foreach j in isdn_circ_n
+            do
+              if (openvpn_%_isdn_circ_name[i] == isdn_circ_%_name[j])
+              then
+                set found="yes"
+                if (isdn_circ_%_type[j] != "raw")
+                then
+                  error "OpenVPN: ISDN_CIRC_${j}_TYPE should be of type 'raw' if used together with OPENVPN_${i}_ISDN_CIRC_NAME"
+                fi
+              fi
+            done
+            if(found == "no")
+            then
+              error "OpenVPN: OPENVPN_${i}_ISDN_CIRC_NAME does not match any ISDN_CIRC_x_NAME"
+            fi
+          fi
+
+          if (openvpn_%_type[i] == "bridge")
+          then
+            if( !opt_bridge_dev )
+            then
+              error "OpenVPN: OPENVPN_${i}_TYPE='bridge' cannot be used without the advanced_networking packet!"
+            else
+              set found="no"
+              if (defined(openvpn_%_bridge[i]))
+              then
+                foreach j in bridge_dev_n
+                do
+                  if (bridge_dev_%_name[j] == openvpn_%_bridge[i])
+                  then
+                    set found="yes"
+                    if(defined(openvpn_%_bridge_cost[i]))
+                    then
+                      if(bridge_dev_%_stp[j] == "no" || !defined(bridge_dev_%_stp[j]))
+                      then
+                        error "OpenVPN: If you want to use OPENVPN_${i}_BRIDGE_COST= the bridge must be configured with STP. You should set BRIDGE_DEV_${j}_STP='yes'"
+                      fi
+                    fi
+                    if(defined(openvpn_%_bridge_priority[i]))
+                    then
+                      if(bridge_dev_%_stp[j] == "no" || !defined(bridge_dev_%_stp[j]))
+                      then
+                        error "OpenVPN: If you want to use OPENVPN_${i}_BRIDGE_COST= the bridge must be configured with STP. You should set BRIDGE_DEV_${j}_STP='yes'"
+                      fi
+                    fi
+                  fi
+                done
+              fi
+              if(!found)
+              then
+                set ovpn_bridge=openvpn_%_bridge[i]
+                error "OpenVPN: Can't find a bridge with the name OPENVPN_${i}_BRIDGE='$ovpn_bridge'!"
+              fi
+
+              if(openvpn_%_route_n[i] > 0)
+              then
+                error "OpenVPN: No routes are allowed with OPENVPN_${i}_TYPE='bridge' - set OPENVPN_${i}_ROUTE_N to '0'!"
+              fi
+              if(defined(openvpn_%_remote_vpn_ip[i]) || defined(openvpn_%_local_vpn_ip[i]))
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no OPENVPN_${i}_LOCAL_VPN_IP or OPENVPN_${i}_REMOTE_VPN_IP are allowed!"
+              fi
+              if(defined(openvpn_%_pf_input_log[i]))
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no OPENVPN_${i}_PF_INPUT_LOG are allowed!"
+              fi
+              if(defined(openvpn_%_pf_input_policy[i]))
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no OPENVPN_${i}_PF_INPUT_POLICY are allowed!"
+              fi
+              if(defined(openvpn_%_pf_forward_log[i]))
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no OPENVPN_${i}_PF_FORWARD_LOG are allowed!"
+              fi
+              if(defined(openvpn_%_pf_forward_policy[i]))
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no OPENVPN_${i}_PF_FORWARD_POLICY are allowed!"
+              fi
+              if(openvpn_%_pf_forward_n[i] > 0)
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no firewall FORWARD rules are allowed - set OPENVPN_${i}_PF_FORWARD_N to '0'!"
+              fi
+              if(openvpn_%_pf_input_n[i] > 0)
+              then
+                error "OpenVPN: With OPENVPN_${i}_TYPE='bridge', no firewall INPUT rules are allowed - set OPENVPN_${i}_PF_INPUT_N to '0'!"
+              fi
+            fi
+          fi
+
+          if (openvpn_%_type[i] == "tunnel")
+          then
+            if( openvpn_%_route_n[i] > 50 )
+            then
+              error "OpenVPN: OPENVPN_${i}_ROUTE_N does not support more than 50 routes!"
+            fi
+            if(!defined(openvpn_%_local_vpn_ip[i]))
+            then
+              error "OpenVPN: With OPENVPN_${i}_TYPE='tunnel', OPENVPN_${i}_LOCAL_VPN_IP should contain a valid ip address!"
+            fi
+            if(!defined(openvpn_%_remote_vpn_ip[i]))
+            then
+              error "OpenVPN: With OPENVPN_${i}_TYPE='tunnel', OPENVPN_${i}_REMOTE_VPN_IP should contain a valid ip address!"
+            fi
+            if( openvpn_%_local_vpn_ip[i] == openvpn_%_remote_vpn_ip[i] )
+            then
+              set local_vpn_ip=openvpn_%_local_vpn_ip[i]
+              set remote_vpn_ip=openvpn_%_remote_vpn_ip[i]
+              error "OpenVPN: OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' and OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' should be different! "
+            fi
+
+            if(defined(openvpn_%_bridge[i]))
+            then
+              error "OpenVPN: with OPENVPN_${i}_TYPE='tunnel', no OPENVPN_${i}_BRIDGE= entry is allowed!"
+            fi
+            if(defined(openvpn_%_bridge_cost[i]))
+            then
+              error "OpenVPN: with OPENVPN_${i}_TYPE='tunnel', no OPENVPN_${i}_BRIDGE_COST= entry is allowed!"
+            fi
+            if(defined(openvpn_%_bridge_priority[i]))
+            then
+              error "OpenVPN: with OPENVPN_${i}_TYPE='tunnel', no OPENVPN_${i}_BRIDGE_PRIORITY= entry is allowed!"
+            fi
+
+            set local_vpn_ip=openvpn_%_local_vpn_ip[i]
+            set remote_vpn_ip=openvpn_%_remote_vpn_ip[i]
+
+            set vpn_routes=openvpn_%_route_n[i]
+            foreach r in vpn_routes
+            do
+              set checknet=openvpn_%_route_%[i][r]
+              if(checknet =~ ":")
+              then
+                set dummy="dummy"
+              else
+                if(checknet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+                then
+                  set checknet=match_1
+                fi
+                if(checknet != "0.0.0.0/0")
+                then
+                  # jetzt OPENVPN_x_LOCAL_VPN_IP pruefen
+                  if(samenet("$checknet", "$local_vpn_ip"))
+                  then
+                    error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is routed with OPENVPN_${i}_ROUTE_${r}='$checknet'!"
+                  else
+                    if(subnet("$local_vpn_ip", "$checknet"))
+                    then
+                      error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is routed with OPENVPN_${i}_ROUTE_${r}='$checknet'!"
+                    fi
+                    if(subnet("$checknet", "$local_vpn_ip"))
+                      then
+                      error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is routed with OPENVPN_${i}_ROUTE_${r}='$checknet'!"
+                    fi
+                  fi
+
+                  # jetzt OPENVPN_x_REMOTE_VPN_IP pruefen
+                  if(samenet("$checknet", "$remote_vpn_ip"))
+                  then
+                    error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is routed with OPENVPN_${i}_ROUTE_${r}='$checknet'!"
+                  else
+                    if(subnet("$remote_vpn_ip", "$checknet"))
+                    then
+                      error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is routed with OPENVPN_${i}_ROUTE_${r}='$checknet'!"
+                    fi
+                    if(subnet("$checknet", "$remote_vpn_ip"))
+                    then
+                      error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is routed with OPENVPN_${i}_ROUTE_${r}='$checknet'!"
+                    fi
+                  fi
+                fi
+              fi
+            done
+
+            foreach n in ip_net_n
+            do
+              set checknet=ip_net_%[n]
+              set vpn_routes=openvpn_%_route_n[i]
+              foreach r in vpn_routes
+              do
+                set vpnnet=openvpn_%_route_%[i][r]
+                if (vpnnet =~ ":")
+                then
+                  set dummy="dummy"
+                else
+                  if(vpnnet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+                  then
+                    set vpnnet=match_1
+                  fi
+                  if(vpnnet != "0.0.0.0/0" && !(checknet =~ "^\{.*"))
+                  then
+                    if(samenet("$checknet", "$vpnnet"))
+                    then
+                      error "OpenVPN: You can't route $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                    else
+                      if(subnet("$vpnnet", "$checknet"))
+                      then
+                        error "OpenVPN: You can't route the subnet $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                      fi
+                      if(subnet("$checknet", "$vpnnet"))
+                      then
+                        warning "OpenVPN: You try to route the network $vpnnet via your VPN with OPENVPN_${i}_ROUTE_${r}='$vpnnet'. But your local network $checknet (from IP_NET_${n}) is a subnet to the $vpnnet network. Make sure this is what you want!"
+                      fi
+                    fi
+
+                    # jetzt OPENVPN_x_LOCAL_VPN_IP pruefen
+                    if(samenet("$checknet", "$local_vpn_ip"))
+                    then
+                      error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                    else
+                      if(subnet("$local_vpn_ip", "$checknet"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                      fi
+                      if(subnet("$checknet", "$local_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                      fi
+                    fi
+
+                    # jetzt OPENVPN_x_REMOTE_VPN_IP pruefen
+                    if(samenet("$checknet", "$remote_vpn_ip"))
+                    then
+                      error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                    else
+                      if(subnet("$remote_vpn_ip", "$checknet"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                      fi
+                      if(subnet("$checknet", "$remote_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it belongs to your local network according to IP_NET_${n}='$checknet'!"
+                      fi
+                    fi
+                  fi
+                fi
+              done
+            done
+
+            foreach r in vpn_routes
+            do
+              set default_route_via_vpn="no"
+              set vpnnet=openvpn_%_route_%[i][r]
+              if (vpnnet =~ ":")
+              then
+                set dummy="dummy"
+              else
+                if(vpnnet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+                then
+                  set default_route_via_vpn="yes"
+                  set default_route_via_vpn_cmd="$vpnnet"
+                  set vpnnet=match_1
+                fi
+
+                set default_route_via_route="no"
+                foreach n in ip_route_n
+                do
+                  set x0=ip_route_%[n]
+                  split(x0, tmp_%, ' ')
+                  set checknet=tmp_%[1]
+
+                  if(checknet == "0.0.0.0/0")
+                  then
+                    set default_route_via_route="yes"
+                  else
+                    if(samenet("$checknet", "$vpnnet"))
+                    then
+                      warning "OpenVPN: You can't route $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it is already routed with IP_ROUTE_${n}='$x0'!"
+                    else
+                      if(vpnnet != "0.0.0.0/0" && checknet != "0.0.0.0/0")
+                      then
+                        if(subnet("$checknet", "$vpnnet"))
+                        then
+                          error "OpenVPN: You can't route the network $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it is a supernet off IP_ROUTE_${n}='$checknet'!"
+                        fi
+                        if(subnet("$vpnnet", "$checknet"))
+                        then
+                          error "OpenVPN: You can't route $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it is subnet off IP_ROUTE_${n}='$checknet'!"
+                        fi
+                      fi
+                    fi
+                  fi
+
+                  # jetzt OPENVPN_x_LOCAL_VPN_IP pruefen
+                  if(samenet("$checknet", "$local_vpn_ip"))
+                  then
+                    error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is already routed with IP_ROUTE_${n}='$x0'!"
+                  else
+                    if(checknet != "0.0.0.0/0")
+                    then
+                      if(subnet("$local_vpn_ip", "$checknet"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is already routed with IP_ROUTE_${n}='$x0'!"
+                      fi
+                      if(subnet("$checknet", "$local_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is already routed with IP_ROUTE_${n}='$x0'!"
+                      fi
+                    fi
+                  fi
+
+                  # jetzt OPENVPN_x_REMOTE_VPN_IP pruefen
+                  if(samenet("$checknet", "$remote_vpn_ip"))
+                  then
+                    error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is already routed with IP_ROUTE_${n}='$x0'!"
+                  else
+                    if(checknet != "0.0.0.0/0")
+                    then
+                      if(subnet("$remote_vpn_ip", "$checknet"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is already routed with IP_ROUTE_${n}='$x0'!"
+                      fi
+                      if(subnet("$checknet", "$remote_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is already routed with IP_ROUTE_${n}='$x0'!"
+                      fi
+                    fi
+                  fi
+                done
+              fi
+            done
+
+            set default_route_via_isdn="no"
+            if(opt_isdn)
+            then
+              foreach circ in isdn_circ_n
+              do
+                set isdn_routes=isdn_circ_%_route_n[circ]
+                foreach n in isdn_routes
+                do
+                  set checknet=isdn_circ_%_route_%[circ][n]
+                  foreach r in vpn_routes
+                  do
+                    set vpnnet=openvpn_%_route_%[i][r]
+                    if (vpnnet =~ ":")
+                    then
+                      set dummy="dummy"
+                    else
+                      if(vpnnet =~ "(0\.0\.0\.0/0)[[:space:]]+(local|def1)")
+                      then
+                        set vpnnet=match_1
+                      fi
+
+                      if(checknet == "0.0.0.0/0")
+                      then
+                        set default_route_via_isdn="yes"
+                      else
+                        if(samenet("$checknet", "$vpnnet"))
+                        then
+                          error "OpenVPN: You can't route $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                        else
+                          if(vpnnet != "0.0.0.0/0" && checknet != "0.0.0.0/0")
+                          then
+                            if(subnet("$checknet", "$vpnnet"))
+                            then
+                              error "OpenVPN: You can't route $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it is a supernet off ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                            fi
+                            if(subnet("$vpnnet", "$checknet"))
+                            then
+                              error "OpenVPN: You can't route $vpnnet through your VPN tunnel with OPENVPN_${i}_ROUTE_${r}='$vpnnet' since it is a subnet off ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                            fi
+                          fi
+                        fi
+                      fi
+
+                      # jetzt OPENVPN_x_LOCAL_VPN_IP pruefen
+                      if(samenet("$checknet", "$local_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                      else
+                        if(checknet != "0.0.0.0/0")
+                        then
+                          if(subnet("$checknet", "$local_vpn_ip"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                          fi
+                          if(subnet("$local_vpn_ip", "$checknet"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${i}_LOCAL_VPN_IP='$local_vpn_ip' as a local vpn ip since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                          fi
+                        fi
+                      fi
+
+                      # jetzt OPENVPN_x_REMOTE_VPN_IP pruefen
+                      if(samenet("$checknet", "$remote_vpn_ip"))
+                      then
+                        error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                      else
+                        if(checknet != "0.0.0.0/0")
+                        then
+                          if(subnet("$checknet", "$remote_vpn_ip"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                          fi
+                          if(subnet("$remote_vpn_ip", "$checknet"))
+                          then
+                            error "OpenVPN: You can't use OPENVPN_${i}_REMOTE_VPN_IP='$remote_vpn_ip' as a remote vpn ip since it is already routed with ISDN_CIRC_${circ}_ROUTE_${n}='$checknet'!"
+                          fi
+                        fi
+                      fi
+                    fi
+                  done
+                done
+              done
+            fi
+
+            # Wenn eine OpenVPN fuer eine Defaultroute benutzt wird muss es vorher eine Defaultroute geben.
+            # Entweder durch IP_ROUTE (default_route_via_route) oder durch eine ISDN oder DSL Verbindung.
+            if(default_route_via_vpn == "yes")
+            then
+
+              set default_route_via_pppoe="no"
+              if(defined(opt_pppoe) && opt_pppoe == "yes")
+              then
+                set default_route_via_pppoe="yes"
+              fi
+              set default_route_via_pptp="no"
+              if(defined(opt_pptp) && opt_pptp == "yes")
+              then
+                set default_route_via_pptp="yes"
+              fi
+              set default_route_via_fritzdsl="no"
+              if(defined(opt_fritzdsl) && opt_fritzdsl == "yes")
+              then
+                set default_route_via_fritzdsl="yes"
+              fi
+              set default_route_via_umts="no"
+              if(defined(opt_umts) && opt_umts == "yes")
+              then
+                set default_route_via_umts="yes"
+              fi
+
+
+              if( default_route_via_route == "no" &&
+                  default_route_via_isdn  == "no" &&
+                  default_route_via_pppoe == "no" &&
+                  default_route_via_umts == "no" &&
+                  default_route_via_pptp == "no" &&
+                  default_route_via_fritzdsl == "no" )
+              then
+                error "OpenVPN: If you want to redirect your traffic over an OpenVPN default gateway (OPENVPN_${i}_ROUTE_${r}='$default_route_via_vpn_cmd'), you have to set up a default route in base.txt with IP_ROUTE_x, or setup a default route with ISDN, DSL or UMTS."
+              fi
+            fi
+          fi
+
+          if (!defined(openvpn_%_remote_host[i]) && defined(openvpn_%_float[i]) && openvpn_%_float[i] == "no")
+          then
+            error "OpenVPN: If OPENVPN_${i}_REMOTE_HOST is missing OPENVPN_${i}_FLOAT must be 'yes'!"
+          fi
+          if (!defined(openvpn_%_remote_host[i]) && !defined(openvpn_%_float[i]) && openvpn_default_float == "no")
+          then
+            error "OpenVPN: If OPENVPN_${i}_REMOTE_HOST is missing OPENVPN_${i}_FLOAT must be 'yes' or OPENVPN_DEFAULT_FLOAT must be 'yes'!"
+          fi
+        fi
+
+  	# check for those scripts to add the up/down scripts
+	set cmd_up_down_%[1]="up-pre"
+	set cmd_up_down_%[2]="up-post"
+	set cmd_up_down_%[3]="down-pre"
+	set cmd_up_down_%[4]="down-post"
+	set cmd_up_down_%[5]="route-up-pre"
+	set cmd_up_down_%[6]="route-up-post"
+	set cmd_up_down_%[7]="route-down-pre"
+	set cmd_up_down_%[8]="route-down-post"
+
+	foreach cmd in cmd_up_down_%
+        do
+	  set ucf=openvpn_%_name[i]
+	  set ucf="${ucf}-${cmd}"
+    	  stat("$config_dir/etc/openvpn/${ucf}", usercmdfile)
+    	  if(usercmdfile_res == "OK")
+    	  then
+      	    add_to_opt "etc/openvpn/$ucf" "mode=400 flags=sh"
+          fi
+  	done
+
+      fi
+    done
+  fi
+  if (openvpn_expert == "yes")
+    then
+      add_to_opt "etc/openvpn/scripts" "mode=500"
+      add_to_opt "etc/openvpn/*" "mode=400 flags=utxt"
+      add_to_opt "etc/openvpn/scripts/*" "mode=500 flags=utxt"
+  fi
+fi

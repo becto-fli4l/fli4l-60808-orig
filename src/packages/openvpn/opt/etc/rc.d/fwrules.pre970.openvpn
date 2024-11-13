@@ -1,0 +1,45 @@
+#!/bin/sh
+fw_add_chain filter in-ovpn
+fw_add_chain filter fw-ovpn
+fw_add_chain nat pi-ovpn # OpenVPN chain in PREROUTING
+fw_append_rule nat PREROUTING 'if:tun+:any pi-ovpn'
+fw_add_chain nat po-ovpn # OpenVPN chain in POSTROUTING
+fw_append_rule nat POSTROUTING 'if:any:any po-ovpn'
+
+if [ 0$PORTFW_N -ne 0 -o -f /etc/rc.d/rc425.portfw ]
+then
+    fw_append_rule filter fw-ovpn 'state:NEW PORTFWACCESS'
+fi
+
+case $PF_INPUT_ACCEPT_DEF in
+    no)
+	[ 0$PF_INPUT_N -eq 0 ] || for idx in `seq 1 $PF_INPUT_N`
+	do
+	    var=PF_INPUT_$idx
+	    eval rule=\$$var
+	    case "$rule" in
+		ovpn-chain)
+		    eval $var="'if:tun+:any in-ovpn'"
+		    break
+		;;
+	    esac
+	done
+	;;
+esac
+
+case $PF_FORWARD_ACCEPT_DEF in
+    no)
+	[ 0$PF_FORWARD_N -eq 0 ] || for idx in `seq 1 $PF_FORWARD_N`
+	do
+	    var=PF_FORWARD_$idx
+	    eval rule=\$$var
+	    case "$rule" in
+		ovpn-chain)
+		    eval $var="'if:tun+:any fw-ovpn BIDIRECTIONAL'"
+		    break
+		    ;;
+	    esac
+	done
+	;;
+esac
+

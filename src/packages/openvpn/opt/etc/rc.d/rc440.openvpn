@@ -1,0 +1,746 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc990.openvpn - create openvpn configuration
+#
+# Creation: 04.10.2003 Claas Hilbrecht <babel@fli4l.de>
+# Last Update: $Id$
+#--------------------------------------------------------------------
+
+case $OPT_OPENVPN in
+yes)
+    begin_script OPENVPN "configuring OpenVPN..."
+
+    # remove limits for locked memory and core dumps
+    ulimit -l unlimited
+    ulimit -c unlimited
+
+    do_modprobe dummy
+    DUMMY_IP="169.254.23.42"
+    ip a a $DUMMY_IP/32 dev dummy0
+
+    #ipset -N nat-ovpn-iface hash:net,iface
+    #ipset -N nat-ovpn-ipport hash:ip,port
+    #iptables -t nat -I PREROUTING -m set --match-set nat-ovpn-iface src,src -m set --match-set nat-ovpn-ipport dst,dst -j DNAT --to $DUMMY_IP
+    ipset -N nat-ovpn-port bitmap:port range 0-65535
+    iptables -t nat -I PREROUTING-head ! -i dummy0 -m set --match-set nat-ovpn-port dst -j DNAT --to $DUMMY_IP
+    iptables -t nat -I POSTROUTING-head ! -o dummy0 -s $DUMMY_IP -j MASQUERADE
+
+    # create links
+    ln -s openvpn-helper.sh /usr/bin/openvpn-helper-up
+    ln -s openvpn-helper.sh /usr/bin/openvpn-helper-down
+    ln -s openvpn-helper.sh /usr/bin/openvpn-helper-route-up
+    ln -s openvpn-helper.sh /usr/bin/openvpn-helper-route-down
+
+    # tun/tap Device-Treiber laden
+    do_modprobe tun
+
+    ovpn_wpr()
+    {
+        ovpn_table=$1
+        ovpn_list=$2
+        ovpn_chain=$3
+        ovpn_outfile=$4
+
+        ovpn_rule=
+        ovpn_orig_rule=
+        ovpn_rlnum=
+        ovpn_rnet=
+
+        ovpn_ipv6rules='no'
+        case $ovpn_list in
+            PF6*) ovpn_ipv6rules='yes'
+            ovpn_remote_vpn_ipv6_brackets="[$ovpn_remote_vpn_ipv6]"
+            if echo "$ovpn_local_vpn_ipv6" | grep -q '/'
+            then
+                ovpn_local_vpn_ipv6_brackets="[$ovpn_local_vpn_ipv6]"
+            else
+                ovpn_local_vpn_ipv6_brackets="[$ovpn_local_vpn_ipv6/64]"
+            fi
+            ;;
+        esac
+
+        {
+            eval ovpn_rlnum='$OPENVPN_'$ovpn_idx'_'$ovpn_list'_N'
+
+#            case $ovpn_list in
+#                *INPUT|*FORWARD)
+#                    [ 0$ovpn_rlnum -gt 0 ] && echo "$ovpn_table $ovpn_chain state:ESTABLISHED,RELATED ACCEPT"
+#                ;;
+#            esac
+
+            [ 0$ovpn_rlnum -eq 0 ] || for ovpn_tdx in `seq 1 $ovpn_rlnum`
+            do
+                eval ovpn_rule='$OPENVPN_'$ovpn_idx'_'$ovpn_list'_'$ovpn_tdx
+
+                case $ovpn_ipv6rules in
+                    yes)
+                        ovpn_rule=`echo $ovpn_rule |
+                            sed -e "s#\(^\|[[:space:]]\)REMOTE-VPN-IP\($\|[:[:space:]]\)#\1$ovpn_remote_vpn_ipv6_brackets\2#I" \
+                            -e "s#\(^\|[[:space:]]\)LOCAL-VPN-IP\($\|[:[:space:]]\)#\1$ovpn_local_vpn_ipv6_brackets\2#I"`
+                        ;;
+                    no)
+                        ovpn_rule=`echo $ovpn_rule |
+                            sed -e "s#\(^\|[SD]NAT:\|[[:space:]]\)REMOTE-VPN-IP\($\|[:[:space:]]\)#\1$ovpn_remote_vpn_ip\2#I" \
+                            -e "s#\(^\|[SD]NAT:\|[[:space:]]\)LOCAL-VPN-IP\($\|[:[:space:]]\)#\1$ovpn_local_vpn_ip\2#I"`
+                        ;;
+                esac
+
+                if echo $ovpn_rule | grep -iq REMOTE-NET
+                then
+                    ovpn_orig_rule=$ovpn_rule
+                    case $ovpn_ipv6rules in
+                        yes)
+                            ovpn_rule=`echo $ovpn_orig_rule |
+                            sed "s#\(^\|[[:space:]]\)REMOTE-NET\([:[:space:]]\)#\1$ovpn_remote_vpn_ipv6_brackets\2#I"`;;
+                        no)
+                            ovpn_rule=`echo $ovpn_orig_rule |
+                            sed "s#\(^\|[[:space:]]\)REMOTE-NET\([:[:space:]]\)#\1$ovpn_remote_vpn_ip\2#I"`;;
+                    esac
+                    echo "$ovpn_table $ovpn_chain $ovpn_rule"
+                    # eval ovpn_rnum='$OPENVPN_'$ovpn_idx'_ROUTE_N'
+                    [ 0$ovpn_rnum -eq 0 ] || for ovpn_rdx in `seq 1 $ovpn_rnum`
+                    do
+                        eval ovpn_rnet='$OPENVPN_'$ovpn_idx'_ROUTE_'$ovpn_rdx
+                        case $ovpn_ipv6rules in
+                            yes)
+                                case "$ovpn_rnet" in
+                                    *:*) ovpn_rnet="[$ovpn_rnet]" ;;
+                                    *) continue;;
+                                esac
+                                ;;
+                            no)
+                                case "$ovpn_rnet" in
+                                    *:*) continue;;
+                                    "0.0.0.0/0 "*)
+                                        ovpn_rnet=`echo $ovpn_rnet|sed -e 's#\(0\.0\.0\.0/0\) .*#\1#'`
+                                    ;;
+                                esac
+                                ;;
+                        esac
+                        ovpn_rule=`echo $ovpn_orig_rule | sed -e "s#\(^\|[[:space:]]\)REMOTE-NET\([:[:space:]]\)#\1$ovpn_rnet\2#I"`
+                        echo "$ovpn_table $ovpn_chain $ovpn_rule"
+                    done
+                else
+                    echo "$ovpn_table $ovpn_chain $ovpn_rule"
+                fi
+            done
+        } >>$ovpn_outfile
+    }
+
+    ovpn_setup_logging()
+    {
+        ovpn_policy=$1
+        ovpn_logging=$2
+        ovpn_chain=$3
+
+        case $ovpn_logging in
+            yes) log=-log ;;
+            *)   log= ;;
+        esac
+
+        case $ovpn_policy in
+            ACCEPT) action=ACCEPT ;;
+            REJECT) action=${reject_name}$log ;;
+            DROP)   action=${drop_name}$log ;;
+        esac
+
+        echo "filter $ovpn_chain $action"
+    }
+
+    OVPN_VAR=/var/run/openvpn
+    mkdir -p $OVPN_VAR
+
+    OVPN_IPUP=/etc/ppp/ip-up800.openvpn
+    cat > $OVPN_IPUP <<EOF
+if [ "\$is_default_route" = yes ]
+then
+    cd $OVPN_VAR
+EOF
+    chmod 755 $OVPN_IPUP
+
+    OVPN_CFG=/etc/openvpn
+    mkdir -p $OVPN_CFG
+    cd $OVPN_CFG
+    chmod 600 * 2>/dev/null
+
+    case $OPENVPN_EXPERT in
+        yes)
+            for config in /etc/openvpn/*.conf
+            do
+                mkdir -p $OVPN_VAR/`basename ${config%.conf}`
+                openvpn --config $config --daemon openvpn-`basename ${config%.conf}`
+            done
+            ;;
+        *)
+
+            [ -z "$OPENVPN_DEFAULT_LINK_MTU" ] && : ${OPENVPN_DEFAULT_TUN_MTU:=1500}
+
+            case $OPT_DYNDNS in
+                yes) : ${OPENVPN_DEFAULT_PERSIST_REMOTE_IP:=yes} ;;
+                *) : ${OPENVPN_DEFAULT_PERSIST_REMOTE_IP:=no} ;;
+            esac
+
+            case $OPENVPN_DEFAULT_ALLOW_ICMPPING in
+                yes)
+                    fw_append_rule filter in-ovpn "if:tun+:any prot:icmp:8 ACCEPT"
+                    fw_append_rule filter fw-ovpn "if:any:tun+ prot:icmp:8 ACCEPT"
+                    fw_append_rule filter fw-ovpn "if:tun+:any prot:icmp:8 ACCEPT"
+                ;;
+            esac
+
+            [ $OPENVPN_DEFAULT_PF_INPUT_LOG = BASE ] && OPENVPN_DEFAULT_PF_INPUT_LOG=$PF_INPUT_LOG
+            . /var/run/fwrules-helper.state.INPUT
+            fw_append_rule `ovpn_setup_logging $OPENVPN_DEFAULT_PF_INPUT_POLICY $OPENVPN_DEFAULT_PF_INPUT_LOG in-ovpn`
+
+            [ $OPENVPN_DEFAULT_PF_FORWARD_LOG = BASE ] && OPENVPN_DEFAULT_PF_FORWARD_LOG=$PF_FORWARD_LOG
+            . /var/run/fwrules-helper.state.FORWARD
+            fw_append_rule `ovpn_setup_logging $OPENVPN_DEFAULT_PF_FORWARD_POLICY $OPENVPN_DEFAULT_PF_FORWARD_LOG fw-ovpn`
+
+            # don't masq traffic that's routed via a tun device
+            fw_prepend_rule nat po-ovpn 'if:any:tun+ ACCEPT'
+
+            # add chain in-ovpn-ports to add rules where openvpn will listen to
+            fw_add_chain filter in-ovpn-ports
+            fw_prepend_rule filter INPUT-tail 'in-ovpn-ports' "ovpn access"
+            # check only dst IP and port
+            ipset -N in-ovpn-ipport hash:ip,port
+            iptables -I in-ovpn-ports -m set --match-set in-ovpn-ipport dst,dst -j ACCEPT
+            #fw_prepend_rule filter in-ovpn-ports '-m set --match-set in-ovpn-ipport dst,dst -j ACCEPT' "ovpn VPN traffic"
+            # check src IP and dst IP and port
+            ipset -N in-ovpn-sip-dipport hash:ip,port,ip
+            iptables -I in-ovpn-ports -m set --match-set in-ovpn-sip-dipport src,dst,dst -j ACCEPT
+            #fw_prepend_rule filter in-ovpn-ports '-m set --match-set in-ovpn-sip-dipport src,dst,dst ACCEPT' "ovpn VPN traffic"
+            case $PF_INPUT_ACCEPT_DEF in
+                yes)
+                    fw_append_rule filter INPUT-head 'if:tun+:any in-ovpn' "ovpn VPN traffic"
+                ;;
+            esac
+            case $PF_FORWARD_ACCEPT_DEF in
+                yes)
+                    fw_append_rule filter FORWARD-head 'if:tun+:any fw-ovpn BIDIRECTIONAL' "ovpn VPN traffic"
+                ;;
+            esac
+            case $OPT_IPV6 in
+                yes)
+                    fw_add_chain6 filter in-ovpn-ports
+                    fw_append_rule6 filter INPUT-head 'in-ovpn-ports' "ovpn access"
+                    case $PF6_INPUT_ACCEPT_DEF in
+                        yes)
+                            fw_append_rule6 filter INPUT-head 'if:tun+:any in-ovpn' "ovpn VPN traffic"
+                        ;;
+                    esac
+                    case $PF6_FORWARD_ACCEPT_DEF in
+                        yes)
+                            fw_append_rule6 filter FORWARD-head 'if:tun+:any fw-ovpn BIDIRECTIONAL' "ovpn VPN traffic"
+                        ;;
+                    esac
+                ;;
+            esac
+            [ "$OPENVPN_N" -eq 0 ] || for ovpn_idx in `seq 1 $OPENVPN_N`
+            do
+                eval ovpn_activ='$OPENVPN_'$ovpn_idx'_ACTIV'
+                [ "$ovpn_activ" = no ] && continue
+
+                eval ovpn_name='$OPENVPN_'$ovpn_idx'_NAME'
+                echo ${ovpn_name} >> $OVPN_CFG/openvpn.names
+                log_info "configuring OpenVPN peer $ovpn_name"
+
+                eval ovpn_ipv6='$OPENVPN_'$ovpn_idx'_IPV6'
+                eval ovpn_bridge='$OPENVPN_'$ovpn_idx'_BRIDGE'
+                eval ovpn_cipher='$OPENVPN_'$ovpn_idx'_CIPHER'
+                eval ovpn_compress='$OPENVPN_'$ovpn_idx'_COMPRESS'
+                eval ovpn_create_secret='$OPENVPN_'$ovpn_idx'_CREATE_SECRET'
+                eval ovpn_digest='$OPENVPN_'$ovpn_idx'_DIGEST'
+                eval ovpn_float='$OPENVPN_'$ovpn_idx'_FLOAT'
+                eval ovpn_isdn_circ_name='$OPENVPN_'$ovpn_idx'_ISDN_CIRC_NAME'
+                eval ovpn_keysize='$OPENVPN_'$ovpn_idx'_KEYSIZE'
+                eval ovpn_local_host='$OPENVPN_'$ovpn_idx'_LOCAL_HOST'
+                eval ovpn_local_vpn_ip='$OPENVPN_'$ovpn_idx'_LOCAL_VPN_IP'
+                eval ovpn_local_vpn_ipv6='$OPENVPN_'$ovpn_idx'_LOCAL_VPN_IPV6'
+                eval ovpn_lport='$OPENVPN_'$ovpn_idx'_LOCAL_PORT'
+                eval ovpn_openport='$OPENVPN_'$ovpn_idx'_OPEN_OVPNPORT'
+                eval ovpn_ping='$OPENVPN_'$ovpn_idx'_PING'
+                eval ovpn_ping_restart='$OPENVPN_'$ovpn_idx'_PING_RESTART'
+                eval ovpn_pf_input_log='$OPENVPN_'$ovpn_idx'_PF_INPUT_LOG'
+                eval ovpn_pf_input_policy='$OPENVPN_'$ovpn_idx'_PF_INPUT_POLICY'
+                eval ovpn_pf_forward_log='$OPENVPN_'$ovpn_idx'_PF_FORWARD_LOG'
+                eval ovpn_pf_forward_policy='$OPENVPN_'$ovpn_idx'_PF_FORWARD_POLICY'
+                eval ovpn_protocol='$OPENVPN_'$ovpn_idx'_PROTOCOL'
+                eval ovpn_remote_host='$OPENVPN_'$ovpn_idx'_REMOTE_HOST'
+                eval ovpn_remote_vpn_ip='$OPENVPN_'$ovpn_idx'_REMOTE_VPN_IP'
+                eval ovpn_remote_vpn_ipv6='$OPENVPN_'$ovpn_idx'_REMOTE_VPN_IPV6'
+                eval ovpn_reneg_sec='$OPENVPN_'$ovpn_idx'_RENEG_SEC'
+                eval ovpn_resolv_retry='$OPENVPN_'$ovpn_idx'_RESOLV_RETRY'
+                eval ovpn_restart='$OPENVPN_'$ovpn_idx'_RESTART'
+                eval ovpn_rport='$OPENVPN_'$ovpn_idx'_REMOTE_PORT'
+                eval ovpn_secret='$OPENVPN_'$ovpn_idx'_SECRET'
+                eval ovpn_shaper='$OPENVPN_'$ovpn_idx'_SHAPER'
+                eval ovpn_link_mtu='$OPENVPN_'$ovpn_idx'_LINK_MTU'
+                eval ovpn_tun_mtu='$OPENVPN_'$ovpn_idx'_TUN_MTU'
+                eval ovpn_tun_mtu_extra='$OPENVPN_'$ovpn_idx'_TUN_MTU_EXTRA'
+                eval ovpn_mlogcache='$OPENVPN_'$ovpn_idx'_MANAGEMENT_LOG_CACHE'
+                eval ovpn_mport='$OPENVPN_'$ovpn_idx'_MANAGEMENT_PORT'
+                eval ovpn_mssfix='$OPENVPN_'$ovpn_idx'_MSSFIX'
+                eval ovpn_check_replay='$OPENVPN_'$ovpn_idx'_CHECK_REPLAY'
+                eval ovpn_fragment='$OPENVPN_'$ovpn_idx'_FRAGMENT'
+                eval ovpn_start='$OPENVPN_'$ovpn_idx'_START'
+                eval ovpn_type='$OPENVPN_'$ovpn_idx'_TYPE'
+                eval ovpn_verbose='$OPENVPN_'$ovpn_idx'_VERBOSE'
+                eval ovpn_mute_replay_warnings='$OPENVPN_'$ovpn_idx'_MUTE_REPLAY_WARNINGS'
+                eval ovpn_devnum='$OPENVPN_'$ovpn_idx'_DEVNUM'
+                : ${ovpn_ipv6:=no}
+                : ${ovpn_fragment:=$OPENVPN_DEFAULT_FRAGMENT}
+                : ${ovpn_mport:=0}
+                : ${ovpn_check_replay:=yes}
+                : ${ovpn_pf_input_log:=$OPENVPN_DEFAULT_PF_INPUT_LOG}
+                : ${ovpn_pf_input_policy:=$OPENVPN_DEFAULT_PF_INPUT_POLICY}
+                : ${ovpn_pf_forward_log:=$OPENVPN_DEFAULT_PF_FORWARD_LOG}
+                : ${ovpn_pf_forward_policy:=$OPENVPN_DEFAULT_PF_FORWARD_POLICY}
+
+               if [ -n "$ovpn_local_host" ]
+               then
+                   if translate_ip_net $ovpn_local_host OPENVPN_${ovpn_idx}_LOCAL_HOST
+                    then
+                       ovpn_local_host="$res"
+                    else
+                       log_error "Can't resolve OPENVPN_${ovpn_idx}_LOCAL_HOST to real IP address!"
+                    fi
+                fi
+
+                if [ "$OPT_IPV6" != "yes" ]
+                then
+                    ovpn_protocol=`echo $ovpn_protocol | sed 's/6//'`
+                    ovpn_ipv6='no'
+                fi
+
+                eval ovpn_rhosts='$OPENVPN_'$ovpn_idx'_REMOTE_HOST_N'
+                if [ 0$ovpn_rhosts -gt 0 ]
+                then
+                    : ${ovpn_resolv_retry:=30}
+                else
+                    : ${ovpn_resolv_retry:=$OPENVPN_DEFAULT_RESOLV_RETRY}
+                fi
+
+                if [ -z "$ovpn_link_mtu" -a -z "$ovpn_tun_mtu" ]
+                then
+                    : ${ovpn_link_mtu:=$OPENVPN_DEFAULT_LINK_MTU}
+                    : ${ovpn_tun_mtu:=$OPENVPN_DEFAULT_TUN_MTU}
+                fi
+
+                mkdir -p $OVPN_VAR/$ovpn_name
+
+                [ "$ovpn_restart" = raw-up -a "$ovpn_isdn_circ_name" ] && echo "$OVPN_VAR/$ovpn_name/pid" >$OVPN_CFG/isdnraw.$ovpn_isdn_circ_name
+
+                cat <<EOF>$ovpn_name.conf
+cipher $ovpn_cipher
+auth $ovpn_digest
+ping-timer-rem
+verb $ovpn_verbose
+resolv-retry $ovpn_resolv_retry
+writepid $OVPN_VAR/$ovpn_name/pid
+persist-key
+persist-tun
+persist-local-ip
+mlock
+#remote-random
+reneg-sec $ovpn_reneg_sec
+status $OVPN_VAR/$ovpn_name/status 15
+status-version 1
+management 127.0.0.1 $ovpn_mport
+management-log-cache $ovpn_mlogcache
+management-writeport $OVPN_VAR/$ovpn_name/mport
+script-security 2
+EOF
+
+                {
+                    if [ "$OPT_IPV6" = "yes" -a "$ovpn_ipv6" = "yes" -a -n "$ovpn_local_vpn_ipv6" -a -n "$ovpn_remote_vpn_ipv6" -a "$ovpn_type" = "tunnel" ]
+                    then
+                        echo tun-ipv6
+                        echo setenv ovpn_ipv6 yes
+                        echo ifconfig-ipv6 $ovpn_local_vpn_ipv6 $ovpn_remote_vpn_ipv6
+                    else
+                        ovpn_ipv6='no'
+                        echo setenv ovpn_ipv6 no
+                    fi
+                    [ "$ovpn_secret" ] && echo "secret $OVPN_CFG/$ovpn_secret"
+
+                    if [ "$ovpn_float" = "no" -a "$OPENVPN_DEFAULT_PERSIST_REMOTE_IP" = "yes" -a -n "$ovpn_remote_host" ]
+                    then
+                        echo "persist-remote-ip"
+                    fi
+                    [ $ovpn_mute_replay_warnings = yes ] && echo "mute-replay-warnings"
+                    [ $ovpn_check_replay = no ] && echo "no-replay"
+
+                    case $ovpn_protocol in
+                      *6|*6-*) if netcalc isipv4 "$ovpn_remote_host"
+                          then
+                              ovpn_remote_host="::ffff:$ovpn_remote_host"
+                          fi
+                          ;;
+                    esac
+                    case $ovpn_protocol in
+                      *6|*6-*) if netcalc isipv4 "$ovpn_local_host"
+                          then
+                              ovpn_local_host="::ffff:$ovpn_local_host"
+                          fi
+                          ;;
+                    esac
+
+                    # check if local_host is empty. in this case bind it to
+                    # our dummy device and create port forwards
+                    if [ -z "$ovpn_local_host" ]
+                    then
+                        ovpn_local_host=$DUMMY_IP
+                    fi
+                    [ "$ovpn_keysize" ] && echo "keysize $ovpn_keysize"
+                    [ $ovpn_compress = yes ] && echo "comp-lzo"
+                    if [ "$ovpn_shaper" ]
+                    then
+                        echo "shaper $ovpn_shaper"
+                    else
+                        case $ovpn_protocol in
+                        udp*)
+                            echo "fast-io"
+                            ;;
+                        esac
+                    fi
+
+                    [ $ovpn_ping != off ] && echo "ping $ovpn_ping"
+                    [ $ovpn_ping_restart != off ] && echo "ping-restart $ovpn_ping_restart"
+                    ovpn_signal_type=SIGUSR1
+
+                    case $ovpn_type in
+                        tunnel)
+                            if [ "x$ovpn_devnum" != "x" ]
+                            then
+                                echo "dev tun$ovpn_devnum"
+                            else
+                                echo "dev tun"
+                            fi
+                            echo "ifconfig $ovpn_local_vpn_ip $ovpn_remote_vpn_ip"
+			    echo "route-up /usr/bin/openvpn-helper-route-up"
+			    echo "route-pre-down /usr/bin/openvpn-helper-route-down"
+			    
+                            ovpn_default_route=no
+                            eval ovpn_rnum='$OPENVPN_'$ovpn_idx'_ROUTE_N'
+                            [ 0$ovpn_rnum -eq 0 ] || for ovpn_rdx in `seq 1 $ovpn_rnum`
+                            do
+                                eval ovpn_tmp='$OPENVPN_'$ovpn_idx'_ROUTE_'$ovpn_rdx
+                                case "$ovpn_tmp" in
+                                    "0.0.0.0/0 "*)
+                                        ovpn_default_route=yes
+                                        ovpn_signal_type=SIGHUP
+                                        #ovpn_network=0.0.0.0
+                                        #ovpn_netmask=0.0.0.0
+                                        ovpn_redirect_flags=`echo $ovpn_tmp|sed -e 's#0\.0\.0\.0/0 \(.*\)#\1#'`
+                                    ;;
+                                    # Filter out all IPv6 Routes as thse ones need to be configured other way
+                                    *:*)
+                                        if [ "$ovpn_ipv6" = "yes" ]
+                                        then
+                                          echo route-ipv6 $ovpn_tmp
+                                        fi
+                                        ;;
+                                    *)
+                                        ovpn_network=`netcalc network $ovpn_tmp`
+                                        ovpn_netmask=`netcalc netmask $ovpn_tmp`
+                                        echo "route $ovpn_network $ovpn_netmask"
+                                    ;;
+                                esac
+                            done
+
+                            case "$ovpn_default_route" in
+                                yes)
+                                    echo "redirect-gateway $ovpn_redirect_flags"
+                                ;;
+                                *)
+                                    echo "down-pre"
+                                    echo "plugin /usr/lib/openvpn-plugin-down-root.so \"/usr/bin/openvpn-helper-down\""
+                                    #echo "user nobody"
+                                    #echo "group nogroup"
+                                    # create chroot jail
+                                    #mkdir -p $OVPN_VAR/$ovpn_name/chroot
+                                    #chmod 777 $OVPN_VAR/$ovpn_name/chroot
+                                    #chown nobody.nogroup $OVPN_VAR/$ovpn_name/chroot
+                                    #echo "chroot $OVPN_VAR/$ovpn_name/chroot"
+                                ;;
+                            esac
+
+                            ovpn_rulefile=$OVPN_VAR/$ovpn_name/fwrules
+                            echo "up /usr/bin/openvpn-helper-up"
+                            ovpn_wpr filter PF_INPUT in-ovpn-$ovpn_name $ovpn_rulefile
+                            ovpn_wpr filter PF_FORWARD fw-ovpn-$ovpn_name $ovpn_rulefile
+                            ovpn_wpr nat PF_PREROUTING pi-ovpn-$ovpn_name $ovpn_rulefile
+                            ovpn_wpr nat PF_POSTROUTING po-ovpn-$ovpn_name $ovpn_rulefile
+                            if [ $ovpn_ipv6 = "yes" ]
+                            then
+                              ovpn_wpr filter PF6_INPUT in-ovpn-$ovpn_name ${ovpn_rulefile}.ipv6
+                              ovpn_wpr filter PF6_FORWARD fw-ovpn-$ovpn_name ${ovpn_rulefile}.ipv6
+                            fi
+                            if [ $ovpn_pf_input_policy != $OPENVPN_DEFAULT_PF_INPUT_POLICY ]
+                            then
+                                echo `ovpn_setup_logging $ovpn_pf_input_policy $ovpn_pf_input_log in-ovpn-$ovpn_name` >> $ovpn_rulefile
+                            fi
+                            if [ $ovpn_pf_forward_policy != $OPENVPN_DEFAULT_PF_FORWARD_POLICY ]
+                            then
+                                echo `ovpn_setup_logging $ovpn_pf_forward_policy $ovpn_pf_forward_log fw-ovpn-$ovpn_name` >> $ovpn_rulefile
+                            fi
+
+                            case "$ovpn_default_route" in
+                                yes) echo "\$IPTABLES -I fw-ovpn-$ovpn_name -o \$dev -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu">>$ovpn_rulefile.up.post ;;
+                            esac
+                        ;;
+                        bridge)
+                            if [ "x$ovpn_devnum" != "x" ]
+                            then
+                                echo "dev tap$ovpn_devnum"
+                            else
+                                echo "dev tap"
+                            fi
+                            ovpn_bridge=`cat /var/run/bridge/$ovpn_bridge`
+                            ovpn_bridge_up=$OVPN_VAR/$ovpn_name/bridge-up
+                            ovpn_bridge_down=$OVPN_VAR/$ovpn_name/bridge-down
+                            eval ovpn_cost='$OPENVPN_'$ovpn_idx'_BRIDGE_COST'
+                            eval ovpn_priority='$OPENVPN_'$ovpn_idx'_BRIDGE_PRIORITY'
+                            echo "up $ovpn_bridge_up"
+                            {
+                                echo "#!/bin/sh"
+                                echo ". /etc/boot.d/base-helper"
+                                echo "ip addr flush dev \$dev"
+                                echo "ip link set dev \$dev mtu \$tun_mtu up"
+                                echo "net_alias_add $ovpn_name \$dev"
+                                echo "brctl addif $ovpn_bridge \$dev"
+                                [ 0$cost -gt 0 ] && echo "brctl setpathcost $ovpn_bridge \$dev $ovpn_cost"
+                                [ 0$priority -gt 0 ] && echo "brctl setportprio $ovpn_bridge \$dev $ovpn_priority"
+                            }>$ovpn_bridge_up
+                            chmod 700 $ovpn_bridge_up
+                            echo "plugin openvpn-plugin-down-root.so \"$ovpn_bridge_down\""
+                            {
+                                echo "#!/bin/sh"
+                                echo ". /etc/boot.d/base-helper"
+                                echo "net_alias_del $ovpn_name"
+                            }>$ovpn_bridge_down
+                            chmod 700 $ovpn_bridge_down
+
+                            # create chroot jail
+                            #mkdir -p $OVPN_VAR/$ovpn_name/chroot
+                            #chmod 777 $OVPN_VAR/$ovpn_name/chroot
+                            #chown nobody.nogroup $OVPN_VAR/$ovpn_name/chroot
+                            #echo "chroot $OVPN_VAR/$ovpn_name/chroot"
+                        ;;
+                    esac
+
+                    if [ $ovpn_restart = ip-up ]
+                    then
+                        cat >>$OVPN_IPUP <<EOF
+    if [ -f $ovpn_name/pid ]
+    then
+        ovpnctrl "hold off" "^SUCCESS:" 127.0.0.1 \`cat $ovpn_name/mport\`
+        ovpnctrl "hold release" "^SUCCESS:" 127.0.0.1 \`cat $ovpn_name/mport\`
+        ovpnctrl "signal SIGUSR1" "^SUCCESS:" 127.0.0.1 \`cat $ovpn_name/mport\`
+    fi
+EOF
+                    fi
+
+                    # Below here only connection related options should be added
+                    # These options set the defaults for all connection entries
+                    # that will follow.
+                    [ $ovpn_float = yes ] && echo "float"
+                    case $ovpn_protocol in
+                        udp*)
+                            if [ 0"$ovpn_fragment" -gt 0 ]
+                            then
+                                echo "fragment $ovpn_fragment"
+                                [ -z "$ovpn_mssfix" ] && ovpn_mssfix="1450"
+                            fi
+                        ;;
+                    esac
+                    [ "$ovpn_link_mtu" ] && echo "link-mtu $ovpn_link_mtu"
+                    echo "local $ovpn_local_host"
+                    echo "lport $ovpn_lport"
+                    [ 0"$ovpn_mssfix" -gt 0 ] && echo "mssfix $ovpn_mssfix"
+                    echo "mtu-disc yes"
+                    echo "proto $ovpn_protocol"
+                    [ "$ovpn_tun_mtu" ] && echo "tun-mtu $ovpn_tun_mtu"
+                    [ $ovpn_type = bridge ] && : ${ovpn_tun_mtu_extra:=32}
+                    [ "$ovpn_tun_mtu_extra" ] && echo "tun-mtu-extra $ovpn_tun_mtu_extra"
+
+                    # now create a connection profile for every listen host in remote_host
+                    if [ "$ovpn_remote_host" ]
+                    then
+                        echo "<connection>"
+                        echo "remote $ovpn_remote_host"
+                        [ "$ovpn_rport" ] && echo "rport $ovpn_rport"
+                        echo "</connection>"
+                    fi
+                    eval ovpn_rhosts='$OPENVPN_'$ovpn_idx'_REMOTE_HOST_N'
+                    [ 0$ovpn_rhosts -eq 0 ] || for ovpn_rdx in `seq 1 $ovpn_rhosts`
+                    do
+                        eval ovpn_tmp='$OPENVPN_'$ovpn_idx'_REMOTE_HOST_'$ovpn_rdx
+                        case $ovpn_protocol in
+                          *6|*6-*) if netcalc isipv4 $ovpn_tmp
+                              then
+                                  ovpn_tmp="::ffff:$ovpn_tmp"
+                              fi
+                              ;;
+                        esac
+                        echo "<connection>"
+                        echo "remote $ovpn_tmp"
+                        [ "$ovpn_rport" ] && echo "rport $ovpn_rport"
+                        echo "</connection>"
+                    done
+
+                    # if the remote host is not resolvable while openvpn is starting openvpn
+                    # will never listen to any incomming connection. To avoid this we create
+                    # a "last try" dummy connection to our localhost this allows openvpn to
+                    # start listen for incomming packets. This will obviously only work if
+                    # the option "float" is also set.
+                    #if [ $ovpn_float = yes -a -n "$ovpn_remote_host" ]
+                    #then
+                    #    echo "<connection>"
+                    #    echo "remote 127.0.0.1"
+                    #    echo "rport 65500"
+                    #    echo "</connection>"
+                    #fi
+                }>>$ovpn_name.conf
+
+                ovpn_pktflt_src=
+                ovpn_pktflt_dst=
+                ovpn_pktflt_dev=
+
+                # create packetfilter rules
+                case $ovpn_openport in
+                    yes)
+                        ovpn_pktflt_proto6=''
+                        case $ovpn_protocol in
+                           udp6) ovpn_pktflt_proto=udp; ovpn_pktflt_proto6=udp;;
+                           udp4) ovpn_pktflt_proto=udp;;
+                           tcp6*) ovpn_pktflt_proto=tcp; ovpn_pktflt_proto6=tcp;;
+                           tcp4*) ovpn_pktflt_proto=tcp;;
+                        esac
+                        ovpn_pktflt_src="0.0.0.0/0"
+                        ovpn_pktflt_src6="any"
+                        if [ "$ovpn_remote_host" ]
+                        then
+                            if netcalc isipv4 $ovpn_remote_host
+                            then
+                                ovpn_pktflt_src="$ovpn_remote_host"
+                            elif netcalc isipv6 $ovpn_remote_host
+                            then
+                                ovpn_pktflt_src6="$ovpn_remote_host"
+                            fi
+                        fi
+                        ovpn_pktflt_dst="0.0.0.0/0"
+                        ovpn_pktflt_dst6="any"
+                        ovpn_pktflt_dev="any"
+                        if [ "$ovpn_local_host" ]
+                        then
+                            if netcalc isipv4 $ovpn_local_host
+                            then
+                                ovpn_pktflt_dst="$ovpn_local_host"
+                                # find out device according to the local ip address
+                                ovpn_pktflt_dev=$(ip addr show | grep "inet $ovpn_local_host[ /].*$ovpn_remote_host[ /].*tun" | sed "s/.* \(tun.*\)$/\1/")
+                                # find non tun devices, too
+                                [ $ovpn_pktflt_dev ] || ovpn_pktflt_dev=$(ip addr show | grep "inet $ovpn_local_host[ /]" | sed "s/.* \([a-z]\+[0-9]\+\([.][0-9]\+\)\?\)$/\1/")
+                            elif netcalc isipv6 $ovpn_local_host
+                            then
+                                ovpn_pktflt_dst="$ovpn_local_host"
+                                # find out device according to the local ip address
+                                for dev in `ip a s | sed -n 's/^[0-9]\+: \([^ ]\+\):.*/\1/p'`
+                                do
+                                    if [ -n "`ip a s $dev | grep $ip`" ]
+                                    then
+                                        ovpn_pktflt_dev=$dev
+                                    fi
+                                done
+                            fi
+                        fi
+                       # HACK
+                       ovpn_pktflt_dev="any"
+                        if [ -z "$ovpn_pktflt_dev" ]
+                        then
+                            log_error "Can't determinate device for $ovpn_name, this OpenVPN connection won't work!"
+                        else
+                            if [ -n "$ovpn_pktflt_proto6" ]
+                            then
+                                if [ "$ovpn_pktflt_dst6" = "any" ]
+                                then
+                                    fw_append_rule6 filter in-ovpn-ports "prot:$ovpn_pktflt_proto6 if:$ovpn_pktflt_dev:any $ovpn_pktflt_src6 $ovpn_lport ACCEPT"
+                                else
+                                    fw_append_rule6 filter in-ovpn-ports "prot:$ovpn_pktflt_proto6 if:$ovpn_pktflt_dev:any $ovpn_pktflt_src6 $ovpn_pktflt_dst6 $ovpn_lport ACCEPT"
+                                fi
+                            else
+                                #ipset add nat-ovpn-iface $ovpn_pktflt_src,eth3
+                                #ipset add nat-ovpn-iface $ovpn_pktflt_src,eth1.69
+                                #ipset add nat-ovpn-iface $ovpn_pktflt_src,eth1.94
+                                #ipset add nat-ovpn-ipport 192.168.95.33,$ovpn_pktflt_proto:$ovpn_lport
+                                #ipset add nat-ovpn-ipport 192.168.69.254,$ovpn_pktflt_proto:$ovpn_lport
+                                #ipset add nat-ovpn-ipport 192.168.94.254,$ovpn_pktflt_proto:$ovpn_lport
+                                ipset add nat-ovpn-port $ovpn_pktflt_proto:$ovpn_lport
+
+                                if [ "$ovpn_pktflt_dev" = "any" ]
+                                then
+                                    if [ "$ovpn_pktflt_src" = "0.0.0.0/0" ]
+                                    then
+                                        ipset add in-ovpn-ipport $ovpn_pktflt_dst,$ovpn_pktflt_proto:$ovpn_lport
+                                    else
+                                        ipset add in-ovpn-sip-dipport $ovpn_pktflt_src,$ovpn_pktflt_proto:$ovpn_lport,$ovpn_pktflt_dst
+                                    fi
+                                else
+                                    fw_append_rule filter in-ovpn-ports "prot:$ovpn_pktflt_proto if:$ovpn_pktflt_dev:any $ovpn_pktflt_src $ovpn_pktflt_dst:$ovpn_lport ACCEPT"
+                                fi
+                            fi
+                        fi
+                    ;;
+                esac
+
+                case $ovpn_create_secret in
+                    yes)
+                        log_info "creating OpenVPN secret $ovpn_secret for $ovpn_name"
+                        openvpn --genkey --secret $ovpn_secret
+                    ;;
+                    webgui)
+                        log_info "OpenVPN secret $ovpn_secret should be created with webgui for $ovpn_name"
+                    ;;
+                    no)
+                        case $ovpn_start in
+                            always)
+                                ovpn_extra_opt=
+                                ovpn_extra_text=
+                                if [ $ovpn_restart = ip-up ]
+                                then
+                                    ovpn_extra_opt="--management-hold"
+                                    ovpn_extra_text=" in HOLD mode"
+                                fi
+                            ;;
+                            isdn)
+                                ovpn_extra_text=" (via ISDN link)"
+                            ;;
+                        esac
+                        case $ovpn_start in
+                            on-demand)
+                                log_info "OpenVPN peer $ovpn_name will be started on-demand"
+                            ;;
+                            *)
+                                log_info "starting OpenVPN peer $ovpn_name$ovpn_extra_text"
+                                openvpn --config $OVPN_CFG/$ovpn_name.conf --daemon openvpn-$ovpn_name $ovpn_extra_opt
+                            ;;
+                        esac
+                    ;;
+                esac
+            done
+            ;;
+    esac
+
+    cat >> $OVPN_IPUP <<EOF
+fi
+EOF
+
+    # Make entry to menu of httpd
+    case $OPT_HTTPD$OPENVPN_WEBGUI in
+        yesyes) httpd-menu.sh add -p 365 status_OpenVPN.cgi "OpenVPN" '$_MT_firewall' openvpn;;
+    esac
+
+    end_script
+
+esac

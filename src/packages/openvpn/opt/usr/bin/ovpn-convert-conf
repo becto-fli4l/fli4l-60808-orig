@@ -1,0 +1,89 @@
+#!/bin/sh
+#$Id$
+
+local ovpn_conf=$1
+local ovpn_local=$2
+local ovpn_port_remote=
+local ovpn_port_local=
+local ovpn_proto=
+local ovpn_conf_file=/etc/openvpn/$ovpn_conf.conf
+
+if [ ! -f $ovpn_conf_file ]
+then
+    echo "There's no OpenVPN config with the name $ovpn_conf!"
+    exit 1
+fi
+
+. /boot/rc.cfg
+
+while read line
+do
+    line=`echo "$line" | sed -e '\
+s/^down-pre//;\
+s/^float.*//;\
+s/^local .*//;\
+s/^management.*//;\
+s/^plugin .*//;\
+s/^setenv .*//;\
+s/^status.*//;\
+s/^up .*//;\
+s/^remote .*//;\
+s/^remote-random.*//;\
+s/^route .*//;\
+s/^writepid .*//;'\
+`
+    [ -z "$line" ] && continue
+    case $line in
+	ifconfig*)
+	    set -- $line
+	    echo "ifconfig $3 $2"
+	    continue
+	;;
+	lport*)
+	    set -- $line
+	    ovpn_port_remote="$2"
+	    continue
+	;;
+	rport*)
+	    set -- $line
+	    ovpn_port_local="$2"
+	    continue
+        ;;
+	proto*)
+	    set -- $line
+	    ovpn_proto="$2"
+	    continue
+        ;;
+	secret*)
+	    set -- $line
+	    echo "<secret>"
+	    cat $2
+	    echo "</secret>"
+	    continue
+	    ;;
+    esac
+
+    echo "$line"
+done < $ovpn_conf_file
+
+[ 0$OPENVPN_CONVERT_CONF_CON_N -eq 0 ] || for idx in `seq 1 $OPENVPN_CONVERT_CONF_CON_N`
+do
+    eval host='$OPENVPN_CONVERT_CONF_CON_'${idx}'_HOST'
+    eval float='$OPENVPN_CONVERT_CONF_CON_'${idx}'_FLOAT'
+    echo "<connection>"
+    [ -n "$ovpn_local" ] && echo "local $ovpn_local"
+    [ -n "$ovpn_port_local" ] && echo "lport $ovpn_port_local"
+    echo "remote $host"
+    [ -n "$ovpn_port_remote" ] && echo "rport $ovpn_port_remote"
+    [ -n "$ovpn_proto" ] && echo "proto $ovpn_proto"
+    [ -z "$float" -o "$float" = "yes" ] && echo "float"
+    echo "</connection>"
+done
+
+[ 0$OPENVPN_CONVERT_CONF_ROUTE_N -eq 0 ] || for idx in `seq 1 $OPENVPN_CONVERT_CONF_ROUTE_N`
+do
+    eval r='$OPENVPN_CONVERT_CONF_ROUTE_'${idx}
+    net=`echo $r|sed -e 's#\([^/]\+\).*#\1#`
+    nm=`netcalc netmask $r`
+    echo "route $net $nm"
+done
