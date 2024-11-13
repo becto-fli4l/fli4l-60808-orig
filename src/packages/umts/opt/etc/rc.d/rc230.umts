@@ -1,0 +1,451 @@
+#! /bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc230.umts - start umts device                         __FLI4LVER__
+#
+# Creation:     2005-07-11 Alexander Heinz
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+#
+# functions
+#
+umts_chat(){ ### mit Adapter kommunizieren ##################
+    eval $chatprg "$*" >/dev/$UMTS_CTRL </dev/$UMTS_CTRL
+}
+
+umts_init(){ ### Adapter initialisieren #####################
+    log_info "GSM adapter detected:"
+    for umts_tmp in manufacturer product serial prod_id1  prod_id2 prod_id3 prod_id4; do
+      [ -e $umts_dev_path/$umts_tmp ] && cat $umts_dev_path/$umts_tmp 2>/dev/null
+      [ -e ${umts_dev_path}.0/$umts_tmp ] && cat ${umts_dev_path}.0/$umts_tmp 2>/dev/null
+    done
+
+    if [ ! -z "$UMTS_SWITCH" ]
+    then
+      umts_tmp=$(/usr/sbin/usb_modeswitch -D $UMTS_SWITCH)
+      [ "$UMTS_DEBUG" = yes ] && echo "${umts_tmp}"
+      umts_tmp=$(echo "${umts_tmp}" | grep "^ok:....:....$" |
+                         sed -e "s/ok:\(....\):\(....\)/\1.\2/g")
+      [ ! -z "$umts_tmp" ] && umts_device=$umts_tmp
+    fi
+
+    grep -E "(option|hso|sierra)" /lib/modules/$(uname -r)/modules.alias|
+    sed -e "s/*/.*/g" -e "s/.* \(.*\) \(.*\)/\/\1\/s\/$\/ \2\/p/g" > /tmp/usb_find.$$
+    : ${UMTS_DRV:=$(sed -n -f /tmp/usb_find.$$ $(grep -lE "^(usb|pcmcia):" /sys/bus/*/devices/*/modalias)|
+                grep -i "$umts_device"|grep -Eo "(hso|option|sierra)" | head -n 1)}
+    rm /tmp/usb_find.$$
+
+    if [ -z "$UMTS_DRV" ]
+    then
+      log_info "UMTS: using driver 'usbserial' with option 'vendor=$umts_vend product=$umts_prod'"
+      do_modprobe usbserial vendor=0x$umts_vend product=0x$umts_prod
+      UMTS_DRV='usbserial'
+      UMTS_REAL_DRV=$UMTS_DRV
+    else
+      log_info "UMTS: using driver '$UMTS_DRV'"
+      do_modprobe $UMTS_DRV
+      UMTS_REAL_DRV=$UMTS_DRV
+      # treat sierra and option as usbserial by the remaining code
+      case $UMTS_DRV in
+      option|sierra)
+        UMTS_DRV='usbserial' ;;
+      esac
+    fi
+    log_info "UMTS: initialize device ..."
+    sleep 1
+}
+
+umts_search() { ### Suche Vendor-/ProduktIDs ################
+    eval umts_$1='$(grep -Eio  "^$1.*($umts_prod|$umts_vend)" ${idx} |
+                  sort -r | grep -Eio "($umts_prod|$umts_vend)")'
+}
+
+#
+# main
+#
+if [ "$OPT_UMTS" = yes ]
+then
+  begin_script UMTS "starting UMTS ..."
+
+  umts_tmp="`pwd`"
+  cd /etc/usb_modeswitch.d
+  for idx in *%3A*
+  do
+    ### Wandle Sonderzeichen um ###
+    ### %35 -> #
+    ### %3A -> :
+    ### %3D -> =
+    ### %3F -> ?
+    ln -sf $idx "$(echo $idx | sed -e "s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%35/#/g")"
+  done
+  cd "${umts_tmp}"
+
+  mkdir -p /etc/modprobe.d
+  echo "options hso disable_net=1" >> /etc/modprobe.d/options
+
+  if [ "$UMTS_DEBUG" = yes ]
+  then
+    debug='debug'
+    chatprg='/usr/sbin/chat -v'
+  else
+    debug=''
+    chatprg='/usr/sbin/chat'
+  fi
+
+  ### UMTS-Adapter suchen #####################################
+  log_info "UMTS: searching UMTS device"
+  if [ "$UMTS_ADAPTER" != usbphone ]
+  then
+    do_modprobe_if_exists kernel/drivers/usb/host ohci_hcd
+    sleep 1
+    
+    if [ "$UMTS_ADAPTER" = "gobi1000" ]
+    then
+      eval usbid_pre=$(lsusb | grep -i "gobi 1000" | cut -d " " -f 6)
+      do_modprobe_if_exists kernel/drivers/usb/serial qcserial
+      sleep 1
+      if [ "$usbid_pre" != "${UMTS_IDVENDOR2}:${UMTS_IDDEVICE2}" ]
+      then
+        log_info "UMTS: loading firmware for Gobi 1000 UMTS device"
+        gobi_loader -1000 /dev/ttyUSB0 /lib/firmware/gobi/
+        for i in 1 2 3 4 5 6 7 8 9 10
+        do
+          sleep 1
+          eval usbid_post=$(lsusb | grep -i "gobi 1000" | cut -d " " -f 6)
+          if [ "$usbid_post" != "$usbid_pre" ]
+          then
+            # wait for 5 sec - after this time the firmware is initalized completly and modem and control port are aviable
+            sleep 5
+            break
+          fi
+        done
+      fi
+    fi
+    
+    if [ "$UMTS_ADAPTER" = "gobi2000" ]
+    then
+      eval usbid_pre=$(lsusb | grep -i "gobi 2000"  | cut -d " " -f 6)
+      do_modprobe_if_exists kernel/drivers/usb/serial qcserial
+      sleep 1
+      if [ "$usbid_pre" != "${UMTS_IDVENDOR2}:${UMTS_IDDEVICE2}" ]
+      then
+        log_info "UMTS: loading firmware for Gobi 2000 UMTS device"
+        gobi_loader -2000 /dev/ttyUSB0 /lib/firmware/gobi/
+        for i in 1 2 3 4 5 6 7 8 9 10
+        do
+          sleep 1
+          eval usbid_post=$(lsusb | grep -i "gobi 2000" | cut -d " " -f 6)
+          if [ "$usbid_post" != "$usbid_pre" ]
+          then
+            # wait for 5 sec - after this time the firmware is initalized completly and modem and control port are aviable
+            sleep 5
+            break
+          fi
+        done
+      fi
+    fi
+
+    for umts_dev in $(grep -HE "^(usb|pcmcia):" /sys/bus/*/devices/*/modalias |
+                      grep -Ev "/[0-9]+?\-0:" |
+                      sed -e "s#\(.*\)\.[0-9]/.*#\1#g" |
+                      sort -u)
+    do
+      umts_dev_path=${umts_dev%:*}
+      umts_device=$(cat $umts_dev_path*/modalias| head -n 1 | sed -e "s/.*:.\(....\).\(....\).*/\1.\2/g")
+      umts_vend=${umts_device%.*}
+      umts_prod=${umts_device#*.}
+
+      if [ -z "$UMTS_IDVENDOR" ]
+      then
+
+        UMTS_SWITCH=''
+        UMTS_DRV=''
+
+        ## Suche in "/etc/umts/umts_devices" ##
+        umts_dev_found=$(grep -v "^#" /etc/umts/umts_devices | grep -i "^$umts_device")
+        if [ ! -z "$umts_dev_found" ]
+        then
+          eval set -- $umts_dev_found
+          UMTS_DRV=$3
+          log_info "UMTS: found device defined in /etc/umts/umts_devices"
+          umts_init
+          break
+        fi
+
+        ## Suche usb_modeswitch Defaultdevice ##
+        umts_dev_found=$(ls -1 /etc/usb_modeswitch.d | grep -i "^$umts_device")
+        if [ ! -z "$umts_dev_found" ]
+        then
+          UMTS_SWITCH="-v $umts_vend -p $umts_prod -s 30 -c /etc/usb_modeswitch.d/$umts_dev_found"
+          log_info "UMTS: found device referenced by usb_modeswitch"
+          umts_init
+          break
+        fi
+
+        ## Suche usb_modeswitch Targetdevice (nach Reboot) ##
+        for idx in $(grep -HEi "(prod|vend).*($umts_prod|$umts_vend)" /etc/usb_modeswitch.d/* |
+                     grep -v "%3A" | cut -d: -f-2 | sort -u)
+        do
+          umts_search target
+          umts_search default
+          umts_dev_found="$(echo $umts_target|grep -i "$umts_device")$(echo $umts_default|grep -i "$umts_device")"
+          if [ ! -z "$(echo $umts_dev_found | grep -i "$umts_device")" ]
+          then
+            log_info "UMTS: found device referenced by device-ID in usb_modeswitch files"
+            umts_init
+            break
+          fi
+          umts_dev_found=''
+        done
+        [ -z "$umts_dev_found" ] || break
+      else
+
+        ## Vergleiche mit Daten aus config/umts.txt ##
+        umts_dev_found=$(echo $UMTS_IDVENDOR $UMTS_IDDEVICE ":" $UMTS_IDVENDOR2 $UMTS_IDDEVICE2 |
+                         grep -io "$umts_device")
+        if [ ! -z "$umts_dev_found" ]
+        then
+          log_info "UMTS: found device referenced by IDs in configuration"
+          umts_init
+          break
+        fi
+      fi
+    done
+  fi
+
+  ### USB-Mobiltelefon Kommunikation? #########################
+  if [ -z "$umts_dev_found" ]
+  then
+    do_modprobe_if_exists kernel/drivers/usb/class cdc-acm
+    sleep 3
+    : ${UMTS_DEV:=$(find /sys/bus/usb/devices/* -follow -maxdepth 2 -name ttyACM*[0-9] |
+                    cut -d/ -f8 | sort | head -n1)}
+    UMTS_ADAPTER=usbphone
+
+  ### vorzeitiger Programmabruch? #############################
+    if [ ! "$UMTS_DEV" = ttyACM0 ]
+    then
+      log_error "UMTS: usbphone: no UMTS hardware found as ttyACM0 is missing"
+      UMTS_DEV=
+    fi
+  fi
+
+  log_info "UMTS: detecting control and modem port"
+  if [ "$UMTS_ADAPTER" != "usbphone" ]
+  then
+    case "$UMTS_DRV" in
+      hso)
+        : ${UMTS_DEV:=$(grep -i modem $umts_dev_path*/tty/*/hsotype | cut -d/ -f8 | sort | head -n1)}
+        : ${UMTS_CTRL:=$(grep -i control $umts_dev_path*/tty/*/hsotype | cut -d/ -f8)}
+        if [ -z "$UMTS_DEV" -a -n "UMTS_CTRL" ]
+        then
+           log_error "UMTS: hso: modem port is not enabled - see documentation"
+        fi
+        ;;
+      usbserial)
+
+        # usb_modeswitch_dispatcher --symlink-name Pfad v_id p_id
+        # Pfad  ok    /bus/usb/devices/usb2/2-2/      2-2  :1.0/ttyUSB0/tty/ttyUSB0
+        # Pfad nok    /bus/usb/devices/usb1/1-1/1-1.3/1-1.3:1.0/ttyUSB0/tty/ttyUSB0 über hub
+#       : ${UMTS_DEV:=$(echo $(grep -i interrupt $umts_dev_path*/ep_*/type | head -n 1 |
+#                     sed -e "s#\(.*\)/ep_[0-9][0-9]/.*#\1#g")/ttyUSB* | cut -d/ -f7)}
+
+        int_endpoints=$(grep -i interrupt $umts_dev_path*/ep_*/type | cut -d/ -f7)
+        if [ -n "$int_endpoints" ]
+        then
+          for ep in $int_endpoints
+          do
+            : ${UMTS_DEV:=$(ls -d $umts_dev_path*/$ep/../ttyUSB* 2>/dev/null | cut -d/ -f9 | sort | head -n1)}
+            [ -n "$UMTS_DEV" ] && break
+          done
+        else
+          : ${UMTS_DEV:=$(ls -d $umts_dev_path*/ttyUSB* |
+            cut -d/ -f7 | sort | head -n1)}
+        fi
+
+        : ${UMTS_CTRL:=$(ls -d $umts_dev_path*/ttyUSB* |
+                         cut -d/ -f7)}
+        ;;
+      serial_cs)
+        : ${UMTS_DEV:=$(ls -d $umts_dev_path*/tty/ttyS* |
+                        cut -d/ -f8 | sort | head -n1)}
+        : ${UMTS_CTRL:=$(ls -d $umts_dev_path*/tty/ttyS* |
+                         cut -d/ -f8)}
+        ;;
+      *)
+        log_error "UMTS: device for driver '$UMTS_DRV' not found"
+        log_error "UMTS: please define device in configuration"
+        ;;
+    esac
+  fi
+
+  : ${UMTS_CTRL:="$UMTS_DEV"}
+
+  # find control port to use
+  >/var/run/umts.ctrl
+  for j in $UMTS_CTRL
+  do
+    chat -t1 '' "AT" OK >/dev/$j </dev/$j
+    [ $? = 0 ] && echo $j >>/var/run/umts.ctrl
+  done
+
+  if [ -n "$UMTS_DEV" -a $(wc -l < /var/run/umts.ctrl) -gt 1 ]
+  then
+    grep -v $UMTS_DEV /var/run/umts.ctrl >/var/run/umts.ctrl1
+    mv /var/run/umts.ctrl1 /var/run/umts.ctrl
+  fi
+
+  # Sierra has the anomality that the _last_ answering device is the control
+  # port, not the _first_ one...
+  case $UMTS_REAL_DRV in
+  sierra)
+    UMTS_CTRL=$(tail -n1 /var/run/umts.ctrl)
+    ;;
+  *)
+    UMTS_CTRL=$(head -n1 /var/run/umts.ctrl)
+    ;;
+  esac
+
+  ### vorzeitiger Programmabruch ? kein Modemanschluss ########
+  if [ -z "$UMTS_CTRL" ]
+  then
+    log_error "UMTS: no control port for UMTS device found"
+  else
+    log_info "UMTS: using device '/dev/$UMTS_CTRL' as control port"
+
+    # ab hier UMTS Modem
+    #
+    if [ -z "$UMTS_DEV" ]
+    then
+      log_error "UMTS: no modem port for UMTS device found"
+    else
+      for umts_tmp in `seq 1 10`
+      do
+        [ -c /dev/$UMTS_DEV ] && break
+        sleep 1
+      done
+
+      if [ ! -c /dev/$UMTS_DEV ]
+      then
+        log_error "UMTS: modem port '/dev/$UMTS_DEV' does not exist"
+      elif [ "$UMTS_DRV" = serial_cs ] && ! type -p setserial >/dev/null
+      then
+        log_error "UMTS: UMTS_ADAPTER='pcmcia' is not set in configuration"
+      else
+        log_info "UMTS: using device '/dev/$UMTS_DEV' as modem port"
+
+        ln -sf /dev/$UMTS_DEV /dev/gsmmodem
+        UMTS_DEV=gsmmodem
+        echo "$UMTS_DEV" >/var/run/umts.dev
+
+        if [ "$UMTS_DRV" = serial_cs ]
+        then
+          setserial /dev/$UMTS_DEV baud_base 460800 spd_warp low_latency
+        fi
+
+        ### GPRS/UMTS-Modus setzen ##################################
+        log_info "UMTS: setting operation mode to '$UMTS_GPRS_UMTS'"
+        if [ "$UMTS_ADAPTER" != usbphone ]
+        then
+          if [ $UMTS_PIN != disabled ]
+          then
+            # the APU requires to select the SIM slot to use even if only one slot is
+            # available...
+            umts_chat "''" "AT+CFUN=1,0" OK
+            umts_chat -t2 "''" "AT+CPIN?" "READY-AT+CPIN=$UMTS_PIN-OK"
+          fi
+          umts_chat -t1 "''" ATZ OK 'at_opsys?' OK
+          umts_tmp=$?
+          log_info "UMTS: OPSYS status: $umts_tmp"
+
+          case $UMTS_GPRS_UMTS$umts_tmp in
+            gprs0)  umts_chat "''" 'at_opsys=0,2' OK ;;
+            umts0)  umts_chat "''" 'at_opsys=1,2' OK ;;
+            gprs*)  umts_chat "''" 'at\$nwrat=1,2' OK ;;
+            umts*)  umts_chat "''" 'at\$nwrat=2,2' OK ;;
+            *)  umts_chat -t3 "''" AT OK-AT-OK ;;
+          esac
+          ###########################################################################
+          # Novatel command:
+          # - AT$NWRAT=x,y
+          # Benutze den Befehl, um mit dem Adapter nur GPRS oder UMTS oder Beide zu betreiben.
+          # x = 0 (automatic), 1 (GPRS), 2 (3G/UMTS) mode
+          # y = 0 (CS circuit switched mode), 1 (PS packet switched mode), 2 (automatic CS/PS)
+          # So best is, if you want to set mode... use...:
+          # GPRS      only: AT$NWRAT=1,2
+          # 3G(UMTS)  only: AT$NWRAT=2,2
+          # automatic mode: AT$NWRAT=0,2
+          ###########################################################################
+          # Option  AT_OPSYS? (Status abfragen)
+          #         at_opsys=0,2 (nur GPRS), at_opsys=1,2 (nur UMTS),
+          #         at_opsys=2,2 (eher GPRS), at_opsys=3,2 (eher UMTS).
+          ###########################################################################
+        fi
+
+        log_info "UMTS: sleeping (UMTS detection may take a while)"
+        sleep 4
+
+        if [ "$UMTS_DEBUG" = yes ]
+        then
+          set | grep -i ^umts_ | sed "s/^UMTS_PIN=.*/UMTS_PIN='XXXX'/"
+        fi
+      fi
+    fi
+
+    if [ "$OPT_SMS" = yes ]
+    then
+      map2persistent SMS_FOLDER /sms
+      map2persistent SMS_LOGFILE /smsd.log
+
+      mkdir -p ${SMS_FOLDER}/checked
+      mkdir -p ${SMS_FOLDER}/incoming
+      mkdir -p ${SMS_FOLDER}/outgoing
+      if [ "$SMS_FOLDER_FAIL" = 'yes' ]
+      then
+        mkdir -p ${SMS_FOLDER}/failed
+        SMS_FOLDER_FAIL="failed = ${SMS_FOLDER}/failed"
+      else
+        SMS_FOLDER_FAIL=""
+      fi
+      if [ "$SMS_FOLDER_SENT" = 'yes' ]
+      then
+        mkdir -p ${SMS_FOLDER}/sent
+        SMS_FOLDER_SENT="sent = ${SMS_FOLDER}/sent"
+      else
+        SMS_FOLDER_SENT=""
+      fi
+
+      if [ $UMTS_PIN != disabled ]
+      then
+        UMTS_PIN="pin = $UMTS_PIN"
+      else
+        UMTS_PIN=
+      fi
+
+      cat <<EOF >/etc/smsd.conf
+outgoing = ${SMS_FOLDER}/outgoing
+checked = ${SMS_FOLDER}/checked
+$SMS_FOLDER_FAIL
+incoming = ${SMS_FOLDER}/incoming
+$SMS_FOLDER_SEND
+logfile = $SMS_LOGFILE
+loglevel = $SMS_LOGLEVEL
+devices = GSM
+
+[GSM]
+device = /dev/$UMTS_CTRL
+incoming = $SMS_RECEIVER
+rtscts = off
+memory_start = 0
+$UMTS_PIN
+EOF
+
+      [ -d /var/spool/sms ] && find /var/spool/sms -name '*.LOCK' -exec rm {} \;
+      smsd &
+
+    fi
+    set|grep -i -e "opt_sms" -e "^SMS_" >/var/run/sms.conf
+  fi
+
+  end_script
+fi

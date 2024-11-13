@@ -1,0 +1,88 @@
+% Do not remove the next line
+% Synchronized to r29821
+
+\section {UMTS}
+
+\subsection{Matériel pris en charge}
+
+\begin{verbatim}
+ Les paquetages supplémentaires sont nécessaires pour le bon fonctionnement de
+ UMTS. Pour les adaptateurs-USB le paquetage USB doit être activé avec
+ OPT_USB ='yes'. Ce paquetage prend en charge le matériel UMTS suivant~:
+
+Matériel               tester            paquetage supplémentaire
+
+Adaptateur Novatel~:
+Merlin U530             oui              PCMCIA, TOOLS (serial)
+Merlin U630             non              PCMCIA, TOOLS (serial)
+MC950D                  oui              USB
+
+OPTION d'adaptateur~:
+3G Datacard             non              PCMCIA, USB
+GT 3G Quad              oui              PCMCIA, USB
+GT Fusion               non              PCMCIA, USB
+GT MAX HSUPA GX0301     oui              PCMCIA, USB
+Pour ces quatre adaptateurs Cardbus vous devez indiquer PCMCIA_PCIC='yenta_socket'
+
+Icon 225 (GIO225)       oui              USB
+
+Adaptateur Huawei~:
+E220, E230, E270        oui              USB
+E510                    oui              USB
+E800                    oui              USB
+K3520                   oui              USB
+
+Adaptateur ZTE~:
+MF110                   oui              USB
+MF190                   oui              USB
+\end{verbatim}
+
+
+\subsection{Si l'interface modem n'est pas activée}
+
+ Il peut arriver, que certaines OPTIONS du Sticks UMTS ne soient pas activées
+ pour l'interface du modem, ces options sont nécessaires pour le protocole pppd.
+
+\begin{verbatim}
+Exemple d'utilisation pour l'adaptateur GIO225
+
+Contrôler avec la commande suivante~:
+grep "" /sys/bus/usb/devices/*/tty/*/hsotype
+
+La sortie sur la console devrait ressembler à ceci~:
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS0/hsotype:Control
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS1/hsotype:Application
+/sys/bus/usb/devices/2-1:1.1/tty/ttyHS2/hsotype:Diagnostic
+
+Dans cette distribution l'entrée modem "hsotype:Modem" existent pas.
+
+Maintenant, vous pouvez vérifier la configuration de l'interface avec la
+commande suivante~:
+chat -e -t 1 '' "AT_OIFC?" OK >/dev/ttyHS0 </dev/ttyHS0
+
+La sortie sur la console devrait ressembler à ceci~:
+AT_OIFC?
+_OIFC: 3,1,1,0
+
+OK
+
+ou à ceci~:
+AT_OIFC?
+_OIFC: 2,1,1,0
+
+OK
+
+Vous pouvez activer l'interface du modem avec la commande suivante~:
+chat -e -t 1 '' "AT_OIFC=3,1,1,0" OK >/dev/ttyHS0 </dev/ttyHS0
+
+Ensuite, retirer l'adaptateur et rebranchez le à nouveau, ensuite refaite
+un contrôle~:
+grep "" /sys/bus/usb/devices/*/tty/*/hsotype
+
+Maintenant l'entrée modem existent.
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS0/hsotype:Control
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS1/hsotype:Application
+/sys/bus/usb/devices/2-1:1.1/tty/ttyHS2/hsotype:Diagnostic
+/sys/bus/usb/devices/2-1:1.2/tty/ttyHS3/hsotype:Modem
+\end{verbatim}
+

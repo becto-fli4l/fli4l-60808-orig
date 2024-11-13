@@ -1,0 +1,87 @@
+% Synchronized to r29821
+\section {UMTS}
+
+\subsection{Supported Hardware}
+
+\begin{verbatim}
+This package supports the follwing UMTS-hardware:
+For proper operation other packages may be needed.
+For USB-Adapters Package USB has to be activated.
+OPT_USB='yes'
+
+Hardware:               tested           additional packages
+
+Novatel Adapters:
+Merlin U530             yes              PCMCIA, TOOLS (serial)
+Merlin U630             no               PCMCIA, TOOLS (serial)
+
+MC950D                  yes              USB
+
+
+OPTION Adapters:
+3G Datacard             no               PCMCIA, USB
+GT 3G Quad              yes              PCMCIA, USB
+GT Fusion               no               PCMCIA, USB
+GT MAX HSUPA GX0301     yes              PCMCIA, USB
+for the four Cardbus-adapters set PCMCIA_PCIC='yenta_socket'
+
+Icon 225 (GIO225)       yes              USB
+
+Huawei Adapter:
+E220, E230, E270        yes              USB
+E510                    yes              USB
+E800                    yes              USB
+K3520                   yes              USB
+
+ZTE Adapter:
+MF110                   yes              USB
+MF190                   yes              USB
+\end{verbatim}
+
+
+\subsection{Modem Interface Not Activated}
+
+For some OPTION UMTS Sticks it may occur that the Modem interface
+which is needed for pppd is not activated.
+
+\begin{verbatim}
+Example using GIO225 adapter
+
+check via:
+grep "" /sys/bus/usb/devices/*/tty/*/hsotype
+
+Output should look like this:
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS0/hsotype:Control
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS1/hsotype:Application
+/sys/bus/usb/devices/2-1:1.1/tty/ttyHS2/hsotype:Diagnostic
+
+hsotype:Modem is missing here.
+
+Check the interface configuration via this comman:
+chat -e -t 1 '' "AT_OIFC?" OK >/dev/ttyHS0 </dev/ttyHS0
+
+Output should look like this:
+AT_OIFC?
+_OIFC: 3,1,1,0
+
+OK
+
+If you see this
+AT_OIFC?
+_OIFC: 2,1,1,0
+
+OK
+
+you can activate the modem interface via the command:
+chat -e -t 1 '' "AT_OIFC=3,1,1,0" OK >/dev/ttyHS0 </dev/ttyHS0
+
+After that unplug the adapter and replug it afterwards.
+Now check via:
+grep "" /sys/bus/usb/devices/*/tty/*/hsotype
+
+for a modem entry.
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS0/hsotype:Control
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS1/hsotype:Application
+/sys/bus/usb/devices/2-1:1.1/tty/ttyHS2/hsotype:Diagnostic
+/sys/bus/usb/devices/2-1:1.2/tty/ttyHS3/hsotype:Modem
+\end{verbatim}

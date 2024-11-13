@@ -1,0 +1,167 @@
+﻿##-----------------------------------------------------------------------------
+## umts.ext - fli4l extended configuration check                   __FLI4LVER__
+##
+## Creation:     2005-07-11 Alexander Heinz
+## Last Update:  $Id$
+##
+## Copyright (c) 2005 Alexander Heinz <mailsanmich@gmx.li>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if ( opt_umts )
+then
+    provides umts version 4.0.0
+    depends on fli4l version 4.0
+    depends on ppp version 4.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_UMTS='yes' requires OPT_PPP='yes'"
+    fi
+
+    if ( !OPT_USB && umts_adapter != "pcmcia" )
+    then
+      error "umts: You must set OPT_USB='yes'. OPT_UMTS requires it for usbsticks and usbphone"
+    fi
+
+    if ( umts_adapter == "pcmcia" )
+    then
+      if ( !opt_pcmcia )
+      then
+        error "umts: you must set OPT_PCMCIA='yes' then you use a pccard"
+      else
+        if ( PCMCIA_PCIC != "yenta_socket" )
+        then
+          warning "umts: The UMTS card from option requires a Cardbus adapter (PCMCIA_PCIC='yenta_socket')"
+        fi
+        set umts_tmp = "no"
+        foreach i in pcmcia_misc_%
+        do
+          if ( i == "serial_cs" )
+          then
+            set umts_tmp = "yes"
+          fi
+        done
+        if ( umts_tmp == "yes" )
+        then
+          #  novatel pcmcia
+          add_to_opt "usr/bin/setserial" "mode=555"
+        else
+          warning "umts: Set PCMCIA_MISC_x='serial_cs' then use a PCMCIAcard and not a PCcard"
+          #  option pccard
+          if (!opt_usb )
+          then
+            warning "umts: You must set OPT_USB='yes'. OPT_UMTS requires it for pccards"
+          fi
+          add_to_opt "usbserial.ko"
+          add_to_opt "option.ko"
+        fi
+      fi
+    else
+      if ( umts_adapter == "usbphone" )
+      then
+        if ( umts_idvendor != "" )
+        then
+          error "umts: is UMTS_ADAPTER='usbphone' don't use variable UMTS_IDVENDOR"
+        fi
+        if ( defined(umts_dev) && umts_dev != "ttyACM0" )
+        then
+          error "umts: is UMTS_ADAPTER='usbphone' then use UMTS_DEV='ttyACM0'"
+        fi
+        add_to_opt "cdc-acm.ko"
+      else
+        if ( ( umts_adapter == "gobi1000" ) || ( umts_adapter == "gobi2000" ) )
+        then
+          add_to_opt "qcserial.ko"
+          add_to_opt "usr/bin/gobi_loader" "mode=555"
+          stat("$config_dir/lib/firmware/gobi/amss.mbn", firmwarefile)
+          if(firmwarefile_res == "OK")
+          then
+            add_to_opt "lib/firmware/gobi/amss.mbn"
+          else
+            error "umts: missing firmware file amss.mbn in subdir lib/firmware/gobi/ of your config directory"
+          fi
+          stat("$config_dir/lib/firmware/gobi/apps.mbn", firmwarefile)
+          if(firmwarefile_res == "OK")
+          then
+            add_to_opt "lib/firmware/gobi/apps.mbn"
+          else
+            error "umts: missing firmware file apps.mbn in subdir lib/firmware/gobi/ of your config directory"
+          fi
+          if ( umts_adapter == "gobi2000" )
+          then
+            stat("$config_dir/lib/firmware/gobi/UQCN.mbn", firmwarefile)
+            if(firmwarefile_res == "OK")
+            then
+              add_to_opt "lib/firmware/gobi/UQCN.mbn"
+            else
+              error "umts: missing firmware file UQCN.mbn in subdir lib/firmware/gobi/ of your config directory"
+            fi
+            if ( !defined(UMTS_IDVENDOR) )
+            then
+              error "umts: please set UMTS_IDVENDOR to the vendorid of your gobi umts device befor firmware is loaded"
+            fi
+            if ( !defined(UMTS_IDDEVICE) )
+            then
+              error "umts: please set UMTS_IDDEVICE to the deviced of your gobi umts device befor firmware is loaded"
+            fi
+            if ( !defined(UMTS_IDVENDOR2) )
+            then
+              error "umts: please set UMTS_IDVENDOR2 to the vendorid of your gobi umts device after firmware is loaded"
+            fi
+            if ( !defined(UMTS_IDDEVICE2) )
+            then
+              error "umts: please set UMTS_IDDEVICE2 to the deviced of your gobi umts device after firmware is loaded"
+            fi
+          fi
+        else
+          add_to_opt "usbserial.ko"
+          add_to_opt "option.ko"
+          add_to_opt "hso.ko"
+          add_to_opt "sierra.ko"
+        fi
+      fi
+    fi
+
+    if ( opt_httpd )
+    then
+      add_to_opt "etc/rc.d/rc437.http_umts" "mode=555 flags=sh"
+      add_to_opt "srv/www/admin/umts.cgi" "mode=555 flags=sh"
+      add_to_opt "usr/share/at_syntax" "flags=utxt"
+    fi
+fi
+
+#
+# Circuits
+#
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set type=CIRC_%_TYPE[i]
+        if (type == "ppp")
+        then
+            set ppptype=CIRC_%_PPP_TYPE[i]
+            if (ppptype == "umts")
+            then
+                if (!opt_umts)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_UMTS='yes'"
+                fi
+                if (CIRC_%_UMTS_DIALOUT[i] == "")
+                then
+                    error "CIRC_${i}_UMTS_DIALOUT must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+                if (CIRC_%_UMTS_APN[i] == "")
+                then
+                    error "CIRC_${i}_UMTS_APN must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+            fi
+        fi
+    fi
+done

@@ -1,0 +1,44 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# Creation:     Hans Kraus                                         __FLI4LVER__
+# Last Update:  $Id$
+#
+#------------------------------------------------------------------------------
+# Get signal strength and error rate out of the Adapter using sending 'AT+CSQ'
+# The first value (before the comma) should be signal strength in dBm.
+# The second one (after the comma) should be bit error rate in %.
+# Both seem not to be what they should.
+#------------------------------------------------------------------------------
+
+case $1 in
+  tty*)
+    umts_ctrl=$1 ;;
+  webif)
+    [ -f /var/run/umts.ctrl ] && umts_ctrl=`cat /var/run/umts.ctrl`
+    [ -z "$umts_ctrl" ] && return
+    ;;
+  *)
+    echo "this is not a 'tty' interface"
+    echo "usage: `basename $0` ttyS0|ttyS1|...|ttyUSB0|...|ttyACM0|...|ttyHS0|..."
+    return ;;
+esac
+
+while [ -f /var/lock/umts.get_csq ] ; do
+  sleep 1
+done
+>/var/lock/umts.get_csq
+
+for j in $umts_ctrl ; do
+  chat -e -t1 '' "AT+CSQ" OK >/dev/$j </dev/$j 2>/tmp/umts.csq
+  sed -n '/\+CSQ:/p' /tmp/umts.csq | sed -n 's/.*\+CSQ:.*\([0-9,]*\).* /\1/g;$p'|grep ""
+  [ $? = 0 ] && break
+done
+
+if [ $1 = webif ] ; then
+  echo $umts_ctrl | sed -e "s/$j/ /;s/./$j &/">/var/run/umts.ctrl
+  >/tmp/umts.settings
+  if [ ! "`grep -hE "^pcmcia:.00AF.(1AAF|0276)" /sys/bus/*/devices/*/modalias`" ] ; then
+    chat -e -t2 '' "AT&V" OK >/dev/$j </dev/$j 2>/tmp/umts.settings
+  fi
+fi
+rm -f /var/lock/umts.get_csq

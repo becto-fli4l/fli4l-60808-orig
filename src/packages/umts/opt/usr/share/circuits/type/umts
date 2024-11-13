@@ -1,0 +1,67 @@
+#! /bin/sh
+#------------------------------------------------------------------------------
+# /usr/share/circuits/type/umts - UMTS circuits                    __FLI4LVER__
+#
+# Creation:     2005-07-11 Alexander Heinz
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+UMTS_DEV_FILE=/var/run/umts.dev
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_umts_circuit_add()
+{
+    if [ ! -f "$UMTS_DEV_FILE" ]
+    then
+        eval $3=\"UMTS hardware not found, UMTS circuit ignored\"
+        return 1
+    fi
+
+    local umts_dev=$(cat "$UMTS_DEV_FILE")
+
+    cat <<CHATEOF > /etc/chatscript_umts.$circ_name
+ABORT BUSY
+ABORT 'NO CARRIER'
+ABORT DELAYED
+ABORT VOICE
+ABORT 'NO DIALTONE'
+ABORT 'NO DIAL TONE'
+ABORT 'NO ANSWER'
+ABORT ERROR
+REPORT CONNECT
+TIMEOUT 3
+'' ATZ
+OK 'AT+CGDCONT=1,"IP","$circ_umts_apn"'
+SAY 'Calling $circ_umts_apn\n'
+OK 'AT+CSQ'
+OK ATD$circ_umts_dialout
+TIMEOUT 30
+CONNECT \d\c
+CHATEOF
+
+    if [ "$ppp_debug" = yes ] ; then
+        local chatprg='/usr/sbin/chat -v'
+    else
+        local chatprg='/usr/sbin/chat'
+    fi
+    ppp_connect="$chatprg -f /etc/chatscript_umts.$circ_name"
+
+    cat <<EOF >> $2
+/dev/$umts_dev
+460800
+modem
+crtscts
+lock
+EOF
+
+    do_modprobe ppp_async
+
+    cat >> $1 <<EOF
+circ_umts_dialout=$circ_umts_dialout
+circ_umts_apn=$circ_umts_apn
+EOF
+
+    return 0
+}

@@ -1,0 +1,111 @@
+% Last Update: $Id$
+\section {UMTS}
+
+\subsection{Unterstützte Hardware}
+
+Dieses Paket unterstützt die im Folgenden gelistete UMTS-Hardware.
+Für den Betrieb sind unter anderem auch weitere Pakete erforderlich.
+Für USB-Adapter muss das USB-Paket via \verb+OPT_USB='yes'+ aktiviert werden.
+
+\begin{verbatim}
+Hardware:               getestet        zusätzliche Pakete
+
+Novatel Adapter:
+Merlin U530             ja              PCMCIA, TOOLS (serial)
+Merlin U630             nein            PCMCIA, TOOLS (serial)
+
+MC950D                  ja              USB
+
+
+OPTION Adapter:
+3G Datacard             nein            PCMCIA, USB
+GT 3G Quad              ja              PCMCIA, USB
+GT Fusion               nein            PCMCIA, USB
+GT MAX HSUPA GX0301     ja              PCMCIA, USB
+\end{verbatim}
+(bei den vier Cardbusadaptern ist \verb+PCMCIA_PCIC='yenta_socket'+ zu setzen)
+
+\begin{verbatim}
+Icon 225 (GIO225)       ja              USB
+
+Huawei Adapter:
+E220, E230, E270        ja              USB
+E510                    ja              USB
+E800                    ja              USB
+K3520                   ja              USB
+
+ZTE Adapter:
+MF110                   ja              USB
+MF190                   ja              USB
+
+Karten von verschiedenen Herstellern basierend auf den Chipsätzen:
+GOBI 1000               ja              USB
+GOBI 2000               ja              USB
+Es werden zusätzlich die entsprechende Firmwaredateien im Verzeichnis
+<config-dir>/lib/firmware/gobi/ benötigt. Wie man diese findet und bereitstellt
+kann über eine Suchmaschine festgestellt werden: Begriffe gobi_loader, firmware
+\end{verbatim}
+
+\subsection{Modemschnittstelle nicht aktiviert}
+
+Bei einigen UMTS-Sticks des Typs OPTION kann es vorkommen, dass die
+Modemschnittstelle nicht aktiviert ist, welche aber für den PPP-Dämon benötigt
+wird.
+
+\subsection{Beispiel}
+
+Es folgt ein Beispiel anhand eines GIO225 Adapters. Zuerst werden die
+verfügbaren Schnittstellen geprüft:
+\begin{verbatim}
+grep "" /sys/bus/usb/devices/*/tty/*/hsotype
+\end{verbatim}
+
+Die Ausgabe sollte etwa so aussehen:
+\begin{verbatim}
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS0/hsotype:Control
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS1/hsotype:Application
+/sys/bus/usb/devices/2-1:1.1/tty/ttyHS2/hsotype:Diagnostic
+\end{verbatim}
+
+Hier fehlt die Ausgabe \verb+hsotype:Modem+.
+
+Jetzt kann man mit dem folgenden Befehl die Interface-Konfiguration
+abfragen:
+\begin{verbatim}
+chat -e -t 1 '' "AT_OIFC?" OK >/dev/ttyHS0 </dev/ttyHS0
+\end{verbatim}
+
+Die Ausgabe sollte folgendermassen aussehen:
+\begin{verbatim}
+AT_OIFC?
+_OIFC: 3,1,1,0
+
+OK
+\end{verbatim}
+
+Sollte dort Folgendes stehen:
+\begin{verbatim}
+AT_OIFC?
+_OIFC: 2,1,1,0
+
+OK
+\end{verbatim}
+
+kann man die Modemschnittstelle mit dem folgenden Befehl aktivieren:
+\begin{verbatim}
+chat -e -t 1 '' "AT_OIFC=3,1,1,0" OK >/dev/ttyHS0 </dev/ttyHS0
+\end{verbatim}
+
+Danach den Adapter noch einmal abziehen und neu anstecken.
+Jetzt sollte mittels
+\begin{verbatim}
+grep "" /sys/bus/usb/devices/*/tty/*/hsotype
+\end{verbatim}
+
+auch ein Modemeintrag vorhanden sein:
+\begin{verbatim}
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS0/hsotype:Control
+/sys/bus/usb/devices/2-1:1.0/tty/ttyHS1/hsotype:Application
+/sys/bus/usb/devices/2-1:1.1/tty/ttyHS2/hsotype:Diagnostic
+/sys/bus/usb/devices/2-1:1.2/tty/ttyHS3/hsotype:Modem
+\end{verbatim}
