@@ -1,0 +1,456 @@
+﻿#------------------------------------------------------------------------------
+# fli4l __FLI4LVER__ - extended check script for qos
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+## --------------------------
+## Check if OPT_QOS is active
+## --------------------------
+
+provides qos version 4.0.0
+
+if (OPT_QOS=="yes")
+then
+    stat("opt/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/imq.ko", tmpoption1)
+    stat("opt/lib/modules/${KERNEL_VERSION}/kernel/net/netfilter/xt_IMQ.ko", tmpoption2)
+    if ( tmpoption1_res != "OK" || tmpoption2_res != "OK" )
+    then
+      error "Your kernel does not support IMQ (Intermediate Queueing Device) -- Quality of Service is not possible"
+    else
+      add_to_opt "imq.ko"
+      add_to_opt "xt_IMQ.ko"
+    fi
+
+if (QOS_PRIO!="yes")
+then
+  ## --------------------------
+  ## set global vars
+  ## --------------------------
+  set max_recursion=7
+  set DO_DEBUG=0
+
+  ## --------------------------
+  ## creating additonal vars in an QOS_CLASSext_x array
+  ## to make things easier
+  ## the new vars are:
+  ## QOS_CLASSext_x_LEVEL
+  ## QOS_CLASSext_x_CHILDREN
+  ## QOS_CLASSext_x_CHILDREN_BAND (in Kibit/s)
+  ## QOS_CLASSext_x_MINBAND (in Kibit/s)
+  ## QOS_CLASSext_x_MAXBAND (in Kibit/s)
+  ##
+  ## in additon to that, there will be 2 vars that hold
+  ## the indices of all level 1 (_PARENT='0') classes
+  ## and 2 vars to hold the sum of their bandwidths,
+  ## one for each direction
+  ## QOS_CLASS_ROOT_CHILDREN_UP
+  ## QOS_CLASS_ROOT_CHILDREN_DOWN
+  ## QOS_CLASS_ROOT_BAND_CHILDREN_UP
+  ## QOS_CLASS_ROOT_BAND_CHILDREN_DOWN
+  ## QOS_CLASS_ROOT_BAND_UP
+  ## QOS_CLASS_ROOT_BAND_DOWN
+  ## --------------------------
+
+  ## setting defaultvalues
+  set QOS_CLASS_ROOT_CHILDREN_UP=""
+  set QOS_CLASS_ROOT_CHILDREN_DOWN=""
+  set QOS_CLASS_ROOT_BAND_CHILDREN_UP=0
+  set QOS_CLASS_ROOT_BAND_CHILDREN_DOWN=0
+  set QOS_CLASS_ROOT_BAND_UP=0
+  set QOS_CLASS_ROOT_BAND_DOWN=0
+
+  ## extract the bandwidths and transform everything to Kibit/s
+  if (QOS_INTERNET_BAND_UP =~ ".*Kibit/s")
+  then
+    split (QOS_INTERNET_BAND_UP, tmp_%, 'K')
+    set QOS_CLASS_ROOT_BAND_UP=tmp_%[1]:numeric
+  else
+    split (QOS_INTERNET_BAND_UP, tmp_%, 'M')
+    set QOS_CLASS_ROOT_BAND_UP=tmp_%[1]:numeric*1024
+  fi
+  if (QOS_INTERNET_BAND_DOWN =~ ".*Kibit/s")
+  then
+    split (QOS_INTERNET_BAND_DOWN, tmp_%, 'K')
+    set QOS_CLASS_ROOT_BAND_DOWN=tmp_%[1]:numeric
+  else
+    split (QOS_INTERNET_BAND_DOWN, tmp_%, 'M')
+    set QOS_CLASS_ROOT_BAND_DOWN=tmp_%[1]:numeric*1024
+  fi
+
+  foreach i in QOS_CLASS_N
+  do
+    ## setting defaultvalues
+    set QOS_CLASSext_%_LEVEL[i]=1
+    set QOS_CLASSext_%_CHILDREN[i]=""
+    set QOS_CLASSext_%_CHILDREN_BAND[i]=0
+    set QOS_CLASSext_%_MINBAND[i]=0
+    set QOS_CLASSext_%_MAXBAND[i]=0
+    set QOS_CLASSext_%_FILTERS[i]=""
+
+    ## ----------------------------
+    ## check if parent has been created prior to the current class
+    ## this has to be checked here
+    ## because elsewhise problems could occure
+    ## ----------------------------
+    if (QOS_CLASS_%_PARENT[i] >= i)
+    then
+      set temp=QOS_CLASS_%_PARENT[i]
+      fatal_error "QOS_CLASS_${i}_PARENT='$temp': parent-class has to be created prior to this class"
+    fi
+
+    ## extract the bandwidths and transform everything to Kibit/s
+    if (QOS_CLASS_%_MINBANDWIDTH[i] =~ ".*Kibit/s")
+    then
+      split (QOS_CLASS_%_MINBANDWIDTH[i], tmp_%, 'K')
+      set QOS_CLASSext_%_MINBAND[i]=tmp_%[1]:numeric
+    else
+      split (QOS_CLASS_%_MINBANDWIDTH[i], tmp_%, 'M')
+      set QOS_CLASSext_%_MINBAND[i]=tmp_%[1]:numeric * 1024
+    fi
+    if (QOS_CLASS_%_MAXBANDWIDTH[i] =~ ".*Kibit/s")
+    then
+      split (QOS_CLASS_%_MAXBANDWIDTH[i], tmp_%, 'K')
+      set QOS_CLASSext_%_MAXBAND[i]=tmp_%[1]:numeric
+    else
+      split (QOS_CLASS_%_MAXBANDWIDTH[i], tmp_%, 'M')
+      set QOS_CLASSext_%_MAXBAND[i]=tmp_%[1]:numeric * 1024
+    fi
+
+    ## fill child and level vars
+    if (QOS_CLASS_%_PARENT[i] != "0")
+    then
+      set QOS_CLASSext_%_LEVEL[i]=QOS_CLASSext_%_LEVEL[QOS_CLASS_%_PARENT[i]] + 1
+
+      set temp=QOS_CLASSext_%_CHILDREN[QOS_CLASS_%_PARENT[i]]
+      set QOS_CLASSext_%_CHILDREN[QOS_CLASS_%_PARENT[i]]="${temp}$i "
+
+      set QOS_CLASSext_%_CHILDREN_BAND[QOS_CLASS_%_PARENT[i]]=QOS_CLASSext_%_CHILDREN_BAND[QOS_CLASS_%_PARENT[i]] + QOS_CLASSext_%_MINBAND[i]
+    else
+      if (QOS_CLASS_%_DIRECTION[i] == "up")
+      then
+        set QOS_CLASS_ROOT_CHILDREN_UP="${QOS_CLASS_ROOT_CHILDREN_UP}$i "
+        set QOS_CLASS_ROOT_BAND_CHILDREN_UP=QOS_CLASS_ROOT_BAND_CHILDREN_UP + QOS_CLASSext_%_MINBAND[i]
+      else
+        set QOS_CLASS_ROOT_CHILDREN_DOWN="${QOS_CLASS_ROOT_CHILDREN_DOWN}$i "
+        set QOS_CLASS_ROOT_BAND_CHILDREN_DOWN=QOS_CLASS_ROOT_BAND_CHILDREN_DOWN + QOS_CLASSext_%_MINBAND[i]
+      fi
+    fi
+  done
+
+  ## fill QOS_CLASSext_x_FILTERS
+  foreach i in QOS_FILTER_%_CLASS
+  do
+    split (i, filter_%_class, ' ', numeric)
+    foreach j in filter_%_class
+    do
+      ## -------------------------
+      ## check if targetclass exists
+      ## this has to be checked here
+      ## because elsewhise problems could occure
+      ## -------------------------
+      if (j > QOS_CLASS_N)
+      then
+        fatal_error "%i='$i': targetclass no. $j does not exist"
+      fi
+
+      set temp=QOS_CLASSext_%_FILTERS[j]
+      set QOS_CLASSext_%_FILTERS[j]="$temp@i "
+    done
+  done
+
+  ## --------------------------
+  ## debug output, to be deactivated later
+  ## --------------------------
+  if (DO_DEBUG != 0 )
+  then
+    warning "QOS_CLASS_ROOT_CHILDREN_UP='$QOS_CLASS_ROOT_CHILDREN_UP'"
+    warning "QOS_CLASS_ROOT_CHILDREN_DOWN='$QOS_CLASS_ROOT_CHILDREN_DOWN'"
+    warning "QOS_CLASS_ROOT_BAND_CHILDREN_UP='$QOS_CLASS_ROOT_BAND_CHILDREN_UP'"
+    warning "QOS_CLASS_ROOT_BAND_CHILDREN_DOWN='$QOS_CLASS_ROOT_BAND_CHILDREN_DOWN'"
+    foreach i in QOS_CLASS_N
+    do
+      warning "----------------------------------------"
+      set temp=QOS_CLASSext_%_LEVEL[i]
+      warning "QOS_CLASSext_${i}_LEVEL='$temp'"
+      set temp=QOS_CLASSext_%_MINBAND[i]
+      warning "QOS_CLASSext_${i}_MINBAND='$temp'"
+      set temp=QOS_CLASSext_%_MAXBAND[i]
+      warning "QOS_CLASSext_${i}_MAXBAND='$temp'"
+      set temp=QOS_CLASSext_%_CHILDREN[i]
+      warning "QOS_CLASSext_${i}_CHILDREN='$temp'"
+      set temp=QOS_CLASSext_%_CHILDREN_BAND[i]
+      warning "QOS_CLASSext_${i}_CHILDREN_BAND='$temp'"
+      set temp=QOS_CLASSext_%_FILTERS[i]
+      warning "QOS_CLASSext_${i}_FILTERS='$temp'"
+    done
+    warning "------------- END of DEBUG -------------"
+  fi
+
+  ## -------------------------
+  ## start with the global suff first
+  ## -------------------------
+
+  ## -------------------------
+  ## check if defaultclasses do exist, have the right direction,
+  ## are classes without children
+  ## and if up/down classes do exist one of them is selected
+  ##
+  ## also check if defaultclasses do have a filter attached
+  ## if true, point out that it is most likely that at least one of the filters is superfluous
+  ## -------------------------
+  if (QOS_INTERNET_DEFAULT_DOWN != "0")
+  then
+    if (QOS_INTERNET_DEFAULT_DOWN > QOS_CLASS_N)
+    then
+      error "QOS_INTERNET_DEFAULT_DOWN='$QOS_INTERNET_DEFAULT_DOWN': the specified class does not exist"
+    else
+      if !(QOS_CLASS_%_DIRECTION[QOS_INTERNET_DEFAULT_DOWN] == "down")
+      then
+        error "QOS_INTERNET_DEFAULT_DOWN='$QOS_INTERNET_DEFAULT_DOWN': the specified class is not a down-class"
+      else
+        if (QOS_CLASSext_%_CHILDREN[QOS_INTERNET_DEFAULT_DOWN] != "")
+        then
+          error "QOS_INTERNET_DEFAULT_DOWN='$QOS_INTERNET_DEFAULT_DOWN': the specified class may not have any children"
+        fi
+      fi
+    fi
+
+    if (QOS_CLASSext_%_FILTERS[QOS_INTERNET_DEFAULT_DOWN] != "")
+    then
+      warning "class no. $QOS_INTERNET_DEFAULT_DOWN is a default-class and has filters attached. It is most likely that at least one filter is superfluous"
+    fi
+  else
+    if (QOS_CLASS_ROOT_CHILDREN_DOWN != "")
+    then
+      error "QOS_INTERNET_DEFAULT_DOWN='$QOS_INTERNET_DEFAULT_DOWN': if one or more down-classes do exist, '0' is not allowed here"
+    fi
+  fi
+  if (QOS_INTERNET_DEFAULT_UP != "0")
+  then
+    if (QOS_INTERNET_DEFAULT_UP > QOS_CLASS_N)
+    then
+      error "QOS_INTERNET_DEFAULT_UP='$QOS_INTERNET_DEFAULT_UP': the specified class does not exist"
+    else
+      if !(QOS_CLASS_%_DIRECTION[QOS_INTERNET_DEFAULT_UP] == "up")
+      then
+        error "QOS_INTERNET_DEFAULT_UP='$QOS_INTERNET_DEFAULT_UP': the specified class is not an up-class"
+      else
+        if (QOS_CLASSext_%_CHILDREN[QOS_INTERNET_DEFAULT_UP] != "")
+        then
+          error "QOS_INTERNET_DEFAULT_UP='$QOS_INTERNET_DEFAULT_UP': the specified class may not have any children"
+        fi
+      fi
+    fi
+
+    if (QOS_CLASSext_%_FILTERS[QOS_INTERNET_DEFAULT_UP] != "")
+    then
+      warning "class no. $QOS_INTERNET_DEFAULT_UP is a default-class and has filters attached. It is most likely that at least one filter is superfluous"
+    fi
+  else
+    if (QOS_CLASS_ROOT_CHILDREN_UP != "")
+    then
+      error "QOS_INTERNET_DEFAULT_UP='$QOS_INTERNET_DEFAULT_UP': if one or more up-classes do exist, '0' is not allowed"
+    fi
+  fi
+
+  ## -------------------------
+  ## check if sum of all rootclasses' minband is not bigger then
+  ## the bandwidth specified in the global options
+  ## -------------------------
+  if (QOS_CLASS_ROOT_BAND_CHILDREN_DOWN > QOS_CLASS_ROOT_BAND_DOWN)
+  then
+    warning "QOS_INTERNET_BAND_DOWN='$QOS_INTERNET_BAND_DOWN': the sum of the _MINBANDWIDTHs of all down-classes with _PARENT='0' should be smaller or equal than this value"
+  fi
+  if (QOS_CLASS_ROOT_BAND_CHILDREN_UP > QOS_CLASS_ROOT_BAND_UP)
+  then
+    warning "QOS_INTERNET_BAND_UP='$QOS_INTERNET_BAND_UP': the sum of the _MINBANDWIDTHs of all up-classes with _PARENT='0' should be smaller or equal than this value"
+  fi
+
+  ## -------------------------
+  ## entering class-loop, examining QOS_CLASS_x_... variables
+  ## -------------------------
+  foreach i in QOS_CLASS_N
+  do
+    ## ----------------------------
+    ## examining QOS_CLASS_x_PARENT
+    ## ----------------------------
+    if (QOS_CLASS_%_PARENT[i] != "0")
+    then
+      ## ----------------------------
+      ## check if parent class is of same direction
+      ## ----------------------------
+      if (QOS_CLASS_%_DIRECTION[i] == "down")
+      then
+        if !(QOS_CLASS_%_DIRECTION[QOS_CLASS_%_PARENT[i]] == "down")
+        then
+          set temp=QOS_CLASS_%_PARENT[i]
+          error "QOS_CLASS_${i}_PARENT='$temp': parent-class has to be of the same direction"
+        fi
+      else
+        if !(QOS_CLASS_%_DIRECTION[QOS_CLASS_%_PARENT[i]] == "up")
+        then
+          set temp=QOS_CLASS_%_PARENT[i]
+          error "QOS_CLASS_${i}_PARENT='$temp': parent-class has to be of the same direction"
+        fi
+      fi
+
+      ## ----------------------------
+      ## check if class-tree is not deeper then max_recursion
+      ## ----------------------------
+      if (QOS_CLASSext_%_LEVEL[i] >= max_recursion)
+      then
+        set temp=QOS_CLASS_%_PARENT[i]
+        error "QOS_CLASS_${i}_PARENT='$temp': class is nested deeper than the limit of 7 levels"
+      fi
+
+      set parent_maxband=QOS_CLASSext_%_MAXBAND[QOS_CLASS_%_PARENT[i]]
+
+    else
+
+      if (QOS_CLASS_%_DIRECTION[i] == "down")
+      then
+        set parent_maxband=QOS_CLASS_ROOT_BAND_DOWN
+      else
+        set parent_maxband=QOS_CLASS_ROOT_BAND_UP
+      fi
+
+    fi
+
+    ## -------------------------
+    ## examining QOS_CLASS_x_MAXBANDWIDTH
+    ## by checking it against its parents' MAXBANDWIDTH
+    ## -------------------------
+    if (QOS_CLASSext_%_MAXBAND[i] > parent_maxband)
+    then
+      set temp=QOS_CLASS_%_MAXBANDWIDTH[i]
+      warning "QOS_CLASS_${i}_MAXBANDWIDTH='$temp': this value is higher than its parent class or the global options can provide"
+    fi
+
+    ## -------------------------
+    ## check if classes' minband is not bigger then maxband
+    ## -------------------------
+    if (QOS_CLASSext_%_MINBAND[i] > QOS_CLASSext_%_MAXBAND[i])
+    then
+      set temp=QOS_CLASS_%_MINBANDWIDTH[i]
+      error "QOS_CLASS_${i}_MINBANDWIDTH='$temp': this value can not be bigger then the corresponding QOS_CLASS_${i}_MAXBANDWIDTH"
+    fi
+
+    ## -------------------------
+    ## check if sum of childrens' minband is not bigger then maxband
+    ## -------------------------
+    if (QOS_CLASSext_%_CHILDREN_BAND[i] > QOS_CLASSext_%_MAXBAND[i])
+    then
+      set temp=QOS_CLASS_%_MAXBANDWIDTH[i]
+      warning "QOS_CLASS_${i}_MAXBANDWIDTH='$temp': the sum of class no. $i childrens' _MINBANDWIDTH should not be bigger then this value"
+    fi
+
+    ## -------------------------
+    ## if class has no children and no filters attached
+    ## warn user that this class is of no use
+    ## -------------------------
+    if (QOS_CLASSext_%_CHILDREN[i] == "" && QOS_CLASSext_%_FILTERS[i] == "")
+    then
+      if (QOS_CLASS_%_DIRECTION[i] == "down")
+      then
+        set temp=QOS_INTERNET_DEFAULT_DOWN
+      else
+        set temp=QOS_INTERNET_DEFAULT_UP
+      fi
+      if (i != temp)
+      then
+        warning "class no. $i has neither children nor a filter attached and it is not a default-class, so this class will be of no use"
+      fi
+    fi
+  done
+
+  ## -------------------------
+  ## entering filter-loop, examining QOS_FILTER_x_... variables
+  ## -------------------------
+  foreach i in QOS_FILTER_N
+  do
+    set portrange_error=0
+
+    ## -------------------------
+    ## examining QOS_FILTER_x_CLASS
+    ## -------------------------
+    split (QOS_FILTER_%_CLASS[i], filter_%_class, ' ', numeric)
+    foreach j in filter_%_class
+    do
+      ## -------------------------
+      ## check if filter is targeting class without children
+      ## -------------------------
+      if (QOS_CLASSext_%_CHILDREN[j] != "")
+      then
+        set temp=QOS_FILTER_%_CLASS[i]
+        error "QOS_FILTER_${i}_CLASS='$temp':targetclass no. $j has children, such a targetclass is not allowed"
+      fi
+    done
+
+    ## -------------------------
+    ## check if targetclasses have different directions
+    ## -------------------------
+    if (filter_N == "2")
+    then
+      if (QOS_CLASS_%_DIRECTION[filter_%_class[1]] == QOS_CLASS_%_DIRECTION[filter_%_class[2]])
+      then
+        set temp=QOS_FILTER_%_CLASS[i]
+        error "QOS_FILTER_${i}_CLASS='$temp': both specified clases must have different directions"
+      fi
+    fi
+
+    ## -------------------------
+    ## check if QOS_FILTER_x_PORT_TYPE is set when QOS_FILTER_x_PORT is in use
+    ## -------------------------
+    if (QOS_FILTER_%_PORT[i] != "" && QOS_FILTER_%_PORT_TYPE[i] == "")
+    then
+      set temp=QOS_FILTER_%_PORT_TYPE[i]
+      error "QOS_FILTER_${i}_PORT_TYPE='$temp': if a port is specified, QOS_FILTER_${i}_PORT_TYPE has to be specified too"
+    fi
+
+    if (QOS_FILTER_%_PORT[i] != "" && QOS_FILTER_%_OPTION[i] == "ICMP")
+    then
+      set temp=QOS_FILTER_%_PORT_TYPE[i]
+      error "QOS_FILTER_${i}_PORT_TYPE='$temp': if a port is specified, QOS_FILTER_${i}_PORT_TYPE can't be ICMP"
+    fi
+
+    ## -------------------------
+    ## check if portA <= portB when using portranges of type portA-portB
+    ## warn if a portrange is used and the option ACK, TOSMD, TOSMT, TOSMR or TOSMC is used also
+    ## -------------------------
+    split (QOS_FILTER_%_PORT[i], tmp_%, ' ')
+    foreach j in tmp_%
+    do
+      if (j =~ ".*(-).*" && portrange_error == 0)
+      then
+        split (j, tmp2_%, '-', numeric)
+        if (tmp2_%[1] > tmp2_%[2])
+        then
+          set portrange_error=1
+          set temp=QOS_FILTER_%_PORT[i]
+          error "QOS_FILTER_${i}_PORT='$temp': when using a portrange, the port on the left of the '-' has to be smaller or equal then the one of on the right"
+        fi
+        
+        if (QOS_FILTER_%_OPTION[i] == "ACK" || QOS_FILTER_%_OPTION[i] == "TOSMD" || QOS_FILTER_%_OPTION[i] == "TOSMT" || QOS_FILTER_%_OPTION[i] == "TOSMR" || QOS_FILTER_%_OPTION[i] == "TOSMC")
+        then
+          set temp=QOS_FILTER_%_PORT[i]
+          set temp2=QOS_FILTER_%_OPTION[i]
+          warning "QOS_FILTER_${i}_PORT='$temp': portranges will be ignored, because of QOS_FILTER_$(i)_OPTION='$temp2'"
+        fi
+      fi
+    done
+
+    ## -------------------------
+    ## check if QOS_FILTER_x_OPTION is != '' and != 'ICMP' and an IP-argument is used
+    ## and warn user that the IP-argument will have no effect
+    ## -------------------------
+    if (QOS_FILTER_%_OPTION[i] != "ICMP" && QOS_FILTER_%_OPTION[i] != "TCP" && QOS_FILTER_%_OPTION[i] != "UDP" && QOS_FILTER_%_OPTION[i] != "" && (QOS_FILTER_%_IP_INTERN[i] != "" || QOS_FILTER_%_IP_EXTERN[i] != ""))
+    then
+      set temp=QOS_FILTER_%_OPTION[i]
+      warning "QOS_FILTER_${i}_OPTION='$temp': with this set, QOS_FILTER_${i}_IP_INTERN and QOS_FILTER_${i}_IP_EXTERN will have no effect"
+    fi
+  done
+fi
+fi
