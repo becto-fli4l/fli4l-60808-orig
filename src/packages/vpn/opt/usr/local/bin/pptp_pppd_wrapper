@@ -1,0 +1,91 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/local/bin/pptp_pppd_wrapper                               __FLI4LVER__
+#
+# called by pptpd, creates and launches the proper circuit of type
+# "pptp-server-instance" (and its bundle circuit if necessary)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# log stderr to file
+exec 2>>/var/log/pptp-server
+
+. /etc/boot.d/string.inc
+. /usr/share/circuits/api
+
+script="$(basename $0)[$$]"
+facility=$circuit_logfacility
+. /usr/share/logfunc.sh
+
+exit_wrapper()
+{
+    log_info "exiting PPTP server wrapper for $circ_id [$clone_id]"
+    if [ -n "$clone_id" ]
+    then
+        circuit_usable $clone_id && fli4lctrl hangup $clone_id
+    fi
+}
+
+circ_id=
+clone_id=
+exit_trap_add exit_wrapper
+
+commands_with_param="pty plugin file remotenumber"
+ppp_pptp_server_args=
+
+num=$#
+i=1
+while [ $i -le $num ]
+do
+    eval arg=\$\{$i\}
+    if echo "$commands_with_param" | grep -q "\<$arg\>"
+    then
+        i=$((i+1))
+        eval value=\$\{$i\}
+        case $arg in
+        mtu|mru|unit)
+            ;;
+        file)
+            circ_id=${value#$ppp_peers_dir/*.}
+            circ_id=${circ_id%.*}
+            ;;
+        *)
+            pack_args arg "$arg \"$value\""
+            ppp_pptp_server_args="$ppp_pptp_server_args $arg"
+            ;;
+        esac
+    else
+        pack_args arg "$arg"
+        ppp_pptp_server_args="$ppp_pptp_server_args $arg"
+    fi
+    i=$((i+1))
+done
+
+if [ -z "$circ_id" ]
+then
+    log_error "circuit identifier is missing"
+    exit 1
+fi
+
+log_info "starting PPTP server wrapper for $circ_id"
+
+if ! circuit_clone $circ_id ppp_pptp_server_clone_adaptor "${ppp_pptp_server_args# }" clone_id errmsg
+then
+    log_error "error while cloning circuit $circ_id: $errmsg"
+    exit 2
+fi
+
+fd_path=$(circuit_build_fdpass_path $clone_id)
+if ! fdsend $fd_path 30
+then
+    log_error "fdsend failed for circuit $clone_id cloned from $circ_id"
+    fli4lctrl hangup $clone_id
+    exit 3
+fi
+
+while circuit_usable $clone_id
+do
+    sleep 1
+done
+exit 0

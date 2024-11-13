@@ -1,0 +1,158 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-pptp-server - PPP over a PPTP tunnel (server side)
+#
+# Last Update:  $Id$
+#
+# Thanks to:
+#   Christian Karner <christian.karner@aon.at> - Austria
+#   Dick van der Kaaden <dkaaden@wxs.nl> - Netherlands
+#   Rudolf Hämmerle <rudolf.haemmerle@aon.at> - Austria
+#   Roland Diera <rollo@bithugo.de> ? - Germany
+#----------------------------------------------------------------------------
+
+pptpd_conf_dir=/etc/pptpd
+
+# PPTP, see RFC 2637 for details
+PPTP_MTU=1460 # 1500 (Ethernet MTU) - 20 (IP header) - 16 (GRE header)
+              # - 4 (PPP header with address/control bytes)
+
+# $1 = variable
+# $2 = name of option to use if ${$1} is not empty;
+#      if empty, $1 is used
+pptp_entry()
+{
+    eval local var=\$$1
+    if [ -n "$var" ]
+    then
+        [ -n "$2" ] && echo "$2 $var" || echo "$1 $var"
+    fi
+}
+
+# clone adaptor for PPTP server instance circuits
+ppp_pptp_server_clone_adaptor()
+{
+    ppp_server_clone_adaptor
+    local param i=1
+    for param
+    do
+        eval circ_ppp_pptp_server_arg_${i}=\$param
+        i=$((i+1))
+    done
+    circ_ppp_pptp_server_arg_n=$((i-1))
+
+    # activate fd-passing
+    circ_fdpass=yes
+}
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_pptp_server_circuit_add()
+{
+    # keep this synchronized with check/vpn.ext
+    local circ_ppp_pptp_server_sessions=${circ_ppp_pptp_server_sessions:-100}
+    : ${circ_ppp_mtu:=$PPTP_MTU}
+    : ${circ_ppp_mru:=$PPTP_MTU}
+
+    case $circ_debug in
+    0) local pptpd_debug=no ;;
+    *) local pptpd_debug=yes ;;
+    esac
+
+    local firstclient=${circ_ppp_remoteip##*.}
+    local lastclient=$((firstclient+circ_ppp_pptp_server_sessions-1))
+    if [ $lastclient -ge 255 ]
+    then
+        eval $3=\"The number of allowed clients \(\$circ_ppp_pptp_server_sessions\) does not fit into the remote IPv4 range \$circ_ppp_remoteip-254\"
+        return 1
+    else
+        local pptpd_remoteip="$circ_ppp_remoteip-$lastclient"
+    fi
+
+    local listen=
+    if [ -n "$circ_ppp_pptp_server_listen" ]
+    then
+        if ! translate_ip_net "$circ_ppp_pptp_server_listen" "" listen 1
+        then
+            eval $3="\"Invalid address the PPTP server should listen to: $circ_ppp_pptp_server_listen\""
+            return 1
+        fi
+    fi
+
+    mkdir -p $pptpd_conf_dir
+    cat > $pptpd_conf_dir/$circ_id.conf <<EOF
+option $2
+noipparam
+$(ppp_bool_entry pptpd_debug debug)
+$(pptp_entry circ_ppp_pptp_server_sessions connections)
+$(pptp_entry circ_ppp_localip localip)
+$(pptp_entry pptpd_remoteip remoteip)
+$(pptp_entry listen)
+EOF
+
+    do_modprobe ppp_async
+
+    cat >> $1 <<EOF
+circ_ppp_pptp_server_listen="$circ_ppp_pptp_server_listen"
+circ_ppp_pptp_server_sessions="$circ_ppp_pptp_server_sessions"
+circ_ppp_pptp_server_allow_from_n="$circ_ppp_pptp_server_allow_from_n"
+EOF
+    local i
+    for i in $(seq 1 ${circ_ppp_pptp_server_allow_from_n:-0})
+    do
+        eval local value=\$circ_ppp_pptp_server_allow_from_$i
+        echo "circ_ppp_pptp_server_allow_from_${i}=\"$value\""
+    done >> $1
+
+    local nets=
+    if [ -n "$circ_ppp_pptp_server_allow_from_n" ]
+    then
+        for i in $(seq 1 $circ_ppp_pptp_server_allow_from_n)
+        do
+            eval local net=\$circ_ppp_pptp_server_allow_from_$i
+            nets="$nets $net"
+        done
+    else
+        nets="any"
+    fi
+
+    if [ -n "$nets" ]
+    then
+        local net
+        for net in $nets
+        do
+            cat >> /etc/rc.d/fwrules.pre500.pptp-server <<EOF
+pf_in_pptp_server_default_${circ_id}() {
+    fw_append_rule filter INPUT-head "prot:tcp $net ${circ_ppp_pptp_server_listen:-any}:1723 ACCEPT" "incoming PPTP control traffic for $circ_id"
+    fw_append_rule filter INPUT-head "prot:gre $net ${circ_ppp_pptp_server_listen:-any} ACCEPT" "incoming PPTP/GRE traffic for $circ_id"
+}
+pf_in_add_default pf_in_pptp_server_default_${circ_id}
+EOF
+        done
+    fi
+
+    return 0
+}
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_pptp_server_instance_circuit_add()
+{
+    local i
+    for i in $(seq 1 ${circ_ppp_pptp_server_arg_n:-0})
+    do
+        eval local value=\$circ_ppp_pptp_server_arg_${i}
+        printf "%s\n" "$value"
+    done >> "$2"
+
+    cat >> $2 <<EOF
+refuse-pap
+refuse-chap
+refuse-mschap
+require-mschap-v2
+EOF
+
+    return 0
+}

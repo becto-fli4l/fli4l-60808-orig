@@ -1,0 +1,80 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-pptp - PPP over a PPTP tunnel (client side)
+#
+# Last Update:  $Id$
+#
+# Thanks to:
+#   Christian Karner <christian.karner@aon.at> - Austria
+#   Dick van der Kaaden <dkaaden@wxs.nl> - Netherlands
+#   Rudolf Hämmerle <rudolf.haemmerle@aon.at> - Austria
+#   Roland Diera <rollo@bithugo.de> ? - Germany
+#----------------------------------------------------------------------------
+
+# PPTP, see RFC 2637 for details
+PPTP_MTU=1460 # 1500 (Ethernet MTU) - 20 (IP header) - 16 (GRE header)
+              # - 4 (PPP header with address/control bytes)
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_pptp_circuit_add()
+{
+    # keep this synchronized with check/dsl.ext
+    local circ_ppp_pptp_type=${circ_ppp_pptp_type:-daemon}
+    : ${circ_ppp_mtu:=$PPTP_MTU}
+    : ${circ_ppp_mru:=$PPTP_MTU}
+
+    local log_level=
+    if [ -n "$circ_ppp_pptp_loglevel" ]
+    then
+        log_level="--loglevel $circ_ppp_pptp_loglevel"
+    fi
+
+    local reorder_timeout=
+    case "$circ_ppp_pptp_reorder_timeout" in
+    '')
+        # no timeout specified
+        ;;
+    0.00)
+        reorder_timeout='--nobuffer'
+        ;;
+    *)
+        reorder_timeout="--timeout $circ_ppp_pptp_reorder_timeout"
+        ;;
+    esac
+
+    # the command that pppd shall execute
+    local pptp_cmd="exec /usr/sbin/pptp $circ_ppp_pptp_peer --nolaunchpppd $reorder_timeout $log_level --logstring $circ_id"
+
+    case $circ_ppp_pptp_type in
+    daemon)
+        do_modprobe ppp_async
+        ;;
+    esac
+
+    cat >> $2 << EOF
+pty "$pptp_cmd"
+local
+EOF
+
+    cat >> $1 << EOF
+circ_ppp_pptp_type="$circ_ppp_pptp_type"
+circ_ppp_pptp_loglevel="$circ_ppp_pptp_loglevel"
+circ_ppp_pptp_reorder_timeout="$circ_ppp_pptp_reorder_timeout"
+EOF
+
+    cat >> /etc/rc.d/fwrules.pre500.pptp <<EOF
+pf_in_pptp_default_${circ_id}() {
+    fw_append_rule filter INPUT-head "prot:gre $circ_ppp_pptp_peer ACCEPT" "incoming PPTP/GRE traffic from $circ_ppp_pptp_peer"
+}
+pf_out_pptp_default_${circ_id}() {
+    fw_append_rule filter OUTPUT-head "prot:tcp any $circ_ppp_pptp_peer:1723 ACCEPT" "outgoing PPTP control traffic to $circ_ppp_pptp_peer"
+    fw_append_rule filter OUTPUT-head "prot:gre any $circ_ppp_pptp_peer ACCEPT" "outgoing PPTP/GRE traffic to $circ_ppp_pptp_peer"
+}
+pf_in_add_default pf_in_pptp_default_${circ_id}
+pf_out_add_default pf_out_pptp_default_${circ_id}
+EOF
+
+    return 0
+}

@@ -1,0 +1,172 @@
+#! /bin/sh
+#----------------------------------------------------------------------------
+# /usr/local/bin/wg-tool                                         __FLI4LVER__
+#
+# helper script for WireGuard's wg
+#
+# Creation:     30.01.2021 Christoph Fritsch <fli4l@dechristo.net>
+#
+#
+#----------------------------------------------------------------------------
+
+
+. /etc/rc.cfg
+. /usr/share/circuits/api
+
+PEER_FILE='/etc/wireguard/wireguard.peers'
+SERVER_FILE='/etc/wireguard/wireguard.names'
+
+show_help ()
+{
+    echo
+    echo "This is a helper script to start and stop WireGuard connections"
+    echo "Usage:"
+    echo "   $(basename $0) <wg interface> <up|down>"
+    echo "   $(basename $0) <wg interface> reresolve <peerName>"
+    echo "           where <peerName> is the name defined in WIREGUARD_x_PEER_x_NAME"
+    echo
+    echo "example: $(basename $0) wg1 down"
+    echo "example: $(basename $0) wg1 reresolve peer5Name"
+}
+
+# bring the given Wireguard interface UP, set IPs and routes as configured
+start_wg_interface ()
+{
+    local wg_interface=$1
+    ifcheck=$(ip link show $wg_interface 2>/dev/null)
+    if [ $? -eq 1 ]
+    then
+        echo "interface ${wg_interface} does not exist - trying to bring it up"
+        ip link add dev $wg_interface type wireguard
+        wg setconf $wg_interface /etc/wireguard/$wg_interface.conf
+
+        local config_idx=$(grep $wg_interface $SERVER_FILE | cut -d":" -f2)
+        eval local wg_server_ip4='$WIREGUARD_'$config_idx'_LOCAL_IP4'
+        # resolve Net Prefixes if required
+        local wg_server_ip4=$(circuit_resolve_address "$wg_server_ip4" ipv4)
+        [ ! -z ${wg_server_ip4} ] && ip -4 address add $wg_server_ip4 dev $wg_interface
+
+        eval local wg_server_ip6='$WIREGUARD_'$config_idx'_LOCAL_IP6'
+        # resolve Net Prefixes if required
+        local wg_server_ip6=$(circuit_resolve_address "$wg_server_ip6" ipv6)
+        [ ! -z ${wg_server_ip6} ] && ip -6 address add $wg_server_ip6 dev $wg_interface
+
+        echo "bringing link $wg_interface UP..."
+        ip link set $wg_interface up
+        
+        # add all configured routes for all peers via this current interface
+        eval local current_config_n='$WIREGUARD_'$config_idx'_PEER_N'
+        echo "adding routes to WireGuard interface $wg_interface..."
+        for peer_idx in `seq 1 $current_config_n`
+        do
+            eval local peer_routes_n='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ROUTE_TO_N'
+            for route_idx in `seq 1 $peer_routes_n`
+            do
+                eval local routed_network='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ROUTE_TO_'$route_idx
+                echo "    adding route $routed_network"
+                ip route add $routed_network dev $wg_interface
+            done
+        done
+
+        echo "DONE - WireGuard interface $wg_interface enabled"
+        #ip link set mtu 1420 up dev $wg_interface   
+
+    else
+        echo "interface ${wg_interface} is already UP - do nothing"
+        exit 1
+    fi
+}
+
+# bring the given Wireguard interface DOWN
+stop_wg_interface ()
+{
+    local wg_interface=$1
+    ifcheck=$(ip link show $wg_interface 2>/dev/null)
+    if [ $? -eq 1 ]
+    then
+        echo "interface ${wg_interface} does not exist, nothing to delete"
+        exit 1
+    else
+        echo "interface ${wg_interface} is UP, deleting it"
+        ip link delete dev ${wg_interface}
+    fi
+}
+
+# re-resolve peer DNS name
+# useful if it cannot be resolved at boot time
+# this script can be used in cron jobs to frequently re-resolve peers' DNS
+reresolve_peer_dns ()
+{
+    local wg_interface=$1
+    local peerName=$2
+    
+    if [ -z ${peerName} ]; then
+        echo "ERROR - peerName not given"
+        echo
+        show_help
+        exit 1
+    fi
+    
+    ifcheck=$(ip link show $wg_interface 2>/dev/null)
+    if [ $? -eq 1 ]
+    then
+        echo "interface ${wg_interface} does not exist, bring it up first"
+        exit 1
+    fi
+
+    local peerPublicKey=$(grep "^$wg_interface:[0-9]*:" $PEER_FILE | grep ":$peerName:" | cut -d":" -f5)
+    local peerEndpoint=$(grep "^$wg_interface:[0-9]*:" $PEER_FILE | grep ":$peerName:" | cut -d":" -f7)
+    local peerEndpointPort=$(grep "^$wg_interface:[0-9]*:" $PEER_FILE | grep ":$peerName:" | cut -d":" -f8)
+    
+    if [ -z ${peerPublicKey} ]; then
+        echo "ERROR - Peer $peerName not know in config of interface $wg_interface"
+        exit 1
+    fi
+    
+    if [ ! -z ${peerEndpoint} ] && [ ! -z ${peerPublicKey} ] && [ ! -z ${peerEndpointPort} ]
+    then
+        # see if client's DNS name resolves
+        check_remote_host=$(nslookup $peerEndpoint 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            # reresolves Endpoint DNS and resets it --> will reconnect/establish 
+            # connection if it failed before e.g. due to DNS error
+            echo "resetting endpoint of peer $peerName on interface $wg_interface to $peerEndpoint:$peerEndpointPort"
+            wg set $wg_interface peer $peerPublicKey endpoint $peerEndpoint:$peerEndpointPort
+        else
+            echo "ERROR - cannot resolve endpoint $peerEndpoint"
+            exit 1
+        fi
+    else
+        echo "ERROR - no peer Endpoint configured for peer ${peerName}"
+        exit 1
+    fi
+}
+
+# WireGuard helper tool
+# $1 interface
+# $2 command (up|down|reresolve)
+# $3 peerName (only valid for reresolve)
+
+# check if both params, command and WireGuard interface are given
+if [ ! -z $1 ] && [ ! -z $2 ]; then
+    # check if we know the given wireguard interface
+    ifcheck=$(grep ^$1 $SERVER_FILE)
+    if [ $? -eq 0 ]; then
+        echo "config known for WireGuard interface $1"
+        case $2 in
+            up)         echo "starting wireguard interface $1"
+                         start_wg_interface $1 ;;
+            down)       echo "stopping wireguard interface $1"
+                         stop_wg_interface $1 ;;
+            reresolve)  reresolve_peer_dns $1 $3;;
+            *)           show_help ;;
+        esac
+    else
+        echo
+        echo "ERROR: unknown WireGuard interface $1 - no config available"
+        exit 1
+    fi
+else
+    show_help
+    exit 1
+fi

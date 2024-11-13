@@ -1,0 +1,242 @@
+##-----------------------------------------------------------------------------
+## fli4l __FLI4LVER__ - configuration for package "vpn"
+##
+##  P L E A S E  R E A D  T H E  D O C U M E N T A T I O N !
+##
+##  B I T T E  U N B E D I N G T  D I E  D O K U M E N T A T I O N  L E S E N !
+##
+##-----------------------------------------------------------------------------
+## Creation:     26.06.2001  fm
+## Last Update:  $Id$
+##
+## Copyright (c) 2001-2016 - Frank Meyer, fli4l-Team <team@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Optional package: PPTP - DSL in Austria/Netherlands
+#------------------------------------------------------------------------------
+#OPT_PPP_PPTP='no'              # use PPTP: yes or no
+
+#
+# put this into circuits.txt
+#
+
+# Example: IPv4 DSL
+#CIRC_1_NAME='PPTP'             # circuit name, don't use spaces
+#CIRC_1_TYPE='ppp'              # this is a PPP circuit...
+#CIRC_1_PPP_TYPE='pptp'         # ...routed over PPTP
+#CIRC_1_ENABLED='yes'           # the circuit is enabled
+#CIRC_1_CLASS_N='1'             # set meaningful classes
+#CIRC_1_CLASS_1='internet'
+#CIRC_1_PPP_PPTP_TYPE='daemon'  # currently only 'daemon' is supported; you
+                                # need not define this variable
+#CIRC_1_PPP_PPTP_PEER='10.0.0.138'
+                                # ask your provider for the right one
+#CIRC_1_PPP_USERID='anonymer'   # username
+#CIRC_1_PPP_PASSWORD='surfer'   # password
+#CIRC_1_PPP_FILTER='yes'        # filter traffic to be able to hangup
+                                # even if someone is trying to scan us
+#CIRC_1_PPP_FILTER_EXPR=''      # the filter to use; leave empty to use
+                                # the default filter
+#CIRC_1_NETS_IPV4_N='1'
+#CIRC_1_NETS_IPV4_1='0.0.0.0/0' # use default IPv4 route over this circuit
+#CIRC_1_DEBUG='no'              # enable pppd debugging, 'yes' or 'no'
+#CIRC_1_USEPEERDNS='yes'        # use dns server of your provider: yes or no
+#CIRC_1_HUP_TIMEOUT='600'       # idle time after which to hangup
+#CIRC_1_CHARGEINT='60'          # value of charge interval (in seconds)
+#CIRC_1_UP='yes'                # activate at boot time (OPT_IMOND='no')
+#CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+                                # times/charges when LCR (OPT_IMOND='yes')
+
+#------------------------------------------------------------------------------
+# Optional package: FASTD - fast and secure tunneling daemon
+#------------------------------------------------------------------------------
+#OPT_FASTD='no'                 # use FASTD: yes or no
+
+FASTD_SECRET=''                 # secret key of this fastd daemon instance
+
+#------------------------------------------------------------------------------
+# Optional package: WIREGUARD - fast, modern, secure VPN tunnel
+#------------------------------------------------------------------------------
+
+# Wireguard requires some manual changes in firewall rules (base.txt)
+# 1) open respective udp ports (WIREGUARD_x_LISTEN_PORT)
+#        PF_INPUT_%='prot:udp 50002 ACCEPT'
+#        PF_INPUT_%_COMMENT='allow wireguard port 1'
+#        PF_INPUT_%='prot:udp 50003 ACCEPT'
+#        PF_INPUT_%_COMMENT='allow wireguard port 2
+# 2) allow packages from clients into internal nets (WIREGUARD_x_LOCAL_IP4, WIREGUARD_x_LOCAL_IP6)
+#        PF_FORWARD_10='10.0.0.1/24 ACCEPT' #accept wireguard
+#        PF_FORWARD_10_COMMENT='WireGuard allow anywhere'
+#        PF_FORWARD_11='10.10.0.1/24 ACCEPT' #accept wireguard
+#        PF_FORWARD_11_COMMENT='WireGuard allow anywhere'
+# 3) (optional) masq packages from clients if required (e.g. for internet access through VPN)
+#        PF_POSTROUTING_%='10.0.0.1/24 IP_NET_1 ACCEPT BIDIRECTIONAL'
+#        PF_POSTROUTING_%='10.0.0.1/24 MASQUERADE'
+#        PF_POSTROUTING_%='10.10.0.1/24 MASQUERADE'
+# 4) (optional) allow access through VPN to fli4l WIREGUARD_x_LOCAL_IP4, WIREGUARD_x_LOCAL_IP6)
+#        PF_INPUT_%='10.0.0.1/24 ACCEPT'
+#        PF_INPUT_%_COMMENT='allow wireguard access to router'
+#        PF_INPUT_%='10.10.0.1/24 ACCEPT'
+#        PF_INPUT_%_COMMENT='allow wireguard access to router''
+
+
+# Wireguard configuration examples in old and new config style
+
+# ============================= new config format =============================
+
+#OPT_WIREGUARD='no'             # use WIREGUARD: yes or no
+
+WIREGUARD[] {
+# minimum server config only requires name, ip, and port. Private (and associated 
+# public) keys will be generated automatically and can be seen in webinterface
+# WIREGUARD_x_LOCAL_HOST is only required to create QRCode for simplified iPhone
+# and Android configuration
+#
+    NAME='RoadWarriors'
+    LOCAL_IP4='10.0.0.1/24'           # local IP or net of this WireGuard instance
+    PRIVATE_KEY='auto'                # valid key or 'auto'
+    LISTEN_PORT='50002'               # UDP port WireGuard will listen on
+    LOCAL_HOST='fli4l.dyndns.com'     # dyndns name of local fli4l
+
+    PEER[] {
+#   # minimum peer config only requires name and ip, private (and associated 
+#   # public) keys will be generated automatically
+        NAME='peer1'
+        LOCAL_IP4='10.0.0.2/32'       # IP of the peer
+        PRIVATE_KEY='auto'            # private key (and associated public key) 
+                                      # can be auto-generated. For peers only able
+                                      # valid public key is required here
+    }
+}
+
+# WireGuard server with manual, extended configuration
+WIREGUARD[] {
+    NAME='Site2Site'
+    LOCAL_IP4='10.10.0.1/24'          # local IPv4 or net of this WireGuard instance
+    # LOCAL_IP6=''                    # local IPv6 or net of this WireGuard instance
+    PRIVATE_KEY='+PxRP6JmwDyM1R+KdeN+vIL2UY2WB+eG/AHLJ/OdsHo='
+    
+    LISTEN_PORT='50003'               # UDP port WireGuard will listen on - needs to 
+                                      # opened in base.txt e.g.
+                                      #      PF_INPUT[]='prot:udp 50003 ACCEPT'
+    LOCAL_HOST='fli4l.dyndns.com'     # dyndns name of local fli4l
+    KEEP_ALIVE='25'                   # interval in sec to send keep-alive packages
+    DEFAULT_ALLOWED_IPS[]='IP_NET_1'  # IPs and networks all peers should route via
+                                      # this WireGuard tunnel. Local firewall rules 
+                                      # (FORWARD, MASQ, etc.) need to be configured
+                                      # separately in base.txt to accept packets e.g.
+                                      #      PF_FORWARD[]='10.10.0.1/24 ACCEPT'
+                                      #      PF_POSTROUTING[]='10.10.0.1/24 ACCEPT'
+    DEFAULT_ALLOWED_IPS[]='IP_NET_2'
+    PUSH_DNS[]='10.10.0.1'            # DNS server to provide to peers via config 
+                                      # file and QR-Code. Note: this is not pushed 
+                                      # at every reconnect but statically provided 
+                                      # in respective peer config files and QR-Codes 
+                                      # in web interface
+
+    PEER[] {
+        NAME = 'RemoteSite1'
+        LOCAL_IP4 = '10.10.0.2/32'
+        PUBLIC_KEY = 'uuYthk/+UwxPvF6muOAXOUNEMYTcP6TmqQk4MpqNUzU='
+        PRESHARED_KEY = 'yBI78xlw2awD/aq/IuYN10pjzP3LzQYSYvNJ+KxznEw='
+    }
+    PEER[] {
+        NAME = 'RemoteSite2'
+        LOCAL_IP4 = '10.10.0.3/32'
+        PUBLIC_KEY = 'auto'
+        REMOTE_HOST='fli4l2.dyndns.com'  # domain of remote peer to connect to
+        REMOTE_PORT='50001'              # UDP port WireGuard will connect to
+        ROUTE_TO[]='192.168.1.0/24'      # networks available behind that peer
+        ROUTE_TO[]='192.168.178.0/24'    # networks available behind that peer
+        ALLOWED_IPS[]='IP_NET_3'         # IPs/networks the peer should route 
+                                         # via this VPN tunnel. Will be available
+                                         # in config file and QR-Code for this 
+                                         # peer provided in web interface (combined 
+                                         # with DEFAULT_ALLOWED_IPS)
+        ALLOWED_IPS[]='192.168.2.0/24'
+    }
+}
+
+
+# ============================= old config format =============================
+#
+# OPT_WIREGUARD='no'             # use WIREGUARD: yes or no
+#
+# WIREGUARD_N='2'
+#
+# minimum server config only requires name, ip, and port. Private (and associated 
+# public) keys will be generated automatically and can be seen in webinterface
+# WIREGUARD_x_LOCAL_HOST is only required to create QRCode for simplified iPhone
+# and Android configuration
+#
+# WIREGUARD_1_NAME='RoadWarriors'
+# WIREGUARD_1_LOCAL_IP4='10.0.0.1/24'        # local IP or net of this WireGuard instance
+# WIREGUARD_1_PRIVATE_KEY='auto'             # valid key or 'auto'
+# WIREGUARD_1_LISTEN_PORT='50002'            # UDP port WireGuard will listen on
+# WIREGUARD_1_LOCAL_HOST='fli4l.dyndns.com'  # dyndns name of local fli4l
+#
+# WIREGUARD_1_PEER_N='1'
+#
+# minimum peer config only requires name and ip, private (and associated 
+# public) keys will be generated automatically
+# WIREGUARD_1_PEER_1_NAME='peer1'
+# WIREGUARD_1_PEER_1_LOCAL_IP4='10.0.0.2/32' # IP of the peer
+# WIREGUARD_1_PEER_1_PRIVATE_KEY='auto'      # private key (and associated public key) 
+#                                            # can be auto-generated. For peers only able
+#                                            # valid public key is required here
+#
+# WIREGUARD_2_NAME='Site2Site'
+# WIREGUARD_2_LOCAL_IP4='10.10.0.1/24'          # local IPv4 or net of this WireGuard instance
+# WIREGUARD_2_LOCAL_IP6=''                    # local IPv6 or net of this WireGuard instance
+# WIREGUARD_2_PRIVATE_KEY='+PxRP6JmwDyM1R+KdeN+vIL2UY2WB+eG/AHLJ/OdsHo='
+#
+# WIREGUARD_2_LISTEN_PORT='50003'               # UDP port WireGuard will listen on - needs to 
+#                                               # opened in base.txt e.g.
+#                                               #      PF_INPUT[]='prot:udp 50003 ACCEPT'
+# WIREGUARD_2_LOCAL_HOST='fli4l.dyndns.com'     # dyndns name of local fli4l
+# WIREGUARD_2_KEEP_ALIVE='25'                   # interval in sec to send keep-alive packages
+#
+# WIREGUARD_2_DEFAULT_ALLOWED_IPS_N='2'
+# WIREGUARD_2_DEFAULT_ALLOWED_IPS_1='IP_NET_1'  # IPs and networks all peers should route via
+#                                               # this WireGuard tunnel. Local firewall rules 
+#                                               # (FORWARD, MASQ, etc.) need to be configured
+#                                               # separately in base.txt to accept packets e.g.
+#                                               #      PF_FORWARD[]='10.10.0.1/24 ACCEPT'
+#                                               #      PF_POSTROUTING[]='10.10.0.1/24 ACCEPT'
+# WIREGUARD_2_DEFAULT_ALLOWED_IPS_2='IP_NET_2'
+# WIREGUARD_2_PUSH_DNS_N='1'
+# WIREGUARD_2_PUSH_DNS_1='10.10.0.1'            # DNS server to provide to peers via config 
+#                                               # file and QR-Code. Note: this is not pushed 
+#                                               # at every reconnect but statically provided 
+#                                               # in respective peer config files and QR-Codes 
+#                                               # in web interface
+#
+# WIREGUARD_2_PEER_N='2'
+# WIREGUARD_2_PEER_1_NAME = 'RemoteSite1'
+# WIREGUARD_2_PEER_1_LOCAL_IP4 = '10.10.0.2/32'
+# WIREGUARD_2_PEER_1_PUBLIC_KEY = 'uuYthk/+UwxPvF6muOAXOUNEMYTcP6TmqQk4MpqNUzU='
+# WIREGUARD_2_PEER_1_PRESHARED_KEY = 'yBI78xlw2awD/aq/IuYN10pjzP3LzQYSYvNJ+KxznEw='
+# 
+# WIREGUARD_2_PEER_2_NAME = 'RemoteSite2'
+# WIREGUARD_2_PEER_2_LOCAL_IP4 = '10.10.0.3/32'
+# WIREGUARD_2_PEER_2_PUBLIC_KEY = 'auto'
+# WIREGUARD_2_PEER_2_REMOTE_HOST='fli4l2.dyndns.com'  # domain of remote peer to connect to
+# WIREGUARD_2_PEER_2_REMOTE_PORT='50001'              # UDP port WireGuard will connect to
+# 
+# WIREGUARD_2_PEER_2_ROUTE_TO_N='2'
+# WIREGUARD_2_PEER_2_ROUTE_TO_1='192.168.1.0/24'      # networks available behind that peer
+# WIREGUARD_2_PEER_2_ROUTE_TO_2='192.168.178.0/24'    # networks available behind that peer
+# 
+# WIREGUARD_2_PEER_2_ALLOWED_IPS_N='2'
+# WIREGUARD_2_PEER_2_ALLOWED_IPS_1='IP_NET_3'         # IPs/networks the peer should route 
+#                                                     # via this VPN tunnel. Will be available
+#                                                     # in config file and QR-Code for this 
+#                                                     # peer provided in web interface (combined 
+#                                                     # with DEFAULT_ALLOWED_IPS)
+# WIREGUARD_2_PEER_2_ALLOWED_IPS_2='192.168.2.0/24'

@@ -1,0 +1,474 @@
+% Last Update: $Id$
+\section{VPN - Unterstützung virtueller privater Netzwerke}
+
+Dieses Paket erlaubt es, gesicherte Verbindungen zwischen privaten Netzwerken
+über öffentliche, aber unsichere Netzwerke aufzubauen.
+
+\subsection{PPTP-Tunnel}
+
+PPTP\footnote{``Point-to-Point Tunneling Protocol'', siehe RFC 2637} bietet
+eine Möglichkeit, einen privaten Kanal über ein öffentliches Netzwerk
+aufzubauen. Dabei wird der Tunnelaufbau und -abbau über ein spezielles
+TCP/IP-Kontrollprotokoll gesteuert. Die eigentlichen Nutzdaten werden in
+PPP-Paketen verpackt, die über einen GRE-Tunnel\footnote{``Generic Routing
+Encapsulation'', ein Protokoll, welches beliebige andere Protokolle kapseln und
+über IP-Netzwerke transportieren kann, siehe RFC 2784} geschickt werden.
+
+In Österreich (und anderen europäischen Ländern) wird PPTP zusätzlich als
+Protokoll zwischen Router und DSL-Modem verwendet. Im Gegensatz zu PPPoE und
+PPPoA, die beide noch unterhalb der IP-Ebene arbeiten (Sicherungsschicht,
+``Link Layer''), gibt es bei PPTP wie oben beschrieben zwei Datenströme. Somit
+benötigt man für DSL über PPTP im Gegensatz zu anderen DSL-Zugangsmethoden auch
+für die für PPTP reservierte Ethernet-Karte eine IP-Adresse. Die ist je nach
+Provider entweder fest vorgegeben oder muss via DHCPv4 konfiguriert werden.
+Mehr dazu steht in der Beschreibung der Variable \var{CIRC\_x\_PPP\_PPTP\_PEER}.
+
+Ist man auf Grund eines DSL-Anschlusses oder einer veralteten VPN-Gegenstelle
+nicht gezwungen, PPTP zu nutzen, so wird davon abgeraten, PPTP als VPN-Lösung
+zu verwenden. Die Verschlüsselung in PPTP gilt als geknackt\footnote{siehe
+\altlink{http://heise.de/-1701365}}, so dass man über PPTP-Tunnel nicht
+sicherheitskritische Daten verschicken sollte. Für einen solchen Einsatzweck
+bilden Tunnel auf der Basis von OpenVPN sicherlich die bessere Wahl.
+
+\subsubsection{Ausgehende PPTP-Verbindungen}
+
+Generell werden ausgehende PPTP-Verbindungen als PPP-Circuits konfiguriert
+(siehe \jump{sect:ppp-circuits}{Circuits vom Typ ``ppp''}), d.\,h. es gilt:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+\end{verbatim}
+\end{example}
+
+Zusätzlich muss das \verb+OPT_PPP_PPTP+ aktiviert werden:
+
+\begin{description}
+\config{OPT\_PPP\_PPTP}{OPT\_PPP\_PPTP}{OPTPPTP}
+
+Diese Variable aktiviert die Unterstützung für PPTP. Damit auch tatsächlich
+eine PPTP-Verbindung genutzt werden kann, muss mindestens ein PPP-Circuit den
+Typ ``pptp'' besitzen, d.\,h. es muss zusätzlich gelten
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+    CIRC_x_PPP_TYPE='pptp'
+\end{verbatim}
+\end{example}
+
+(wobei ``x'' einen gültigen Circuit-Index darstellt).
+
+Standard-Einstellung: \verb+OPT_PPP_PPTP='no'+
+
+Beispiel: \verb+OPT_PPP_PPTP='yes'+
+
+\config{CIRC\_x\_PPP\_PPTP\_TYPE}{CIRC\_x\_PPP\_PPTP\_TYPE}{CIRCxPPPPPTPTYPE}
+
+Diese Variable definiert, wer die PPP-Datenpakete in GRE-Paketen kapselt und
+über die Leitung schickt. Dies kann durch ein Benutzerprogramm (\texttt{pptp})
+oder durch den Kern erfolgen. Mittels \var{CIRC\_x\_PPP\_PPTP\_TYPE} wird die
+Art und Weise der GRE-Paketerzeugung definiert, siehe hierzu Tabelle
+\ref{tab:pptp-type}.
+
+\begin{table}[h!]
+  \centering
+  \begin{tabular}{|l|p{10cm}|}
+    \hline
+    Wert & Beschreibung \\
+    \hline
+    kernel & Die PPP-Pakete werden direkt an den Linux-Kern
+    gereicht, der daraus GRE-Pakete macht. Dadurch entfällt die
+    Kommunikation mit einem zweiten Prozess und damit eine Menge
+    Kopier- und Scheduling-Aufwand, was wiederum zu geringerer Prozessorlast
+    führt.\\
+    daemon & Die Pakete werden durch den \texttt{pptp}-Dämon erzeugt; die
+    Kommunikation zwischen \texttt{pppd} und \texttt{pptp} erfolgt asynchron.
+    Das bedeutet, dass der Datenstrom mit Anfang- und Ende-Markern versehen
+    wird, damit der \texttt{pptp}-Dämon die einzelnen Pakete auseinanderhalten
+    kann. Aufgrund des zweiten Prozesses und der zusätzlichen Markierungen ist
+    diese Methode aufwändiger als die Methode ``kernel''.\\
+    \hline
+  \end{tabular}
+  \caption{Arten der GRE-Paketerzeugung}
+  \label{tab:pptp-type}
+\end{table}
+
+Momentan ist ``daemon'' die einzige unterstützte Methode (und somit auch
+Standard, falls der Typ nicht angegeben wird). Eine Erweiterung des Pakets um
+das Nutzen des entsprechenden \texttt{pptp}-Kernel-Moduls steht noch aus.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_PPTP_TYPE='daemon'+
+
+\config{CIRC\_x\_PPP\_PPTP\_PEER}{CIRC\_x\_PPP\_PPTP\_PEER}{CIRCxPPPPPTPPEER}
+
+Hier wird die IP-Adresse der PPTP-Gegenstelle eingetragen.
+
+Nutzt man PPTP für einen DSL-Internet-Zugang, muss dazu passend die IP-Adresse
+der fli4l-PPTP-Ethernet-Karte gewählt werden. In Tabelle \ref{tab:pptp-provider}
+sind bekannte Konfigurationsvarianten aufgelistet.
+
+\begin{table}[htb]
+  \centering
+  \begin{tabular}{p{6cm}|p{4cm}|p{4cm}}
+    Provider &
+    lokale IP-Adresse\newline(\var{IP\_NET\_2}) &
+    entfernte IP-Adresse\newline(\var{CIRC\_x\_PPP\_PPTP\_PEER}) \\
+    \hline
+    Telekom Austria (Östereich)      & 10.0.0.140/29 & 10.0.0.138 \\
+    mxstream (Niederlande, Dänemark) & 10.0.0.140/29 & 10.0.0.138 \\
+    Inode xDSL (Österreich)          & via DHCPv4    & 10.0.0.138 \\
+  \end{tabular}
+  \caption{Einstellungen für Provider, die PPTP nutzen}
+  \label{tab:pptp-provider}
+\end{table}
+
+Für den Fall, dass DHCP zur Konfiguration der lokalen Netzwerk-Karte benötigt
+wird, ist das dhcp\_client-Paket zu installieren und ein entsprechender
+DHCPv4-Circuit für die jeweilige Ethernet-Karte (in der Regel eth1)
+einzurichten. Ein Beispiel für Inode xDSL findet sich am Ende des Abschnitts.
+
+\config{CIRC\_x\_PPP\_PPTP\_REORDER\_TIMEOUT}{CIRC\_x\_PPP\_PPTP\_REORDER\_TIMEOUT}{CIRCxPPPPPTPREORDERTIMEOUT}
+
+Der PPTP-Client muss unter Umständen Pakete zwischenpuffern und umordnen.
+Normalerweise wartet er 0,3 Sekunden auf ein ausstehendes Paket. Mit dieser
+Variable kann man den Timeout zwischen 0.00 (gar nicht puffern) und 10.00
+(max. 10 Sekunden warten) variieren. Die Zeiten müssen immer mit Punkt und zwei
+Nachkommstellen angegeben werden.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_PPTP_REORDER_TIMEOUT='0.30'+
+
+Beispiel: \verb+CIRC_1_PPP_PPTP_REORDER_TIMEOUT='1.00'+
+
+\config{CIRC\_x\_PPP\_PPTP\_LOGLEVEL}{CIRC\_x\_PPP\_PPTP\_LOGLEVEL}{CIRCxPPPPPTPLOGLEVEL}
+
+Mit dieser Variable kann konfiguriert werden, wieviel Ausgaben der PPTP-Client
+produziert. Möglich sind 0 (wenig), 1 (mittel) und 2 (viel).
+
+Standard-Einstellung: \verb+CIRC_x_PPP_PPTP_LOGLEVEL='1'+
+
+Beispiel: \verb+CIRC_1_PPP_PPTP_LOGLEVEL='2'+
+
+\end{description}
+
+\subsubsection{Eingehende PPTP-Verbindungen}
+
+Der fli4l kann auch konfiguriert werden, \emph{eingehende} PPTP-Verbindungen
+anzunehmen, also als ein Server zu fungieren. Solche PPTP-Verbindungen werden
+ebenfalls als PPP-Circuit konfiguriert (siehe
+\jump{sect:ppp-circuits}{Circuits vom Typ ``ppp''}), d.\,h. es gilt:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+\end{verbatim}
+\end{example}
+
+Zusätzlich muss das \verb+OPT_PPP_PPTP_SERVER+ aktiviert werden:
+
+\begin{description}
+\config{OPT\_PPP\_PPTP\_SERVER}{OPT\_PPP\_PPTP\_SERVER}{OPTPPPPPTPSERVER}
+
+Mit dieser Variable wird die Unterstützung für eingehende PPTP-Verbindungen
+aktiviert.
+Damit auch tatsächlich PPTP-Verbindungen angenommen werden können, muss
+mindestens ein PPP-Circuit den Typ ``pptp-server'' besitzen, d.\,h. es muss
+zusätzlich gelten
+
+\begin{example}
+\begin{verbatim}
+    CIRC_x_TYPE='ppp'
+    CIRC_x_PPP_TYPE='pptp-server'
+\end{verbatim}
+\end{example}
+
+(wobei ``x'' einen gültigen Circuit-Index darstellt).
+
+Standard-Einstellung: \verb+OPT_PPP_PPTP_SERVER='no'+
+
+Beispiel: \verb+OPT_PPP_PPTP_SERVER='yes'+
+\end{description}
+
+Zu den allgemeinen Circuit-Variablen kommen die folgenden, für PPP-Circuits
+des Typs ``pptp-server'' spezifischen Variablen hinzu:
+
+\begin{description}
+\config{CIRC\_x\_PPP\_PPTP\_SERVER\_LISTEN}{CIRC\_x\_PPP\_PPTP\_SERVER\_LISTEN}{CIRCxPPPPPTPSERVERLISTEN}
+
+Mit dieser Variable kann die IPv4-Adresse festgelegt werden, an welcher der
+PPTP-Server horcht. Wird diese Variable weggelassen, horcht der PPTP-Server
+an \emph{allen} Schnittstellen des Routers.\footnote{Dies entspricht der
+IPv4-Adresse \texttt{0.0.0.0}.}
+
+Mit Hilfe der hier konfigurierten Adresse wird im Falle von
+\jump{PFINPUTACCEPTDEF}{\var{PF\_INPUT\_ACCEPT\_DEF='yes'}} bzw.
+\jump{PFOUTPUTACCEPTDEF}{\var{PF\_OUTPUT\_ACCEPT\_DEF='yes'}} die Firewall in den
+INPUT- und OUTPUT-Ketten sowohl für das PPTP-Kontrollprotokoll auf TCP-Port
+1723 als auch für die GRE-Pakete geöffnet. Fehlt diese Variable, wird die
+Firewall so konfiguriert, dass die Kontroll- und Daten-Pakete an \emph{jeder}
+Adresse des PPTP-Servers empfangen werden können.
+
+Beispiel: \verb+CIRC_1_PPP_PPTP_SERVER_LISTEN='IP_NET_1_ADDR'+
+
+\configlabel{CIRC\_x\_PPP\_PPTP\_SERVER\_ALLOW\_FROM\_N}{CIRCxPPPPPTPSERVERALLOWFROMN}
+\config{CIRC\_x\_PPP\_PPTP\_SERVER\_ALLOW\_FROM\_y}{CIRC\_x\_PPP\_PPTP\_SERVER\_ALLOW\_FROM\_y}{CIRCxPPPPPTPSERVERALLOWFROMy}
+
+Dieses Array enthält eine Liste von IPv4-Netzadressen, für die ein Zugriff auf
+den PPTP-Server in der Firewall erlaubt wird. Mit Hilfe der hier konfigurierten
+Adressen wird im Falle von
+\jump{PFINPUTACCEPTDEF}{\var{PF\_INPUT\_ACCEPT\_DEF='yes'}} bzw.
+\jump{PFOUTPUTACCEPTDEF}{\var{PF\_OUTPUT\_ACCEPT\_DEF='yes'}} die Firewall in den
+INPUT- und OUTPUT-Ketten sowohl für das PPTP-Kontrollprotokoll auf TCP-Port
+1723 als auch für die GRE-Pakete geöffnet. Fehlt dieses Array, wird die
+Firewall so konfiguriert, dass die Kontroll- und Daten-Pakete von bzw. nach
+\emph{überall} akzeptiert werden.
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    CIRC_1_PPP_PPTP_SERVER_ALLOW_FROM_N='3'
+    CIRC_1_PPP_PPTP_SERVER_ALLOW_FROM_1='IP_NET_1'
+    CIRC_1_PPP_PPTP_SERVER_ALLOW_FROM_2='10.1.2.0/24'
+    CIRC_1_PPP_PPTP_SERVER_ALLOW_FROM_3='{Labor}'
+\end{verbatim}
+\end{example}
+
+\config{CIRC\_x\_PPP\_PPTP\_SERVER\_SESSIONS}{CIRC\_x\_PPP\_PPTP\_SERVER\_SESSIONS}{CIRCxPPPPPTPSERVERSESSIONS}
+
+Diese Variable enthält die Anzahl der Verbindungen, die dieser PPTP-Server
+maximal gleichzeitig verwalten kann. Maximal werden 255 Tunnel unterstützt.
+\footnote{Diese Beschränkung resultiert daher, dass der verwendete PPTP-Dämon
+einen Adressbereich nur in einer Komponente einer IPv4-Adresse erlaubt, also
+z.B. ``192.168.222.0-254''. Da eine Komponente nur die Werte 0--255 annehmen
+kann und der Wert 255 für die Broadcast-Adresse reserviert sind, resultiert
+daraus die genannte Beschränkung.}
+
+Standard-Einstellung: \verb+CIRC_x_PPP_PPTP_SERVER_SESSIONS='100'+
+
+Beispiel: \verb+CIRC_1_PPP_PPTP_SERVER_SESSIONS='200'+
+
+\end{description}
+
+\subsubsection{Beispiele}
+
+\noindent
+Beispiel 1 (Internet-Zugang über PPTP mit fester lokaler Adresse):
+
+\begin{example}
+\begin{verbatim}
+    IP_NET_N='2'                      # (mindestens) zwei Netze (LAN + PPTP)
+    IP_NET_1='192.168.6.0/24'         # lokales Netz, wie benötigt konfigurieren
+    IP_NET_1_DEV='eth0'               # lokales Netz hängt an erster Karte
+    IP_NET_2='10.0.0.140/29'          # unsere Adresse im PPTP-Netz
+    IP_NET_2_DEV='eth1'               # Internet-Modem hängt an zweiter Karte
+    #
+    OPT_PPP='yes'                     # PPP-Circuits aktivieren
+    OPT_PPP_PPTP='yes'                # PPTP-Client-Circuits aktivieren
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='DSL-mxstream'        # beliebig, aber eindeutig
+    CIRC_1_TYPE='ppp'                 # das ist ein PPP-Circuit
+    CIRC_1_ENABLED='yes'
+    CIRC_1_NETS_IPV4_N='1'
+    CIRC_1_NETS_IPV4_1='0.0.0.0/0'    # Default-Route ins Internet
+    CIRC_1_CLASS_N='1'
+    CIRC_1_CLASS_1='internet'         # Klasse für Internet-Anbindung
+    CIRC_1_UP='yes'                   # beim Booten aktivieren
+    CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_1_USEPEERDNS='yes'           # DNS-Server des Providers nutzen
+    CIRC_1_PPP_TYPE='pptp'            # PPTP-Client
+    CIRC_1_PPP_USERID='anonymer'      # Benutzername zur Authentifizierung
+    CIRC_1_PPP_PASSWORD='surfer'      # Passwort zur Authentifizierung
+    CIRC_1_PPP_PPTP_PEER='10.0.0.138' # Adresse des Internet-Modems im PPTP-Netz
+    #
+    CIRC_CLASS_N='1'
+    CIRC_CLASS_1='internet'           # Klasse aller Internet-Circuits
+\end{verbatim}
+\end{example}
+
+\noindent
+Beispiel 2 (Internet-Zugang über PPTP mit dynamisch zugewiesener lokaler
+Adresse):
+
+\begin{example}
+\begin{verbatim}
+    IP_NET_N='2'                      # (mindestens) zwei Netze (LAN + PPTP)
+    IP_NET_1='192.168.6.0/24'         # lokales Netz, wie benötigt konfigurieren
+    IP_NET_1_DEV='eth0'               # lokales Netz hängt an erster Karte
+    IP_NET_2='{DHCP-Inode}'           # PPTP-Netz, via DHCP konfiguriert
+    IP_NET_2_DEV='eth1'               # Internet-Modem hängt an zweiter Karte
+    #
+    OPT_DHCP_CLIENT='yes'             # DHCP-Circuits aktivieren
+    OPT_PPP='yes'                     # PPP-Client-Circuits aktivieren
+    OPT_PPP_PPTP='yes'                # PPTP-Client-Circuits aktivieren
+    #
+    CIRC_N='2'                        # zwei Circuits: DHCP und PPTP
+    #
+    CIRC_1_NAME='DHCP-Inode'          # beliebig, aber eindeutig
+    CIRC_1_TYPE='dhcp'                # das ist ein DHCP-Circuit
+    CIRC_1_ENABLED='yes'
+    CIRC_1_NETS_IPV4_N='1'            # hierüber soll die PPTP-Gegenstelle
+    CIRC_1_NETS_IPV4_1='10.0.0.138/32'# (= Internet-Modem) erreichbar sein
+    CIRC_1_DHCP_DEV='IP_NET_2_DEV'    # die PPTP-Ethernet-Karte
+    CIRC_1_UP='yes'                   # beim Booten aktivieren
+    #
+    CIRC_2_NAME='PPTP-Inode'          # beliebig, aber eindeutig
+    CIRC_2_TYPE='ppp'                 # das ist ein PPP-Circuit
+    CIRC_2_ENABLED='yes'
+    CIRC_2_PPP_TYPE='pptp'            # PPTP-Client
+    CIRC_2_PPP_USER='anonymer'        # Benutzername zur Authentifizierung
+    CIRC_2_PPP_PASS='surfer'          # Passwort zur Authentifizierung
+    CIRC_2_PPP_FILTER='yes'           # Datenverkehr-Filter aktivieren
+    CIRC_2_PPP_PPTP_PEER='10.0.0.138' # Adresse des Internet-Modems im PPTP-Netz
+    CIRC_2_NETS_IPV4_N='1'
+    CIRC_2_NETS_IPV4_1='0.0.0.0/0'    # Default-Route ins Internet
+    CIRC_2_USEPEERDNS='yes'           # DNS-Server des Providers nutzen
+    CIRC_2_HUP_TIMEOUT='600'          # nach 10 Minuten Inaktivität auflegen
+    CIRC_2_UP='yes'                   # beim Booten aktivieren
+    CIRC_2_DEPS='DHCP-Inode'          # PPTP benötigt DHCP-Konfiguration
+\end{verbatim}
+\end{example}
+
+\noindent
+Beispiel 3 (VPN-Client):
+
+\begin{example}
+\begin{verbatim}
+    IP_NET_N='1'                      # (mindestens) ein (lokales) Netz
+    IP_NET_1='192.168.6.0/24'         # lokales Netz, wie benötigt konfigurieren
+    IP_NET_1_DEV='eth0'               # lokales Netz hängt an erster Karte
+    #
+    OPT_PPP='yes'                     # PPP-Circuits aktivieren
+    OPT_PPP_ETHERNET='yes'            # PPPoE-Client-Circuits aktivieren (DSL)
+    OPT_PPP_PPTP='yes'                # PPTP-Client-Circuits aktivieren (VPN)
+    #
+    CIRC_N='2'                        # zwei Circuits: PPPoE (Internet) und PPTP
+    #
+    CIRC_1_NAME='DSL-Telekom'         # beliebig, aber eindeutig
+    CIRC_1_TYPE='ppp'                 # das ist ein PPP-Circuit
+    CIRC_1_ENABLED='yes'
+    CIRC_1_NETS_IPV4_N='1'
+    CIRC_1_NETS_IPV4_1='0.0.0.0/0'    # Default-Route ins Internet
+    CIRC_1_CLASS_N='1'
+    CIRC_1_CLASS_1='internet'         # Klasse für Internet-Anbindung
+    CIRC_1_UP='yes'                   # beim Booten aktivieren
+    CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_1_USEPEERDNS='yes'           # DNS-Server des Providers nutzen
+    CIRC_1_PPP_TYPE='ethernet'        # PPPoE-Client
+    CIRC_1_PPP_USERID='anonymer'      # Benutzername zur Authentifizierung
+    CIRC_1_PPP_PASSWORD='surfer'      # Passwort zur Authentifizierung
+    CIRC_1_PPP_ETHERNET_TYPE='kernel' # Kernel soll PPPoE-Pakete packen
+    CIRC_1_PPP_ETHERNET_DEV='eth1'    # DSL-Modem hängt an zweiter Karte
+    #
+    CIRC_2_NAME='VPN-Firma'           # beliebig, aber eindeutig
+    CIRC_2_TYPE='ppp'                 # das ist ein PPP-Circuit
+    CIRC_2_ENABLED='yes'
+    CIRC_2_NETS_IPV4_N='1'
+    CIRC_2_NETS_IPV4_1='10.11.12.0/24'# Firmennetz
+    CIRC_2_DEPS='internet/ipv4'       # Verbindung zur Firma benötigt
+                                      # IPv4-Internet
+    CIRC_2_UP='yes'                   # beim Booten aktivieren
+    CIRC_2_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_2_PPP_TYPE='pptp'            # PPTP-Client
+    CIRC_2_PPP_USERID='mustermann'    # Benutzername zur Authentifizierung
+    CIRC_2_PPP_PASSWORD='geheim'      # Passwort zur Authentifizierung
+    CIRC_2_PPP_PPTP_PEER='192.0.2.1'  # Adresse des PPTP-Servers der Firma
+    #
+    CIRC_CLASS_N='1'
+    CIRC_CLASS_1='internet'           # Klasse aller Internet-Circuits
+\end{verbatim}
+\end{example}
+
+\noindent
+Beispiel 4 (VPN-Server):
+
+\begin{example}
+\begin{verbatim}
+    OPT_PPP='yes'                        # PPP-Circuits aktivieren
+    OPT_PPP_PPTP_SERVER='yes'            # PPTP-Server-Circuits aktivieren
+    OPT_PPP_PEERS='yes'                  # zum Speichern der Anmeldedaten
+    PPP_PEER_N='1'                       # 1x Anmeldedaten hinterlegen
+    PPP_PEER_1_USERID='user'             # Benutzername vom Client
+    PPP_PEER_1_PASSWORD='pass'           # Passwort vom Client
+    PPP_PEER_1_CIRCUITS='pptp-eth1'      # Anmeldedaten gelten für PPTP-Circuit
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='pptp-eth1'              # beliebig, aber eindeutig
+    CIRC_1_TYPE='ppp'                    # das ist ein PPP-Circuit
+    CIRC_1_ENABLED='yes'
+    CIRC_1_UP='yes'                      # beim Booten aktivieren
+    CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'
+    CIRC_1_PROTOCOLS='ipv4'              # IPv4 soll über die Verbindung laufen
+    CIRC_1_PPP_TYPE='pptp-server'        # PPTP-Server
+    CIRC_1_PPP_PEER_AUTH='yes'           # Client-Authentifizierung ist Pflicht
+    CIRC_1_PPP_COMP_MPPE='yes'           # benutze Verschlüsselung
+    CIRC_1_PPP_LOCALIP='192.168.222.1'   # IP-Adresse des Servers
+    CIRC_1_PPP_REMOTEIP='192.168.222.2'  # Start-IP-Adresse der Clients
+    CIRC_1_PPP_PPTP_SERVER_SESSIONS='10' # max. 10 Tunnel
+\end{verbatim}
+\end{example}
+
+\subsection{fastd-Tunnel}
+
+Mit fastd\footnote{Fast and Secure Tunnelling Daemon} steht eine
+schnelle und kleine Alternative zu bekannten VPN-Lösungen bereit. Ziele
+bei der Entwicklung waren folgende Punkte:
+
+\begin{itemize}
+	\item sehr kleine Binärdatei (um unter OpenWRT auf Geräten mit sehr
+		wenig Speicher eingesetzt werden zu können)
+	\item austauschbare Krypto-Methoden
+	\item Nutzung von UDP, um auch hinter NAT eingesetzt werden zu können
+	\item Unterstützung von 1:1 und 1:n Szenarios
+\end{itemize}
+
+In vielen Freifunk-Projekten ist fastd Bestandteil der auf Gluon
+basierenden Firmware. Während dort in der Regel \glqq klar\grqq{} ist,
+was Client und Server ist, wird dies nicht durch das verwendete
+Protokoll bestimmt, sondern nur durch die Nutzung. Für fastd werden
+daher neben der Serverinstanz bei jedem beteiligten
+Kommunikationspartner ein oder mehrere sogenannte Peers definiert. Für
+die Konfiguration der jeweiligen Gegenstelle kehren sich damit die
+Rollen um: was auf der einen Seite Serverdaemon ist, muss auf der
+anderen Seite als Peer konfiguriert werden und umgekehrt.
+
+\subsubsection{Generelle Einstellungen}
+
+\begin{description}
+\config{OPT\_FASTD}{OPT\_FASTD}{OPTFASTD}
+
+Diese Variable aktiviert den fastd. Um tatsächlich Verbindungen
+aufzubauen, müssen diese natürlich noch entsprechend konfiguriert
+werden.
+
+Standard-Einstellung: \verb+OPT_FASTD='no'+
+
+Beispiel: \verb+OPT_FASTD='yes'+
+
+\config{FASTD\_SECRET}{FASTD\_SECRET}{FASTSECRET}
+
+Setzt den geheimen Schlüssel dieser fastd-Instanz. Ein Schlüsselpaar
+kann beispielsweise mit dem Programm fastd erzeugt werden, welches auf
+dem Router oder auf einem beliebigen anderen Linux-Rechner laufen kann:
+
+\begin{example}
+\begin{verbatim}
+# fastd --generate-key
+2016-01-06 18:54:13 +0100 --- Info: Reading 32 bytes from /dev/random...
+Secret: d8dec7f65c89a39561ecde12623e8051d1d7c4286253b119f155e3fe169cd161
+Public: e89e34e53c35bd6d750558a5e747fa72f25fbc922c86625b705ef1aa1865e32a
+\end{verbatim}
+\end{example}
+
+Wird diese Variable leer gelassen, erzeugt das Startscript ein
+Schlüsselpaar und legt den Inhalt in der Datei
+\texttt{/tmp/fastd.secret} ab, die man sich dann vom Router runter
+kopieren kann. Der fastd Service wird dann nicht gestartet!
+
+Standard-Einstellung: \verb+FASTD_SECRET=''+
+
+Beispiel: \verb+FASTD_SECRET='d8dec7f65c89a39561ecde12623e8051d1d7c4286253b119f155e3fe169cd161'+
+
+\end{description}
+

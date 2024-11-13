@@ -1,0 +1,1108 @@
+% Last Update: $Id: vpn_main.tex 44984 2016-03-12 10:17:48Z alex $
+
+\subsection{WireGuard}
+
+WireGuard\footnote{\altlink{https://www.wireguard.com/}} ist eine recht
+neue Alternative zu bekannten VPN-Lösungen wie OpenVPN oder IPSec. Ziel
+ist ein modernes, schnelles, einfaches VPN, das state-of-the-Art
+Verschlüsselung einsetzt. IPv4, IPv6 und auch Dual-Stack sind mit
+WireGuard kein Problem.
+
+Ziele bei der Entwicklung waren unter anderem
+
+\begin{itemize}
+    \item Einfachheit
+    \item Geschwindigkeit
+    \item state-of-the-art Kryptographie
+    \item schneller, einfacher, schlanker als IPsec
+    \item performanter als OpenVPN
+    \item genauso einfach zu konfigurieren wie SSH
+\end{itemize}
+
+Diese Einfachheit zeigt sich auch in der Konfiguration unter fli4l.
+
+
+\subsubsection{Generelle Einstellungen}
+
+\begin{description}
+
+\config{OPT\_WIREGUARD}{OPT\_WIREGUARD}{OPTWIREGUARD}
+
+Standard-Einstellung: \verb+OPT_WIREGUARD='no'+
+
+Diese Variable aktiviert das Paket WireGuard. Zusätzlich müssen die einzelnen
+Verbindungen oder Clients (peers) konfiguriert werden.
+
+Beispiel: \verb+OPT_WIREGUARD='yes'+
+
+\end{description}
+
+
+\subsubsection{WireGuard Server}
+
+WireGuard VPNs sind kein Client-Server-Modell im eigentlichen Sinne. Vielmehr werden
+VPN-Verbindungen immer zwischen zwei Peers aufgebaut. Dies bringt den Vorteil mit
+sich, dass die IP-Adressen beider Peers floating sein können. Beide Peers werden
+Änderungen der IP-Adresse automatisch übernehmen ohne weitere Konfiguration.
+Entscheidend ist nur, dass die ankommenden UDP-Pakete richtig signiert und
+verschlüsselt sind (siehe Private/Public Key unten). Weder im fli4l noch bei den
+Peers ist hierfür spezielle Konfiguration erforderlich.
+
+Der Einfachheit halber sprechen wir im Weiteren teils dennoch von Server (damit
+ist der fli4l gemeint) und Client (damit ist dann die Gegenstelle wie z.\,B. das Handy,
+der PC oder auch ein anderer fli4l gemeint)
+
+\achtung{Achtung:} Zusätzlich zur Konfiguration von WireGuard in
+\texttt{vpn.txt} muss der Paketfilter entsprechend konfiguriert
+werden. Dies geschieht über die normalen Wege in \texttt{base.txt}.
+Wichtig sind v.\,a.:
+
+\begin{description}
+    \item[Port öffnen] In der Standardeinstellung werden die WireGuard Ports automatisch
+    im Paketfilter geöffnet. Sollte dies nicht gewünscht sein, kann
+    \var{WIREGUARD\_DEFAULT\_OPEN\_PORT='no'} gesetzt werden.
+    In diesem Fall müssen die Ports dann manuell geöffnet werden z.\,B.
+        \begin{example}
+        \begin{verbatim}
+            PF_INPUT[]='prot:udp 50002 ACCEPT'  # in base.txt
+        \end{verbatim}
+        \end{example}
+    \item[Paketfilter-Regeln] entsprechende FORWARD- und MASQ-Regeln im Paketfilter
+\end{description}
+
+
+\paragraph{Erforderliche Parameter Server}
+
+\begin{description}
+
+\config{WIREGUARD\_N}{WIREGUARD\_N}{WIREGUARDN}
+
+Legt fest wie viele WireGuard Konfigurationen ('Server') wir haben wollen.
+
+Beispiel: \verb+WIREGUARD_N='1'+
+
+
+\config{WIREGUARD\_x\_NAME}{WIREGUARD\_x\_NAME}{WIREGUARDxNAME}
+
+Der Name dieser WireGuard-Instanz
+
+
+\config{WIREGUARD\_x\_LOCAL\_IP4}{WIREGUARD\_x\_LOCAL\_IP4}{WIREGUARDxLOCALIP4}
+
+Lokale IP-Adresse (bei \textbackslash32) oder Netzwerk (z.\,B. \textbackslash24)
+dieser WireGuard-Instanz
+
+
+\config{WIREGUARD\_x\_LISTEN\_PORT}{WIREGUARD\_x\_LISTEN\_PORT}{WIREGUARDxLISTENPORT}
+
+Port, auf dem WireGuard lauschen soll. Der Port muss zusätzlich in \texttt{base.txt} geöffnet
+werden, z.\,B.:
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_1_LISTEN_PORT='50002'     # in vpn.txt
+    PF_INPUT[]='prot:udp 50002 ACCEPT'  # in base.txt
+\end{verbatim}
+\end{example}
+
+
+\config{WIREGUARD\_x\_PRIVATE\_KEY}{WIREGUARD\_x\_PRIVATE\_KEY}{WIREGUARDxPRIVATEKEY}
+
+Standardwert: \verb+WIREGUARD_x_PRIVATE_KEY='auto'+
+
+Der private Schlüssel dieser WireGuard-Instanz.
+
+Es gibt zwei Möglichkeiten:
+
+\begin{description}
+    \item[auto] Private und zugehöriger Public Key werden automatisch erstellt
+    \item[\textit{some key}] ein gültiger WireGuard Private Key
+\end{description}
+
+Der Key kann manuell auf dem fli4l per
+
+\begin{example}
+\begin{verbatim}
+    wg genkey > privatekey
+\end{verbatim}
+\end{example}
+
+erstellt werden. Einfacher ist es aber sicherlich, beim ersten Start hier 'auto' zu
+konfigurieren und den erstellten Private Key dann nach Start aus dem Webinterface
+des fli4l zu übernehmen. Anders als die Private Keys der Peers muss der Private Key 
+des Servers auf dem fli4l verbleiben.
+
+\end{description}
+
+
+\paragraph{Optionale Parameter Server}
+
+\begin{description}
+
+
+\config{WIREGUARD\_DEFAULT\_OPEN\_PORT}{WIREGUARD\_DEFAULT\_OPEN\_PORT}{WIREGUARDDEFAULTOPENPORT}
+
+Standardwert: \verb+WIREGUARD_DEFAULT_OPEN_PORT='yes'+
+
+Optional: Legt fest ob im Paketfilter automatisch Regeln angelegt werden sollen, um eingehende
+WireGuard-Pakete zu akzeptieren. Damit werden alle in \var{WIREGUARD\_x\_LISTEN\_PORT} definierten 
+UDP-Ports automatisch geöffnet.
+
+
+\config{WIREGUARD\_x\_DEFAULT\_ALLOWED\_IPS\_N}{WIREGUARD\_x\_DEFAULT\_ALLOWED\_IPS\_N}{WIREGUARDxDEFAULTALLOWEDIPSN}
+
+Optional: Anzahl der IPs bzw. Netzwerke, die den Peers vorgegeben werden sollen, diese durch den VPN-Tunnel zu routen.
+
+Standardwert: \verb+WIREGUARD_x_DEFAULT_ALLOWED_IPS_N='0'+
+
+
+\config{WIREGUARD\_x\_DEFAULT\_ALLOWED\_IPS}{WIREGUARD\_x\_DEFAULT\_ALLOWED\_IPS}{WIREGUARDxDEFAULTALLOWEDIPS}
+
+Optional: IPs bzw. Netzwerke, die für alle Peers durch den VPN-Tunnel
+geroutet werden sollen. Hier angegebene Netze werden in der
+Peer-Config, die im Webinterface als QR-Code oder Datei einsehbar ist,
+entsprechend übernommen. Bei manueller Konfiguration der Peers wären
+diese Werte in \var{AllowedIPs} anzugeben.
+
+Es können sowohl IPv4- als auch IPv6-Netzwerke angegeben werden. Interne Identifier wie \var{IP\_NET\_x} und
+\var{IP6\_NET\_x} sind ebenfalls möglich.
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_1_DEFAULT_ALLOWED_IPS_N='2'
+    WIREGUARD_1_DEFAULT_ALLOWED_IPS_1='IP_NET_1'
+    WIREGUARD_1_DEFAULT_ALLOWED_IPS_2='10.0.0.2/24'
+\end{verbatim}
+\end{example}
+
+
+\config{WIREGUARD\_x\_KEEP\_ALIVE}{WIREGUARD\_x\_KEEP\_ALIVE}{WIREGUARDxKEEPALIVE}
+
+Standard-Einstellung: \var{WIREGUARD\_x\_KEEP\_ALIVE}='0'
+
+Optional: Intervall in Sekunden, in dem WireGuard UDP-Pakete
+versendet, um die Verbindung aufrecht zu erhalten. Da UDP an sich
+zustandslos ist, ist dies im Normalfall nicht notwendig.
+
+%  \begin{example}
+%  \begin{verbatim}
+%      WIREGUARD_x_KEEP_ALIVE='25'
+%  \end{verbatim}
+%  \end{example}
+
+
+\config{WIREGUARD\_x\_LOCAL\_HOST}{WIREGUARD\_x\_LOCAL\_HOST}{WIREGUARDxLOCALHOST}
+
+Standard-Einstellung: \var{WIREGUARD\_x\_LOCAL\_HOST}=''
+
+Optional: Der DNS-Name, unter dem fli4l im Internet erreichbar ist.
+Für die Funktion von WireGuard nicht erforderlich. Allerdings bietet
+es sich an, die Variable auf einen Hostname zu setzen, der z.\,B. von
+OPT\_DYNDNS aktualisiert wird. Die Peer-Konfiguration für die
+Gegenstellen im WebInterface (QR-Code bzw. Downlaod der Config-Datei)
+enthält dann diesen Wert als Gegenstelle.
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_x_LOCAL_HOST='some.domain.de'
+\end{verbatim}
+\end{example}
+
+
+\config{WIREGUARD\_x\_LOCAL\_IP6}{WIREGUARD\_x\_LOCAL\_IP6}{WIREGUARDxLOCALIP6}
+
+Optional: IPv6-Adresse des Servers.
+
+
+\config{WIREGUARD\_x\_PUBLIC\_KEY}{WIREGUARD\_x\_PUBLIC\_KEY}{WIREGUARDxPUBLICKEY}
+
+Standard-Einstellung: \var{WIREGUARD\_x\_PUBLIC\_KEY}=''
+
+Optional: Public Key der lokalen WireGuard-Instanz (Server).
+
+Da der Public Key aus dem Private Key errechnet werden kann, ist der Public Key
+optional.
+
+Die allermeisten Nutzer werden diese Variable nicht benötigen und stattdessen den
+Private Key beim ersten Start automatisch erstellen lassen und danach den Private
+Key aus dem Webinterface in die Konfiguration übernehmen. Der Public Key wird dabei
+automatisch aus dem Private Key abgeleitet.
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_x_PRIVATE_KEY='auto'
+\end{verbatim}
+\end{example}
+
+
+\config{WIREGUARD\_x\_PUSH\_DNS\_N}{WIREGUARD\_x\_PUSH\_DNS\_N}{WIREGUARDxPUSHDNSN}
+
+Optional: Anzahl der DNS-Server, die dem Peer in der Konfiguration
+mitgegeben werden. \achtung{Achtung:} WireGuard unterstützt kein Push
+von Netzwerkparametern beim Verbindungsaufbau. Die DNS-Server werden
+in der Peer-Config, die im Webinterface als QR-Code und Download
+verfügbar ist, hinterlegt.
+
+Standardwert: \verb+WIREGUARD_x_PUSH_DNS_N='0'+
+
+
+\config{WIREGUARD\_x\_PUSH\_DNS\_x}{WIREGUARD\_x\_PUSH\_DNS\_x}{WIREGUARDxPUSHDNSx}
+
+Optional: IPs von DNS-Servern, die in der Peer-Kon\-fi\-gu\-ra\-tion
+hinterlegt werden. Achtung: WireGuard unterstützt kein Push von
+Netzwerkparametern beim Verbindungsaufbau. Die DNS-Server werden in
+der Peer-Config, die im Webinterface als QR-Code und Download
+verfügbar ist, hinterlegt und somit erst angewendet, wenn der Peer
+diese Konfiguration neu bekommt.
+
+Es können sowohl IPv4- als auch IPv6-Adressen angegeben werden.
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_1_PUSH_DNS_N='2'
+    WIREGUARD_1_PUSH_DNS_1='10.0.0.1'
+    WIREGUARD_1_PUSH_DNS_2='2001:4860:4860::8888'
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+
+\paragraph{Erforderliche Parameter Client (Peer)}
+
+\begin{description}
+
+\config{WIREGUARD\_x\_PEER\_N}{WIREGUARD\_x\_PEER\_N}{WIREGUARDxPEERN}
+
+Standardwert: \verb+WIREGUARD_x_PEER_N='0'+
+
+Legt fest wie viele Peers wir konfigurieren wollen.
+
+Beispiel: \verb+WIREGUARD_1_PEER_N='3'+
+
+
+\config{WIREGUARD\_x\_PEER\_x\_NAME}{WIREGUARD\_x\_PEER\_x\_NAME}{WIREGUARDxPEERxNAME}
+
+Der Name des WireGuard Peers. Dient nur zur Identifikation z.\,B. im Webinterface.
+
+
+\config{WIREGUARD\_x\_PEER\_x\_LOCAL\_IP4}{WIREGUARD\_x\_PEER\_x\_LOCAL\_IP4}{WIREGUARDxPEERxLOCALIP4}
+
+IP-Adresse (bei \textbackslash32) des WireGuard Peers bzw. Netzwerk (z.\,B. \textbackslash24), das
+sich hinter dem Peer verbirgt (z.\,B. bei Site-2-Site VPN). Die Adresse muss im selben Netzwerk liegen,
+wie die IP-Adresse des zugehörigen WireGuard Servers WIREGUARD\_x\_LOCAL\_IP4
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_1_LOCAL_IP4='10.0.0.1/24'
+    WIREGUARD_1_PEER_1_LOCAL_IP4='10.0.0.2/32'
+    WIREGUARD_1_PEER_2_LOCAL_IP4='10.0.0.3/32'
+\end{verbatim}
+\end{example}
+
+
+\config{WIREGUARD\_x\_PEER\_x\_PUBLIC\_KEY}{WIREGUARD\_x\_PEER\_x\_PUBLIC\_KEY}{WIREGUARDxPEERxPUBLICKEY}
+
+Der Public Key des WireGuard Peers.
+
+Zum Verbindungsaufbau benötigt WireGuard zwar den Private Key der lokalen Instanz, vom Peer ist jedoch
+natürlich nur der Public Key erforderlich.
+
+Es gibt zwei Möglichkeiten:
+
+\begin{description}
+    \item[auto] es werden Private und zugehöriger Public Key des Peers erstellt. Dies bietet sich an
+    wenn man die Konfiguration später einfach per QR-Code oder Download der Config-Datei zum Peer
+    übertragen möchte
+    \item[\textit{some key}] ein gültiger WireGuard Public Key des Peers
+\end{description}
+
+\end{description}
+
+
+\paragraph{Optionale Parameter Client (Peer)}
+
+\begin{description}
+
+\config{WIREGUARD\_x\_PEER\_x\_ALLOWED\_IPS\_N}{WIREGUARD\_x\_PEER\_x\_ALLOWED\_IPS\_N}{WIREGUARDxPEERxALLOWEDIPSN}
+
+Optional: Anzahl der IPs bzw. Netzwerke, die diesem einzelnen Peer vorgegeben werden sollen, diese durch den
+VPN-Tunnel zu routen.
+
+Standardwert: \verb+WIREGUARD_x_PEER_x_ALLOWED_IPS_N='0'+
+
+
+\config{WIREGUARD\_x\_PEER\_x\_ALLOWED\_IPS\_x}{WIREGUARD\_x\_PEER\_x\_ALLOWED\_IPS\_x}{WIREGUARDxPEERxALLOWEDIPSx}
+
+Optional: IPs bzw. Netzwerke, die der jeweilige Peer durch den
+VPN-Tunnel routen soll. Hier angegebene Netze werden in der
+Peer-Config, die im Webinterface als QR-Code oder Datei einsehbar ist,
+entsprechend übernommen. Bei manueller Konfiguration der Peers wären
+diese Werte in \var{AllowedIPs} anzugeben.  Die hier für jeden
+einzelnen Peer konfigurierten Netzwerke werden mit den Netzen aus
+\var{WIREGUARD\_x\_DEFAULT\_ALLOWED\_IPS} zusammengeführt und als
+\var{AllowedIPs} in der jeweiligen Peer-Config hinterlegt.
+
+Es können sowohl IPv4- als auch IPv6-Netzwerke angegeben werden. Interne Identifier wie \var{IP\_NET\_x} und
+\var{IP6\_NET\_x} sind ebenfalls möglich.
+
+Beispiel:
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_1_PEER_1_ALLOWED_IPS_N='2'
+    WIREGUARD_1_PEER_1_ALLOWED_IPS_1='IP_NET_2'
+    WIREGUARD_1_PEER_2_ALLOWED_IPS_2='192.168.1.0/24'
+\end{verbatim}
+\end{example}
+
+
+\config{WIREGUARD\_x\_PEER\_x\_LOCAL\_IP6}{WIREGUARD\_x\_PEER\_x\_LOCAL\_IP6}{WIREGUARDxPEERxLOCALIP6}
+
+Optional: IPv6-Adresse des Servers. Die Adresse muss im selben
+Netzwerk liegen wie die Adresse des zugehörigen WireGuard Servers
+WIREGUARD\_x\_LOCAL\_IP6.
+
+
+\config{WIREGUARD\_x\_PEER\_x\_PRIVATE\_KEY}{WIREGUARD\_x\_PEER\_x\_PRIVATE\_KEY}{WIREGUARDxPEERxPRIVATEKEY}
+
+Optional: Der Private Key des Peers. Im Gegensatz zum Public Key ist dieser nicht erforderlich. Falls man
+die Konfiguration allerdings per QR-Code oder Download der Config-Datei im Webinterface auf den übernehmen möchte,
+ist es sinnvoll, den Private Key des Peers hier anzugeben.
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_x_PEER_x_PUBLIC_KEY='auto'
+\end{verbatim}
+\end{example}
+
+So erzeugte Private (und evtl. Public Keys des Peers sollten statisch in die Konfigurationsdatei übernommen werden, da
+sonst bei jedem Neustart neue Keys erzeugt werden und der Client sich erst wieder verbinden kann, wenn diese
+Keys entsprechend übertragen wurden.
+
+Bei Private Keys der Peers sollte man sich überlegen, ob diese wirklich dauerhaft auf dem fli4l verbleiben sollen.
+Für die VPN-Verbindung sind nur die Public Keys des Peers notwendig (sowie Private Key des Servers). Man kann 
+also durchaus die Keys der Peers automatisch erstellen lassen, dann aber nur die jeweiligen Public Keys in die 
+statische Konfiguration übernehmen. Selbst wenn Angreifer dann Zugriff auf auf den fli4l hätten, könnten sie 
+keine VPN-Verbindung erstellen, da der Private Key des Peers fehlt.
+
+Allerdings leidet darunter etwas die Einfachheit: Wenn der Private Key des Peers nicht auf dem fli4l bekannt ist,
+ist die Peer-Konfiguration, die per QR-Code und Download angeboten wird, unvollständig und kann je nach 
+Betriebssystem nicht eingelesen werden.
+
+Man muss sich also entscheiden:
+
+\begin{description}
+    \item[Sicherheit] Private Keys der Peers nach automatischer Erstellung nicht in vpn.txt hinterlegen und höhere
+    Sicherheit gegen eventuelle Eindringlinge.
+    \item[Einfachheit] Private Keys der Peers in vpn.txt hinterlegen und vollständige Peer-Kon\-fi\-gu\-ra\-tio\-nen per 
+    QR-Code und Download im Webinterface verfügbar haben.
+\end{description}
+
+
+\config{WIREGUARD\_x\_PEER\_x\_PRESHARED\_KEY}{WIREGUARD\_x\_PEER\_x\_PRESHARED\_KEY}{WIREGUARDxPEERxPRESHAREDKEY}
+
+Optional: mittels eines zusätzlichem Preshared Keys zwischen Server
+und Client kann die Sicherheit noch weiter erhöht werden.
+
+Es gibt zwei Möglichkeiten:
+
+\begin{description}
+    \item[auto] Preshared Key wird bei (jedem!) Start automatisch erstellt
+    \item[\textit{some key}] ein gültiger WireGuard Key
+\end{description}
+
+Wie auch die übrigen automatisch erstellten Keys, sollte auch der
+Preshared Key nach Erstellung beim ersten Start statisch in die
+Konfiguration übernommen werden, da ansonsten nach dem nächsten
+Reboot (und damit verbundener automatischer Neuerstellung der Keys)
+keine Verbindung mehr zum fli4l möglich ist.
+
+
+\config{WIREGUARD\_x\_PEER\_x\_REMOTE\_HOST}{WIREGUARD\_x\_PEER\_x\_REMOTE\_HOST}{WIREGUARDxPEERxREMOTEHOST}
+
+Optional: DNS-Name oder IP-Adresse des Peers. Der WireGuard Server
+nutzt dies, um die Verbindung zu initiieren.  Falls nicht gesetzt,
+wartet der WireGuard Server auf eingehende gültige (verschlüsselte
+und signierte) Pakete von Peers und antwortet an die IP-Adresse, von
+der das Paket kam.
+
+
+\config{WIREGUARD\_x\_PEER\_x\_REMOTE\_PORT}{WIREGUARD\_x\_PEER\_x\_REMOTE\_PORT}{WIREGUARDxPEERxREMOTEPORT}
+
+Optional: Der Port, auf dem der jeweilige Peer lauscht. Der WireGuard Server nutzt dies zum initialen
+Verbindungsaufbau.
+
+Standard-Einstellung: \var{WIREGUARD\_x\_PEER\_x\_REMOTE\_PORT}='51820'
+
+
+\config{WIREGUARD\_x\_PEER\_x\_ROUTE\_TO\_N}{WIREGUARD\_x\_PEER\_x\_ROUTE\_TO\_N}{WIREGUARDxPEERxROUTETON}
+
+Optional: Die Anzahl der Netzwerke, die über diese VPN-Verbindung
+zum Peer geroutet werden sollen.
+
+Standardwert: \verb+WIREGUARD_x_PEER_x_ROUTE_TO_N='0'+
+
+
+\config{WIREGUARD\_x\_PEER\_x\_ROUTE\_TO\_x}{WIREGUARD\_x\_PEER\_x\_ROUTE\_TO\_x}{WIREGUARDxPEERxROUTETOx}
+
+Optional: Die einzelnen Netzwerke, die über diesen Peer geroutet werden sollen.
+
+Beispiel: Hinter Peer 1 sind die beiden Netzwerke 192.168.1.1/24 und 192.168.188.1/24 erreichbar:
+
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_1_PEER_1_ROUTE_TO_N='2'
+    WIREGUARD_1_PEER_1_ROUTE_TO_1='192.168.1.1/24'
+    WIREGUARD_1_PEER_1_ROUTE_TO_2='192.168.188.1/24'
+\end{verbatim}
+\end{example}
+
+Bitte die entsprechenden Forward- und Post-Routing-Regeln in
+\texttt{base.txt} nicht vergessen (ggf. auch auf der Gegenseite).
+
+\end{description}
+
+\subsubsection{Werkzeug wg-tool}
+
+Zur Verwaltung einiger Grundfunktionen bringt Wireguard auf fli4l das 
+Kommandozeilenwerkzeug wg-tool mit:
+
+\begin{example}
+\begin{verbatim}
+    fli4l-rgb 4.0.0-r59812M # wg-tool
+    This is a helper script to start and stop WireGuard connections
+    Usage:
+        wg-tool <wg interface> <up|down>
+        wg-tool <wg interface> reresolve <peerName>
+                where <peerName> is the name defined in WIREGUARD_x_PEER_x_NAME
+
+    example: wg-tool wg1 down
+    example: wg-tool wg1 reresolve peer5Name
+\end{verbatim}
+\end{example}
+
+Im Normalbetrieb ist die Nutzung des Tools nicht erforderlich. Es erlaubt bei 
+Bedarf jedoch auf einfache Art das Starten und Stoppen konfigurierter 
+WireGuard-Instanzen.
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+    wg-tool wg1 down
+\end{verbatim}
+\end{example}
+
+\var{wg interface} ergibt sich aus der Konfiguration in vpn.txt wobei die Zählung 
+der Schnittstellen mit 0 beginnt. \var{WIREGUARD\_1} resultiert also in wg0.
+
+Zusätzlich erlaubt wg-tool die erneute Auflösung des DNS-Namens eines Peers ohne 
+den Server neu starten zu müssen, also ohne Unterbrechung der Verbindungen 
+eventueller weiterer Peers, die mit der selben Server-Instanz verbunden sind. Im 
+Normalbetrieb sollte auch dies nicht erforderlich sein. 
+
+Eine bekannte Ausnahme ist, wenn der DNS-Name des Peers zum Boot-Zeitpunkt des fli4l 
+nicht aufgelöst werden kann. In diesem Fall wird zwar der WireGuard Server gestartet, 
+die Gegenstelle dieses einen Peers jedoch nicht gesetzt. Falls der Peer von sich 
+aus die Verbindung initiiert, ist auch dies kein Problem, da bei WireGuard ein 
+Verbindungsaufbau grundsätzlich von beiden Seiten (Peers) gleichermaßen initiiert 
+werden kann.
+
+Ansonsten bietet es sich an, entweder wg-tool manuell aufzurufen oder - meist 
+einfacher - über Paket easycron zu automatisieren.
+
+Die Parameter ergeben sich wieder aus der Konfiguration in vpn.txt:
+\begin{description}
+    \item[wg interface] ergibt sich aus  \var{WIREGUARD\_x}. Die Zählung der 
+    Schnittstellen beginnt dabei mit 0. \var{WIREGUARD\_x} resultiert also in wg0.
+    \item[peerName] ist der Name des Peers in \var{WIREGUARD\_x\_PEER\_x\_NAME}.
+\end{description}
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+    WIREGUARD_2_PEER_3_NAME='peerTestName'
+    WIREGUARD_2_PEER_3_REMOTE_HOST='somehost.dyndns.de'
+
+    wg-tool wg1 reresolve peerTestName
+\end{verbatim}
+\end{example}
+
+Oder alternativ per cron-Job über Paket easycron alle 6 Stunden:
+\begin{example}
+\begin{verbatim}
+    EASYCRON_x_COMMAND='wg-tool wg1 reresolve peerTestName'
+    EASYCRON_x_TIME='* */6 * * *'
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{WireGuard Beispiele}
+
+\paragraph{Beispiel: minimal notwendige Konfiguration}
+
+\noindent
+
+\begin{example}
+\begin{verbatim}
+    OPT_WIREGUARD='yes'
+
+    WIREGUARD_N='1'
+    WIREGUARD_1_NAME='RoadWarriors'
+    WIREGUARD_1_LOCAL_IP4='10.0.0.1/24'
+    WIREGUARD_1_LISTEN_PORT='50002'
+
+    WIREGUARD_1_PEER_N='1'
+    WIREGUARD_1_PEER_1_NAME='peer1'
+    WIREGUARD_1_PEER_1_LOCAL_IP4='10.0.0.2/32'
+\end{verbatim}
+\end{example}
+
+Diese Konfiguration erzeugt eine lokalen WireGuard-Endpunkt auf dem fli4l mit
+Namen \emph{RoadWarriors} sowie einen Peer mit Namen \emph{peer1}.
+
+Alle notwendigen Krypto-Schlüssel (jeweils private und public key für Server und
+Peer) werden automatisch erstellt und können später im Webinterface eingesehen und
+in die Konfiguration übernommen werden.
+
+Zusätzlich wird die Peer-Konfiguration im Webinterface
+
+\begin{itemize}
+    \item als QR-Code für Android- und iPhone-App
+    \item als Download für Windows-/Linux-Clients
+\end{itemize}
+
+bereitgestellt.
+
+Die automatisch erstellten private Keys sollten nach dem ersten Start
+statisch in die Konfigurationsdatei \texttt{vpn.txt} übernommen werden.
+Ansonsten werden sie bei jedem Neustart des Routers neu erzeugt und die
+WireGuard-Verbindung kann erst wieder aufgebaut werden, wenn die
+entsprechenden Parameter an den Peer neu übertragen wurden.
+
+Eine vollständige, minimale Konfiguration, die auch Neustarts problemlos übersteht
+sieht wie folgt aus:
+
+\begin{example}
+\begin{verbatim}
+    OPT_WIREGUARD='yes'
+
+    WIREGUARD_N='1'
+    WIREGUARD_1_NAME='RoadWarriors'
+    WIREGUARD_1_LOCAL_IP4='10.0.0.1/24'
+    WIREGUARD_1_LISTEN_PORT='50002'
+    WIREGUARD_1_PRIVATE_KEY='+PxRP6JmwDyM1R+KdeN+vIL2UY2WB+eG/AHLJ/OdsHo='
+
+    WIREGUARD_1_PEER_N='1'
+    WIREGUARD_1_PEER_1_NAME='peer1'
+    WIREGUARD_1_PEER_1_LOCAL_IP4='10.0.0.2/32'
+    WIREGUARD_1_PEER_1_PUBLIC_KEY='gP+moyiQtfeO07UH3ASGAy1tX0sLhivLIXGNP0IKbG8='
+\end{verbatim}
+\end{example}
+
+
+\paragraph{Beispiel: RoadWarriors - von unterwegs ins Heimnetzwerk}
+
+\noindent
+
+% TODO  Erneut auf Trade-Off bzgl. private Key des Peers hinweisen. in vpn.txt angeben, damit
+%       QR-Code funktioniert oder zur Sicherheit nur Public Key der Peers auf fli4l hinterlegen
+
+Die folgende Konfiguration zeigt ein typisches Roadwarrior-Beispiel um von unterwegs jederzeit 
+Zugriff aufs heimische Netz haben zu können. Sicherer Zugriff auf die Heimautomatisierung, den 
+Fileserver zu Hause den digitalen Videorekorder, etc. können so umgesetzt werden.
+
+Die notwendigen Private und Public Keys werden automatisch beim Booten erstellt und sollten nach 
+dem ersten Start aus dem WireGuard Webinterface in die Konfigurationsdatei übernommen werden. 
+Sonst werden beim nächsten Start neue Keys erzeugt und man kommt mit den vorherigen Keys von 
+extern nicht mehr ins VPN.
+
+Folgende Ziele wollen wir mit der Beispiel-Konfiguration erreichen
+
+\begin{description}
+    \item[Dual-Stack] Wir wollen sowohl IPv4- als auch IPv6-Adressen nutzen können.
+    \item[DNS] DNS-Namen aus dem internen Netz sollen auch unterwegs aufgelöst werden, wir 
+    wollen uns nicht die IP-Adressen der internen Hosts merken müssen.
+    \item[kein Default-Gateway] Es soll nur Traffic ins interne Netz zu Hause durch den Tunnel 
+    gerouten werden. Traffic des mobilen Geräts ins Internet soll weiterhin direkt über die 
+    LTE- oder fremde WLAN-Verbindung gehen.
+    \item[MASQ] Wir wollen kein Masquerading der Peer-Adressen sondern direktes Routing in das 
+    interne Netz.
+    \item[Network Prefix] Der Einfachheit halber wollen wir direkt Netzwerk-Präfixe nutzen.
+\end{description}
+
+
+Folgende Annahmen zu internen Netzen, IPs, etc. wurden getroffen
+
+\begin{description}
+    \item[internes Netz] IP\_NET\_1 ist das interne Netz, das per WireGuard angebunden erreicht 
+    werden soll
+    \item[DynDNS] Der fli4l ist unter router.dyndns.name erreichbar
+    \item[IPv4] der WireGuard-Tunnel soll das IPv4-Netz 10.0.0.1/24 nutzen.
+    \item[IPv6] der WireGuard-Tunnel soll das IPv6-Netz 'fd00:cfcf:abcd::/48' nutzen.
+\end{description}
+
+
+Um diese Konfiguration umzusetzen, müssen folgende Dateien angepasst werden
+
+\begin{description}
+    \item[vpn.txt] Für die Konfiguration von WireGuard-Server und Peers
+    \item[base.txt] zur Konfiguration des Network-Prefixes sowie der notwendigen Regeln für 
+    den Paketfilter
+\end{description}
+
+
+Konfiguration Wireguard Server und Peer in \verb+vpn.txt+:
+
+\begin{example}
+\begin{verbatim}
+    OPT_WIREGUARD='yes'
+
+    WIREGUARD[] {
+        NAME='RoadWarriors'
+        LOCAL_IP4='{wg-RoadWarriors}+0.0.0.1/24'
+        LOCAL_IP6='{wg-RoadWarriors}+::1/64'
+        PRIVATE_KEY='auto'
+        LISTEN_PORT = '50002'
+        LOCAL_HOST='router.dyndns.name'
+        DEFAULT_ALLOWED_IPS[]='IP_NET_1'
+        PUSH_DNS[]='10.0.0.1'
+        PUSH_DNS[]='fd00:cfcf:abcd::1'
+
+        PEER[] {
+            NAME='Peer1'
+            LOCAL_IP4='{wg-RoadWarriors}+0.0.0.2/32'
+            LOCAL_IP6='{wg-RoadWarriors}+::2/128'
+            PRIVATE_KEY='auto'
+        }
+    }
+\end{verbatim}
+\end{example}
+
+
+Konfiguration der IPv4- und IPv6-Netze mittels Network Prefixes in \verb+base.txt+:
+
+% TODO: better use 2001:DB8::/32 addresses? Explicitely designed for documentation
+%       purposes. However then the example could not be directly copy & pasted...
+
+\begin{example}
+\begin{verbatim}
+    OPT_NET_PREFIX='yes'
+    NET_PREFIX
+    {
+        []
+        {
+            NAME='wg-RoadWarriors'  # Netzwerk-Präfix für den WireGuard-Tunnel
+            TYPE='static'
+            STATIC_IPV4='10.0.0.0/24'
+            STATIC_IPV6='fd00:cfcf:abcd::/48'
+        }
+    }
+\end{verbatim}
+\end{example}
+
+
+Paketfilter-Regeln für IPv4 in \verb+base.txt+:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF_INPUT[]='{wg-RoadWarriors.prefix} ACCEPT'
+    {
+      COMMENT='Zugriff WireGuard RoadWarriors auf fli4l'
+    }
+    
+    # IPv4 Forward-Regel, um Zugriff auf das Netz hinter dem fli4l zu erlauben
+    PF_FORWARD[]='{wg-RoadWarriors.prefix} IP_NET_1 ACCEPT'
+    {
+      COMMENT='Weiterleitung WireGuard RoadWarriors in IP_NET_1 zulassen'
+    }
+    
+    # IPv4 Postrouting-Regel, um Netz hinter fli4l ohne Masquerading zu erreichen
+    PF_POSTROUTING[]='{wg-RoadWarriors.prefix} IP_NET_1 ACCEPT'
+    {
+      COMMENT='Zugriff WireGuard RoadWarriors auf IP_NET_1 ohne Masquerading'
+    }
+
+\end{verbatim}
+\end{example}
+
+
+Paketfilter-Regeln für IPv6 in \verb+base.txt+:
+
+\begin{example}
+\begin{verbatim}
+    # IPv6 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF6_INPUT[]='{rgb-RoadWarriors.prefix} ACCEPT'
+    {
+      COMMENT='Zugriff WireGuard RoadWarriors auf fli4l'
+    }
+    
+    # IPv6 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF6_FORWARD[]='{rgb-RoadWarriors.prefix} IPV6_NET_1 ACCEPT'
+    {
+      COMMENT='Zugriff WireGuard RoadWarriors auf IPV6_NET_1'
+    }
+    
+    # IPv6 Postrouting-Regel, um Netz hinter fli4l ohne Masquerading zu erreichen
+    PF6_POSTROUTING[]='{rgb-RoadWarriors.prefix} IPV6_NET_1 ACCEPT'
+    {
+      COMMENT='Zugriff WireGuard RoadWarriors auf IPV6_NET_1 ohne Masquerading'
+    }
+\end{verbatim}
+\end{example}
+
+
+\paragraph{Beispiel: RoadWarriors - kompletter Traffic durch den Tunnel (default route)}
+
+\noindent
+
+Falls der komplette Traffic des mobilen Geräts immer durch den WireGuard-Tunnel 
+gehen soll (Default-Route durch den VPN-Tunnel), lässt sich dies  mit wenigen 
+Anpassungen entsprechend ändern.
+
+Konfiguration der Default-Routen des Peers. Die so erstellte Konfiguration muss 
+per Download oder erneutem Einlesen des QR-Codes erneut auf das mobile Gerät 
+übertragen werden
+
+Neuer Peer in \verb+vpn.txt+
+
+\begin{example}
+\begin{verbatim}
+    PEER[] {
+        NAME='Peer2'
+        LOCAL_IP4='{wg-RoadWarriors}+0.0.0.3/32'
+        LOCAL_IP6='{wg-RoadWarriors}+::3/128'
+        PRIVATE_KEY='auto'
+        ALLOWED_IPS[] = '0.0.0.0/0'
+        ALLOWED_IPS[] = '::/0'
+    }
+\end{verbatim}
+\end{example}
+
+
+Ergänzung der Paketfilter-Regeln für IPv4 und IPv6 in \verb+base.txt+:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4-Regel, um Zugriff auf Netze und Internet hinter dem fli4l zu erlauben
+    PF_FORWARD[]='{wg-RoadWarriors.prefix} ACCEPT'
+    {
+      COMMENT='Weiterleitung WireGuard RoadWarriors in alle Netze des fli4l'
+    }
+
+    # IPv4-Regel, um Pakete ins Internet zu maskieren
+    PF_POSTROUTING[]='{wg-RoadWarriors.prefix} {DHCPv4-cable} MASQUERADE'
+    {
+      COMMENT='MASQ WireGuard RoadWarriors to Internet'
+    }
+
+    # IPv6-Regel, um Zugriff auf Netze und Internet hinter dem fli4l zu erlauben
+    PF6_FORWARD[]='{wg-RoadWarriors.prefix} ACCEPT'
+    {
+      COMMENT='Weiterleitung WireGuard RoadWarriors in alle Netze des fli4l'
+    }
+
+    # IPv6-Regel, um Pakete ins Internet zu maskieren
+    PF6_POSTROUTING[]='{wg-RoadWarriors.prefix} {DHCPv6-cable} MASQUERADE'
+    {
+      COMMENT='MASQ WireGuard RoadWarriors to Internet'
+    }
+\end{verbatim}
+\end{example}
+
+
+Wir gehen dabei davon aus, dass in \verb+circuits.txt+:
+
+\begin{description}
+    \item[DHCPv4-cable] der Name für den IPv4-Circuit ist 
+    \item[DHCPv6-cable] der Name für den IPv6-Circuit ist 
+\end{description}
+
+
+Die Beispiel-Konfiguration geht von einem fli4l hinter einer FritzBox aus wie im 
+Wiki\footnote{siehe \altlink{https://web.nettworks.org/wiki/pages/viewpage.action?pageId=35651587}} beschrieben 
+
+
+\paragraph{Beispiel: Site2Site-VPN}
+
+\noindent
+
+Die folgende Konfiguration zeigt ein typisches Beispiel, um zwei Standorte per WireGuard VPN-Tunnel 
+zu verbinden. An beiden Standorten kümmert sich ein fli4l um Routing und verwaltet jeweils weitere 
+interne Netze. 
+
+Folgende Ziele wollen wir mit der Beispiel-Konfiguration erreichen
+
+% TODO: 
+\begin{description}
+    \item[Dual-Stack] Wir wollen sowohl IPv4- als auch IPv6-Adressen nutzen können.
+    \item[DNS] DNS-Namen aus dem jeweils anderen Netz sollen aufgelöst werden.
+    \item[MASQ] Wir wollen kein Masquerading zwischen den Netzen sondern direktes Routing in die 
+    jeweiligen interne Netz hinter den beiden Standorte.
+    \item[VPN-Netz] Das VPN-Netz und die jeweiligen IPs dienen jeweils nur als Transportnetz zwischen 
+                    den beiden fli4l. Sie tauchen nicht in den lokalen Netzen auf.
+    \item[Network Prefix] Der Einfachheit halber wollen wir direkt Netzwerk-Präfixe nutzen.
+\end{description}
+
+Folgende Annahmen zu internen Netzen, IPs, etc. wurden getroffen
+
+Standort A:
+\begin{itemize}
+    \item Ein internes IPv4-Netz 192.168.1.0/24
+    \item Ein internes IPv6-Netz fd5e:aaaa:aaaa:aaaa::/64
+    \item Der fli4l ist unter Dyndns fli4lA.dyndns.name erreichbar
+    \item Lokale Domain ist standortA.home.somedomain.net (siehe \verb+DOMAIN_NAME+ in \verb+base.txt+)
+\end{itemize}
+
+
+Standort B:
+\begin{itemize}
+    \item Ein internes IPv4-Netz 192.168.2.0/24
+    \item Ein internes IPv6-Netz fd5e:bbbb:bbbb:bbbb::/64
+    \item Der fli4l ist unter Dyndns fli4lb.somedomain.org erreichbar
+    \item Lokale Domain ist standortb.domain.de
+\end{itemize}
+
+
+Um diese Konfiguration umzusetzen, müssen auf beiden Seiten folgende Dateien angepasst werden
+
+\begin{description}
+    \item[vpn.txt] Für die Konfiguration von WireGuard-Server und Peers
+    \item[base.txt] zur Konfiguration des Network-Prefixes sowie der notwendigen Regeln für 
+    den Paketfilter
+    \item[dns\_dhcp.txt] um den jeweils anderen fli4l als DNS-Server für lokale Namen 
+    zu konfigurieren
+\end{description}
+
+
+\subsubsection{auf beiden fli4ls an beiden Standorten identisch}
+
+\noindent
+
+Netze in \verb+base.txt+:
+
+\begin{example}
+\begin{verbatim}
+    OPT_NET_PREFIX='yes'
+    NET_PREFIX
+    {
+        []
+        {
+            NAME='fli4a-intern'
+            TYPE='static'
+            STATIC_IPV4='192.168.1.0/24'
+            STATIC_IPV6='fd5e:aaaa:aaaa::/48'
+        }
+        []
+        {
+            NAME='fli4b-intern'
+            TYPE='static'
+            STATIC_IPV4='192.168.2.0/24'
+            STATIC_IPV6='fd5e:bbbb:bbbb::/48'
+        }
+        []
+        {
+            NAME='wg-Site2Site'
+            TYPE='static'
+            STATIC_IPV4='10.0.0.0/24'
+            STATIC_IPV6='fd5e:cccc:cccc::/48'
+        }
+    }
+\end{verbatim}
+\end{example}
+
+
+\subsubsection{Konfiguration fli4l an Standort A (neues Config-Format)}
+
+\noindent
+
+WireGuard VPN-Tunnel Standort A in \verb+vpn.txt+::
+
+\begin{example}
+\begin{verbatim}
+    OPT_WIREGUARD='yes'
+
+    WIREGUARD[] {
+        NAME='Site2Site-VPN'
+        LOCAL_IP4='{wg-Site2Site}+0.0.0.1/24'
+        LOCAL_IP6='{wg-Site2Site}+::1/64'
+        PRIVATE_KEY='iFwKnsJo/NO0WWiuMPxugdPOq9jqYhIP46uQi1AZj3E='  # unbedingt ändern
+        LISTEN_PORT='50002'
+        DEFAULT_ALLOWED_IPS[]='{fli4a-intern.prefix}'  # von allen Peers Pakete 
+                                                       # für dieses Netz erlauben
+
+        PEER[] {
+            NAME='fli4l-B'
+            LOCAL_IP4='{wg-Site2Site}+0.0.0.2/32'
+            LOCAL_IP6='{wg-Site2Site}+::2/128'
+            REMOTE_HOST='fli4lb.somedomain.org'
+            REMOTE_PORT='50000'
+            PUBLIC_KEY='eYyUIGxafeJwLC+BbFTJZ45CtKvCU3TlZ0DFCx9MlD0='
+            ROUTE_TO[]='{fli4b-intern.prefix}'   # Pakete in dieses Netz durch den 
+                                                 # Tunnel routen
+        }
+    }
+\end{verbatim}
+\end{example}
+
+
+Paketfilter-Regeln Standort A für IPv4 und IPv6 in \verb+base.txt+:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF_INPUT[]='{fli4b-intern.prefix} ACCEPT'
+    {
+      COMMENT='IPv4 Zugriff von Standort B auf fli4l'
+    }
+    
+    # IPv4 Forward-Regel, um Zugriff auf das Netz hinter dem fli4l zu erlauben
+    PF_FORWARD[]='{fli4b-intern.prefix} IP_NET_1 ACCEPT'
+    {
+      COMMENT='IPv4 Weiterleitung von Standort B auf IP_NET_1 zulassen'
+    }
+    
+    # IPv4 Postrouting-Regel, um Netz hinter fli4l ohne Masquerading zu erreichen
+    PF_POSTROUTING[]='{fli4b-intern.prefix} IP_NET_1 ACCEPT'
+    {
+      COMMENT='IPv4 Zugriff von Standort B auf IP_NET_1 ohne Masquerading'
+    }
+
+    # IPv6 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF6_INPUT[]='{fli4b-intern.prefix} ACCEPT'
+    {
+      COMMENT='IPv6 Zugriff von Standort B auf fli4l'
+    }
+    
+    # IPv6 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF6_FORWARD[]='{fli4b-intern.prefix} IPV6_NET_1 ACCEPT'
+    {
+      COMMENT='IPvv Weiterleitung von Standort B auf IPV6_NET_1 zulassen'
+    }
+    
+    # IPv6 Postrouting-Regel, um Netz hinter fli4l ohne Masquerading zu erreichen
+    PF6_POSTROUTING[]='{fli4b-intern.prefix} IPV6_NET_1 ACCEPT'
+    {
+      COMMENT='IPv6 Zugriff  Zugriff Standort B auf IPV6_NET_1 ohne Masquerading'
+    }
+\end{verbatim}
+\end{example}
+
+
+DNS Zone Delegation an Standort A in \verb+dns_dhcp.txt+, um auch DNS-Namen des Netzes hinter fli4l-B aufzulösen:
+
+\begin{example}
+\begin{verbatim}
+    OPT_DNS='yes'
+    DNS_ZONE_DELEGATION_N='1'
+    DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_N='1'
+    DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_IP='192.168.2.1'   # an fli4l-B delegieren
+    DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_QUERYSOURCEIP='IP_NET_1_IPADDR'
+
+    DNS_ZONE_DELEGATION_1_DOMAIN_N='1'
+    DNS_ZONE_DELEGATION_1_DOMAIN_1='standortb.domain.de'
+    DNS_ZONE_DELEGATION_1_NETWORK_N='1'
+    DNS_ZONE_DELEGATION_1_NETWORK_1='192.168.2.0/24'
+\end{verbatim}
+\end{example}
+
+% =====================================================================
+
+\subsubsection{Konfiguration fli4l an Standort B (altes Config-Format)}
+
+\noindent
+
+WireGuard VPN-Tunnel Standort B in \verb+vpn.txt+::
+
+\begin{example}
+\begin{verbatim}
+    OPT_WIREGUARD='yes'
+
+    WIREGUARD_N='1'
+    WIREGUARD_NAME='Site2Site-VPN'
+    WIREGUARD_LOCAL_IP4='{wg-Site2Site}+0.0.0.2/24'
+    WIREGUARD_LOCAL_IP6='{wg-Site2Site}+::2/64'
+    WIREGUARD_PRIVATE_KEY='eJ8s8+oyItWPUSs/5TDBroGWleEV7W/4p98qUY2xD2I='
+    WIREGUARD_LISTEN_PORT='50002'
+
+    WIREGUARD_1_PEER_N='1'
+    WIREGUARD_1_PEER_1_NAME='fli4l-A'
+    WIREGUARD_1_PEER_1_LOCAL_IP4='{wg-Site2Site}+0.0.0.1/32'
+    WIREGUARD_1_PEER_1_LOCAL_IP6='{wg-Site2Site}+::1/128'
+    WIREGUARD_1_PEER_1_REMOTE_HOST='fli4lA.dyndns.name'
+    WIREGUARD_1_PEER_1_REMOTE_PORT='50002'
+    WIREGUARD_1_PEER_1_PUBLIC_KEY='S9GsipIvFl36HkcXaET8v0G+UuAw6onDiC+22jJJjVs='
+    WIREGUARD_1_PEER_1_ALLOWED_IPS__N='1'
+    WIREGUARD_1_PEER_1_ALLOWED_IPS_1='{fli4a-intern.prefix}'
+    WIREGUARD_1_PEER_1_ROUTE_TO_N='1'
+    WIREGUARD_1_PEER_1_ROUTE_TO_1='{fli4a-intern.prefix}'
+\end{verbatim}
+\end{example}
+
+
+Paketfilter-Regeln Standort B für IPv4 und IPv6 in \verb+base.txt+:
+
+\begin{example}
+\begin{verbatim}
+    # IPv4 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF_INPUT[]='{fli4a-intern.prefix} ACCEPT'
+    {
+      COMMENT='IPv4 Zugriff von Standort A auf fli4l'
+    }
+    
+    # IPv4 Forward-Regel, um Zugriff auf das Netz hinter dem fli4l zu erlauben
+    PF_FORWARD[]='{fli4a-intern.prefix} IP_NET_1 ACCEPT'
+    {
+      COMMENT='IPv4 Weiterleitung von Standort A auf IP_NET_1 zulassen'
+    }
+    
+    # IPv4 Postrouting-Regel, um Netz hinter fli4l ohne Masquerading zu erreichen
+    PF_POSTROUTING[]='{fli4a-intern.prefix} IP_NET_1 ACCEPT'
+    {
+      COMMENT='IPv4 Zugriff von Standort A auf IP_NET_1 ohne Masquerading'
+    }
+
+    # IPv6 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF6_INPUT[]='{fli4a-intern.prefix} ACCEPT'
+    {
+      COMMENT='IPv6 Zugriff von Standort A auf fli4l'
+    }
+    
+    # IPv6 Input-Regel, um Zugriff auf fli4l-Router zu erlauben
+    PF6_FORWARD[]='{fli4a-intern.prefix} IPV6_NET_1 ACCEPT'
+    {
+      COMMENT='IPvv Weiterleitung von Standort A auf IPV6_NET_1 zulassen'
+    }
+    
+    # IPv6 Postrouting-Regel, um Netz hinter fli4l ohne Masquerading zu erreichen
+    PF6_POSTROUTING[]='{fli4a-intern.prefix} IPV6_NET_1 ACCEPT'
+    {
+      COMMENT='IPv6 Zugriff  Zugriff von Standort A auf IPV6_NET_1 ohne Masquerading'
+    }
+\end{verbatim}
+\end{example}
+
+DNS Zone Delegation an Standort B in \verb+dns_dhcp.txt+, um auch DNS-Namen des Netzes hinter fli4l-A aufzulösen:
+
+\begin{example}
+\begin{verbatim}
+    OPT_DNS='yes'
+    DNS_ZONE_DELEGATION_N='1'
+    DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_N='1'
+    DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_IP='192.168.1.1'   # an fli4l-A delegieren
+    DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_QUERYSOURCEIP='IP_NET_1_IPADDR'
+
+    DNS_ZONE_DELEGATION_1_DOMAIN_N='1'
+    DNS_ZONE_DELEGATION_1_DOMAIN_1='standortA.home.somedomain.net'
+    DNS_ZONE_DELEGATION_1_NETWORK_N='1'
+    DNS_ZONE_DELEGATION_1_NETWORK_1='{fli4a-intern.prefix}'
+\end{verbatim}
+\end{example}
+

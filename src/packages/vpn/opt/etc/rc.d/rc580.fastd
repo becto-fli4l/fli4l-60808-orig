@@ -1,0 +1,77 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc580.fastd - start fast and secure tunneling daemon
+#
+# Creation:     2016-01-09  Alexander Dahl <post@lespocky.de>
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+FASTD_ERR_NONE=0
+FASTD_ERR_SECRET=1
+FASTD_ERR_FASTD=2
+
+if [ "${OPT_FASTD}" = 'yes' ]
+then
+    begin_script FASTD 'configuring fastd ...'
+
+    # start subshell for easier error handling
+    (
+        # if secret is empty, generate a key, put it in /tmp, log something
+        # and then get out of here, without secret we can not start anyway
+        if [ -z "${FASTD_SECRET}" ]
+        then
+            log_info 'fastd: generating secret, get it from /tmp/fastd.secret'
+            fastd --generate-key > /tmp/fastd.secret 
+            # leave subshell
+            exit $FASTD_ERR_SECRET
+        fi
+
+        # load tun/tap driver (fastd creates tunnels, we can not work without)
+        do_modprobe tun
+
+        # create fastd conf dir in /etc
+        mkdir -p /etc/fastd
+
+        # generate config files
+        conffile=/etc/fastd/fastd.conf
+
+        cat > $conffile << EOF
+#----------------------------------------------------------------------------
+# fastd.conf
+# automatically created by rc580.fastd
+#----------------------------------------------------------------------------
+
+secret "${FASTD_SECRET}";
+EOF
+
+        {
+            echo '# add array variables here later' >/dev/null
+        } >> $conffile
+
+        # start it up
+        fastd -c $conffile
+
+        ec=$?
+        if [ $ec -ne 0 ]
+        then
+            log_error "fastd: could not start daemon, returned with ${ec}"
+            exit $FASTD_ERR_FASTD
+        fi
+
+        exit $FASTD_ERR_NONE
+    )
+
+    # subshell error handling
+    ec=$?
+    if [ $ec -eq $FASTD_ERR_NONE ]
+    then 
+        log_info 'fastd: everything fine'
+    elif [ $ec -eq $FASTD_ERR_SECRET ]
+    then
+        log_warn 'fastd: refuse to start without secret'
+    else
+        log_warn "fastd: configure/startup returned with ${ec}"
+    fi
+
+    end_script
+fi

@@ -1,0 +1,575 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc700.wireguard - install wireguard
+#
+# Creation:     2020-01-18  Christoph Fritsch <fli4l@dechristo.net>
+# Last Update:  2021-04-02  Christoph Fritsch <fli4l@dechristo.net>
+#------------------------------------------------------------------------------
+
+WG_CFG_DIR='/etc/wireguard'
+WG_PEER_FILE=${WG_CFG_DIR}'/wireguard.peers'
+WG_SERVER_FILE=${WG_CFG_DIR}'/wireguard.names'
+
+##############################
+# Functions
+##############################
+
+# joins strings with given divider
+# join_by ', ', a b c ---> a,b,c
+join_by ()
+{
+    local IFS="$1";
+    shift;
+    echo "$*"
+}
+
+# prepare standard allowed_ips configuration for the client 
+# to send into the VPN tunnel that includes
+# - local IPv4 address/network of WireGuard interface
+# - local IPv6 address/network of WireGuard interface
+# - any networks configured via DEFAULT_ALLOWED_IPS[]=''/WIREGUARD_x_PEER_x_ALLOWED_IPS_x=''
+create_default_allowed_ips_to_peer()
+{
+    local config_idx=$1
+    
+    eval local wg_server_ip4='$WIREGUARD_'$config_idx'_LOCAL_IP4'
+    # resolve Net Prefixes if required
+    wg_server_ip4=$(circuit_resolve_address "$wg_server_ip4" ipv4)
+
+    
+    # WireGuard Android client only accepts correct nets, e.g. 10.0.0.1/24 fails, 
+    # 10.0.0.0/24 is ok. iPhone accepts both - so clean up here for correct 
+    # config file and QRCode
+    if [ x$wg_server_ip4 != 'x' ]
+    then 
+        local wg_server_ip4_net=$(netcalc network ${wg_server_ip4})
+        local wg_server_ip4_netmaskbits=$(netcalc netmaskbits ${wg_server_ip4})
+        local wg_server_ip4_sanitized=${wg_server_ip4_net}"/"${wg_server_ip4_netmaskbits}
+        log_info "peerIP sanitized $wg_server_ip4_sanitized..."
+    fi
+
+    eval local wg_server_ip6='$WIREGUARD_'$config_idx'_LOCAL_IP6'
+    # resolve Net Prefixes if required
+    wg_server_ip6=$(circuit_resolve_address "$wg_server_ip6" ipv6)
+
+    if [ x$wg_server_ip6 != 'x' ]
+    then 
+        local wg_server_ip6_net=$(netcalc network ${wg_server_ip6})
+        local wg_server_ip6_netmaskbits=$(netcalc netmaskbits ${wg_server_ip6})
+        local wg_server_ip6_sanitized=${wg_server_ip6_net}"/"${wg_server_ip6_netmaskbits}
+        log_info "peerIP sanitized $wg_server_ip6_sanitized..."
+    fi
+
+    #local WireGuard interface IPs shall allways be in client allowed_ips
+    local wg_server_default_allowed_ips=$(join_by ',' $wg_server_ip4_sanitized $wg_server_ip6_sanitized)
+
+    eval local server_default_allowed_ips_n='$WIREGUARD_'$config_idx'_DEFAULT_ALLOWED_IPS_N' 
+
+    #concat default server default peer allowed_IPs
+    for allowed_ip_idx in $(seq 1 $server_default_allowed_ips_n)
+    do
+        eval local default_server_allowed_ip='$WIREGUARD_'$config_idx'_DEFAULT_ALLOWED_IPS_'$allowed_ip_idx
+
+        # resolve IP_NET_x/IPV6_NET_x names into respective networks
+        local res=$default_server_allowed_ip
+        case $default_server_allowed_ip in
+            IP_NET_*)
+                translate_ip_net $default_server_allowed_ip WIREGUARD_${config_idx}_DEFAULT_ALLOWED_IPS_${allowed_ip_idx}
+                ;;
+            IPV6_NET_*)
+                translate_ip6_net $default_server_allowed_ip WIREGUARD_${config_idx}_DEFAULT_ALLOWED_IPS_${allowed_ip_idx}
+                ;;
+        esac
+
+        local wg_server_default_allowed_ips=$(join_by ',' ${wg_server_default_allowed_ips} $res)
+    done
+    
+    echo $wg_server_default_allowed_ips
+}
+
+# prepare client-specific allowed_ips configuration that the
+# CLIENT shall send into the VPN tunnel
+# - all networks configured via WIREGUARD_x_PEER_x_ALLOWED_IPS_x
+create_allowed_ips_from_peer()
+{
+    local config_idx=$1
+    local peer_idx=$2
+    local peer_all_allowed_ips=
+    local peer_allowed_ip=
+    
+    eval local allowed_ips_n='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ALLOWED_IPS_N'
+
+    for idx in $(seq 1 $allowed_ips_n)
+    do
+        eval local peer_allowed_ip='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ALLOWED_IPS_'$idx
+
+        # resolve IP_NET_x/IPV6_NET_x names into respective networks
+        local res=$peer_allowed_ip
+        case $peer_allowed_ip in
+            IP_NET_*)
+                translate_ip_net $peer_allowed_ip WIREGUARD_${config_idx}_PEER_${peer_idx}_ALLOWED_IPS_${idx}
+                ;;
+            IPV6_NET_*)
+                translate_ip6_net $peer_allowed_ip WIREGUARD_${config_idx}_PEER_${peer_idx}_ALLOWED_IPS_${idx}
+                ;;
+        esac
+
+        local peer_all_allowed_ips=$peer_all_allowed_ips' '$res
+    done
+    
+    local peer_all_allowed_ips=$(join_by ',' $peer_all_allowed_ips)
+    
+    echo $peer_all_allowed_ips
+}
+
+# prepare client-specific allowed_ips configuration that the
+# SERVER shall send into the VPN tunnel
+# - all networks configured via WIREGUARD_x_PEER_x_ROUTE_TO_x
+create_allowed_ips_to_peer()
+{
+    local config_idx=$1
+    local peer_idx=$2
+    local server_all_allowed_ips=
+    local server_allowed_ip=
+    
+    eval local allowed_ips_n='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ROUTE_TO_N'
+    eval local wg_client_ip4='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_LOCAL_IP4'
+    # resolve Net Prefixes if required
+    wg_client_ip4=$(circuit_resolve_address "$wg_client_ip4" ipv4)
+
+    eval local wg_client_ip6='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_LOCAL_IP6'
+    # resolve Net Prefixes if required
+    wg_client_ip6=$(circuit_resolve_address "$wg_client_ip6" ipv6)
+
+
+    for idx in $(seq 1 $allowed_ips_n)
+    do
+        eval local server_allowed_ip='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ROUTE_TO_'$idx
+        local server_all_allowed_ips=$server_all_allowed_ips' '$server_allowed_ip
+    done
+    
+    local server_all_allowed_ips=$(join_by ',' $wg_client_ip4 $wg_client_ip6 $server_all_allowed_ips)
+    
+    echo $server_all_allowed_ips
+}
+
+create_config_file()
+{
+    local config_idx=$1
+    log_info "creating wireguard config $config_idx..."
+    
+    # let wg interfaces start with wg0
+    eval local wgif='wg'$(($config_idx-1))
+    #server and peer config directories erstellen
+    eval local WG_CFG_FILE_SERVER=$WG_CFG_DIR'/'$wgif'.conf'
+    eval local WG_CFG_DIR_PEERS=$WG_CFG_DIR'/peers/'$wgif''
+
+    log_info "creating wireguard peer config directory $WG_CFG_DIR_PEERS"
+    mkdir -p $WG_CFG_DIR_PEERS
+    
+    # link peer config directory to webserver directory for qrcode and config access through web interface
+    ln -s ${WG_CFG_DIR_PEERS} /srv/www/admin/img/wireguard/${wgif}
+    # link htpasswd to restrict unauthorized access to QRCode and config files
+    ln -s /etc/httpd/htpasswd /srv/www/admin/img/wireguard/${wgif}/.htpasswd
+
+    
+    #create server config file
+    eval local wg_config_name='$WIREGUARD_'$config_idx'_NAME'
+    eval local wg_server_ip4='$WIREGUARD_'$config_idx'_LOCAL_IP4'
+    # resolve Net Prefixes if required
+    wg_server_ip4=$(circuit_resolve_address "$wg_server_ip4" ipv4)
+    eval local wg_server_ip6='$WIREGUARD_'$config_idx'_LOCAL_IP6'
+    # resolve Net Prefixes if required
+    wg_server_ip6=$(circuit_resolve_address "$wg_server_ip6" ipv6)
+    eval local wg_server_listen_port='$WIREGUARD_'$config_idx'_LISTEN_PORT'
+    eval local wg_server_host='$WIREGUARD_'$config_idx'_LOCAL_HOST'
+    eval local wg_server_public_key='$WIREGUARD_'$config_idx'_PUBLIC_KEY'
+    eval local wg_server_private_key='$WIREGUARD_'$config_idx'_PRIVATE_KEY'
+    eval local wg_server_keep_alive='$WIREGUARD_'$config_idx'_KEEP_ALIVE'
+
+    log_info "configuring WireGuard server $wg_config_name"
+
+
+    # check for private and public server keys and auto-create if necessary
+    # for the server side a private key is mandatory
+    # calculate public and private key if required
+    if [ "auto" = "$wg_server_private_key" ]
+    then
+        log_info "generating private and public keys for WIREGUARD_${config_idx}_NAME='${wg_config_name}'"
+        wg_server_private_key=$(wg genkey)
+        wg_server_public_key=$(echo ${wg_server_private_key} | wg pubkey)
+    # only private key given --> derive public key
+    elif [ -z ${wg_server_public_key} ]
+    then
+        log_info "deriving public key from given private key for WIREGUARD_${config_idx}_NAME='${wg_config_name}'"
+        wg_server_public_key=$(echo ${wg_server_private_key} | wg pubkey)
+    fi
+
+
+    # Create local WireGuard server config file
+    cat >> $WG_CFG_FILE_SERVER <<EOF
+[Interface]
+#$wg_config_name
+#Address = ${wg_server_ip4}
+#Address = ${wg_server_ip6}
+ListenPort = ${wg_server_listen_port}
+PrivateKey = ${wg_server_private_key}
+#PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+#PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+EOF
+
+    #local WireGuard interface IPs shall allways be in client allowed_ips
+    # local IPs (IPv4 and IPv6) of WireGuard interface are automatically set
+    # as well as configured defaults for this server config
+    local peer_default_allowed_ips=
+    local peer_default_allowed_ips=$(create_default_allowed_ips_to_peer $config_idx)
+
+    eval local wg_interface='wg'$(($config_idx-1))
+    # write wireguard.names
+    # write header only if file does not yet exist (first loop/wg interface)
+    if [ ! -f $WG_SERVER_FILE ]
+    then
+        echo "#wg_interface:config_idx:wg_server_name:wg_server_private_key:wg_server_public_key:server_listen_port" > $WG_SERVER_FILE
+    fi
+    echo ${wg_interface}":"${config_idx}":"${wg_config_name}":"${wg_server_private_key}":"${wg_server_public_key}":"${wg_server_listen_port} >> $WG_SERVER_FILE
+
+
+    #create client peer entries
+    eval local current_config_n='$WIREGUARD_'$config_idx'_PEER_N'
+    for peer_idx in $(seq 1 $current_config_n)
+    do
+        eval local wg_client_name='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_NAME'
+        eval local wg_client_ip4='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_LOCAL_IP4'
+        # resolve Net Prefixes if required
+        wg_client_ip4=$(circuit_resolve_address "$wg_client_ip4" ipv4)
+
+        eval local wg_client_ip6='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_LOCAL_IP6'
+        # resolve Net Prefixes if required
+        wg_client_ip6=$(circuit_resolve_address "$wg_client_ip6" ipv6)
+
+        # set local IPv4, IPv6 or both addresses for this client
+        if [ x$wg_client_ip4 != "x" -a x$wg_client_ip6 != "x" ]; then
+            wg_client_address_string='Address = '$wg_client_ip4', '$wg_client_ip6
+        elif [ x$wg_client_ip4 != "x" ]; then
+            wg_client_address_string='Address = '$wg_client_ip4
+        elif [ x$wg_client_ip6 != "x" ]; then
+            wg_client_address_string='Address = '$wg_client_ip6
+        else
+            log_error "   neither IPv4 nor IPv6 given for peer $wg_client_name"
+        fi
+
+        eval local wg_client_public_key='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_PUBLIC_KEY'
+        eval local wg_client_private_key='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_PRIVATE_KEY'
+        eval local wg_client_preshared_key='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_PRESHARED_KEY'
+        eval local wg_client_keep_alive=$wg_server_keep_alive
+        eval local wg_client_remote_host='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_REMOTE_HOST'
+        eval local wg_client_remote_port='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_REMOTE_PORT'
+
+        #allowed IPs to receive FROM peer
+        local peer_allowed_ips=
+        
+        # get all WIREGUARD_%_PEER_%_ALLOWED_IPS
+        local peer_allowed_ips=$(create_allowed_ips_from_peer $config_idx $peer_idx)
+
+        #add local interface IPs to allowed_ips
+        local peer_all_allowed_ips=$(join_by ',' ${peer_default_allowed_ips} ${peer_allowed_ips})
+
+        #allowed_ips to send TO peer
+        local server_allowed_ips=$(create_allowed_ips_to_peer $config_idx $peer_idx)
+
+        # check for public key - for client  we can live with public key only
+        # calculate keys if auto-config is enabled
+        # if we have the client's private key we derive the public key
+        if [ $(echo $wg_client_private_key | egrep '^[a-zA-Z0-9+\/]{43}[=]$') ]; then
+            log_info "Private Key given for peer WIREGUARD_${config_idx}_PEER_${peer_idx}_NAME='${wg_client_name}', deriving Public Key"
+            wg_client_public_key=$(echo ${wg_client_private_key} | wg pubkey)
+        # if we only got the client's public key and it is an actual key - nothing to do
+        elif [ $(echo $wg_client_public_key | egrep '^[a-zA-Z0-9+\/]{43}[=]$') ]; then
+            wg_client_private_key=''
+        # only of no private and public key given, we need to auto-create both for the peer
+        else 
+            log_info "auto-generating keys for WIREGUARD_${config_idx}_PEER_${peer_idx}_NAME='${wg_client_name}'"
+            wg_client_private_key=$(wg genkey)
+            wg_client_public_key=$(echo ${wg_client_private_key} | wg pubkey)
+        fi
+
+        #pre-shared key is optional for additional security
+        if [ "auto" = "$wg_client_preshared_key" ]
+        then
+            log_info "auto-generating preshared key for WIREGUARD_${config_idx}_PEER_${peer_idx}_NAME='${wg_client_name}'"
+            wg_client_preshared_key=$(wg genkey)
+        fi
+
+        # Private Key is not mandatory in config but if given store to peer config for QR code creation; only write to config if defined in vpn.txt
+        case x$wg_client_private_key in
+            x) wg_client_private_key_string='#PrivateKey = ' ;;
+            *) wg_client_private_key_string='PrivateKey = '$wg_client_private_key ;;
+        esac
+
+        # PreShared Key is not mandatory (private/public key is sufficient); only write to config if defined in vpn.txt or autogenerated
+        case x$wg_client_preshared_key in
+            x|xnone) wg_client_preshared_key_string='#PresharedKey = ' ;;
+            *)       wg_client_preshared_key_string='PresharedKey = '$wg_client_preshared_key ;;
+        esac
+
+        # Keep alive interval is not mandatory; only write to config if defined in vpn.txt
+        case x$wg_client_keep_alive in
+            x) wg_client_keep_alive_string='#PersistentKeepalive = 25' ;;
+            *) wg_client_keep_alive_string='PersistentKeepalive = '$wg_client_keep_alive ;;
+        esac
+
+        # Endpoint is not mandatory; only write to config if defined in vpn.txt
+        # if endpoint does not resolve via DNS, wireguard will not start the entire interface and 
+        # none of its peers will be able to connect just because one peer's hostname does not resolve
+        # thus check if endpoint resolves, otherwise log error and do not write to config file
+        if [ x$wg_client_remote_host != "x" -a x$wg_client_remote_port != "x" ]
+        then 
+            # check if $WIREGUARD_'$config_idx'_PEER_'$peer_idx'_REMOTE_HOST resolves via DNS
+            check_remote_host=$(nslookup $wg_client_remote_host 2>/dev/null)
+            if [ $? -eq 0 ]
+            then
+                log_info "   Remote host $wg_client_remote_host resolves via DNS - all good"
+                wg_endpoint_string='Endpoint = '$wg_client_remote_host':'$wg_client_remote_port
+            # Peer set but does not resolve via DNS - omit in config as otherwise WireGuard cannot 
+            # start the entire interface with all its peers
+            else
+                log_error "   Remote host $wg_client_remote_host cannot be resolved via DNS - omitting in config file"
+                wg_endpoint_string='#Endpoint = host:port'
+            fi
+        # either REMOTE_HOST or REMOTE_PORT are not set - omit Endpoint config
+        else
+            wg_endpoint_string='#Endpoint = host:port'        
+        fi
+        
+        # try to identitfy host name - if not given via WIREGUARD_%_LOCAL_HOST try DYNDNS_1_HOSTNAME
+        case x$wg_server_host in
+            #x) wg_server_endpoint_string='#Endpoint = FLI4l-DynDNS:'$wg_server_listen_port ;;
+            x)  case x$DYNDNS_1_HOSTNAME in
+                    x)  wg_server_endpoint_string='#Endpoint = FLI4l-DynDNS:'$wg_server_listen_port
+                        ;;
+                    *)  wg_server_endpoint_string='Endpoint = '$DYNDNS_1_HOSTNAME':'$wg_server_listen_port 
+                        ;;
+                esac
+                ;;
+            *) wg_server_endpoint_string='Endpoint = '$wg_server_host':'$wg_server_listen_port 
+               ;;
+        esac
+
+        # WIREGUARD_x_PUSH_DNS is optional; only write to config if defined in vpn.txt
+        eval local push_dns_n='$WIREGUARD_'$config_idx'_PUSH_DNS_N'
+        
+        # get all WIREGUARD_x_PUSH_DNS_x for this server configuration
+        local all_pushed_dns=''
+        for idx in $(seq 1 $push_dns_n)
+        do
+            eval local pushed_dns='$WIREGUARD_'$config_idx'_PUSH_DNS_'$idx            
+            all_pushed_dns=$(join_by ',' $all_pushed_dns $pushed_dns)
+        done
+
+        # only write DNS string if DNS servers to push have been set
+        case x$all_pushed_dns in
+            x) wg_client_dns_string='#DNS = 8.8.8.8' ;;
+            *) wg_client_dns_string='DNS = '$all_pushed_dns ;;
+        esac
+
+        log_info "   Creating WireGuard peer config $wg_client_name"
+        # write wireguard.peers
+        # write header only if file does not yet exist (first loop/wg interface)
+        if [ ! -f $WG_PEER_FILE ]
+
+        then
+            echo "#wg_interface:config_idx:peer_idx:wg_client_private_key:wg_client_public_key:wg_client_name:wg_peer_dns::wg_peer_port" > $WG_PEER_FILE
+        fi
+        echo $wg_interface":"$config_idx":"$peer_idx":"$wg_client_private_key":"$wg_client_public_key":"$wg_client_name":"$wg_client_remote_host":"$wg_client_remote_port >> $WG_PEER_FILE
+        
+        # Add peer config to local wireguard server config file
+        cat >> $WG_CFG_FILE_SERVER <<EOF
+[Peer]
+#${wg_client_name}
+${wg_endpoint_string}
+PublicKey = ${wg_client_public_key}
+${wg_client_preshared_key_string}
+AllowedIPs = ${server_allowed_ips}
+${wg_client_keep_alive_string}
+
+EOF
+
+        # also store available info on peer config to make 
+        # available via QRCode in WebInterface
+        eval local wg_peer_cfg_file=$WG_CFG_DIR_PEERS'/$wg_client_name.conf'
+        cat >> $wg_peer_cfg_file <<EOF
+[Interface]
+#${wg_client_name}
+ListenPort = ${wg_client_remote_port}
+${wg_client_private_key_string}
+${wg_client_address_string}
+${wg_client_dns_string}
+
+[Peer]
+# ${wg_config_name}
+${wg_server_endpoint_string}
+PublicKey = ${wg_server_public_key}
+${wg_client_preshared_key_string}
+AllowedIPs = ${peer_all_allowed_ips}
+${wg_client_keep_alive_string}
+EOF
+
+        # QR-Code will only work on Android and Apple devices if peer private key is included
+        # thus only create QR-Code if peer private key is configured
+        if [ -z ${wg_client_private_key} ]; then
+            log_info "Private Key for peer ${wg_client_name} not given, QR-Code will not be created as Android and Apple devices won't accept it without private key anyway."
+            ln -s /srv/www/img/no-qrcode-dummy.png ${WG_CFG_DIR_PEERS}/${wg_client_name}.png
+        else
+            create_qrCode ${WG_CFG_DIR_PEERS} ${wg_client_name}
+        fi
+
+    done
+}
+
+# create qrCode png file for each peer config
+create_qrCode()
+{
+    local peerDirectory=$1
+    local peerName=$2
+    
+    qrencode -t png -r ${peerDirectory}/${peerName}.conf  -o ${peerDirectory}/${peerName}.png
+    if [ $? -eq 0 ];
+    then
+        log_info "QRCode created for peer ${peerName}"
+    else
+        log_error "Error - QRCode for peer ${peerName} not created"    
+    fi
+}
+
+
+setup_wg_interface()
+{
+    local config_idx=$1
+    eval local wg_config_name='$WIREGUARD_'$config_idx'_NAME'
+    eval local wg_server_listen_port='$WIREGUARD_'$config_idx'_LISTEN_PORT'
+
+
+    # let wg interfaces start with wg0
+    eval local wg_interface='wg'$(($config_idx-1))
+    eval local WG_CFG_FILE_SERVER=$WG_CFG_DIR'/'$wg_interface'.conf'
+    eval local wg_server_ip4='$WIREGUARD_'$config_idx'_LOCAL_IP4'
+    # resolve Net Prefixes if required
+    wg_server_ip4=$(circuit_resolve_address "$wg_server_ip4" ipv4)
+    eval local wg_server_ip6='$WIREGUARD_'$config_idx'_LOCAL_IP6'
+    # resolve Net Prefixes if required
+    wg_server_ip6=$(circuit_resolve_address "$wg_server_ip6" ipv6)
+
+    log_info "Setting up wireguard interface $wg_interface..."
+
+    #check if interface already exists
+    ip link show $wg_interface > /dev/null 2>&1
+
+    if [ $? -eq 0 ];
+    then
+        log_error "interface $wg_interface already exists"
+    else
+
+        # register interface alias
+        net_alias_add "$wg_config_name" $wg_interface
+
+        #wg-quick
+        #[#] ip link add wg0 type wireguard
+        # [#] wg setconf wg0 /dev/fd/63
+        # [#] ip -4 address add 10.0.0.1/24 dev wg0
+        # [#] ip -6 address add 2605:6400:20:89e:2400::/70 dev wg0
+        # [#] ip link set mtu 1420 up dev wg0
+        # [#] ip -4 route add 192.168.2.0/24 dev wg2
+        # [#] iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE; ip6tables -A FORWARD -i wg0 -j ACCEPT; ip6tables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+        
+        /sbin/ip link add dev $wg_interface type wireguard
+        /usr/bin/wg setconf $wg_interface $WG_CFG_FILE_SERVER
+
+        # add IPv4 address
+        if [ ! -z ${wg_server_ip4} ] 
+        then
+            ip -4 address add $wg_server_ip4 dev $wg_interface
+        else
+            log_info "no ipv4 address given for $wg_interface"
+        fi
+
+        # add IPv4 address
+        if [ ! -z ${wg_server_ip6} ] 
+        then
+            ip -6 address add $wg_server_ip6 dev $wg_interface
+        else
+            log_info "no ipv6 address given for $wg_interface"
+        fi
+
+        /sbin/ip link set $wg_interface up
+        #/sbin/ip link set mtu 1420 up dev $wg_interface
+
+        eval local current_config_n='$WIREGUARD_'$config_idx'_PEER_N'
+        for peer_idx in $(seq 1 $current_config_n)
+        do
+            eval local peer_routes_n='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ROUTE_TO_N'
+            for route_idx in $(seq 1 $peer_routes_n)
+            do
+                eval local routed_network='$WIREGUARD_'$config_idx'_PEER_'$peer_idx'_ROUTE_TO_'$route_idx
+                log_info "adding route $routed_network via interface $wg_interface"
+                ip route add $routed_network dev $wg_interface 
+            done
+        done
+        
+        # allow UDP input port in firewall 
+        if [ $WIREGUARD_DEFAULT_OPEN_PORT = "yes" ]; then
+            log_info "Enable firewall access for WireGuard config $wg_config_name..."
+            fw_append_rule filter in-wireguard "prot:udp any:${wg_server_listen_port} ACCEPT" "WireGuard ${wg_config_name}"
+            fw_append_rule6 filter in-wireguard "prot:udp ${wg_server_listen_port} ACCEPT" "WireGuard ${wg_config_name}"
+        fi
+
+        log_info "WireGuard interface $wg_interface created"
+    fi
+
+    # wg-quick down wg1
+    # [#] ip link delete dev wg1
+    # [#] iptables -D FORWARD -i wg1 -j ACCEPT; iptables -D FORWARD -o wg1 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+}
+
+##############################
+# Start script
+##############################
+
+case $OPT_WIREGUARD in
+yes)
+    begin_script WIREGUARD "setting up wireguard vpn..."
+
+    log_info "wireguard configuration starting..."
+
+    # loading wireguard kernel module
+    log_info "loading wireguard kernel module..."
+    do_modprobe wireguard
+    
+    log_info "creating wireguard server config directory $WG_CFG_DIR"
+    mkdir -p $WG_CFG_DIR
+    mkdir -p /srv/www/admin/img/wireguard/
+
+    # add firewall input chain in-wireguard and register in INPUT-tail
+    if [ $WIREGUARD_DEFAULT_OPEN_PORT = "yes" ]; then
+        log_info "preparing WireGuard firewall rules..."
+        fw_add_chain filter in-wireguard
+        fw_prepend_rule filter INPUT-tail 'in-wireguard' "WireGuard IPv4 access"
+        fw_add_chain6 filter in-wireguard
+        fw_prepend_rule6 filter INPUT-tail 'in-wireguard' "WireGuard IPv6 access"
+    fi
+
+    # Prepare wireguard server config in /etc/wireguard and additionally client configs in /etc/wireguard/peers/ (to create QRCodes later)
+    #create config files per WIREGUARD_N
+    for wg_config in $(seq 1 $WIREGUARD_N)
+    do
+        create_config_file $wg_config
+    
+        # Setup wg interface, assign IP adress and bring it up per WIREGUARD_N
+        setup_wg_interface $wg_config
+    done
+
+    httpd-menu.sh add status_wireguard.cgi "WireGuard" '$_MT_firewall' wireguard
+
+    end_script
+
+esac

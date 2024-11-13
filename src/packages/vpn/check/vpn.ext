@@ -1,0 +1,280 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for vpn
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_ppp_pptp)
+then
+    provides pptp version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_PPTP='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+if (opt_ppp_pptp_server)
+then
+    provides pptp_server version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_PPTP_SERVER='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+#
+# Circuits
+#
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set type=CIRC_%_TYPE[i]
+        if (type == "ppp")
+        then
+            set ppptype=CIRC_%_PPP_TYPE[i]
+            if (ppptype == "pptp")
+            then
+                if (!opt_ppp_pptp)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP_PPTP='yes'"
+                fi
+                if (CIRC_%_PPP_PPTP_TYPE[i] == "")
+                then
+                    error "CIRC_${i}_PPP_PPTP_TYPE must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+                if (CIRC_%_PPP_PPTP_PEER[i] == "")
+                then
+                    error "CIRC_${i}_PPP_PPTP_PEER must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+            fi
+            if (ppptype == "pptp-server")
+            then
+                if (!opt_ppp_pptp_server)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP_PPTP_SERVER='yes'"
+                fi
+            fi
+        fi
+    fi
+done
+
+
+if (opt_wireguard)
+then
+    provides wireguard_server version 0.1
+    depends on fli4l version 4.0
+    # Kernel 5.4.36 vs. 5.6.9
+    split(kernel_version, kv_%, '.')
+    if (kv_%[1]:numeric == 5 && kv_%[2]:numeric >= 6 )
+    then
+        # Kernel >= 5.6 module wireguard.ko comes with default kernel
+        add_to_opt "opt/lib/modules/${KERNEL_VERSION}/kernel/drivers/net/wireguard/wireguard.ko"
+    else
+        # Kernel < 5.6 module wireguard.ko comes with opt_vpn
+        stat("opt/lib/modules/${KERNEL_VERSION}/extra/wireguard.ko", k_wireguard)
+        if (k_wireguard_res == "OK")
+        then
+            add_to_opt "opt/lib/modules/${KERNEL_VERSION}/extra/wireguard.ko"
+        else
+            error "WireGuard kernel module wireguard.ko for Kernel ${KERNEL_VERSION} not available"
+        fi
+    fi
+    
+    # Copy kernel udp_tunnel.ko, ip6_udp_tunnel.ko if available
+    stat("opt/lib/modules/${KERNEL_VERSION}/kernel/net/ipv4/udp_tunnel.ko", k_udp_tunnel)
+    if (k_udp_tunnel_res == "OK")
+    then
+        add_to_opt "opt/lib/modules/${KERNEL_VERSION}/kernel/net/ipv4/udp_tunnel.ko"
+    else
+        error "WireGuard kernel module udp_tunnel.ko for Kernel ${KERNEL_VERSION} not available"
+    fi
+    stat("opt/lib/modules/${KERNEL_VERSION}/kernel/net/ipv6/ip6_udp_tunnel.ko", k_udp6_tunnel)
+    if (k_udp6_tunnel_res == "OK")
+    then
+        add_to_opt "opt/lib/modules/${KERNEL_VERSION}/kernel/net/ipv6/ip6_udp_tunnel.ko"
+    else
+        error "WireGuard kernel module ip6_udp_tunnel.ko for Kernel ${KERNEL_VERSION} not available"
+    fi
+
+
+    foreach n in WIREGUARD_N
+    do
+        set config_name=WIREGUARD_%_NAME[n]
+        set server_ip4=WIREGUARD_%_LOCAL_IP4[n] ?: ""
+        set server_ip6=WIREGUARD_%_LOCAL_IP6[n] ?: ""
+        set server_public_key=WIREGUARD_%_PUBLIC_KEY[n] ?: ""
+        set server_private_key=WIREGUARD_%_PRIVATE_KEY[n] ?: ""
+        set server_port_a=WIREGUARD_%_LISTEN_PORT[n]
+        set config_n=WIREGUARD_%_PEER_N[n]
+
+        #check for server keys to create
+        if ( server_private_key == "auto" ) then
+            warning "WireGuard: no public key for server ${config_name} - key will be auto-generated at startup. Do not forget to copy auto-generated keys back from fli4l to config file WIREGUARD_${n}_PUBLIC_KEY and WIREGUARD_${n}_PRIVATE_KEY."
+        fi
+
+        #check duplicate server ports against all other WireGuard server configs
+        foreach m in WIREGUARD_N
+        do        
+            if (m > n) then
+                set server_port_b=WIREGUARD_%_LISTEN_PORT[m]
+                set server_ip4_b=WIREGUARD_%_LOCAL_IP4[m] ?: ""
+                set server_ip6_b=WIREGUARD_%_LOCAL_IP6[m] ?: ""
+                set server_public_key_b=WIREGUARD_%_PUBLIC_KEY[m] ?: ""
+                set server_private_key_b=WIREGUARD_%_PRIVATE_KEY[m] ?: ""
+                # check for duplicate server UPD port
+                if( server_port_a == server_port_b ) then
+                    error "WireGuard: You can't use the same Wireguard UDP port twice. WIREGUARD_${n}_LISTEN_PORT='$server_port_a' and WIREGUARD_${m}_LISTEN_PORT='$server_port_b' are the same."
+                fi
+                # check for duplicate server ipv4 address
+                if( server_ip4 == server_ip4_b ) then
+                    error "WireGuard: You can't use the same Wireguard IPv4 twice. WIREGUARD_${n}_LOCAL_IP4='$server_ip4' and WIREGUARD_${m}_LOCAL_IP4='$server_ip4_b' are the same."
+                fi
+                # check for duplicate server ipv6 address
+                if( server_ip6 != "" && server_ip6 == server_ip6_b ) then
+                    error "WireGuard: You can't use the same Wireguard IPv6 twice. WIREGUARD_${n}_LOCAL_IP6='$server_ip6' and WIREGUARD_${m}_LOCAL_IP6='$server_ip6_b' are the same."
+                fi
+                # check for duplicate server public keys
+                if( server_public_key != "" && server_public_key == server_public_key_b ) then
+                    error "WireGuard: You cant't use the same Wireguard public key twice. WIREGUARD_${n}_PUBLIC_KEY='$server_public_key' and WIREGUARD_${m}_PUBLIC_KEY='$server_public_key_b' are the same."
+                fi
+                # check for duplicate server private keys
+                if( server_private_key != "auto" && server_private_key == server_private_key_b ) then
+                    error "WireGuard: You can't use the same Wireguard private key twice. WIREGUARD_${n}_PRIVATE_KEY='$server_private_key' and WIREGUARD_${m}_PRIVATE_KEY='$server_private_key_b' are the same."
+                fi
+            fi
+        done
+
+        #check for duplicate WireGuard Peer parameters (IPs, keys, etc.)
+        foreach i in config_n
+        do            
+            #warning "i: Checking config ${config_n} against ${i}"
+            set peer_name_a=WIREGUARD_%_PEER_%_NAME[n][i]
+            set peer_ip4_a=WIREGUARD_%_PEER_%_LOCAL_IP4[n][i] ?: ""
+            set peer_ip6_a=WIREGUARD_%_PEER_%_LOCAL_IP6[n][i] ?: ""
+            set peer_public_key_a=WIREGUARD_%_PEER_%_PUBLIC_KEY[n][i]
+            set peer_private_key_a=WIREGUARD_%_PEER_%_PRIVATE_KEY[n][i] ?: ""
+            set peer_preshared_key_a=WIREGUARD_%_PEER_%_PRESHARED_KEY[n][i] ?: ""
+            set peer_a_routes_to_n=WIREGUARD_%_PEER_%_ROUTE_TO_N[n][i] ?: 0
+
+            #check WIREGUARD_%_PEER_N against server config
+            # check for duplicate IPv4 adresses, ip adresses must not be duplicate across peers and server
+            if( peer_ip4_a == server_ip4 ) then
+                error "WireGuard: You can't use the same IPv4 for WireGuard server and peer. WIREGUARD_${n}_LOCAL_IP4='$server_ip4' and WIREGUARD_${n}_PEER_${i}_LOCAL_IP4='$peer_ip4_a' use the same IP."
+            fi
+            # check for duplicate IPv6 adresses, ip adresses must not be duplicate across peers and server
+            if ( server_ip6 != "" ) then
+                if( server_ip6 == peer_ip6_a ) then
+                    error "WireGuard: You can't use the same IPv6 for WireGuard server and peer. WIREGUARD_${n}_LOCAL_IP6='$server_ip6' and WIREGUARD_${n}_PEER_${i}_LOCAL_IP6='$peer_ip6_a' use the same IPv6."
+                fi
+            fi
+            # check for duplicate public keys for server and peer
+            if( server_public_key == peer_public_key_a ) then
+                warning "WireGuard: You are using the very same public key for two WireGuard server and peer. WIREGUARD_${n}_PUBLIC_KEY='$server_public_key' and WIREGUARD_${n}_PEER_${i}_PUBLIC_KEY='$peer_public_key_a' use the same public key. That is not forbidden but should be avoided."
+            fi
+#disabled until subnet/samenet also work with net prefixes - this way net prefixes cant be used
+            # check for valid IPs and subnet - all peers must have different IPs/Subnets
+#            if ( samenet ("$peer_ip4_a", "$server_ip4") ) then
+#                error "WireGuard: IPs of WireGuard server and peer are the same net. WIREGUARD_${n}_LOCAL_IP4='$server_ip4' and WIREGUARD_${n}_PEER_${i}_LOCAL_IP4='$peer_ip4_a'."
+#            fi
+            # check for valid IPs and subnet - all peers must be in the same subnet
+#            if ( ! subnet ("$peer_ip4_a", "$server_ip4") && ! subnet ("$server_ip4", "$peer_ip4_a") ) then
+#                error "WireGuard: Subnets of WireGuard server and peer do not match. WIREGUARD_${n}_LOCAL_IP4='$server_ip4' and WIREGUARD_${n}_PEER_${i}_LOCAL_IP4='$peer_ip4_a' do not belong to the same subnet."
+#            fi
+
+            #check for mismatch - public_key='auto', private_key='SOME KEY' --> nonsense, private key known but would be recreated as public key is set to 'auto'
+            #if ( ( peer_public_key_a == "auto" && peer_private_key_a != "auto" ) ) then
+            if ( ( peer_public_key_a == "auto" && peer_private_key_a =~ "^[a-zA-Z0-9+\/]{43}[=]$" ) ) then
+                warning "WireGuard: Key config mismatch ${peer_name_a} - WIREGUARD_${n}_PEER_${i}_PUBLIC_KEY='${peer_public_key_a}' and WIREGUARD_${n}_PEER_${i}_PRIVATE_KEY='${peer_private_key_a}'. Private key will be used to derive Public Key."
+            fi
+            #check for mismatch - public_key='SOME KEY', private_key='auto'  --> nonsense but does not hurt. Public key is relevant and given, private_key='auto' will be ignored
+            if ( ( peer_public_key_a =~ "^[a-zA-Z0-9+\/]{43}[=]$" && peer_private_key_a == "auto" ) ) then
+                warning "WireGuard: Key config mismatch ${peer_name_a} - WIREGUARD_${n}_PEER_${i}_PUBLIC_KEY='${peer_public_key_a}' and WIREGUARD_${n}_PEER_${i}_PRIVATE_KEY='${peer_private_key_a}'. Public key will be used and no private key will be created."
+            fi
+
+            #check for pirvate key - QR-code will not work if peer private key is not given. Other than that no issue; only peer's public key is mandatory
+            if ( peer_private_key_a == "" ) then
+                warning "WireGuard: Peer private key not given for ${peer_name_a} - WireGuard config will still work without issues. Only QR-Code to transfer config to peer will not work as Android and Apple WireGuard apps require private key enconded in QR-Code to import config. "
+            fi
+
+            #check for peer keys to create
+            if ( peer_public_key_a == "auto" ) then
+                warning "WireGuard: no peer public key given for ${peer_name_a} - key will be auto-generated at startup. Do not forget to copy auto-generated keys back from fli4l to config file WIREGUARD_${n}_PEER_${i}_PUBLIC_KEY and WIREGUARD_${n}_PEER_${i}_PRIVATE_KEY."
+            fi
+            
+            #check for peer preshared key to create
+            if ( peer_preshared_key_a == "auto" ) then
+                warning "WireGuard: pre-shared key will be auto-generated for peer ${peer_name_a} at startup. Do not forget to copy auto-generated key back from fli4l to config file  WIREGUARD_${n}_PEER_${i}_PRESHARED_KEY."
+            fi
+
+            #warning "WireGuard: checking $peer_a_routes_to_n routes..."
+            # check all routes of peer A against all routes of peer b - only within same VPN config
+            foreach peer_a_route_to_i in peer_a_routes_to_n
+            do
+                set peer_a_route_to=WIREGUARD_%_PEER_%_ROUTE_TO_%[n][i][peer_a_route_to_i] ?: ""
+                # warning "WireGuard: checking route WIREGUARD_${n}_PEER_${i}_ROUTE_TO_${peer_a_route_to_i}='$peer_a_route_to'"
+
+                # check routes against all peers of same VPN config
+                foreach j in config_n
+                do
+                    #only check for n+1 peer (avoid check peer1 against peer1)
+                    if (j > i) then
+                        set peer_b_routes_to_n=WIREGUARD_%_PEER_%_ROUTE_TO_N[n][j] ?: 0
+                        foreach peer_b_route_to_i in peer_b_routes_to_n
+                        do
+                        set peer_b_route_to=WIREGUARD_%_PEER_%_ROUTE_TO_%[n][j][peer_b_route_to_i] ?: ""
+                            # warning "WireGuard: checking route WIREGUARD_${n}_PEER_${i}_ROUTE_TO_${peer_a_route_to_i}='$peer_a_route_to' against WIREGUARD_${n}_PEER_${j}_ROUTE_TO_${peer_b_route_to_i}='$peer_b_route_to'"
+                        if(samenet("$peer_a_route_to", "$peer_b_route_to") || subnet("$peer_a_route_to", "$peer_b_route_to") || subnet("$peer_b_route_to", "$peer_a_route_to")) then
+                            error "WireGuard: You cannot route the same net via 2 different routes: WIREGUARD_${n}_PEER_${i}_ROUTE_TO_${peer_a_route_to_i}='$peer_a_route_to' and WIREGUARD_${n}_PEER_${j}_ROUTE_TO_${peer_b_route_to_i}='$peer_b_route_to'"
+                        fi
+                        done
+                    fi
+                done
+            done
+
+            foreach j in config_n
+            do
+                #warning "j: Checking config ${config_n} against ${j}"
+                if (j > i) then
+                    set peer_name_b=WIREGUARD_%_PEER_%_NAME[n][j]
+                    set peer_ip4_b=WIREGUARD_%_PEER_%_LOCAL_IP4[n][j] ?: ""
+                    set peer_ip6_b=WIREGUARD_%_PEER_%_LOCAL_IP6[n][j] ?: ""
+                    set peer_public_key_b=WIREGUARD_%_PEER_%_PUBLIC_KEY[n][j]
+                    set peer_private_key_b=WIREGUARD_%_PEER_%_PRIVATE_KEY[n][j] ?: ""
+
+
+                    # check for duplicate peer names
+                    if( peer_name_a == peer_name_b ) then
+                        error "WireGuard: You can't use the same peer name for more than one WireGuard peer. WIREGUARD_${n}_PEER$_${i}_NAME='$peer_name_a' and WIREGUARD_${n}_PEER$_${j}_NAME='$peer_name_b' use the same name."
+                    fi
+#disabled until subnet/samenet also work with net prefixes - this way net prefixes cant be used
+                    # check for duplicate IPv4 adresses, ip adresses must not be duplicate across peers or with server IP
+#                    if( samenet ("$peer_ip4_a", "$peer_ip4_b") ) then
+#                        error "WireGuard: You can't use the same IPv4 for more than one WireGuard peer. WIREGUARD_${n}_PEER_${i}_LOCAL_IP4='$peer_ip4_a' and WIREGUARD_${n}_PEER_${j}_LOCAL_IP4='$peer_ip4_b' use the same IP."
+#                    fi
+
+                    # check for duplicate IPv6 adresses, ip adresses must not be duplicate across peers or with server IP
+                    if ( peer_ip6_b != "" ) then
+                        if( peer_ip6_a == peer_ip6_b ) then
+                            error "WireGuard: You can't use the same IPv6 for more than one WireGuard peer. WIREGUARD_${n}_PEER_${i}_LOCAL_IP6='$peer_ip6_a' and WIREGUARD_${n}_PEER_${j}_LOCAL_IP6='$peer_ip6_b' use the same IPv6."
+                        fi
+                    fi
+                    # check for duplicate peer private keys WIREGUARD_%_PRIVATE_KEY (peer private key is not mandatory)
+                    if ( peer_private_key_b != "" ) then
+                        if( peer_private_key_a != "none" && peer_private_key_a != "auto" && peer_private_key_a == peer_private_key_b ) then
+                            error "WireGuard: You are using the very same private key for two peers WIREGUARD_${n}_PEER_${i}_PRIVATE_KEY='$peer_private_key_a' and WIREGUARD_${n}_PEER_${j}_PRIVATE_KEY='$peer_private_key_b'."
+                        fi
+                    fi
+                fi
+            done
+        done
+    done
+fi
