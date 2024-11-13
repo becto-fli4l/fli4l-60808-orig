@@ -1,0 +1,115 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc995.hwsupp - init buttons                            __FLI4LVER__
+#
+# Creation:     11.10.2014 cspiess
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_HWSUPP" = "yes" ]
+then
+
+    # init buttons
+    if [ 0$HWSUPP_BUTTON_N -gt 0 ]
+    then
+        begin_script HWSUPP "init buttons"
+
+        hwsuppd_args=
+        for i in `seq 1 $HWSUPP_BUTTON_N`
+        do
+            eval device=\$HWSUPP_BUTTON_${i}_DEVICE
+            type=${device%%:*}
+            case $type in
+                /gpio|gpio)
+                    if [ "$type" = "/gpio" ]
+                    then
+                        activelow=1
+                    else
+                        activelow=0
+                    fi
+
+                    gpio=`echo $device | cut -d ':' -f 3`
+                    echo $gpio > /sys/class/gpio/export
+                    gpio_path=
+
+                    if [ -d /sys/class/gpio/gpio$gpio ]
+                    then
+                        gpio_path=/sys/class/gpio/gpio$gpio
+                    elif [ -d /sys/class/gpio/GPIO$gpio ]
+                    then
+                        # this special treatment is necessary for the
+                        # gpio-cs5535 driver :-/
+                        gpio_path=/sys/class/gpio/GPIO$gpio
+                    fi
+
+                    if [ -n "$gpio_path" ]
+                    then
+                        echo in > $gpio_path/direction
+                        echo $activelow > $gpio_path/active_low
+                        hwsuppd_args="$hwsuppd_args -g $gpio_path/value"
+                    else
+                        log_error "GPIO pin $gpio not found"
+                    fi
+                ;;
+                evdev)
+                    eval key=\$HWSUPP_BUTTON_${i}_DEVICE_KEY
+
+                    phys=${device#*:}
+                    driver=${phys%%/*}
+                    do_modprobe -q $driver
+                    res=$?
+
+                    found=
+                    for inputdev in /dev/input/event*
+                    do
+                        path=$(find /sys/devices -regex ".*/input[0-9]\+/${inputdev##*/}")
+                        if [ -n "$path" ]
+                        then
+                            read found < "${path%/*}/phys"
+                            [ "$phys" = "$found" ] && break
+                            found=
+                        fi
+                    done
+
+                    if [ -n "$found" ]
+                    then
+                        hwsuppd_args="$hwsuppd_args -e $inputdev:$key"
+                    elif [ $res -ne 0 ]
+                    then
+                        log_error "EVDEV: physical path $phys could not be matched to input device (loading driver $driver failed)"
+                    else
+                        log_error "EVDEV: physical path $phys could not be matched to input device"
+                    fi
+                ;;
+            esac
+        done
+
+        # write hwsupp_cmd
+        {
+            echo "#!/bin/sh"
+            echo "case \$1 in"
+            for i in `seq 1 $HWSUPP_BUTTON_N`
+            do 
+                eval action=\$HWSUPP_BUTTON_${i}
+                eval param=\"\$HWSUPP_BUTTON_${i}_PARAM\"
+                echo "$i)"
+                if [ "$action" = "user" ]
+                then
+                    echo "$param"
+                else
+                    echo /usr/bin/${action}_keyprog $param
+                fi
+                echo ";;"
+            done
+            echo "esac"
+        }  > /usr/bin/hwsupp_cmd
+        chmod +x /usr/bin/hwsupp_cmd
+        
+        log_info "starting hardware support daemon ..."
+        hwsuppd $hwsuppd_args
+        
+        end_script
+
+    fi # init buttons
+
+fi

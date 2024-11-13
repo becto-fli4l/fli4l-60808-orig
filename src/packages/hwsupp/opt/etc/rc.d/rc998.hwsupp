@@ -1,0 +1,65 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc998.hwsupp - stop blinking                           __FLI4LVER__
+#
+# Creation:     29.11.2005 hh
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_HWSUPP" = "yes" ]
+then
+
+    if [ 0$HWSUPP_LED_N -gt 0 ]
+    then
+
+        begin_script HWSUPP "switching LEDs ..."
+
+        # switch of bootled
+        if [ 0$HWSUPP_BOOT_LED -gt 0 ]
+        then
+            echo "hwsupp_boot_led='$HWSUPP_BOOT_LED'"
+        fi
+
+        # set trigger, read led=0, user led's
+        for i in `seq 1 $HWSUPP_LED_N`
+        do
+            eval action=\$HWSUPP_LED_${i}
+            eval param=\$HWSUPP_LED_${i}_PARAM
+            case $action in
+                trigger)
+                    echo $param > /var/run/hwsuppd/hwsupp-led${i}/trigger
+                ;;
+                ready)
+                    echo none > /var/run/hwsuppd/hwsupp-led${i}/trigger
+                    /usr/bin/hwsupp_setled $i on
+                ;;
+                user)
+                    if [ -f $param ]
+                    then
+                        . $param
+                    fi
+                ;;
+                *)
+                    echo none > /var/run/hwsuppd/hwsupp-led${i}/trigger
+                ;;
+            esac 
+        done
+
+        end_script
+    fi
+    
+    if [ "$HWSUPP_CPUFREQ" = "yes" ]
+    then
+        if [ "x$HWSUPP_CPUFREQ_GOVERNOR" != "x" ]
+        then
+            begin_script HWSUPP "set cpufreq governor ..."
+            
+            for i in `ls /sys/bus/cpu/devices`
+            do
+                echo "$HWSUPP_CPUFREQ_GOVERNOR" > /sys/devices/system/cpu/$i/cpufreq/scaling_governor
+            done
+            end_script
+        fi
+    fi
+
+fi

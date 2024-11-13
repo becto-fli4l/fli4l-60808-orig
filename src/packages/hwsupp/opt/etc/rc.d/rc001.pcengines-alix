@@ -1,0 +1,36 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc001.pcengines-alix                                   __FLI4LVER__
+#
+# Creation:     10.09.2006 gdw
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+begin_script HWSUPP "load drivers for PC Engines ALIX hardware"
+
+do_modprobe geode-rng
+do_modprobe cryptodev
+do_modprobe geode-aes
+
+# init gpio
+do_modprobe cs5535-mfd
+do_modprobe gpio-cs5535
+
+# load LED driver
+do_modprobe leds-gpio
+
+if [ "$HWSUPP_WATCHDOG" = "yes" ]
+then
+    if [ -n "`pcengines | grep 'MFGPT fix : disabled'`" ]
+    then
+        do_modprobe_if_exists kernel/drivers/watchdog geodewdt
+    else
+        log_error "loading alix watchdog driver while MFGPT fix is enabled is not supported - skipped loading"
+    fi
+fi
+
+do_modprobe scx200_acb
+do_modprobe lm90
+
+
+end_script

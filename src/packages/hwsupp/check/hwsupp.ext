@@ -1,0 +1,593 @@
+##-----------------------------------------------------------------------------
+## hwsupp.ext - fli4l extended configuration check                 __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##                      S E E   R E A D M E . T X T
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##              L E S E N ,  S I E H E   R E A D M E . T X T
+##
+## Creation:     15.06.2005  babel
+## Last Update:  $Id$
+##
+## Copyright (c) 2005 Linum Software GmbH <babel@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modiy
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_hwsupp)
+then
+    provides hwsupp version 4.0.0
+    depends on fli4l version 4.0
+
+    #
+    # add languag strings
+    #
+    if (opt_httpd)
+    then
+        depends on httpd version 4.0
+
+        if (httpd_gui_lang == "auto")
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            stat("opt/srv/www/lang/hwsupp.$lang", langfile)
+            if(langfile_res == "OK")
+            then
+                add_to_opt "srv/www/lang/hwsupp.$lang" "mode=444 flags=sh"
+            else
+                warning "could not find 'srv/www/lang/hwsupp.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/hwsupp.en" "mode=444 flags=sh"
+            fi
+        done
+    fi
+
+    # set default cpufreq-governors
+    set governors="performance|ondemand|conservative|powersave|userspace"
+    
+    # set feature flags for each hwsupp_type
+    #
+    # features may be a space separated combination of
+    #   force-acpi-noirq        set 'acpi=noirq' in kernel cmdline 
+    #   force-reboot-bios       set 'reboot=bios' in kernel cmdline
+    #   force-hpet              set 'hpet=force' in kernel cmdline
+    #   arch-x86                error if arch != x86
+    #   arch-rpi                error if arch != rpi
+    #   arch-sunxi              error if arch != sunxi
+    #   no-virt                 error if virt kernel is used
+    #   pm-none                 warn if pm != none
+    #   pm-acpi                 warn if pm != acpi
+    #   libata-dma-enabled      warn if libata-dma != enabled
+    #   libata-dma-disabled     warn if libata-dma != disabled
+    #   pata-via                warn if pata_via driver is not loaded
+    #   no-watchdog             watchdog not supported 
+    #   no-cpufreq              cpufreq not supported
+
+    if (hwsupp_type =~ "sim")
+    then
+        set features="no-watchdog no-cpufreq"
+    fi
+    if (hwsupp_type =~ "generic-pc")
+    then
+        set features="no-watchdog no-cpufreq"
+    fi
+    if (hwsupp_type =~ "generic-acpi")
+    then
+        set features="no-watchdog pm-acpi"
+    fi
+    if (hwsupp_type =~ "generic-acpi-coretemp")
+    then
+        set features="no-watchdog pm-acpi"
+    fi
+
+    if (hwsupp_type =~ "aewin-scb6971")
+    then
+        set features="force-acpi-noirq no-cpufreq"
+    fi
+    if (hwsupp_type =~ "commell-le575")
+    then
+        set features="pm-acpi"
+    fi
+    if (hwsupp_type =~ "fsc-futro-s200")
+    then
+        set features="force-hpet arch-x86 pm-acpi libata-dma-disabled pata-via"
+        set governors="performance|powersave"
+    fi
+    if (hwsupp_type =~ "fsc-futro-s900")
+    then
+        set features="no-watchdog pm-acpi"
+    fi
+    if (hwsupp_type =~ "gigabyte-ga-m52l-s3")
+    then
+        set features="no-watchdog"
+    fi
+
+    if (hwsupp_type =~ "gigabyte-ga-n3150n-d3v")
+    then
+        set features="no-watchdog pm-acpi"
+    fi
+
+    if (hwsupp_type =~ "lex-cv860a")
+    then
+        set features="no-watchdog"
+    fi
+
+    if (hwsupp_type =~ "msi-ms-9803")
+    then
+        set features="no-watchdog pm-acpi"
+    fi
+
+    if (hwsupp_type =~ "pcengines-alix")
+    then
+        # needs cron to reload lm90
+        depends on cron version 4.0
+        set features="arch-x86 no-virt force-reboot-bios pm-none no-cpufreq"
+    fi
+    if (hwsupp_type =~ "pcengines-apu")
+    then
+        set features="force-reboot-bios pm-acpi libata-dma-enabled"
+    fi
+    if (hwsupp_type =~ "pcengines-apu2")
+    then
+        set features="force-reboot-bios pm-acpi libata-dma-enabled"
+    fi
+    if (hwsupp_type =~ "pcengines-wrap")
+    then
+        set features="arch-x86 no-virt force-reboot-bios pm-none no-cpufreq"
+    fi
+    if (hwsupp_type =~ "soekris-net4801")
+    then
+        set features="arch-x86 no-virt no-cpufreq"
+    fi
+    if (hwsupp_type =~ "soekris-net5501")
+    then
+        set features="arch-x86 no-virt no-cpufreq"
+    fi
+    if (hwsupp_type =~ "supermicro-pdsme")
+    then
+        set features=""
+    fi
+    if (hwsupp_type =~ "supermicro-x7sla")
+    then
+        set features=""
+    fi
+    if (hwsupp_type =~ "tyan-s5112")
+    then
+        set features=""
+    fi
+    if (hwsupp_type =~ "winnet-pc640")
+    then
+        set features="no-watchdog no-cpufreq"
+    fi
+    if (hwsupp_type =~ "winnet-pc680")
+    then
+        set features="pm-acpi"
+    fi
+    if (hwsupp_type =~ "rpi")
+    then
+        set features="arch-rpi"
+    fi
+    if (hwsupp_type =~ "bpi-r1")
+    then
+        set features="arch-sunxi"
+    fi
+
+    #
+    # check kernel command line parameter
+    #
+    # set reboot=bios
+    #
+    if ((features =~ ".*force-reboot-bios.*") &&
+        (!(kernel_boot_option =~ "^reboot=bios[[:space:]]?.*" ||
+           kernel_boot_option =~ "[[:space:]]+reboot=bios[[:space:]]+" ||
+           kernel_boot_option =~ ".*[[:space:]]?reboot=bios$")))
+    then
+        set kernel_boot_option_ext="${kernel_boot_option_ext} reboot=bios"
+    fi
+    #
+    # set acpi=noirq
+    #
+    if ((features =~ ".*force-acpi-noirq.*") && (!(kernel_boot_option =~ ".*acpi.*")))
+    then
+        set kernel_boot_option_ext="${kernel_boot_option_ext} acpi=noirq"
+    fi
+    #
+    # set hpet=force
+    #
+    if ((features =~ ".*force-hpet.*") &&
+        (!(kernel_boot_option =~ "^hpet=force[[:space:]]?.*" ||
+           kernel_boot_option =~ "[[:space:]]+hpet=force[[:space:]]+" ||
+           kernel_boot_option =~ ".*[[:space:]]?hpet=force$")))
+    then
+        set kernel_boot_option_ext="${kernel_boot_option_ext} hpet=force"
+    fi
+
+    #
+    # check architecture
+    #
+    if ((features =~ ".*arch-x86.*") && (arch != "x86"))
+    then
+        error  "HWSUPP_TYPE='$hwsupp_type' does not support ARCH='$arch' please set ARCH='x86'"
+    fi
+
+    if ((features =~ ".*arch-rpi.*") && (arch != "rpi") || (!(features =~ ".*arch-rpi.*")) && (arch == "rpi"))
+    then
+        error  "HWSUPP_TYPE='$hwsupp_type' does not support ARCH='$arch'"
+    fi
+    if ((features =~ ".*arch-sunxi.*") && (arch != "sunxi"))
+    then
+        error  "HWSUPP_TYPE='$hwsupp_type' does not support ARCH='$arch'"
+    fi
+
+    if (arch == "x86" || arch == "x86_64")
+    then
+        add_to_opt "usr/sbin/dmidecode" "mode=555"
+    fi
+
+    #
+    # check virtualization
+    #
+    if ((features =~ ".*no-virt.*") && (kernel_version =~ ".*-virt|.*-virt-nonfree"))
+    then
+        error  "HWSUPP_TYPE='$hwsupp_type' does not support virtualization, please select a non-virt Kernel in KERNEL_VERSION"
+    fi
+
+    #
+    # check powermanagement
+    #
+    if ((features =~ ".*pm-none.*") && (powermanagement != "none"))
+    then
+        warning "$hwsupp_type does not support any powermanagement, please set POWERMANAGEMENT='none'"
+    fi
+    if ((features =~ ".*pm-acpi.*") && (powermanagement != "acpi"))
+    then
+        warning "$hwsupp_type needs ACPI powermanagement, please set POWERMANAGEMENT='acpi'"
+    fi
+
+    #
+    # check libata-dma
+    #
+    # enabled
+    #
+    if ((features =~ ".*libata-dma-enabled.*") && (libata_dma != "enabled"))
+    then
+        warning "For better disk I/O performance set LIBATA_DMA='enabled'"
+    fi
+    #
+    # disabled
+    #
+    if ((features =~ ".*libata-dma-disabled.*") && (libata_dma != "disabled"))
+    then
+        warning "DMA is not working on this platform, please set LIBATA_DMA='disabled'"
+    fi
+
+    #
+    # check pata drivers
+    #
+    # pata-via
+    #
+    if (features =~ ".*pata-via.*")
+    then
+
+        if (! opt_hddrv)
+        then
+            warning "Please enable OPT_HDDRV from package hd to achieve optimal speed on the CF-slot"
+        else
+            set j="disabled"
+            foreach n in hddrv_n
+            do
+                set i=hddrv_%[n]
+                if (i == "pata_via")
+                then
+                    set j="enabled"
+                fi
+            done
+            if (j == "disabled")
+            then
+                warning "Please enable the 'pata_via' driver in HDDRV_x to achieve optimal speed on the CF-slot"
+            fi
+        fi
+    fi
+
+    #
+    # Feature: serial console
+    #
+    if (defined(ser_console_if))
+    then
+        set ser_console_if_name=""
+        if (arch == "x86" || arch == "x86_64" || arch == "sunxi")
+        then
+            set ser_console_if_name="ttyS${SER_CONSOLE_IF}"
+        else
+        if (arch == "rpi")
+        then
+            set ser_console_if_name="ttyAMA${SER_CONSOLE_IF}"
+        fi
+        fi
+    fi
+
+    #
+    # Feature: watchdog
+    #
+    if ((features =~ ".*no-watchdog.*") && (hwsupp_watchdog))
+    then
+        error "There is no watchdog support for HWSUPP_TYPE='${hwsupp_type}', please set HWSUPP_WATCHDOG='no'"
+    fi
+
+    #
+    # Feature: cpufreq
+    #
+    if ((features =~ ".*no-cpufreq.*") && (hwsupp_cpufreq))
+    then
+        error "There is no cpufreq support for HWSUPP_TYPE='${hwsupp_type}', please set HWSUPP_CPUFREQ='no'"
+    fi
+    if (hwsupp_cpufreq)
+    then
+        if (!(hwsupp_cpufreq_governor =~ "^(${governors})$"))
+        then
+            error "When HWSUPP_TYPE='${hwsupp_type}' only '${governors}' is allowed in HWSUPP_CPUFREQ_GOVERNOR'"
+        fi
+        split (governors, governor_%, '|')
+        foreach i in governor_%
+        do
+            if (i != "performance")
+            then 
+                add_to_opt "cpufreq_$i.ko"
+            fi
+        done
+        stat("opt/lib/modules/${KERNEL_VERSION}/kernel/drivers/cpufreq/cpufreq_stats.ko", cpufreq_stats)
+        if (cpufreq_stats_res == "OK")
+        then
+            add_to_opt "cpufreq_stats.ko"
+        fi
+    fi
+
+    #
+    # Feature: LEDs
+    #
+    if (hwsupp_led_n > 0)
+    then
+        # check led values and add necessary files for user defined led and online led
+        #
+
+        set userled="no"
+        set readyled="no"
+        set onlineled="no"
+
+        foreach i in hwsupp_led_n
+        do
+            # check device
+            foreach j in hwsupp_led_n
+            do
+                if (j > i)
+                then
+                    if (hwsupp_led_%_device[i] == hwsupp_led_%_device[j])
+                    then
+                        error "Same device used as HWSUPP_LED_${i}_DEVICE and HWSUPP_LED_${j}_DEVICE."
+                    fi
+                fi
+            done
+
+            set action=hwsupp_led_%[i]
+            set param=hwsupp_led_%_param[i] ?: ""
+
+            if (action == "user")
+            then
+                if (userled)
+                then
+                    error "You can't use 'user' twice in HWSUPP_LED_x"
+                else
+                    if (!(param =~ "(RE:ABS_PATH)"))
+                    then
+                        error "When HWSUPP_LED_${i}='$action', a valid absolute path must be entered in HWSUPP_LED_${i}_PARAM (must start with a slash and only letters, numbers, letters, - and _ separated by / are allowed)"
+                    else
+                        stat(".$param", script)
+                        if( script_res == "OK" )
+                        then
+                            add_to_opt ".$param" "mode=555 flags=sh"
+                            set userled="yes"
+                        else
+                            stat("$config_dir$param", script)
+                            if( script_res == "OK" )
+                            then
+                                add_to_opt ".$param" "mode=555 flags=sh"
+                                set userled="yes"
+                            else
+                                error "scriptfile HWSUPP_LED_${i}_PARAM='$param' not found"
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+
+            if (action == "ready")
+            then
+                if (readyled)
+                then
+                    error "You can't use 'ready' twice in HWSUPP_LED_x"
+                else
+                    set readyled="yes"
+                    if (param != "")
+                    then
+                        warning  "HWSUPP_LED_${i}_PARAM not empty, when HWSUPP_LED_${i}='$action' it will be ignored"
+                    fi
+                fi
+            fi
+
+            if (action == "online")
+            then
+                if (onlineled)
+                then
+                    error "You can't use 'online' twice in HWSUPP_LED_x"
+                else
+                    set onlineled="yes"
+                    if (param != "")
+                    then
+                        warning  "HWSUPP_LED_${i}_PARAM not empty, when HWSUPP_LED_${i}='$action' it will be ignored"
+                    fi
+                fi
+            fi
+
+            if (action == "trigger")
+            then
+                if (!(param =~ "(RE:HWSUPP_TRIGGER_LED_PARAM)"))
+                then
+                    error "When HWSUPP_LED_${i}='$action', a valid trigger name must be entered in HWSUPP_LED_${i}_PARAM"
+                fi
+                stat("opt/lib/modules/${KERNEL_VERSION}/kernel/drivers/leds/trigger/ledtrig-$param.ko", trigger)
+                if (trigger_res == "OK")
+                then
+                    add_to_opt "ledtrig-$param.ko"
+                fi
+            fi
+        done
+
+        # check boot led
+        if (hwsupp_boot_led > hwsupp_led_n)
+        then
+            error "HWSUPP_BOOT_LED='$hwsupp_boot_led' is greater than HWSUPP_LED_N='hwsupp_led_n'"
+        fi
+        if (readyled && (hwsupp_boot_led > 0))
+        then
+            error "You already have defined a ready LED, set HWSUPP_BOOT_LED='0'"
+        fi
+    fi
+
+    #
+    # Feature: Buttons
+    #
+    if (hwsupp_button_n > 0)
+    then
+        foreach i in hwsupp_button_n
+        do
+            set thisdevice=hwsupp_button_%_device[i]
+            if (thisdevice =~ "^(RE:HWSUPP_DEV_EVDEV)$")
+            then
+                if (!defined(hwsupp_button_%_device_key[i]))
+                then
+                    error "HWSUPP_BUTTON_${i}_DEVICE=${thisdevice} requires HWSUPP_BUTTON_${i}_DEVICE_KEY to be set"
+                else
+                    set thiskey=hwsupp_button_%_device_key[i]
+                fi
+            fi
+
+            # check device
+            foreach j in hwsupp_button_n
+            do
+                if (j < i)
+                then
+                    if (thisdevice == hwsupp_button_%_device[j])
+                    then
+                        if (thisdevice =~ "^(RE:HWSUPP_DEV_GPIO)$")
+                        then
+                            error "Same GPIO device used as HWSUPP_BUTTON_${i}_DEVICE and HWSUPP_BUTTON_${j}_DEVICE."
+                        fi
+                        if (thisdevice =~ "^(RE:HWSUPP_DEV_EVDEV)$")
+                        then
+                            set otherkey=hwsupp_button_%_device_key[j]
+                            if (thiskey == otherkey)
+                            then
+                                error "Same key (${thiskey}) used for HWSUPP_BUTTON_${i}_DEVICE_KEY and HWSUPP_BUTTON_${j}_DEVICE_KEY"
+                            fi
+                        fi
+                    fi
+                fi
+            done
+
+            set action=hwsupp_button_%[i]
+            set param=hwsupp_button_%_param[i]
+
+            if (action == "user")
+            then
+                if (!(param =~ "(RE:ABS_PATH)"))
+                then
+                    error "When HWSUPP_BUTTON_${i}='$action', a valid absolute path must be entered in HWSUPP_BUTTON_${i}_PARAM (must start with a slash and only letters, numbers, letters, - and _ separated by / are allowed)"
+                else
+                    warning "Your own script: $param will be executed, when the button ${i} is pressed."
+                    stat(".$param", script)
+                    if( script_res == "OK" )
+                    then
+                        add_to_opt ".$param" "mode=555 flags=sh"
+                    else
+                        stat("$config_dir$param", script)
+                        if( script_res == "OK" )
+                        then
+                            add_to_opt ".$param" "mode=555 flags=sh"
+                        else
+                            error "scriptfile HWSUPP_BUTTON_${i}_PARAM='$param' not found"
+                        fi
+                    fi
+                fi
+            fi
+            if (action == "reset") || (action == "online")
+            then
+                add_to_opt "usr/bin/${action}_keyprog" "mode=555 flags=sh"
+                if (param != "")
+                then
+                    warning  "HWSUPP_BUTTON_${i}_PARAM not empty, when HWSUPP_BUTTON_${i}='$action' it will be ignored"
+                fi
+            fi
+        done
+    fi
+
+    #
+    # Feature: additional drivers
+    #
+    if (hwsupp_driver_n > 0)
+    then
+        warning "You are adding additional drivers, are you sure what you are doing?"
+        foreach i in hwsupp_driver_n
+        do
+            set driver=hwsupp_driver_%[i]
+            add_to_opt "$driver.ko"
+        done
+    fi
+
+    #
+    # Feature: I2C devices
+    #
+    if (hwsupp_i2c_n > 0)
+    then
+        add_to_opt "i2c-dev.ko"
+        warning "You are adding I2C devices, are you sure what you are doing?"
+    fi
+
+    #
+    # Feature: Crypto acceleration for sunxi with Kernel 4.3
+    #
+    if (features =~ ".*arch-sunxi.*")
+    then
+        split(kernel_version, kv_%, '.')
+        if (kv_%[1]:numeric > 4 || (kv_%[1]:numeric == 4 && kv_%[2]:numeric >= 3))
+        then
+            add_to_opt "sun4i-ss.ko"
+            add_to_opt "axp20x-hwmon.ko"
+        fi
+
+        split(kernel_version, kv_%, '.')
+        if (kv_%[1]:numeric > 4 || (kv_%[1]:numeric == 4 && kv_%[2]:numeric >= 19))
+        then
+#            add_to_opt "axp20x_ac_power.ko"
+#            add_to_opt "axp20x_battery.ko"
+#            add_to_opt "axp20x_usb_power"
+            add_to_opt "axp20x_regulator.ko"
+            add_to_opt "pinctrl-axp209.ko"
+            add_to_opt "axp20x-pek.ko"
+        fi
+    fi
+
+fi
+
+if (opt_vpn_card)
+then
+    provides vpn_card version 4.0.0
+fi

@@ -1,0 +1,518 @@
+% Synchronized to r56820
+\section{HWSUPP - Paramètres selon le périphérique}
+
+\marklabel{sec:leddevices}{
+\subsection{Périphérique disposant de LED}}
+Selon le matériel voir la variable \var{HWSUPP\_TYPE} différent périphériques
+disposent d'une ou plusieurs LED. Pour le matériel ne figurant pas ici, les LEDs du
+clavier de l'ordinateur peuvent être utilisées voir la section
+\smalljump{sec:leddevices_keyboard}{PC générique}.
+
+Les périphériques supplémentaires disposant de LED peut être utilisé par exemple
+pour le périphérique WLAN. Les noms valides des périphériques pour la LED peuvent
+d'être trouvés avec la commande \var{ls /sys/class/leds/}. En utilisant par exemple
+le ssh ou la console du routeur.
+
+\subsubsection{sim}
+ Pour gérérer une simulation de la LED, qui sera enregistré avec \var{syslog}~:
+\begin{itemize}
+  \item \var{simu::1}
+  \item ...
+  \item \var{simu::8}
+\end{itemize}
+
+\marklabel{sec:leddevices_keyboard}{
+\subsubsection{PC générique}}
+Les LEDs du clavier du PC~:
+\begin{itemize}
+  \item \var{inputX::capslock}
+  \item \var{inputX::numlock}
+  \item \var{inputX::scrolllock}
+\end{itemize}
+
+\subsubsection{Générique acpi}
+Les LEDs du clavier du PC, comme dans \smalljump{sec:leddevices_keyboard}{PC générique}
+
+\subsubsection{Générique acpi coretemp}
+Les LEDs du clavier du PC, comme dans \smalljump{sec:leddevices_keyboard}{PC générique}
+
+\subsubsection{PC engines alix}
+\begin{itemize}
+  \item \var{alix::1}
+  \item \var{alix::2}
+  \item \var{alix::3}
+\end{itemize}
+
+\subsubsection{PC engines apu}
+\begin{itemize}
+  \item \var{apu::1}
+  \item \var{apu::2}
+  \item \var{apu::3}
+\end{itemize}
+
+\subsubsection{PC engines apu2}
+\begin{itemize}
+  \item \var{apu::1}
+  \item \var{apu::2}
+  \item \var{apu::3}
+\end{itemize}
+
+\subsubsection{PC engines wrap}
+\begin{itemize}
+  \item \var{wrap::1}
+  \item \var{wrap::2}
+  \item \var{wrap::3}
+\end{itemize}
+
+\subsubsection{Raspberry Pi}
+\begin{itemize}
+  \item \var{led0}
+\end{itemize}
+
+\subsubsection{Soekris net4801}
+\begin{itemize}
+  \item \var{net48xx::error}
+\end{itemize}
+
+\subsubsection{Soekris net5501}
+\begin{itemize}
+  \item \var{net5501::error}
+\end{itemize}
+
+\marklabel{sec:buttondevices}{
+\subsection{Périphérique disposant de bouton}}
+  Selon le matériel de la variable \var{HWSUPP\_TYPE}, les périphériques GPIO
+  suivants sont prédéfinis pour utiliser les boutons.
+
+\subsubsection{PC générique et acpi générique}
+\begin{itemize}
+  \item \var{evdev:isa0060/serio0/input0}, n'importe quel touche du clavier (disponible)
+\end{itemize}
+
+Il convient de noter que les \emph{combinaisons} de touches ne sont pas possibles.
+Donc, il n'est pas possible de descendre le routeur avec les touches \textsc{Alt+F4}
+ou similaire.
+
+\subsubsection{PC engines alix}
+\begin{itemize}
+  \item \var{evdev:gpio-keys-polled/input0}, touche 408 (Restart)
+\end{itemize}
+
+\subsubsection{PC engines apu}
+\begin{itemize}
+  \item \var{evdev:gpio-keys-polled/input0}, touche 408 (Restart)
+\end{itemize}
+
+\subsubsection{PC engines apu2}
+\begin{itemize}
+  \item \var{evdev:gpio-keys-polled/input0}, touche 408 (Restart)
+\end{itemize}
+
+\subsubsection{PC engines wrap}
+\begin{itemize}
+  \item \var{evdev:gpio-keys-polled/input0}, touche 408 (Restart)
+\end{itemize}
+
+\subsubsection{soekris net5501}
+\begin{itemize}
+  \item \var{evdev:gpio-keys-polled/input0}, touche 408 (Restart)
+  \newline Le bouton est nommé 'Reset' pour le matériel Soekris.
+  \newline Attention~: Le bouton doit être activé dans le BIOS.
+\end{itemize}
+
+\marklabel{sec:notes}{
+\subsection{Note sur le matériel spécifique}}
+
+\subsubsection{PC engines alix}
+Un pilote défectueux du capteur de températur LM90, entraîne une perte de contrôle
+de la température.
+
+Pour contourner ce problème le pilote LM90 sera automatiquement déchargé et rechargé
+en utilisant une tâche de cron. Il est nécessite que le paquetage easycron soit
+installé avec la variable (\var{OPT\_EASYCRON='yes'}).
+
+\marklabel{sec:examples}{
+\section{HWSUPP - Exemple de configuration}}
+
+\subsection{PC générique}
+
+\begin{verbatim}
+OPT_HWSUPP='yes'
+HWSUPP_TYPE='generic-pc'
+
+HWSUPP_WATCHDOG='no'
+HWSUPP_CPUFREQ='no'
+
+HWSUPP_LED_N='3'
+HWSUPP_LED_1='ready'
+HWSUPP_LED_1_DEVICE='input1::numlock'
+HWSUPP_LED_2='online'
+HWSUPP_LED_2_DEVICE='input1::capslock'
+HWSUPP_LED_3='wlan'
+HWSUPP_LED_3_DEVICE='input1::scrolllock'
+HWSUPP_LED_3_WLAN='wlan0'
+
+HWSUPP_BUTTON_N='0'
+\end{verbatim}
+
+\subsection{PC engines APU}
+
+\begin{verbatim}
+OPT_HWSUPP='yes'
+HWSUPP_TYPE='pcengines-apu'
+
+HWSUPP_WATCHDOG='yes'
+HWSUPP_CPUFREQ='yes'
+HWSUPP_CPUFREQ_GOVERNOR='ondemand'
+
+HWSUPP_LED_N='3'
+HWSUPP_LED_1='ready'
+HWSUPP_LED_1_DEVICE='apu::1'
+HWSUPP_LED_2='wlan'
+HWSUPP_LED_2_DEVICE='apu::2'
+HWSUPP_LED_2_WLAN='wlan0'
+HWSUPP_LED_3='online'
+HWSUPP_LED_3_DEVICE='apu::3'
+
+HWSUPP_BUTTON_N='1'
+HWSUPP_BUTTON_1='wlan'
+HWSUPP_BUTTON_1_DEVICE='evdev:gpio-keys-polled/input0'
+HWSUPP_BUTTON_1_DEVICE_KEY='408'
+HWSUPP_BUTTON_1_PARAM='wlan0'
+\end{verbatim}
+
+\subsection{PC engines APU avec GPIO}
+
+\begin{verbatim}
+OPT_HWSUPP='yes'
+HWSUPP_TYPE='pcengines-apu'
+
+HWSUPP_WATCHDOG='yes'
+HWSUPP_CPUFREQ='yes'
+HWSUPP_CPUFREQ_GOVERNOR='ondemand'
+
+HWSUPP_LED_N='5'
+HWSUPP_LED_1='ready'
+HWSUPP_LED_1_DEVICE='apu::1'
+HWSUPP_LED_2='wlan'
+HWSUPP_LED_2_DEVICE='apu::2'
+HWSUPP_LED_2_WLAN='wlan0'
+HWSUPP_LED_3='online'
+HWSUPP_LED_3_DEVICE='apu::3'
+HWSUPP_LED_4='trigger'
+HWSUPP_LED_4_PARAM='phy0rx'
+HWSUPP_LED_4_DEVICE='gpio::237'
+HWSUPP_LED_5='trigger'
+HWSUPP_LED_5_PARAM='phy0tx'
+HWSUPP_LED_5_DEVICE='gpio::245'
+
+HWSUPP_BUTTON_N='2'
+HWSUPP_BUTTON_1='wlan'
+HWSUPP_BUTTON_1_DEVICE='evdev:gpio-keys-polled/input0'
+HWSUPP_BUTTON_1_DEVICE_KEY='408'
+HWSUPP_BUTTON_1_PARAM='wlan0'
+HWSUPP_BUTTON_2='online'
+HWSUPP_BUTTON_2_DEVICE='gpio::236' # pour le noyau Linux < 3.18
+HWSUPP_BUTTON_2_DEVICE='gpio::492' # pour le noyau Linux >= 3.18 (x+256)
+\end{verbatim}
+
+\marklabel{sec:blink}{
+\section{HWSUPP - Séquence de clignotement de la LED}}
+  Les séquences de clignotants suivantes seront affichés pendant le processus de boot~:
+
+  {\def\led{\begin{math}\otimes\quad\quad\end{math}}
+  \begin{tabular}{c l l l l l l l l l}
+    \quad\\
+    1. & \led & & & & \led & & & & ... \\
+    2. & \led & \led & & & \led & \led & & & ... \\
+    3. & \led & \led & \led & & \led & \led & \led & & ... \\
+    4. & \led & \led & \led & \led & \led & \led & \led & \led & ... \\
+    \quad 
+  \end{tabular}}
+
+  Lors de l'execution de \var{rc002.*} à \var{rc250.*} La première séquence s'affiche,\newline
+  (1 * flash - pause),\newline
+  de \var{rc250.*} à \var{rc500.*} la seconde séquence (2 * flash - pause),\newline
+  de \var{rc500.*} à \var{rc750.*} la troisième séquence et\newline
+  de \var{rc750.*} jusqu'à la fin du processus de boot la quatrième séquence
+  (clignotement continu).
+
+\marklabel{sec:hwsupp:evdev-keys}{
+\section{HWSUPP - Code des touches du clavier}}
+
+Le tableau suivant affiche les différents codes des touches du clavier, l'ensemble du
+tableau correspond aux touches des claviers allemand, anglais et français. L'abréviation
+"NB" signifie "numéro de bloc" et se réfère aux touches dans la partie droite du clavier.
+Le signe "---" se réfère à une touche qui n'existe pas sur l'un des claviers respectif.
+Les codes des touches, qui sont pas présents dans les trois configurations du clavier 
+(cela s'applique, par exemple, pour les diverses touches du clavier japonais ou chinois)
+ne seront pas affichés dans le tableau.
+
+Le tableau fait référence aux touches standard du clavier AT avec 101 ou 102 touches de IBM.
+
+\newcommand\twoheaduparrow{\mathrel{\rotatebox[origin=c]{90}{$\twoheadrightarrow$}}}
+\newcommand\twoheaddownarrow{\mathrel{\rotatebox[origin=c]{270}{$\twoheadrightarrow$}}}
+
+\begin{longtable}{|l|l|l|l|}
+  \hline
+  \textbf{Code} & \textbf{dt.} & \textbf{engl.} & \textbf{frz.} \\
+  \endhead
+  \hline
+  1 & \texttt{Esc} & \texttt{Esc} & \texttt{Echap} \\ \hline
+  2 & \texttt{1}   & \texttt{1}   & \texttt{\&} \\ \hline
+  3 & \texttt{2}   & \texttt{2}   & \texttt{é} \\ \hline
+  4 & \texttt{3}   & \texttt{3}   & \texttt{"} \\ \hline
+  5 & \texttt{4}   & \texttt{4}   & \texttt{'} \\ \hline
+  6 & \texttt{5}   & \texttt{5}   & \texttt{(} \\ \hline
+  7 & \texttt{6}   & \texttt{6}   & \texttt{-} \\ \hline
+  8 & \texttt{7}   & \texttt{7}   & \texttt{è} \\ \hline
+  9 & \texttt{8}   & \texttt{8}   & \texttt{\_} \\ \hline
+  10 & \texttt{9}   & \texttt{9}   & \texttt{ç} \\ \hline
+  11 & \texttt{0}   & \texttt{0}   & \texttt{à} \\ \hline
+  12 & \texttt{ß}   & \texttt{-}   & \texttt{)} \\ \hline
+  13 & \texttt{?}   & \texttt{=}   & \texttt{=} \\ \hline
+  14 & \multicolumn{3}{|l|}{Retour arrière $\longleftarrow$} \\ \hline
+  15 & \multicolumn{3}{|l|}{Tabulation} \\ \hline
+  16 & \texttt{Q} & \texttt{Q} & \texttt{A} \\ \hline
+  17 & \texttt{W} & \texttt{W} & \texttt{Z} \\ \hline
+  18 & \texttt{E} & \texttt{E} & \texttt{E} \\ \hline
+  19 & \texttt{R} & \texttt{R} & \texttt{R} \\ \hline
+  20 & \texttt{T} & \texttt{T} & \texttt{T} \\ \hline
+  21 & \texttt{Z} & \texttt{Y} & \texttt{Y} \\ \hline
+  22 & \texttt{U} & \texttt{U} & \texttt{U} \\ \hline
+  23 & \texttt{I} & \texttt{I} & \texttt{I} \\ \hline
+  24 & \texttt{O} & \texttt{O} & \texttt{O} \\ \hline
+  25 & \texttt{P} & \texttt{P} & \texttt{P} \\ \hline
+  26 & \texttt{Ü} & \texttt{[} & \texttt{\^} \\ \hline
+  27 & \texttt{+} & \texttt{]} & \texttt{\$} \\ \hline
+  28 & \multicolumn{3}{|l|}{Entrée} \\ \hline
+  29 & \multicolumn{3}{|l|}{Touche Ctrl gauche} \\ \hline
+  30 & \texttt{A} & \texttt{A} & \texttt{Q} \\ \hline
+  31 & \texttt{S} & \texttt{S} & \texttt{S} \\ \hline
+  32 & \texttt{D} & \texttt{D} & \texttt{D} \\ \hline
+  33 & \texttt{F} & \texttt{F} & \texttt{F} \\ \hline
+  34 & \texttt{G} & \texttt{G} & \texttt{G} \\ \hline
+  35 & \texttt{H} & \texttt{H} & \texttt{H} \\ \hline
+  36 & \texttt{J} & \texttt{J} & \texttt{J} \\ \hline
+  37 & \texttt{K} & \texttt{K} & \texttt{K} \\ \hline
+  38 & \texttt{L} & \texttt{L} & \texttt{L} \\ \hline
+  39 & \texttt{Ö} & \texttt{;} & \texttt{M} \\ \hline
+  40 & \texttt{Ä} & \texttt{'} & \texttt{ù} \\ \hline
+  41 & \texttt{\^} & \texttt{`} & $^2$ \\ \hline
+  42 & \multicolumn{3}{|l|}{Touche Maj gauche} \\ \hline
+  43 & \texttt{\#} & \texttt{\textbackslash} & \texttt{*} \\ \hline
+  44 & \texttt{Z} & \texttt{Z} & \texttt{W} \\ \hline
+  45 & \texttt{X} & \texttt{X} & \texttt{X} \\ \hline
+  46 & \texttt{C} & \texttt{C} & \texttt{C} \\ \hline
+  47 & \texttt{V} & \texttt{V} & \texttt{V} \\ \hline
+  48 & \texttt{B} & \texttt{B} & \texttt{B} \\ \hline
+  49 & \texttt{N} & \texttt{N} & \texttt{N} \\ \hline
+  50 & \texttt{M} & \texttt{M} & \texttt{,} \\ \hline
+  51 & \texttt{,} & \texttt{,} & \texttt{;} \\ \hline
+  52 & \texttt{.} & \texttt{.} & \texttt{:} \\ \hline
+  53 & \texttt{-} & \texttt{/} & \texttt{!} \\ \hline
+  54 & \multicolumn{3}{|l|}{Touche Maj droite} \\ \hline
+  55 & \texttt{*} (NB) & \texttt{*} (NB) & \texttt{*} (NB) \\ \hline
+  56 & \multicolumn{3}{|l|}{Touche Alt gauche} \\ \hline
+  57 & \multicolumn{3}{|l|}{Barre d'espace} \\ \hline
+  58 & \multicolumn{3}{|l|}{Verrouillage majuscule} \\ \hline
+  59 & \texttt{F1} & \texttt{F1} & \texttt{F1} \\ \hline
+  60 & \texttt{F2} & \texttt{F2} & \texttt{F2} \\ \hline
+  61 & \texttt{F3} & \texttt{F3} & \texttt{F3} \\ \hline
+  62 & \texttt{F4} & \texttt{F4} & \texttt{F4} \\ \hline
+  63 & \texttt{F5} & \texttt{F5} & \texttt{F5} \\ \hline
+  64 & \texttt{F6} & \texttt{F6} & \texttt{F6} \\ \hline
+  65 & \texttt{F7} & \texttt{F7} & \texttt{F7} \\ \hline
+  66 & \texttt{F8} & \texttt{F8} & \texttt{F8} \\ \hline
+  67 & \texttt{F9} & \texttt{F9} & \texttt{F9} \\ \hline
+  68 & \texttt{F10} & \texttt{F10} & \texttt{F10} \\ \hline
+  69 & \texttt{Num $\Downarrow$} & \texttt{Num Lock} & \texttt{Verr num} \\ \hline
+  70 & \texttt{Rollen $\Downarrow$} & \texttt{Scroll Lock} & \texttt{Arrêt défil} \\ \hline
+  71 & \texttt{7} (NB) & \texttt{7} (NB) & \texttt{7} (NB) \\ \hline
+  72 & \texttt{8} (NB) & \texttt{8} (NB) & \texttt{8} (NB) \\ \hline
+  73 & \texttt{9} (NB) & \texttt{9} (NB) & \texttt{9} (NB) \\ \hline
+  74 & \texttt{-} (NB) & \texttt{-} (NB) & \texttt{-} (NB) \\ \hline
+  75 & \texttt{4} (NB) & \texttt{4} (NB) & \texttt{4} (NB) \\ \hline
+  76 & \texttt{5} (NB) & \texttt{5} (NB) & \texttt{5} (NB) \\ \hline
+  77 & \texttt{6} (NB) & \texttt{6} (NB) & \texttt{6} (NB) \\ \hline
+  78 & \texttt{+} (NB) & \texttt{+} (NB) & \texttt{+} (NB) \\ \hline
+  79 & \texttt{1} (NB) & \texttt{1} (NB) & \texttt{1} (NB) \\ \hline
+  80 & \texttt{2} (NB) & \texttt{2} (NB) & \texttt{2} (NB) \\ \hline
+  81 & \texttt{3} (NB) & \texttt{3} (NB) & \texttt{3} (NB) \\ \hline
+  82 & \texttt{0} (NB) & \texttt{0} (NB) & \texttt{0} (NB) \\ \hline
+  83 & \texttt{,} (NB) & \texttt{.} (NB) & \texttt{.} (NB) \\ \hline
+  86 & \texttt{<} & --- & \texttt{<} \\ \hline
+  87 & \texttt{F11} & \texttt{F11} & \texttt{F11} \\ \hline
+  88 & \texttt{F12} & \texttt{F12} & \texttt{F12} \\ \hline
+  96 & \multicolumn{3}{|l|}{Entrée (NB)} \\ \hline
+  97 & \multicolumn{3}{|l|}{Touche Ctrl droite} \\ \hline
+  98 & $\div$ (NB) & \texttt{/} (NB) & \texttt{/} (NB) \\ \hline
+  99 & \texttt{Druck} & \texttt{Print Screen} & \texttt{Impr écran} \\ \hline
+  100 & \multicolumn{3}{|l|}{Touche Alt droite (AltGr)} \\ \hline
+  102 & \texttt{Pos 1} & \texttt{Home} & $\nwarrow$ \\ \hline
+  103 & $\uparrow$ & $\uparrow$ & $\uparrow$ \\ \hline
+  104 & \texttt{Bild} $\uparrow$ & \texttt{Page Up} & $\twoheaduparrow$ \\ \hline
+  105 & $\leftarrow$ & $\leftarrow$ & $\leftarrow$ \\ \hline
+  106 & $\rightarrow$ & $\rightarrow$ & $\rightarrow$ \\ \hline
+  107 & \texttt{Ende} & \texttt{End} & \texttt{Fin} \\ \hline
+  108 & $\downarrow$ & $\downarrow$ & $\downarrow$ \\ \hline
+  109 & \texttt{Bild} $\downarrow$ & \texttt{Page Down} & $\twoheaddownarrow$ \\ \hline
+  110 & \texttt{Einfg} & \texttt{Insert} & \texttt{Inser} \\ \hline
+  111 & \texttt{Entf} & \texttt{Delete} & \texttt{Suppr} \\ \hline
+  119 & \texttt{Pause} & \texttt{Pause} & \texttt{Pause} \\ \hline
+\end{longtable}
+
+Dans le tableau suivant vous avez les codes des touches supplémentaires qui ne sont pas
+présent sur tous les claviers. Certaines de ces touches sont généralement générés
+uniquement par un pilote de périphérique spécial, comme la touche \texttt{Restart}, une
+pression sur cette touche réinitialisation le système.
+
+\begin{longtable}{|l|l|l|l|}
+  \hline
+  \textbf{Code} & \textbf{dt.} & \textbf{engl.} & \textbf{frz.} \\
+  \endhead
+  \hline
+  116 & \texttt{Power} & \texttt{Power} & \texttt{Power} \\ \hline
+  183 & \texttt{F13} & \texttt{F13} & \texttt{F13} \\ \hline
+  184 & \texttt{F14} & \texttt{F14} & \texttt{F14} \\ \hline
+  185 & \texttt{F15} & \texttt{F15} & \texttt{F15} \\ \hline
+  186 & \texttt{F16} & \texttt{F16} & \texttt{F16} \\ \hline
+  187 & \texttt{F17} & \texttt{F17} & \texttt{F17} \\ \hline
+  188 & \texttt{F18} & \texttt{F18} & \texttt{F18} \\ \hline
+  189 & \texttt{F19} & \texttt{F19} & \texttt{F19} \\ \hline
+  190 & \texttt{F20} & \texttt{F20} & \texttt{F20} \\ \hline
+  191 & \texttt{F21} & \texttt{F21} & \texttt{F21} \\ \hline
+  192 & \texttt{F22} & \texttt{F22} & \texttt{F22} \\ \hline
+  193 & \texttt{F23} & \texttt{F23} & \texttt{F23} \\ \hline
+  194 & \texttt{F24} & \texttt{F24} & \texttt{F24} \\ \hline
+  408 & \texttt{Restart} & \texttt{Restart} & \texttt{Restart} \\ \hline
+\end{longtable}
+
+\marklabel{sec:developer}{
+\section{HWSUPP - Conseil pour les développeurs de paquetage}}
+  Dans ce chapitre nous vous proposont une description pour ajouter une LED ou un bouton
+  pour les développeurs qui veulent créer un paquetage\footnotemark.
+
+  \footnotetext{Vous recherchez un endroit approprié dans \var{\#\#HWSUPP\#\#}
+  pour paramétrer le paquetage WLAN.}
+
+\subsection{Extension pour LED}
+\subsubsection{Type de LED}
+  Dans le fichier \var{check/myopt.exp} vous configurez une liste de plusieurs types
+  de LEDs que vous pouvez indiquer dans la variable \var{HWSUPP\_LED\_x}.
+
+Exemple~:
+\begin{verbatim}
++HWSUPP_LED_TYPE(OPT_MYOPT) = 'myopt' 
+                            : ', myopt'
+\end{verbatim}
+
+\subsubsection{Contrôle de paramètre}
+  Dans le fichier \var{check/myopt.ext} vous configurez les paramètres qui seront vérifiés,
+  vous pouvez les indiquer dans la variable \var{HWSUPP\_LED\_x\_PARAM}.
+
+Exemple~:
+\begin{verbatim}
+if (opt_hwsupp)
+then
+    depends on hwsupp version 4.0
+
+    foreach i in hwsupp_led_n
+    do
+        set action=hwsupp_led_%[i]
+        set param=hwsupp_led_%_param[i]
+        if (action == "myopt")
+        then
+            if (!(param =~ "(RE:MYOPT_LED_PARAM)"))
+            then
+                error "When HWSUPP_LED_\${i}='myopt', ...
+                       must be entered in HWSUPP_LED_\${i}_PARAM" 
+            fi
+        fi
+    done
+fi
+\end{verbatim}
+
+\subsubsection {affichage de la LED}
+  Quand vous définissez une LED dans le script pour un paquetage (par ex. \var{/usr/bin/<opt>\_setled})
+  la requête \var{/usr/bin/hwsupp\_setled <LED> <status>/} sera exécutée.
+
+  Le nombre de LED peut être lu dans le fichier \var{/var/run/hwsupp.conf>}.
+
+  L'état de la LED peut être \var{off}, \var{on} ou \var{blink}.
+
+Exemple~:
+\begin{verbatim}
+if [ -f /var/run/hwsupp.conf ]
+then
+    . /var/run/hwsupp.conf
+    [ 0$hwsupp_led_n -eq 0 ] || for i in `seq 1 $hwsupp_led_n`
+    do
+        eval action=\$hwsupp_led_${i}
+        eval param=\$hwsupp_led_${i}_param
+        if [ "$action" = "<opt>" ]
+        then
+            if [ <myexpression> ]
+            then
+                /usr/bin/hwsupp_setled $i on
+            else
+                /usr/bin/hwsupp_setled $i off
+            fi
+        fi
+    done
+fi
+\end{verbatim}
+
+  L'état actuel d'une LED peut être demandé avec la requête
+  \var{/usr/bin/hwsupp\_getled <LED>/}. Le résultat sera
+  \var{off}, \var{on} ou \var{blink}.
+
+\subsection{Extension pour le bouton}
+\subsection{Action du bouton}
+  Dans le fichier \var{check/myopt.exp} vous configurez une liste de plusieurs types
+  de boutons que vous pouvez indiquer dans la variable \var{HWSUPP\_BUTTON\_x}.
+
+Exemple~:
+\begin{verbatim}
++HWSUPP_BUTTON_TYPE(OPT_MYOPT) = 'myopt' 
+                               : ', myopt'
+\end{verbatim}
+
+\subsubsection{Contrôle de paramètre}
+  Dans le fichier \var{check/myopt.ext} vous configurez les paramètres qui seront vérifiés,
+  vous pouvez les indiquer dans la variable \var{HWSUPP\_BUTTON\_x\_PARAM}.
+
+Exemple~:
+\begin{verbatim}
+if (opt_hwsupp)
+then
+    depends on hwsupp version 4.0
+
+    foreach i in hwsupp_button_n
+    do
+        set action=hwsupp_buttonn_%[i]
+        set param=hwsupp_button_%_param[i]
+        if (action == "myopt")
+        then
+            add_to_opt "files/usr/bin/myopt_keyprog" "mode=555 flags=sh"
+            if (!(param =~ "(RE:MYOPT_BUTTON_PARAM)"))
+            then
+                error "When HWSUPP_BUTTON_\${i}='myopt', ...
+                       must be entered in  HWSUPP_BUTTON_\${i}_PARAM" 
+            fi
+        fi
+    done
+fi
+\end{verbatim}
+
+\subsubsection {Fonction du bouton}
+  Quand un bouton est pressé, le fichier script \var{/usr/bin/myopt\_keyprog}
+  sera exécuté.
+
+  La valeur de la variable \var{HWSUPP\_BUTTON\_x\_PARAM} est transmis.
+
+Exemple~:
+\begin{verbatim}
+##TODO## exemple
+\end{verbatim}
+

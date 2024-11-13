@@ -1,0 +1,391 @@
+% Synchronized to r56820
+\section {HWSUPP - Hardware support}
+
+\subsection {Description}
+
+This package supplies the support for special hardware components.
+
+Supported are:
+\begin{itemize}
+\item Temperature sensors
+\item LEDs
+\item Voltage sensors
+\item Fan speed
+\item Buttons
+\item Watchdog
+\item VPN cards
+\end{itemize}
+
+The following systems, mainboards and VPN cards are supported:
+\begin{itemize}
+  \item Standard PC hardware
+  \begin{itemize}
+    \item PC keyboard LEDs
+  \end{itemize}
+  \item ACPI Hardware
+  \item Embedded systems
+  \begin{itemize}
+    \item AEWIN SCB6971
+    \item Fujitsu Siemens Futro S200
+    \item Fujitsu Siemens Futro S900
+    \item PC Engines ALIX
+    \item PC Engines APU
+    \item PC Engines WRAP
+    \item Soekris net4801
+    \item Soekris net5501
+  \end{itemize}
+  \item Mainboards
+  \begin{itemize}
+    \item Commell LE-575
+    \item GigaByte GA-M521-S3
+    \item GigaByte GA-N3150N-D3V
+    \item LEX CV860A
+    \item MSI MS-9803
+    \item SuperMicro PDSME
+    \item SuperMicro X7SLA
+    \item Tyan S5112
+    \item WinNet PC640
+    \item WinNet PC680
+  \end{itemize}
+    \item VPN cards (PCI, miniPCI and miniPCIe)
+  \begin{itemize}
+    \item vpn1401 vpn1411
+  \end{itemize}
+\end{itemize}
+
+
+\subsection {Configuration of the HWSUPP package}
+
+  The configuration is made, as for all fli4l packages, by adjusting the file\\
+  \var{path/fli4l-\version/$<$config$>$/hwsupp.txt} to meet your own demands.
+
+\begin{description}
+
+\config {OPT\_HWSUPP}{OPT\_HWSUPP}{OPTHWSUPP}
+
+  The setting \var{'no'} deactivates the OPT\_HWSUPP package completely. There
+  will be no changes made to the fli4l boot medium or the archive \var{opt.img}.
+  OPT\_HWSUPP does not overwrite any other parts of the fli4l installation.
+  To activate OPT\_HWSUPP set the variable \var{OPT\_HWSUPP} to \var{'yes'}.
+
+\config {HWSUPP\_TYPE}{HWSUPP\_TYPE}{HWSUPPTYPE}
+
+  This configuration variable sets the type of supported hardware.
+  Following values can be used:
+  \begin{itemize}
+    \item sim
+    \item generic-pc
+    \item generic-acpi
+    \item generic-acpi-coretemp
+    \item aewin-scb6971
+    \item commell-le575
+    \item fsc-futro-s200
+    \item fsc-futro-s900
+    \item gigabyte-ga-m52l-s3
+    \item gigabyte-ga-n3150n-d3v
+    \item lex-cv860a
+    \item msi-ms-9803
+    \item pcengines-alix
+    \item pcengines-apu (APU-1)
+    \item pcengines-apu2 (APU-2)
+    \item pcengines-wrap
+    \item rpi
+    \item soekris-net4801
+    \item soekris-net5501
+    \item supermicro-pdsme
+    \item supermicro-x7sla
+    \item tyan-s5112
+    \item winnet-pc640
+    \item winnet-pc680
+  \end{itemize}
+
+\config {HWSUPP\_WATCHDOG}{HWSUPP\_WATCHDOG}{HWSUPPWATCHDOG}
+  The setting \var{'yes'} activates the watchdog daemon if the hardware
+  contains a watchdog. The watchdog will automatically restart a non responding system.
+
+\config {HWSUPP\_CPUFREQ}{HWSUPP\_CPUFREQ}{HWSUPPCPUFREQ}
+  The setting \var{'yes'} activates CPU frequency adjustment controls.
+
+\config {HWSUPP\_CPUFREQ\_GOVERNOR}{HWSUPP\_CPUFREQ\_GOVERNOR}{HWSUPPCPUFREQGOVERNOR}
+  Selection of CPU frequency governor. The selected governor controls the frequency
+  adjustment behaviour. It's a selection of one of: 
+
+  \begin{itemize}
+    \item performance\\
+      The CPU allways runs with the highest available frequency.
+    \item ondemand\\
+      The CPU frequency will be adjusted depending on the current CPU usage.
+      The frequency can change very quickly. 
+    \item conservative\\
+      The CPU frequency will be adjusted depending on the current CPU usage.
+      The frequency is changed step by step. 
+    \item powersave\\
+      The CPU allways runs with the lowest available frequency.
+    \item userspace\\
+      The CPU frequence kann be set manually or by an user script via the
+      sysfs variable \var{/devices/system/cpu/cpu\emph{<n>}/cpufreq/scaling\_setspeed}.
+  \end{itemize}
+
+\config {HWSUPP\_LED\_N}{HWSUPP\_LED\_N}{HWSUPPLEDN}
+  Defines the number of LEDs. The number of LEDs of the hardware in use
+  should be entered here.
+
+\config {HWSUPP\_LED\_x}{HWSUPP\_LED\_x}{HWSUPPLEDx}
+  Defines the information indicated by the LED.
+  The following informations are possible:
+  \begin{itemize}
+    \item ready - the fli4l router ist ready for operation\footnotemark
+    \item online - the fli4l router has an active internet connection
+    \item trigger - LED is controlled by a kernel trigger
+    \item user - LED is controlled by an user script
+  \end{itemize}
+
+  \footnotetext{If \var{HWSUPP\_LED\_x='ready'} is set, the boot progress
+  is indicated by a blink sequence (see appendix \ref{sec:blink}).}
+
+  The list of possible indications can be extended by other packages.
+  For example, if the WLAN package is loaded the information 
+  \begin{itemize}
+    \item wlan - WLAN is active
+  \end{itemize}
+  is possible.
+
+  In apppendix \ref{sec:developer} package developers can get some hints 
+  on how to create such extensions. 
+  
+\config {HWSUPP\_LED\_x\_DEVICE}{HWSUPP\_LED\_x\_DEVICE}{HWSUPPLEDxDEVICE}
+  Specifies the LED device.
+
+  Here you either have to enter a LED device (to be found at \var{/sys/class/leds/}
+  in the router's file system) or a GPIO\footnotemark number.
+
+  \footnotetext{A GPIO (General Purpose Input/Output) is a generic pin on an integrated
+  circuit whose behavior can be programmed at run time, including whether it is an
+  input or output pin.}
+
+  A list of valid LED device names for a specific \var{HSUPP\_TYPE} can be
+  found in the appendix \jump{sec:leddevices}{``Available LED devices''}.
+
+  The GPIO number has to be enterd in the format \var{gpio::x}.
+  If a GPIO is entered, the corresponding LED device will be created
+  automatically. By preceding the char \var{/} the GPIO functionality may be inverted.
+
+  Examples:
+  \begin{verbatim}
+    HWSUPP_LED_1_DEVICE='apu::1'      # LED 1 on PC engines APU
+    HWSUPP_LED_2_DEVICE='gpio::237'   # GPIO 237
+    HWSUPP_LED_3_DEVICE='/gpio::245'  # inverted GPIO 245
+    HWSUPP_LED_4_DEVICE='led0'
+  \end{verbatim}
+
+\config {HWSUPP\_LED\_x\_PARAM}{HWSUPP\_LED\_x\_PARAM}{HWSUPPLEDxPARAM}
+  Defines parameters for the selected LED information.
+
+  Depending on the selection in in \var{HWSUPP\_LED\_x}, 
+  in \var{HWSUPP\_LED\_x\_PARAM} different settings are possible.
+
+  If \var{HWSUPP\_LED\_x='trigger'} is set, the trigger name has to be specified
+  in \var{HWSUPP\_LED\_x\_PARAM}.
+
+  Available triggers can be displayed with the shell command 
+  \var{cat /sys/class/leds/*/trigger}. 
+
+  Besides triggers created by e.g. netfilter or hardware drivers like ath9k,
+  further trigger modules can be loaded via \var{HWSUPP\_DRIVER\_x}.
+
+  Examples:
+  \begin{verbatim}
+    HWSUPP_LED_1='trigger'
+    HWSUPP_LED_1_TRIGGER='heartbeat'
+    HWSUPP_LED_2='trigger'
+    HWSUPP_LED_2_TRIGGER='netfilter-ssh'
+  \end{verbatim}
+
+  If \var{'HWSUPP\_LED\_x'} has the value \var{'user'} 
+  in \var{HWSUPP\_LED\_PARAM} a valid script name including path has to be entered. 
+
+  Example:
+  \begin{verbatim}
+    HWSUPP_LED_1='user'
+    HWSUPP_LED_1_PARAM='/usr/local/bin/myledscript'
+  \end{verbatim}
+
+  When \var{HWSUPP\_LED\_x='wlan'} is set, the WLAN devices have to be entered in 
+  \var{HWSUPP\_LED\_x\_PARAM}.
+  
+  Defines one ore more WLAN devices, whose state shall be displayed.
+  Multiple WLAN devices have to be separated by spaces.
+
+  When the state of multiple WLAN devices should be indicated by a single LED, 
+  the LED has the following meaning:
+  \begin{itemize}
+    \item off - all WLAN devices are inactiv
+    \item blinking - some WLAN device(s) is/are active
+    \item on - all WLAN devices are active
+  \end{itemize} 
+
+  Example:
+  \begin{verbatim}
+    HWSUPP_LED_1='wlan'
+    HWSUPP_LED_1_WLAN='wlan0 wlan1'
+  \end{verbatim}
+
+
+\config {HWSUPP\_BOOT\_LED}{HWSUPP\_BOOT\_LED}{HWSUPPBOOTLED}
+  Definies a LED to indicate the boot progress by a blink sequence. 
+  
+  When \var{HWSUPP\_LED\_x='ready'} is set for any LED, this setting is used
+  and \var{HWSUPP\_BOOT\_LED} will be ignored.
+
+\config {HWSUPP\_BUTTON\_N}{HWSUPP\_BUTTON\_N}{HWSUPPBUTTONN}
+  Defines the number of buttons.\\ The number of buttons of the hardware in use 
+  should be entered here.
+
+\config {HWSUPP\_BUTTON\_x}{HWSUPP\_BUTTON\_x}{HWSUPPBUTTONx}
+  Defines the action which should be executed on button press.\\
+  The following actions are supported:
+  \begin{itemize}
+    \item reset - restart the fli4l router
+    \item online - causes an internet dialin or terminates an internet connection.
+    \item user - an user script will be executed
+  \end{itemize}
+
+  Th
+e list of possible actions can be extended by other packages.
+  If the WLAN package is loaded, eg. the action 
+  \begin{itemize}
+    \item wlan - activate or deactivate WLAN
+  \end{itemize}
+  is possible.
+
+\config {HWSUPP\_BUTTON\_x\_DEVICE}{HWSUPP\_BUTTON\_x\_DEVICE}{HWSUPPBUTTONxDEVICE}
+  Specifies the button device. Here two possibilities exist. Either GPIO numbers 
+  can be entered or a so-called input path is specified, that gets detected via 
+  the evdev subsystem later on. The second is, if possible, always to be preferred 
+  because the GPIO indexes may not remain the same for different kernels.
+
+  The GPIO number must be entered in the format \var{gpio::x}. Usually it is 
+  assumed that the GPIO pins are ``active-low'', meaning that they the have value 
+  0 assigned when a button is pressed, and 1 if the button is not. In the reversed 
+  case ``active-high'' (i.e. 1 when button is pressed and 0 when not), this can be 
+  indicated by prefixing with \texttt{/}.
+
+  The input path has the format \var{evdev:<Path>}. In this case,
+  \var{HWSUPP\_BUTTON\_x\_DEVICE\_KEY} indicates which key is to be processed. This is 
+  necessary, because in contrast to the connection via GPIO pin one evdev device may 
+  incorporate many different buttons. An overview on the keys can be found in appendix 
+  \jump{sec:hwsupp:evdev-keys}{``Keycodes''}
+
+  A list of predefined input paths for the \var{HSUPP\_TYPE} in question 
+  can be found in appendix \jump{sec:buttondevices}{``Available Button Devices''}.
+
+  Examples:
+  \begin{verbatim}
+    HWSUPP_BUTTON_1_DEVICE='/gpio::237' # GPIO line #237, active-high
+    HWSUPP_BUTTON_2_DEVICE='evdev:isa0060/serio0/input0' # AT keyboard,
+    HWSUPP_BUTTON_2_DEVICE_KEY='88'                      # F12 key
+  \end{verbatim}
+
+\config {HWSUPP\_BUTTON\_x\_PARAM}{HWSUPP\_BUTTON\_x\_PARAM}{HWSUPPBUTTONxPARAM}
+  Defines parameters for the action selected in \var{HWSUPP\_BUTTON\_x}.
+  
+  Depending on the action \var{HWSUPP\_BUTTON\_x\_PARAM} has different meanings.
+
+  If \var{HWSUPP\_BUTTON\_x='user'} is set, 
+  \var{HWSUPP\_BUTTON\_x\_PARAM} defines a script to be executed 
+  on button press.
+  
+  Example:
+  \begin{verbatim}
+    HWSUPP_BUTTON_1='user'
+    HWSUPP_BUTTON_2_WLAN='/usr/local/bin/myscript'
+  \end{verbatim}
+
+% ##TODO## ? move to wlan doc begin
+  If  \var{HWSUPP\_BUTTON\_x} is set to \var{'wlan'}, the 
+  \var{HWSUPP\_BUTTON\_x\_PARAM} defines one ore more WLAN devices, 
+  which shall be activated or deactivated on  button press.
+  Multiple WLAN devices have to be separated by spaces.
+  
+  Example:
+  \begin{verbatim}
+    HWSUPP_BUTTON_2='wlan'
+    HWSUPP_BUTTON_2_WLAN='wlan0 wlan1'
+  \end{verbatim}
+% ##TODO## ? move to wlan doc end
+
+\subsection{Expert settings}
+  The following settings should only be touched if you know exactly
+  \begin{itemize}
+    \item which hardware you have,
+    \item which additional drivers it needs and
+    \item the addresses and types of I\textsuperscript{2}C\footnotemark  devices.
+    \footnotetext{An I\textsuperscript{2}C bus or SMBus is a serial bus used in
+    PCs eg. to read temperature sensor values.
+    In many cases an I\textsuperscript{2}C bus or SMBus is available on a pin
+    header and can be used for own hardware extensions.}
+
+  \end{itemize}
+  Activating the expert settings will issue a warning during the mkfli4l build.
+
+\config {HWSUPP\_DRIVER\_N}{HWSUPP\_DRIVER\_N}{HWSUPPDRIVERN}
+  Number of additional drivers.
+  The drivers in \var{HWSUPP\_DRIVER\_x} will be loaded in the denoted order.
+
+\config {HWSUPP\_DRIVER\_x}{HWSUPP\_DRIVER\_x}{HWSUPPDRIVERx}
+  Driver name (without file extension \var{.ko}).
+
+Example:
+\begin{verbatim}
+HWSUPP_DRIVER_N='2'
+HWSUPP_DRIVER_1='i2c-piix4'     # I2C bus driver
+HWSUPP_DRIVER_2='gpio-pcf857x'  # I2C GPIO expander
+\end{verbatim}
+
+\config {HWSUPP\_I2C\_N}{HWSUPP\_I2C\_N}{HWSUPPI2CN}
+  Number of I\textsuperscript{2}C devices to be loaded.
+
+  I\textsuperscript{2}C doesn't support any PnP mechanismn.
+  Hence for each I\textsuperscript{2}C device the bus number,
+  the device address and the device type have to be specified.
+
+\config {HWSUPP\_I2C\_x\_BUS}{HWSUPP\_I2C\_x\_BUS}{HWSUPPI2CxBUS}
+  I\textsuperscript{2}C bus number the device is attached to.
+
+  The bus number has to be entered as \var{i2c-x}.
+
+\config {HWSUPP\_I2C\_x\_ADDRESS}{HWSUPP\_I2C\_x\_ADDRESS}{HWSUPPI2CxADDRESS}
+  The device's I\textsuperscript{2}C address.
+
+  The address has to be entered as a hex number in the range between \var{0x03} and \var{0x77}.
+
+\config {HWSUPP\_I2C\_x\_DEVICE}{HWSUPP\_I2C\_x\_DEVICE}{HWSUPPI2CxDEVICE}
+  The type of I\textsuperscript{2}C device which is supported by an already
+  loaded driver.
+
+Example:
+\begin{verbatim}
+HWSUPP_I2C_N='1'
+HWSUPP_I2C_1_BUS='i2c-1'
+HWSUPP_I2C_1_ADDRESS='0x38'
+HWSUPP_I2C_1_DEVICE='pcf8574a' # supported by gpio-pcf857x driver
+\end{verbatim}
+
+\subsection {Support for VPN cards}
+
+\config {OPT\_VPN\_CARD}{OPT\_VPN\_CARD}{OPTVPNCARD}
+  The setting \var{'no'} deactivates the OPT\_VPN\_CARD package completely. There
+  will be no changes made to the fli4l boot mediums or the archive \var{opt.img}.
+  OPT\_VPN\_CARD does not overwrite any other parts of the fli4l installation.
+  To activate OPT\_VPN\_CARD set the variable \var{OPT\_VPN\_CARD} to \var{'yes'}.
+
+\config {VPN\_CARD\_TYPE}{VPN\_CARD\_TYPE}{VPNCARDTYPE}
+
+  This configuration variable defines the type of the VPN accelerator.
+  The following values are supported:
+  \begin{itemize}
+    \item hifn7751 - Soekris vpn1401 and vpn1411
+    \item hifnhipp
+  \end{itemize}
+
+\end{description}

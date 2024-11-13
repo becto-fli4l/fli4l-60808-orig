@@ -1,0 +1,179 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc002.hwsupp                                           __FLI4LVER__
+#
+# Creation:     2009-08-07 babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_HWSUPP" = "yes" ]
+then
+    begin_script HWSUPP "starting hardware support for $HWSUPP_TYPE"
+    
+    {
+        echo "hwsupp_watchdog='$HWSUPP_WATCHDOG'"
+        echo "hwsupp_cpufreq='$HWSUPP_CPUFREQ'"
+    } > /var/run/hwsupp.conf
+
+    if [ "$HWSUPP_WATCHDOG" = "yes" -a -z "`ps | grep watchdogd | grep -v grep`" ]
+    then
+        log_info "starting watchdog daemon ..."
+        # start watchdog daemon, required modules are loaded via rc001.* scripts
+        if [ -c /dev/watchdog ]
+        then
+            watchdogd -d /dev/watchdog -r 20 -t 1
+        else
+            if [ -c /dev/geode-watchdog ]
+            then
+                watchdogd -d /dev/geode-watchdog -r 20 -t 1
+            else
+                log_error "cannot find watchdog-device"
+            fi
+        fi
+    fi
+
+    # load i2c devices
+    if [ 0$HWSUPP_I2C_N -gt 0 ]
+    then
+        log_info "loading i2c devices..."
+        for i in `seq 1 $HWSUPP_I2C_N`
+        do
+            eval bus=\$HWSUPP_I2C_${i}_BUS
+            eval addr=\$HWSUPP_I2C_${i}_ADDRESS
+            eval device=\$HWSUPP_I2C_${i}_DEVICE
+            if [ -f /sys/bus/i2c/devices/$bus/new_device ]
+            then
+                echo $device $addr >/sys/bus/i2c/devices/$bus/new_device
+            else
+                log_error "I2C bus $bus not found"
+            fi 
+        done 
+        sleep 1 # wait a second for i2c devices 
+    fi
+    
+    
+    # init leds
+    if [ 0$HWSUPP_LED_N -gt 0 ]
+    then
+        log_info "init LEDs..."
+        
+        # create led symlinks
+        for i in `seq 1 $HWSUPP_LED_N`
+        do
+            eval device=\$HWSUPP_LED_${i}_DEVICE
+            type=`echo $device | cut -d ':' -f 1`
+            case $type in
+                gpio)
+                    gpio=`echo $device | cut -d ':' -f 3`
+                    if [ -f /sys/class/leds-gpio-dyn/attach ]
+                    then
+                        echo $gpio > /sys/class/leds-gpio-dyn/attach
+                    else
+                        log_error "leds-gpio-dyn driver not loaded"
+                    fi
+                ;;
+                /gpio)
+                    gpio=`echo $device | cut -d ':' -f 3`
+                    if [ -f /sys/class/leds-gpio-dyn/attach-inv ]
+                    then
+                        echo $gpio > /sys/class/leds-gpio-dyn/attach-inv
+                    else
+                        log_error "leds-gpio-dyn driver not loaded"
+                    fi
+                ;;
+            esac
+            if [ -d /sys/class/leds/$device ]
+            then
+                ln -s /sys/class/leds/$device /var/run/hwsuppd/hwsupp-led$i
+            else
+                log_error "/sys/class/leds/$device not found"
+            fi
+        done
+        
+        # load led-trigger modules 
+        do_modprobe ledtrig-pattern
+        do_modprobe ledtrig-timer
+        for i in `seq 1 $HWSUPP_LED_N`
+        do
+            eval action=\$HWSUPP_LED_${i}
+            eval param=\"\$HWSUPP_LED_${i}_PARAM\"
+            if [ "$action" = "trigger" ]
+            then
+                do_modprobe_if_exists kernel/drivers/leds/trigger ledtrig-$param
+            fi
+        done
+        
+        # write hwsupp.conf
+        {
+            echo "hwsupp_type='$HWSUPP_TYPE'"
+            echo "hwsupp_led_n='$HWSUPP_LED_N'"
+        
+            for i in `seq 1 $HWSUPP_LED_N`
+            do
+                eval action=\$HWSUPP_LED_${i}
+                eval param=\$HWSUPP_LED_${i}_PARAM
+
+                echo "hwsupp_led_${i}='$action'"
+                echo "hwsupp_led_${i}_param='$param'"
+            done
+            
+            if [ 0$HWSUPP_BOOT_LED -gt 0 ]
+            then
+                echo "hwsupp_boot_led='$HWSUPP_BOOT_LED'"
+            fi
+        }  >> /var/run/hwsupp.conf
+
+        for i in `seq 1 $HWSUPP_LED_N`
+        do
+            eval action=\$HWSUPP_LED_${i}
+            eval param=\"\$HWSUPP_LED_${i}_PARAM\"
+            
+            # init leds
+            if [ -d /var/run/hwsuppd/hwsupp-led$i ]
+            then
+                echo none > /var/run/hwsuppd/hwsupp-led$i/trigger
+                echo 0 > /var/run/hwsuppd/hwsupp-led$i/brightness
+        
+                if [ 0$HWSUPP_BOOT_LED -eq $i ]
+                then
+                    echo pattern >/var/run/hwsuppd/hwsupp-led$i/trigger
+                else
+                    case $action in
+                        trigger)
+                            echo $param >/var/run/hwsuppd/hwsupp-led$i/trigger
+                        ;;
+                        ready)
+                            echo pattern >/var/run/hwsuppd/hwsupp-led$i/trigger
+                        ;;
+                    esac
+                fi
+            fi
+        done
+
+        . /etc/rc.d/bootled-progress
+        bootled_progess 00000003
+    fi # init leds
+    
+    # load cpufreq governors
+    if [ "$HWSUPP_CPUFREQ" = "yes" ]
+    then
+        log_info "loading cpufreq governors..."
+        for i in ondemand conservative powersave userspace stats
+        do
+            if [ -f /lib/modules/${kernel_version}/kernel/drivers/cpufreq/cpufreq_$i.ko ]
+            then
+                do_modprobe cpufreq_$i
+            fi
+        done
+    fi
+
+    # start sensors with -s to allow settings like "set in0_max 5 * 0.95" to work
+    sensors -s 2>&1 > /dev/null
+
+    if [ -c /dev/hw_random -a -x /usr/sbin/rngd  -a -z "`ps | grep rngd | grep -v grep`" ]
+    then
+        service-restart.sh 5 /usr/sbin/rngd -t 1 -f -r /dev/hw_random >/dev/null 2>&1 &
+    fi
+
+   end_script
+fi

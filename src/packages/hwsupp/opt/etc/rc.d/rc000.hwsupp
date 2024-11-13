@@ -1,0 +1,35 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc000.hwsupp                                           __FLI4LVER__
+#
+# Creation:     18.08.2014 cspiess
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+begin_script HWSUPP "basic hwsupp setup..."
+
+#create dir for symlinks 
+mkdir -p /var/run/hwsuppd
+
+# load generic gpio leds driver 
+do_modprobe_if_exists extra leds-gpio-dyn
+
+# load additional drivers
+if [ 0$HWSUPP_DRIVER_N -gt 0 ]
+then
+    log_info "loading additional drivers..."
+
+    for i in `seq 1 $HWSUPP_DRIVER_N`
+    do
+        eval driver=\$HWSUPP_DRIVER_${i}
+        do_modprobe $driver
+    done 
+fi
+
+# load i2c char device
+if [ 0$HWSUPP_I2C_N -ne 0 ]
+then
+    do_modprobe i2c-dev
+fi
+
+end_script

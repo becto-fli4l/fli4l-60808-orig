@@ -1,0 +1,127 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/sbin/hwsupp_onlined                                         __FLI4LVER__
+#
+# This helper daemon drives the "online" LED whenever the router's online state
+# changes. It registers an event handler for the state_changed_router_event
+# and acts accordingly.
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+# that's we
+mom_process=$(basename $0)
+
+# our MOM process ID
+mom_id=$mom_process
+
+# initialize MOM
+. /usr/share/mom/core
+
+# include API
+. /etc/boot.d/exittrap.inc
+
+# redirect output
+exec >>/var/log/$mom_process.log 2>&1
+
+# initialize logging
+script="$(basename $0)[$$]"
+facility=daemon
+. /usr/share/logfunc.sh
+
+############
+# PROCESSES
+############
+
+# ignore all signals except
+# - SIGTERM which calls hwsupp_onlined_exit
+exit_trap_ignore_all_signals
+exit_trap_install_for_signal TERM hwsupp_onlined_exit
+
+# Sends a stop_service_message to hwsupp_onlined.
+hwsupp_onlined_exit()
+{
+    log_warn "SIGTERM received"
+    mom_unicast_message $mom_process stop_service_message >/dev/null
+    # return non-zero to prevent hwsupp_onlined from being terminated via "exit"
+    return 1
+}
+
+# Sets the state of all LEDs of type "online".
+# Input:
+#   $1 = router state (e.g. "online" or "offline")
+#
+hwsupp_onlined_set_leds()
+{(
+    local newstate
+    case $1 in
+    offline)
+        newstate=off
+        ;;
+    online)
+        newstate=on
+        ;;
+    *)
+        log_warn "hwsupp_onlined_set_leds: unsupported state $1"
+        return 1
+        ;;
+    esac
+
+    # include hwsupp.conf on each event, so we are prepared to properly handle
+    # dynamic reconfigurations of hwsupp's LED configuration
+    . /var/run/hwsupp.conf
+
+    local i
+    for i in $(seq 1 ${hwsupp_led_n:-0})
+    do
+        eval local action=\$hwsupp_led_${i}
+        [ "$action" = "online" ] && hwsupp_setled $i $newstate
+    done
+)}
+
+###############################
+# EVENT HANDLERS: STATE EVENTS
+###############################
+
+handle_state_changed_router_event()
+{
+    hwsupp_onlined_set_leds $state_changed_router_event_new_state
+}
+
+###################################
+# EVENT HANDLERS: SERVICE MESSAGES
+###################################
+
+handle_stop_service_message()
+{
+    mom_quit_message_loop 0
+    reply_message_for=$message_id \
+        mom_unicast_message $message_sender stop_service_reply_message
+}
+
+handle_service_message()
+{
+    log_warn \
+        "handle_service_message($message_id#$message_sender:$message_type): received but ignored"
+}
+
+###############
+# MAIN PROGRAM
+###############
+
+log_info "starting"
+mom_register_handler handle_state_changed_router_event state_changed_router_event
+mom_register_handler handle_stop_service_message stop_service_message
+mom_register_handler handle_service_message service_message
+
+if fli4lctrl status >/dev/null
+then
+    hwsupp_onlined_set_leds online
+else
+    hwsupp_onlined_set_leds offline
+fi
+
+log_info "entering message loop"
+mom_run_message_loop
+
+log_info "exiting"
