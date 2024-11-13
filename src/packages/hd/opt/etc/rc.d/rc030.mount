@@ -1,0 +1,54 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc030.mount - mount data-partition and cdrom
+#
+# Creation:	    24.09.2003  hs
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_MOUNT in
+yes)
+    begin_script MOUNT "mounting other partitions ..."
+
+    # find data-partition created with opt_hdinstall typ a or b
+
+    if [ "$hd_data" ]
+    then
+        log_info "mounting data volume..."
+
+	mkdir /data
+        echo "/dev/$hd_data /data $extfs defaults,noatime 0 1" >> /etc/fstab
+	mount_volume /dev/$hd_data /data $extfs ||
+	    log_error "can't mount data-partition"
+    fi
+
+    # find and mount first cdrom-drive
+    if [ -f /proc/sys/dev/cdrom/info ]
+    then
+        log_info "mounting cd-rom..."
+	n=1
+	first='yes'
+	for drive in `sed -n 's/^drive name:[\t ]*//p' /proc/sys/dev/cdrom/info | sed 's/[[:space:]]\+/\n/g' | sort`
+        do
+	    mkdir -p /cdrom$n
+            echo "/dev/$drive /cdrom$n iso9660 ro 0 0" >> /etc/fstab
+	    dd if=/dev/$drive bs=2k count=1 of=/dev/null >/dev/null 2>&1
+	    res=$?
+	    if [ $res -eq 0 ]
+	    then
+		mount /cdrom$n || log_error "can't mount cd-rom /dev/$drive"
+		if [ "$first" == "yes" ]
+		then
+		    ln -s /cdrom$n /cdrom
+		    first='no'
+		fi
+#	    else
+#		log_error "no Media in Drive /dev/$drive"
+	    fi
+	    n=`expr $n + 1`
+	done
+    fi
+
+    end_script
+;;
+esac

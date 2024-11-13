@@ -1,0 +1,84 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc031.extmount - mount extra partitions
+#
+# Creation:	20.05.2009  babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_EXTMOUNT in
+yes)
+    begin_script EXTMOUNT "mounting other (extended) partitions ..."
+
+    blkid > /tmp/blkid.tmp
+
+    mp_basis='/media/'
+
+    [ "$EXTMOUNT_N" -eq 0 ] || for idx in `seq 1 $EXTMOUNT_N`
+    do
+        eval mv='$EXTMOUNT_'$idx'_VOLUMEID'
+        eval mfs='$EXTMOUNT_'$idx'_FILESYSTEM'
+        eval mp='$EXTMOUNT_'$idx'_MOUNTPOINT'
+        eval mo='$EXTMOUNT_'$idx'_OPTIONS'
+        eval mh='$EXTMOUNT_'$idx'_HOTPLUG'
+
+	# test if volume identifier is unique
+	count=`grep -c "$mv" /tmp/blkid.tmp`
+
+	case $count in
+            1)
+                # yeah! got unique match
+                blkattr=`grep "$mv" /tmp/blkid.tmp`
+                ;;
+            0)
+                # no hit, proceed with next element in for loop
+                if [ "$mh" = "yes" ]
+                then
+                    log_info "hot-pluggable device $mv disconnected, adding to /etc/fstab..."
+                    # if user hasn't defined a mount point use UUID instead
+                    [ -z "$mp" ] && mp="${mp_basis}${mv}"
+                    echo "UUID=$mv $mp ${mfs:=auto} ${mo:=defaults}" >> /etc/fstab
+                else
+                    log_error "Volume ID \"$mv\" doesn't match any media, please use 'blkid' to verify."
+                fi
+                continue
+                ;;
+            *)
+                # to many hits, proceed with next element in for loop
+                log_error "Too many matches for volume ID \"$mv\", please use 'blkid' to verify."
+                continue
+                ;;
+        esac
+
+	set -- $blkattr
+
+        # is there a possible moint point?
+        if [ -z "$mp" -a -z "$2" ]; then
+            log_error "No mount point defined for volume ID \"$mv\""
+            continue ;
+        fi
+
+	md=`echo "$1" | tr -d ':'`
+	md_fstab=`echo "$2" | tr -d '"'`
+
+        # if user hasn't defined a mount point use label instead
+        [ -z "$mp" ] && mp=${mp_basis}`echo "$md_fstab" | cut -d'=' -f2`
+
+        # device or mount point already in use?
+	if grep -q -E "$mp|$md" /proc/mounts; then
+	    log_error "Mount point \"$mp\" for volume ID \"$mv\" is already in use or device \"$md\" is already mounted, please use blkid to verify."
+            continue
+        fi
+
+        mkdir -p $mp
+        echo "${md_fstab:-$md} $mp ${mfs:=auto} ${mo:=defaults}" >> /etc/fstab
+        log_info "mounting $md with filesystem $mfs on $mp"
+	mount_volume $md $mp $mfs $mo ||
+	    log_error "failed to mount $md with filesystem $mfs on $mp"
+    done
+
+    rm /tmp/blkid.tmp
+
+    end_script
+    ;;
+esac

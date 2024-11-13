@@ -1,0 +1,505 @@
+% Synchronized to r29817
+
+\marklabel{sec:hdinstall}{
+  \section{HD - Support For Harddisks, Flash-Cards, USB-Sticks, ...}
+  }
+
+\subsection {OPT\_HDINSTALL - Installation On A Harddisk/CompactFlash}
+\configlabel{OPT\_HDINSTALL}{OPTHDINSTALL}
+
+    fli4l supports a large variety of boot media (CD, HD, Network, 
+    Compact-Flash,...). Floppy Disks are not supported anymore due to  
+    filesize regressions.\\
+
+    All steps necessary to install to a harddisk are explained below.\\
+
+    The usual way is installation via a physical boot medium. Installing via 
+    network boot is possible too. \var{OPT\_\-HDINSTALL} prepares the harddisk. 
+    If boot medium and installation target share the same \verb*?BOOT_TYPE='hd'? 
+    installation files will be transferred immedeately. If direct transfer is 
+    not possible the files will be transferred later via scp or remote update 
+    using Imonc.
+    
+    An Overview to the different harddisk installation variants A or B is found 
+    at the \jump{VARIANTEN}{Beginning of the documentation for fli4l}. Please read 
+    carefully before proceeding!
+
+    \subsubsection{HD-Installation In Six Simple Steps}
+
+\begin{enumerate}
+    \item create a bootable fli4l medium with package \verb*?BASE? and \var{OPT\_\-HDINSTALL}. 
+    This medium must be able to perform remote updates. Either \var{OPT\_\-SSHD}
+    must be activated or \var{OPT\_\-IMOND} is set to \verb*?'yes'?. If additional 
+    drivers not contained in the standard installation are necessary to access the 
+    harddisk, configure \var{OPT\_\-HDDRV} as well.
+    \item boot the router with the installation medium.
+    \item log in to the router console and execute ``hdinstall.sh''.
+    \item transfer the files syslinux.cfg, kernel, rootfs.img, opt.img and rc.cfg 
+    via scp or Imonc to the router's /boot directory if prompted to. It is recommended to 
+    work with two fli4l directories, one for the setup and a second for the hd 
+    installation. In the HD version, set the variable \verb*?BOOT_TYPE='hd'? 
+    and for the boot media type according to its type.
+    
+    \achtung{During remote update the files for the hd-version have to be copied!}
+    \item unload boot medium, shut down the router and reboot again (by using 
+    halt/reboot/poweroff). The router will boot from harddisk now.
+    \item if problems occur please refer to the following text.
+\end{enumerate}
+
+
+    \subsubsection{HD-Installation Explained In Detail (including examples)}
+
+    First, a router boot media containing the installation scripts and additional 
+    drivers (eventually) has to be created. Activate \var{OPT\_\-HDINSTALL} in
+    config/hd.txt and \var{OPT\_\-HDDRV} (only if additional drivers are needed).
+    Please read the section on \var{OPT\_\-HDDRV} thoroughly!
+    
+    The variable \var{BOOT\_\-TYPE} in base.txt has to be set in accordance with the 
+    chosen setup media. After all, a setup has to be performed\dots
+    The variable \var{MOUNT\_\-BOOT} in base.txt has to set to \verb*?'rw'?,
+    in order to allow saving new archives (*. img) loaded over the network.
+    
+    Then boot the router from this setup medium. Run the installation program by 
+    executing ``hdinstall.sh'' at the fli4l sonsole . After answering a few questions
+    the installion on the hard drive is performed. Eventually you will be prompted to 
+    load files needed for the router via remote update.
+
+    \achtung{Don't forget this remote update, otherwise the router won't boot from 
+    harddisk. To reboot the routers after remote update use reboot/halt/poweroff,
+    otherwise your remote update changes will be lost.}
+    
+    The installation script may be started directly at the router console or via ssh 
+    from another PC. This way you have to log in by giving a password. As an ssh client
+    you may use the freeware 'putty'.
+
+\subsubsection{Configuration Of The Setup Bootmedia}
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{small}
+    \begin{tabular}[h!]{lp{9cm}}
+    \verb*?BOOT_TYPE? & set according to type of bootmedia for the installation\\
+    \verb*?MOUNT_BOOT='rw'? & necessary to copy new archives (*.img) to the harddisk
+        over network\\
+    \verb*?OPT_HDINSTALL='yes'? & necessary to have the setup script and tools for  
+        formatting of partitions on the bootmedia\\
+    (\verb*?OPT_HDDRV='yes'?) & only necessary if harddisk needs special drivers\\
+    \verb*?OPT_SSHD='yes'? & after preparation of the harddisk eventually files 
+        have to be copied via remote update. You will either need sshd, imond 
+        (\verb*?IMOND='yes'?) or another package allowing file transfers. 
+    \end{tabular}
+    \end{small}
+    \caption{Configuration example of a setup media}
+    \marklabel{tab:hd-setupdisk}{}
+  \end{center}
+\end{table}
+
+    At this point network configuration has to be completed in order to be able to copy 
+    files over the network later. Please do not activate DNS\_DHCP at this point because 
+    this may cause all kinds of errors (the DHCP-server maybe already have a lease file for 
+    the router to be installed). For a remote update via scp (package SSHD) please set up
+    \verb*?OPT_SSHD='yes'?. As an alternative you may transfer files via IMOND. This needs 
+    a complete and working configuration for DSL or ISDN. Please omit all packages not 
+    mentioned, i.e. no  DNS\_DHCP, SAMBA\_LPD, LCD,Portforwarding a.s.o.\\
+
+    In case that the installations stops with the error message
+\begin{example}
+\begin{verbatim}
+    *** ERROR: can't create new partition table, see docu ***
+\end{verbatim}
+\end{example}
+       several problems may have occurred:
+        \begin{itemize}
+        \item harddisk is in use, maybe by an installation canceled before.
+        Reboot and try again.
+        \item additional drivers are needed, see \verb*?OPT_HDDRV?
+        \item hardware problems, see appendix.
+        \end{itemize}
+    In the last step the final configuration files can be set up and all other 
+    packages needed may be added to the router.
+
+\subsubsection{Examples For Completed Installations Type A and B:}
+
+An example for each configuration is to be found in table
+\ref{tab:hd-typ-a}.
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{small}
+    \begin{tabular}{lp{9cm}}
+    \verb*?BOOT_TYPE='hd'? & necessary because we are booting from harddisk now\\
+    \verb*?MOUNT_BOOT='rw|ro|no'? &
+                        choose one. For copying new fli4l archives to harddisk over 
+                        network 'rw' is needed.\\
+
+    \verb*?OPT_HDINSTALL='no'? & not needed after successful installation.\\
+
+
+    \verb*?OPT_MOUNT? & activate only if a data partition was configured\\
+
+    (\verb*?OPT_HDDRV='yes'?) & only necessary if harddisk can't be used without additional 
+		       drivers.\\
+    
+    \end{tabular}
+    \end{small}
+    \caption{Example for an installation according to type A or B}
+    \marklabel{tab:hd-typ-a}{}
+  \end{center}
+\end{table}
+
+    Creation of a swap-partition will only be available if the router has less than 32MB 
+    RAM and the installation target is NO flash media!
+
+\subsection {OPT\_MOUNT - Automatic Mounting Of Filesystems}
+\configlabel{OPT\_MOUNT}{OPTMOUNT}
+
+    OPT\_MOUNT mounts data partitions created during installation to /data, file system 
+    checks will be performed automatically when needed. CD-ROMs will be mounted to /cdrom 
+    if a CD is inserted. For swap-partitions OPT\_MOUNT is not needed!
+
+    \achtung{OPT\_MOUNT reads the configuration file hd.cfg on the boot-partition 
+    and mounts partitions mentioned there. If \var{OPT\_\-MOUNT} was transferred via 
+    remote update to an already installed router this file has to be edited manually.}
+   
+    \achtung{While booting from CD-ROM OPT\_MOUNT can't be used. The CD may be mounted 
+    by setting \var{MOUNT\_\-BOOT='ro'}.}
+    
+    The file hd.cfg on the DOS-partition for a router according to type B with swap and 
+    data partition looks like this (example):
+    \begin{verbatim}
+        hd_boot='sda1'
+        hd_opt='sda2'
+        hd_swap='sda3'
+        hd_data='sda4'
+        hd_boot_uuid='4A32-0C15'
+        hd_opt_uuid='c1e2bfa4-3841-4d25-ae0d-f8e40a84534d'
+        hd_swap_uuid='5f75874c-a82a-6294-c695-d301c3902844'
+        hd_data_uuid='278a5d12-651b-41ad-a8e7-97ccbc00e38f'
+    \end{verbatim}
+    
+    Just omit non-existent partitions, a router according to type A 
+    without further partitions looks like this:
+    \begin{verbatim}
+        hd_boot='sda1'
+        hd_boot_uuid='4863-65EF'
+     \end{verbatim}
+
+\subsection {OPT\_EXTMOUNT - Manual Mounting Of File Systems}
+\configlabel{OPT\_EXTMOUNT}{OPTEXTMOUNT}
+
+    OPT\_EXTMOUNT mounts data partitions to any chosen mountpoint in
+    file system. This allows to mount file systems created manually 
+    and for example provide a rsync-server directory.
+
+\begin{description}
+\config{EXTMOUNT\_N}{EXTMOUNT\_N}{EXTMOUNTN}
+
+    Number of manually created data partitions to be mounted.
+
+\config{EXTMOUNT\_x\_VOLUMEID}{EXTMOUNT\_x\_VOLUMEID}{EXTMOUNTxVOLUMEID}
+
+    Device, label or UUID of the volume to be mounted. By executing
+    'blkid' device, label and UUID of all volumes can be displayed.
+
+\config{EXTMOUNT\_x\_FILESYSTEM}{EXTMOUNT\_x\_FILESYSTEM}{EXTMOUNTxFILESYSTEM}
+
+    The file system used for the partition. fli4l supports isofs, fat, 
+    vfat, ext2, ext3 und ext4 at the time of writing.\\
+    (The default setting \verb*?EXTMOUNT_x_FILESYSTEM='auto'? automatically tries to determine 
+    the file system used.)
+
+\config{EXTMOUNT\_x\_MOUNTPOINT}{EXTMOUNT\_x\_MOUNTPOINT}{EXTMOUNTxMOUNTPOINT}
+
+    The path (Mountpoint) to where the device should be mounted. It does not 
+    have to exist and will be created automatically.
+
+\config{EXTMOUNT\_x\_OPTIONS}{EXTMOUNT\_x\_OPTIONS}{EXTMOUNTxOPTIONS}
+
+    Specify special options to be passed to the 'mount' command here.
+
+% #EXTMOUNT_x_HOTPLUG# ##TRANSLATE## : FFL-827: translate new variable
+\config{EXTMOUNT\_x\_HOTPLUG}{EXTMOUNT\_x\_HOTPLUG}{EXTMOUNTxHOTPLUG}
+
+    \mtr{Wenn diese Variable den Wert `yes' enthält, ist es kein Fehler, wenn zur
+    Boot-Zeit die Datenpartition nicht existiert. In diesem Fall wird davon
+    ausgegangen, dass der zugehörige Datenträger fehlt und ggf. später
+    eingebunden wird (z.B. via SATA-Hotplugging oder als USB-Stick). Das
+    Aktivieren dieser Option erfordert zwingend \var{OPT\_AUTOMOUNT='yes'}. Des
+    Weiteren muss zur Identifikation der gewünschten Datenpartition die
+    eindeutige Kennung (UUID) des Dateisystems in \var{EXTMOUNT\_x\_VOLUMEID}
+    eingetragen werden; andere IDs wie Gerätename oder Label werden \emph{nicht}
+    unterstützt.}
+% EOT
+
+\end{description}
+
+Example:
+\begin{example}
+\begin{verbatim}
+       EXTMOUNT_1_VOLUMEID='sda2'        # device
+       EXTMOUNT_1_FILESYSTEM='ext3'      # filesystem
+       EXTMOUNT_1_MOUNTPOINT='/mnt/data' # mountpoint for device
+       EXTMOUNT_1_OPTIONS=''             # extra mount options passed via mount -o
+       EXTMOUNT_1_HOTPLUG='no'           # device must exist at boot time
+\end{verbatim}
+\end{example}
+
+
+% #OPT_AUTOMOUNT# ##TRANSLATE## : FFL-827: translate new subsection
+\subsection {OPT\_AUTOMOUNT -- automatisches Einhängen von Datenpartitionen}
+\configlabel{OPT\_AUTOMOUNT}{OPTAUTOMOUNT}
+
+    \mtr{\var{OPT\_AUTOMOUNT='yes'} erlaubt es, Datenpartitionen automatisch und
+    dynamisch während der Laufzeit einzuhängen. Es gibt zwei
+    Konfigurationsvarianten. Die erste arbeitet mit \var{OPT\_EXTMOUNT}
+    zusammen und hängt nur Datenpartitionen ein, die beim Booten gefehlt haben.
+    Die zweite ist unabhängig von \var{OPT\_EXTMOUNT} und hängt \emph{alle}
+    lesbaren Datenpartitionen ein, egal ob bereits während des Bootens oder
+    erst später. Steuern lässt sich das Verhalten mit Hilfe der Variablen
+    \var{AUTOMOUNT\_UNKNOWN}:}
+
+\begin{description}
+\config{AUTOMOUNT\_UNKNOWN}{AUTOMOUNT\_UNKNOWN}{AUTOMOUNTUNKNOWN}
+
+    \mtr{Diese Variable steuert, ob unbekannte Datenpartitionen eingehängt werden.
+    Mit \var{AUTOMOUNT\_UNKNOWN='no'} werden nur Datenpartitionen dynamisch
+    während der Laufzeit eingehängt, die einem \var{EXTMOUNT\_x}-Eintrag
+    entsprechen. Dazu muss zusätzlich \var{EXTMOUNT\_x\_HOTPLUG='yes'}
+    definiert sein, damit \var{OPT\_EXTMOUNT} nicht meckert, wenn die
+    Datenpartition beim Booten fehlen sollte. Mit \var{AUTOMOUNT\_UNKNOWN='yes'}
+    werden auch unbekannte Datenpartitionen eingehängt. Dies funktioniert aber
+    nur, wenn das Dateisystem auf der Datenpartition eine eindeutige Kennung
+    (UUID) besitzt. In diesem Fall wird die Datenpartition in dem Verzeichnis
+    \texttt{/media/<UUID>} eingehängt (dieses Verzeichnis wird bei Bedarf
+    erzeugt).
+
+    Standard-Einstellung: \var{AUTOMOUNT\_UNKNOWN='no'}}
+
+\config{AUTOMOUNT\_UNKNOWN\_OPTS}{AUTOMOUNT\_UNKNOWN\_OPTS}{AUTOMOUNTUNKNOWNOPTS}
+
+    \mtr{Diese Variable gibt die \texttt{mount}-Optionen an, die bei unbekannten
+    Datenpartitionen beim Einhängen verwendet werden. Ist die Datenpartition
+    über \var{OPT\_EXTMOUNT} in der \texttt{/etc/fstab} identifizierbar, dann
+    werden die hier angegebenen Optionen \emph{nicht} benutzt; vielmehr werden
+    die Optionen im passenden \var{EXTMOUNT\_x\_OPTIONS}-Eintrag genutzt.
+
+    Standard-Einstellung: \var{AUTOMOUNT\_UNKNOWN\_OPTS='ro'} (damit werden
+    Schreibzugriffe auf unbekannte Datenpartitionen standardmäßig verhindert)}
+
+\end{description}
+
+    \mtr{Jede Datenpartition wird vor dem Einhängen mit Hilfe des für das jeweilige
+    Dateisystem verfügbaren Prüfprogramms auf Fehler überprüft (\texttt{e2fsck}
+    für ext2/ext3/ext4-Dateisysteme und \texttt{fsck.fat} für
+    (V)FAT-Dateisysteme). Schlägt die Prüfung oder die automatische Korrektur
+    fehl, wird das Dateisystem \emph{nicht} eingehängt, um Datenkorruption zu
+    vermeiden.
+
+    Wird ein Gerät entfernt, auf dem ein Dateisystem eingehängt war, wird dies
+    nachträglich via \texttt{umount} ausgehängt. Natürlich können dabei
+    womöglich noch nicht geschriebene Daten nicht mehr gesichert werden
+    (schließlich ist der Datenträger nicht mehr da), aber immerhin kann nicht
+    mehr versucht werden, auf den nicht mehr vorhandenen Datenträger weiter
+    zuzugreifen. Die korrekte Vorgehensweise ist natürlich \emph{erst} das
+    Dateisystem auszuhängen und \emph{dann} den Datenträger zu entfernen. Weil
+    nicht alle Gerätetypen ein Entfernen verhindern, wenn das Dateisystem
+    eingehängt ist (beispielsweise funktioniert dies gut bei CD-Laufwerken),
+    muss man sich unter Umständen selbst um die korrekte Reihenfolge der+
+    Aktionen kümmern.
+
+    Alle Aktivitäten von \var{OPT\_AUTOMOUNT} werden in der Datei
+    \texttt{/var/log/automount.log} protokolliert. Ein beispielhafter
+    Ausschnitt einer solchen Log-Datei wird im Folgenden gezeigt. Zuerst kommt
+    der Abschnitt, der die Aktivitäten für Datenpartitionen aufzeigt, die
+    bereits während des Bootens verfügbar sind (\texttt{ACTION=change}):}
+
+\begin{tiny}
+\begin{verbatim}
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vda1 DEVPATH=/devices/pci0000:00/0000:00:08.0/virtio4/block/vda/vda1 MDEV=vda1
+[2015-04-25 00:33:35] [INFO   ] TYPE: vfat
+[2015-04-25 00:33:35] [INFO   ] UUID: 442e-93ba
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/442e-93ba
+[2015-04-25 00:33:35] [ERROR  ] /dev/vda1 already mounted on /boot, giving up
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vda2 DEVPATH=/devices/pci0000:00/0000:00:08.0/virtio4/block/vda/vda2 MDEV=vda2
+[2015-04-25 00:33:35] [INFO   ] TYPE: ext3
+[2015-04-25 00:33:35] [INFO   ] UUID: 77ab35b3-029e-42c9-93a0-d197c01e6e89
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/77ab35b3-029e-42c9-93a0-d197c01e6e89
+[2015-04-25 00:33:35] [INFO   ] /dev/vda2: clean, 671/26208 files, 57544/104420 blocks
+[2015-04-25 00:33:35] [NOTICE ] /dev/vda2 mounted on /media/77ab35b3-029e-42c9-93a0-d197c01e6e89
+[2015-04-25 00:33:36] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vda3 DEVPATH=/devices/pci0000:00/0000:00:08.0/virtio4/block/vda/vda3 MDEV=vda3
+[2015-04-25 00:33:36] [INFO   ] TYPE: ext3
+[2015-04-25 00:33:35] [INFO   ] UUID: 1580b80c-92b1-4492-abfa-92a12a7d2027
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/1580b80c-92b1-4492-abfa-92a12a7d2027
+[2015-04-25 00:33:35] [ERROR  ] /dev/vda3 already mounted on /data, giving up
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vdb1 DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1 MDEV=vdb1
+[2015-04-25 00:33:35] [INFO   ] TYPE: ext3
+[2015-04-25 00:33:35] [INFO   ] UUID: 4c1a03e1-3a0c-4835-88dc-a51879def464
+[2015-04-25 00:33:35] [INFO   ] mount point: /mnt/extra
+[2015-04-25 00:33:35] [ERROR  ] /dev/vdb1 already mounted on /mnt/extra, giving up
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vdc1 DEVPATH=/devices/pci0000:00/0000:00:1f.0/virtio6/block/vdc/vdc1 MDEV=vdc1
+[2015-04-25 00:33:35] [INFO   ] TYPE: vfat
+[2015-04-25 00:33:35] [INFO   ] UUID: ba6e-9ebd
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/ba6e-9ebd
+[2015-04-25 00:33:35] [INFO   ] fsck.fat 3.0.26 (2014-03-07)
+[2015-04-25 00:33:35] [INFO   ] /dev/vdc1: 0 files, 0/32672 clusters
+[2015-04-25 00:33:35] [NOTICE ] /dev/vdc1 mounted on /media/ba6e-9ebd
+\end{verbatim}
+\end{tiny}
+
+    \mtr{Zwei Datenpartitionen wurden eingehängt (\texttt{/dev/vda2} und
+    \texttt{/dev/vdc1}), davon wurden beide nicht via \var{OPT\_EXTMOUNT}
+    konfiguriert und somit unterhalb von \texttt{/media} eingehängt. Die
+    verbliebenen drei Datenpartitionen \texttt{/dev/vda1}, \texttt{/dev/vda3}
+    und \texttt{/dev/vdb1} wurden bereits von anderen Boot-Skripten eingehängt
+    und entsprechen der Boot- und der Datenpartition sowie einer
+    benutzerdefinierten \var{OPT\_EXTMOUNT}-Datenpartition.
+
+    Jetzt werden \texttt{/dev/vdb1} und \texttt{/dev/vdc1} ausgehängt
+    (\texttt{ACTION=remove}; die Warnung, dass \texttt{/dev/vdb1} beim
+    Aushängen nicht in der Volumen-Datenbank gefunden wurde, ist harmlos und
+    weist darauf hin, dass diese Datenpartition bereits während des Bootens
+    von \var{OPT\_EXTMOUNT} und nicht von \var{OPT\_AUTOMOUNT} eingehängt
+    wurde)...}
+
+\begin{tiny}
+\begin{verbatim}
+[2015-04-25 00:34:52] [INFO   ] ACTION=remove SUBSYSTEM=block DEVNAME=vdb1 DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1 MDEV=vdb1
+[2015-04-25 00:34:52] [WARNING] /dev/vdb1 not found in volume database
+[2015-04-25 00:34:52] [INFO   ] mount point: /mnt/extra
+[2015-04-25 00:34:52] [NOTICE ] /dev/vdb1 unmounted from /mnt/extra
+[2015-04-25 00:34:55] [INFO   ] ACTION=remove SUBSYSTEM=block DEVNAME=vdc1 DEVPATH=/devices/pci0000:00/0000:00:1f.0/virtio6/block/vdc/vdc1 MDEV=vdc1
+[2015-04-25 00:34:55] [INFO   ] UUID: ba6e-9ebd
+[2015-04-25 00:34:55] [INFO   ] mount point: /media/ba6e-9ebd
+[2015-04-25 00:34:55] [NOTICE ] /dev/vdc1 unmounted from /media/ba6e-9ebd
+\end{verbatim}
+\end{tiny}
+
+    \mtr{...und in umgekehrter Reihenfolge wieder eingehängt (\texttt{ACTION=add}):}
+
+\begin{tiny}
+\begin{verbatim}
+[2015-04-25 00:35:14] [INFO   ] ACTION=add SUBSYSTEM=block DEVNAME=vdb1 DEVPATH=/devices/pci0000:00/0000:00:0b.0/virtio5/block/vdb/vdb1 MDEV=vdb1
+[2015-04-25 00:35:14] [INFO   ] TYPE: vfat
+[2015-04-25 00:35:14] [INFO   ] UUID: ba6e-9ebd
+[2015-04-25 00:35:14] [INFO   ] mount point: /media/ba6e-9ebd
+[2015-04-25 00:35:15] [INFO   ] fsck.fat 3.0.26 (2014-03-07)
+[2015-04-25 00:35:15] [INFO   ] /dev/vdb1: 0 files, 0/32672 clusters
+[2015-04-25 00:35:15] [NOTICE ] /dev/vdb1 mounted on /media/ba6e-9ebd
+[2015-04-25 00:35:18] [INFO   ] ACTION=add SUBSYSTEM=block DEVNAME=vdc1 DEVPATH=/devices/pci0000:00/0000:00:0c.0/virtio6/block/vdc/vdc1 MDEV=vdc1
+[2015-04-25 00:35:18] [INFO   ] TYPE: ext3
+[2015-04-25 00:35:18] [INFO   ] UUID: 4c1a03e1-3a0c-4835-88dc-a51879def464
+[2015-04-25 00:35:18] [INFO   ] mount point: /mnt/extra
+[2015-04-25 00:35:18] [INFO   ] /dev/vdc1: recovering journal
+[2015-04-25 00:35:18] [INFO   ] /dev/vdc1: clean, 11/16384 files, 7477/65488 blocks
+[2015-04-25 00:35:18] [NOTICE ] /dev/vdc1 mounted on /mnt/extra
+\end{verbatim}
+\end{tiny}
+
+    \mtr{Das ``unsaubere'' Aushängen des ext3-Dateisystems auf \texttt{/dev/vdc1}
+    hat zu einer ``recovering journal''-Meldung beim Einhängen geführt, die
+    aber nicht kritisch ist, da keine weiteren Fehler gefunden wurden.}
+% EOT
+
+
+\subsection {OPT\_HDSLEEP -- Setting Automatic Sleep Mode For Harddisks}
+\configlabel{OPT\_HDSLEEP}{OPTHDSLEEP}
+
+    A harddisk can power down after a certain time period without activity. 
+    The disk will save power and operate quiet then. Accessing the harddisk 
+    will cause it to automatically spin up again.
+
+    \achtung{Not all harddisks tolerate frequent spinup. Don't set the time for 
+    spindown too short. Older IDE-disks don't even have this function. This  
+    setting is also senseless for Flash-Media.}
+
+\begin{description}
+\config{HDSLEEP\_TIMEOUT}{HDSLEEP\_TIMEOUT}{HDSLEEPTIMEOUT}
+
+        The variable specifies after what time period without access the disk should 
+        power down. It will power down after that time period and come up again 
+        with the next access. Sleep timeouts can be specified in minutes from one to 20 
+        and in periods of 30 minutes from half an hour up to 5 hours. A sleep timeout 
+        of 21 or 25 minutes will be rounded to 30 minutes.
+        Some harddisks ignore values too high and stop after some minutes then. 
+        Please test the settings thoroughly because proper functioning depends
+        on the hardware used!
+
+\begin{example}
+\begin{verbatim}
+        HDSLEEP_TIMEOUT='2'              # wait 2 minutes until power down
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection {OPT\_RECOVER -- Emergency Option}
+\configlabel{OPT\_RECOVER}{OPTRECOVER}
+
+        This variable determines if functions for creating an emergency option 
+        will be available.
+        If activated the option copies the command ``mkrecover.sh'' to the router. 
+        By executing it you can activate the emergency option at the console. With package
+        ``HTTPD'' installed the action of copying an existing installation to an emergency 
+        instance can be achieved conveniantly in the menu ``recover''.
+
+        To use the recovery installation choose ``r'' for recovery in the boot menu at 
+        the next reboot.
+
+\begin{example}
+\begin{verbatim}
+        OPT_RECOVER='yes'
+\end{verbatim}
+\end{example}
+
+\subsection {OPT\_HDDRV - Additional Drivers For Harddisk Controllers}
+\configlabel{OPT\_HDDRV}{OPTHDDRV}
+
+    By setting \var{OPT\_\-HDDRV}='yes' you may activate drivers additionally needed.
+    Generally this is NOT needed for IDE und SATA, package 'Base' will load all necessary files.
+
+\begin{description}
+\config{HDDRV\_N}{HDDRV\_N}{HDDRVN}
+{
+	Set the number of drivers to be loaded.
+}
+
+\config{HDDRV\_x}{HDDRV\_x}{HDDRVx}
+{
+        \var{HDDRV\_\-1} a.s.o. Set drivers to be chosen for the host-adapters
+        in use. A list of all supported adapters is provided with the initial 
+        config file for package hd.
+}
+
+\config{HDDRV\_x\_OPTION}{HDDRV\_x\_OPTION}{HDDRVxOPTION}
+{
+        With \var{HDDRV\_\-x\_\-OPTION} additional options can be passed that some 
+        drivers need for proper operation (for example an IO-address). This 
+        variable can be empty for the most drivers.
+}
+
+    In the \jump{sec:hd-errors}{Appendix} you may find an overview of the most common 
+    errors concerning harddisk and CompactFlash operation.
+
+    Example 1: Access to a SCSI-harddisk on an Adaptec 2940 controller
+
+\begin{example}
+\begin{verbatim}
+   OPT_HDDRV='yes'             # install Drivers for Harddisk: yes or no
+   HDDRV_N='1'                 # number of HD drivers
+   HDDRV_1='aic7xxx'           # various aic7xxx based Adaptec SCSI 
+   HDDRV_1_OPTION=''           # no need for options yet
+\end{verbatim}
+\end{example}
+
+    Example 2: Accelerated IDE-Access with PC-Engines ALIX
+
+\begin{example}
+\begin{verbatim}
+   OPT_HDDRV='yes'             # install Drivers for Harddisk: yes or no
+   HDDRV_N='1'                 # number of HD drivers
+   HDDRV_1='pata_amd'          # AMD PCI IDE/ATA driver (e.g. ALIX) 
+   HDDRV_1_OPTION=''           # no need for options yet
+\end{verbatim}
+\end{example}
+
+\end{description}

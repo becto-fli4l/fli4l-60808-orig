@@ -1,0 +1,35 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc900.recover 
+# - add recover-function to httpd
+# - switch back to standard installation for next boot
+#
+# Creation:	2007-02-24 lanspezi
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_RECOVER in
+yes)
+    begin_script RECOVER "add recover-option to mini-httpd ..."
+    
+    if grep -q "DEFAULT r" /boot/syslinux.cfg
+    then
+        if [ "$MOUNT_BOOT" = "rw" ]
+        then
+            log_info "activating fli4l normal version for next boot"
+            sed -e "s/^DEFAULT r/DEFAULT n/" /boot/syslinux.cfg > /tmp/syslinux.restore
+            cat /tmp/syslinux.restore > /boot/syslinux.cfg
+            rm /tmp/syslinux.restore
+        else
+            log_error "error: can't switch back to standard installation because the boot-partition is mounted readonly"
+        fi
+    fi
+
+    case $OPT_HTTPD in
+    yes)
+    httpd-menu.sh add -p 900 control_recover.cgi "Recover" '$_MT_ctrl' recover
+    ;;
+    esac    
+
+    end_script
+esac

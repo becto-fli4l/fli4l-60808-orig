@@ -1,0 +1,170 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /lib/mdev/automount - mdev helper for automounting hotplugged volumes
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2015 - fli4l-Team <team@fli4l.de>
+#----------------------------------------------------------------------------
+
+# automount volume database
+AUTOMOUNT_DEVICES=/var/run/automount.devices
+
+exec >>/var/log/automount.log 2>&1
+
+# don't do anything yet if called before the boot scripts in /etc/boot.d/ have
+# finished execution, otherwise we try and mount the boot, opt, and data
+# devices!
+if [ ! -f /var/run/boot.cfg ]
+then
+    echo "$MDEV" >> /var/run/automount.delayed
+    exit 0
+fi
+
+. /etc/rc.cfg
+. /etc/boot.d/base-helper
+: ${AUTOMOUNT_UNKNOWN:=no}
+
+set -o pipefail
+
+# Input:
+#   $1 = log level
+#   $2 = message
+message()
+{
+    local level=$1
+    shift
+    if [ $# -gt 0 ]
+    then
+        printf "[%s] [%-7s] %s\n" "$(date "+%F %T")" "$level" "$*"
+    else
+        local line
+        while read -r line
+        do
+            message "$level" "$line"
+        done
+    fi
+}
+
+message INFO "ACTION=$ACTION SUBSYSTEM=$SUBSYSTEM DEVNAME=$DEVNAME DEVPATH=$DEVPATH MDEV=$MDEV"
+if [ ! -b /dev/$MDEV ]
+then
+    message ERROR "MDEV not set"
+    exit 1
+fi
+
+dev_regex=$(echo "$MDEV" | sed 's/\([[/.*^$\]\)/\\\1/g')
+
+case $ACTION in
+add|change)
+    eval $(blkid /dev/$MDEV | cut -d' ' -f2-)
+    if [ -z "$TYPE" ]
+    then
+        message NOTICE "/dev/$MDEV has an unknown file system, giving up"
+        exit 2
+    fi
+    message INFO "TYPE: $TYPE"
+
+    uuid=$(echo $UUID | tr '[A-Z]' '[a-z]')
+    if [ -z "$uuid" ]
+    then
+        message NOTICE "/dev/$MDEV has no UUID, giving up"
+        exit 3
+    fi
+    message INFO "UUID: $uuid"
+
+    mountdev="UUID=$uuid"
+    mountpoint=$(sed -n "s/^$mountdev[[:space:]]\+\([^[:space:]]\+\).*/\1/p" /etc/fstab)
+    if [ -z "$mountpoint" ]
+    then
+        if [ "$AUTOMOUNT_UNKNOWN" != "yes" ]
+        then
+            message NOTICE "/dev/$MDEV has no mount point in /etc/fstab and AUTOMOUNT_UNKNOWN is not enabled, giving up"
+            exit 4
+        else
+            mountpoint="/media/$uuid"
+            mountdev="/dev/$MDEV"
+            AUTOMOUNT_UNKNOWN_OPTS=${AUTOMOUNT_UNKNOWN_OPTS:+-o $AUTOMOUNT_UNKNOWN_OPTS}
+        fi
+    else
+        # don't use AUTOMOUNT_UNKNOWN_OPTS, use options found in /etc/fstab
+        AUTOMOUNT_UNKNOWN_OPTS=''
+    fi
+    message INFO "mount point: $mountpoint"
+
+    mp_regex=$(echo "$mountpoint" | sed 's/\([[/.*^$\]\)/\\\1/g')
+    curdev=$(sed -n "s/^\([^[:space:]]\+\)[[:space:]]\+$mp_regex[[:space:]]\+.*/\1/p" /proc/mounts)
+    curmp=$(sed -n "s/^\/dev\/$dev_regex[[:space:]]\+\([^[:space:]]\+\).*/\1/p" /proc/mounts)
+    if [ -n "$curdev" ]
+    then
+        message ERROR "$curdev already mounted on $mountpoint, giving up"
+        exit 5
+    fi
+    if [ -n "$curmp" ]
+    then
+        message ERROR "/dev/$MDEV already mounted on $curmp, giving up"
+        exit 6
+    fi
+
+    check_fs /dev/$MDEV $TYPE 2>&1 | message INFO
+    rc=$?
+    if [ $rc -gt 1 ]
+    then
+        message ERROR "'$checker' returned exit code $rc, giving up"
+        exit 8
+    elif [ $rc -eq 1 ]
+    then
+        message WARNING "'$checker' found and corrected errors"
+    fi
+
+    mkdir -p $mountpoint 2>&1 | message ERROR
+    rc=$?
+    if [ $rc -ne 0 ]
+    then
+        message ERROR "'mkdir' returned exit code $rc, giving up"
+        exit 9
+    fi
+
+    mount $AUTOMOUNT_UNKNOWN_OPTS -t $TYPE $mountdev $mountpoint 2>&1 | message ERROR
+    rc=$?
+    if [ $rc -ne 0 ]
+    then
+        message ERROR "'mount' returned exit code $rc, giving up"
+        exit 10
+    else
+        message NOTICE "/dev/$MDEV mounted on $mountpoint"
+        echo "$MDEV $uuid" >> $AUTOMOUNT_DEVICES
+    fi
+    ;;
+
+remove)
+    uuid=$(sed -n "s/^$dev_regex \(.*\)$/\1/p" $AUTOMOUNT_DEVICES)
+    if [ -z "$uuid" ]
+    then
+        message WARNING "/dev/$MDEV not found in volume database"
+    else
+        message INFO "UUID: $uuid"
+        sed -i "/^$dev_regex /d" $AUTOMOUNT_DEVICES
+    fi
+
+    mountpoint=$(sed -n "s/^\/dev\/$dev_regex[[:space:]]\+\([^[:space:]]\+\).*/\1/p" /proc/mounts)
+    if [ -z "$mountpoint" ]
+    then
+        message NOTICE "/dev/$MDEV is not mounted, nothing to do"
+        exit 11
+    fi
+    message INFO "mount point: $mountpoint"
+
+    umount -l $mountpoint 2>&1 | message ERROR
+    rc=$?
+    if [ $rc -ne 0 ]
+    then
+        message ERROR "'umount' returned exit code $rc, giving up"
+        exit 12
+    else
+        message NOTICE "/dev/$MDEV unmounted from $mountpoint"
+    fi
+    ;;
+esac
+
+exit 0

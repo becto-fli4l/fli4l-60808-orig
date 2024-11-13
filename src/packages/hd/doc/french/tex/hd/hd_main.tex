@@ -1,0 +1,546 @@
+% Do not remove the next line
+% Synchronized to r38653
+
+\marklabel{sec:hdinstall}{
+  \section{HD~- Supporte les disques dur, CompactFlash, clé USB, ...}
+  }
+
+\subsection {OPT\_HDINSTALL~- Installation sur disque dur/CompactFlash}
+\configlabel{OPT\_HDINSTALL}{OPTHDINSTALL}
+
+    fli4l prend en charge divers supports d'installations (CD, HD, réseau, carte
+    CompactFlash, ...) dans la version 4.0 les disquettes ne seront plus
+    supportés, du au manque d'espace car la taille des fichiers fli4l augmente.\\
+    
+    Toutes les étapes nécessaires à l'installation d'un disque dur sont
+    expliquées ci-dessous.\\
+    
+    La méthode habituelle pour une installation est d'utiliser un support de
+    boot, vous pouvez aussi utiliser le boot par le réseau. La variable
+    \var{OPT\_\-HDINSTALL} prépare le disque dur. Pour l'installation si vous
+    utilisez un support de boot et un autre support et si le paramètre
+    \verb*?BOOT_TYPE='hd'? est le même pour les deux, les fichiers d'installation
+    seront transférés directement. Si une copie directe n'est pas possible,
+    vous pouvez transférer les fichiers plus tard en utilisant le SCP ou Imonc.
+
+    Une introduction sur les différentes variantes d'installation A ou B pour les
+    disques durs se trouve \jump{VARIANTEN}{au début de la documentation fli4l}.
+    Veuillez SVP lire absolument la documentation avant de commencer~!
+
+    \subsubsection{Simple installation du HD en six étape}
+
+\begin{enumerate}
+    \item Créer un support de boot fli4l avec le paquetage base et en activant
+    la variables \var{OPT\_\-HDINSTALL}. De plus, ce support de boot doit
+    permettre une mise à jour à distance. Il faut donc activer la variable
+    \var{OPT\_\-SSHD} ou activer la variable \var{OPT\_\-IMOND} avec \verb*?'yes'?. 
+    Pour accéder au disque dur, si les pilotes l'installation par défaut ne
+    suffit pas, vous pouvez installer des pilotes supplémentaires en activant
+    la variable \var{OPT\_\-HDDRV}.
+    \item Démarrer le routeur avec le support de boot.
+    \item Lorsque le routeur est connecté, exécuter la commande "hdinstall.sh".
+    \item Lorsque l'installation du disque est terminée, vous pourez copier les
+    fichiers syslinux.cfg, Kernel, rootfs.img, opt.img et rc.cfg au moyens
+    d’imonc ou du SCP sur le /boot du routeur. Il est recommandé de travailler
+    avec deux répertoires fli4l, l'un pour la configuration et le second pour
+    l'installation du hd. Pour la version HD vous allez définir la variable
+    \verb*?BOOT_TYPE='hd'? et pour le support de boot il sera en fonction de
+    son type.
+
+    \achtung{Bien entendu, les fichiers systèmes pour l'installation de la
+    version HD, doivent être transmis au routeur~!}
+    \item Enlever le support de boot, descendre ou redémarrer le routeur à
+    l'aide (des commandes halt/reboot/poweroff). Le routeur redémarre maintenant
+    sur le disque dur.
+    \item En cas de problème, lisez les sections suivantes.
+\end{enumerate}
+
+    \subsubsection{Explication en détail de l'installation du HD (avec exemples)}
+
+    Tout d'abord, vous devez activer le fichier config/hd.txt dans le support
+    de boot du routeur, la variable \var{OPT\_\-HDINSTALL} elle sert pour le
+    script d'installation du HD et la variable \var{OPT\_\-HDDRV} (si les
+    pilotes supplémentaires sont nécessaires) ces variables doivent
+    être configurées correctements. Veuillez également lire soigneusement
+    le paragraphe \var{OPT\_\-HDDRV}~!
+
+    La variable \var{BOOT\_\-TYPE} dans base.txt sera sélectionné selon le
+    support de configuration, enfin, vous pourrez effectuée la configuration.
+    La Variable \var{MOUNT\_\-BOOT} dans base.txt doit être paramétrée sur \verb*?'rw'?,
+    afin de permettre plus tard de charger si c'est nécessaire une nouvelles
+    archives (*.img) par le réseau.
+
+    Ensuite, vous démarrez le routeur à partir de la disquette. Sur la console de
+    fli4l vous tapez "hdinstall.sh" le programme d'installation démarre. Après
+    avoir répondu à quelques questions, le disque dur sera en cours de préparation
+    pour le partitionner. A la fin de l'installation il s'affichera sur l'écran
+    une invitation à copier les fichiers systèmes à distance, ces fichiers sont
+    nécessaires au routeur pour booter sur le disque dur.
+
+    \achtung{N'oublier en aucun cas de transférer les fichiers systèmes
+    sur le disque dur, autrement le routeur ne démarrera pas. Après
+    le transfert des fichiers, vous devez redémarrer le routeur, utiliser
+    absolument les commandes reboot/halt/poweroff, pour redémarre le routeur,
+    dans le cas contraire les modifications ne seront pas prises en compte les
+    fichiers systèmes peuvent être perdus.}
+
+    Le script d’installation du routeur peut être lancé directement sur la
+    console d'un autre PC via le SSH. Dans tous les cas, vous devez au préalable
+    entrer le mot de passe du routeur. Vous pouvez utiliser par exemple le
+    freeware Putty comme client SSH pour les ordinateurs Windows.
+
+\subsubsection{Configuration et installation du support de boot}
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{small}
+    \begin{tabular}[h!]{lp{9cm}}
+    \verb*?BOOT_TYPE? & Selon l'installation du support de boot\\
+    \verb*?MOUNT_BOOT='rw'? & Nécessaire pour pouvoir copier plus tard, une
+        nouvelle archive (*.img) par le réseau sur le disque du routeur\\
+    \verb*?OPT_HDINSTALL='yes'? & Nécessaire pour l'installation du script et
+        pour les outils, formatage, partitionnement du disque\\
+    (\verb*?OPT_HDDRV='yes'?) & nécessaire uniquement si disque dur a besoin de
+        pilotes spéciaux.\\
+    \verb*?OPT_SSHD='yes'? & Nécessaire, aprés installation du disque, pour
+        transférer les fichiers systèmes à distance sur le routeur. Pour cela,
+        il faut soit SSHD soit Imond (\verb*?IMOND='yes'?), ou un autre programme,
+        qui permet le transfert des fichiers.
+    \end{tabular}
+    \end{small}
+    \caption{Exemple de configuration pour l'installation du support}
+    \marklabel{tab:hd-setupdisk}{}
+  \end{center}
+\end{table}
+
+    Ici la configuration du réseau doit être paramétré correctement pour que les
+    fichiers soient transférés sur le disque dur par le réseau. Il est recommandé
+    de ne pas activer le DNS\_DHCP, cela crée régulièrement des problèmes 
+    (le serveur DHCP doit installer un fichier pour les baux sur le routeur).
+    Pour une mise à jour à distance sur le routeur vous pouvez utiliser le SCP
+    (il se trouve dans le paquetage SSHD) en activant la variable
+    \verb*?OPT_SSHD='yes'?. Alternativement, vous pouvez transférer les fichiers
+    via le logiciel Imond, mais une configuration DSL ou RNIS valide est
+    nécessaire. Ne pas installer les paquetages qui ne sont pas absolument
+    nécessaire, donc pas de DNS\_DHCP, SAMBA\_LPD, LCD, Portforwarding etc.\\ 
+
+    Si à l'installation vous avez ce message d'erreur~:
+\begin{example}
+\begin{verbatim}
+    *** ERROR: can't create new partition table, see docu ***
+\end{verbatim}
+\end{example}
+       Abandonner, plusieurs sources d'erreur sont possible~:
+        \begin{itemize}
+        \item Le disque dur était en cours d'utilisation et a été interrompue 
+        lors de l'installation. Redémarrer simplement et essayer à nouveau.
+        \item Un pilote supplémentaire est peut-être nécessaires voir \verb*?OPT_HDDRV?
+		\item Il y a des problèmes de matériel, s'il vous plaît lisez l'annexe de ce document.
+        \end{itemize}
+    Dans la dernière étape, vous pouvez maintenant produire la version définitive
+    de fli4l, vous pouvez rajouter les fichiers de configuration et les paquetages
+    supplémentaire souhaités.
+
+\subsubsection{Exemple d'installation finalisé pour le type A ou type B~:}
+
+Un exemple de chaque configuration est listé dans le tableau \ref{tab:hd-typ-a}.
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{small}
+    \begin{tabular}{lp{9cm}}
+    \verb*?BOOT_TYPE='hd'? & Nécessaire, si fli4l démarre sur le disque dur\\
+
+    \verb*?MOUNT_BOOT='rw|ro|no'? & 
+                        Nécessaire, pour copier les nouvelles archives sur le
+                        disque par le réseau on a besoin du paramétrer 'rw'.\\
+
+    \verb*?OPT_HDINSTALL='no'? & Nécessaire, après une installation réussie ce
+                        programme ne sera plus utilisé.\\
+
+    \verb*?OPT_MOUNT? & Nécessaire, si une partition de données a été créé sur
+                         le disque dur.\\
+
+    (\verb*?OPT_HDDRV='yes'?) & Nécessaire, uniquement si le disque dur doit
+                        être utilisée avec un pilotes supplémentaires.\\
+    \end{tabular}
+    \end{small}
+    \caption{Exemple d'installation pour le Type A ou B}
+    \marklabel{tab:hd-typ-a}{}
+  \end{center}
+\end{table}
+
+    La création d'une partition swap n'est pas utile sauf si le routeur 
+    dispose de moins de 32 Mio de RAM et si l'installation ne s'exécute pas sur
+    un périphérique flash~!
+
+\subsection {OPT\_MOUNT~- Montage automatique du système de fichiers}
+\configlabel{OPT\_MOUNT}{OPTMOUNT}
+
+    La variable OPT\_MOUNT sert à monté une partition de donnée par ex. /data, en
+    cas de besoin, la partition sera testée automatiquement pour vérifier les erreurs.
+    Si éventuellement vous avez un lecteur de CD-ROM d'installé, il sera monté en
+    /cdrom lorsque vous allez insérer un disque. Si vous avez activé la partition
+    swap, vous n'avez pas besoin d'utiliser la variable OPT\_MOUNT~!
+
+    \achtung{A l'installation la variable OPT\_MOUNT lit le fichier de
+    configuration hd.cfg sur la partition de démarrage et monte les partitions
+    prés enregistrées. Si \var{OPT\_\-MOUNT} est transféré via une mise à jour
+    à distance sur un routeur déjà installé, le fichier hd.cfg doit être modifié
+    manuellement.}
+
+    \achtung{Avec un boot à partir du CD-ROM, la variable OPT\_MOUNT ne doit
+    pas être utilisée. Le CD peut être monté en mettant la valeur MOUNT\_BOOT='ro'
+    dans la variable.}
+
+    Voici le fichier hd.cfg qui est sur la partition DOS, le routeur fonctionne
+    avec le type B et une partition Swap, le contenu de celui-ci sera (par exemple)~:
+    \begin{verbatim}
+        hd_boot='sda1'
+        hd_opt='sda2'
+        hd_swap='sda3'
+        hd_data='sda4'
+        hd_boot_uuid='4A32-0C15'
+        hd_opt_uuid='c1e2bfa4-3841-4d25-ae0d-f8e40a84534d'
+        hd_swap_uuid='5f75874c-a82a-6294-c695-d301c3902844'
+        hd_data_uuid='278a5d12-651b-41ad-a8e7-97ccbc00e38f'
+    \end{verbatim}
+
+    Les partitions qui n'existe pas dans ce fichier seront simplement ignorées,
+    exemple d'installation sur un disque SCSI avec le type A et sans autres
+    partition, le fichier hd.cfg contiendra~:
+    \begin{verbatim}
+        hd_boot='sda1'
+        hd_boot_uuid='4863-65EF'
+     \end{verbatim}
+
+
+\subsection {OPT\_EXTMOUNT~- Montage manuel du fichier système}
+\configlabel{OPT\_EXTMOUNT}{OPTEXTMOUNT}
+
+    Avec la variable OPT\_EXTMOUNT vous pouvez monter le fichier système sur
+    n'importe quelle partition et avec n'importe quel point de montage. Il est
+    possible de monter manuellement le fichier système, pour disposer, par
+    exemple d’un serveur rsync.
+
+\begin{description}
+\config{EXTMOUNT\_N}{EXTMOUNT\_N}{EXTMOUNTN}
+
+    Vous indiquez dans cette variable le nombre d’extra partitions à monter.
+
+\config{EXTMOUNT\_x\_VOLUMEID}{EXTMOUNT\_x\_VOLUMEID}{EXTMOUNTxVOLUMEID}
+
+    Dans cette variable vous indiquez le nom ou l'UUID du
+    volume à installer. Avec la commande 'blkid' vous pouvez avoir des
+    informations sur les noms ou les UUID des volumes installés.
+
+\config{EXTMOUNT\_x\_FILESYSTEM}{EXTMOUNT\_x\_FILESYSTEM}{EXTMOUNTxFILESYSTEM}
+
+    Dans cette variable vous indiquez le nom du fichier système de la partition.
+    Actuellement fli4l supporte les fichiers systèmes suivant~: isofs, fat,
+    vfat, ext2, ext3 et ext4.//
+    (La valeur par défaut est \verb*?EXTMOUNT_x_FILESYSTEM='auto'?, avec cette
+    valeur fli4l tente de déterminer le fichier système automatiquement.)
+
+\config{EXTMOUNT\_x\_MOUNTPOINT}{EXTMOUNT\_x\_MOUNTPOINT}{EXTMOUNTxMOUNTPOINT}
+
+    Vous indiquez ici Le chemin d'accés (point de montage) dans lequel le
+    dispositif sera monté pour les fichiers systèmes. Le chemin d'accès ne doit
+    pas exister sur le support, il est automatiquement généré.
+
+\config{EXTMOUNT\_x\_OPTIONS}{EXTMOUNT\_x\_OPTIONS}{EXTMOUNTxOPTIONS}
+
+    Vous devez indiquer les options supplémenrtaires pour le montage, ils
+    seront transmis lors du montage du disque.
+
+\config{EXTMOUNT\_x\_HOTPLUG}{EXTMOUNT\_x\_HOTPLUG}{EXTMOUNTxHOTPLUG}
+
+	Si vous indiquez 'yes' dans cette variable, il n'y aura pas erreur lors
+	du boot si vous n'indiquez pas de partition de données. Dans ce cas, il est
+	supposé, que la partition de données annexe sera manquante, si c'est nécessaire
+	vous pourrez en intéger une plus tard (par exemple avec un SATA hot-plugging
+	(ou branchement à chaud) ou avec une clé USB). L'activation de cette option
+	nécessite obligatoirement l'activation de la variable \var{OPT\_AUTOMOUNT='yes'}.
+	En outre, si vous souhaitez utiliser l'identification de partition de données avec
+	l'identifiant universel unique (UUID) pour le système de fichiers, vous devez
+	paramétrer la variable \var{EXTMOUNT\_x\_VOLUMEID}. Les autre IDs comme
+	le nom de l'appareil ou la marque ne sont \emph{pas} supportées.
+
+\end{description}
+
+\begin{example}
+\begin{verbatim}
+       EXTMOUNT_1_VOLUMEID='sda2'        # device
+       EXTMOUNT_1_FILESYSTEM='ext3'      # filesystem
+       EXTMOUNT_1_MOUNTPOINT='/mnt/data' # mountpoint for device
+       EXTMOUNT_1_OPTIONS=''             # extra mount options passed via mount -o
+       EXTMOUNT_1_HOTPLUG='no'           # device must exist at boot time
+\end{verbatim}
+\end{example}
+
+
+\subsection {OPT\_AUTOMOUNT -- Monter automatiquement une partition de données}
+\configlabel{OPT\_AUTOMOUNT}{OPTAUTOMOUNT}
+
+    Si vous activez cette variable \var{OPT\_AUTOMOUNT='yes'} vous pouvez monter
+	automatiquement et dynamiquement les partitions de données pendant l'installation.
+	Il existe deux configurations possibles. La première, en utilisant la variable
+	\var{OPT\_EXTMOUNT} elle conserne que les partitions de données qui manquaient
+	au moment du démarrage. la seconde est indépendante de \var{OPT\_EXTMOUNT} et
+	conserne \emph{toutes} les partitions de données exploitables, au moment du
+	démarrage ou tard plus. Pour cela vous devez utiliser la variable
+	\var{AUTOMOUNT\_UNKNOWN}~:
+
+\begin{description}
+\config{AUTOMOUNT\_UNKNOWN}{AUTOMOUNT\_UNKNOWN}{AUTOMOUNTUNKNOWN}
+
+    Si vous devez monter et contrôlez des partitions de données inconnues vous
+	devez activer cette variable. Si vous indiquez \var{AUTOMOUNT\_UNKNOWN='no'} seul
+	les partitions de données seront monté dynamiquemt au moment de l'installation, cela
+	correspond à la variable \var{EXTMOUNT\_x}. N'oubliez pas d'activer la variable
+	\var{EXTMOUNT\_x\_HOTPLUG='yes'}, ne ralez pas si la partition de données est manquante
+	lors de l'amorçage avec \var{OPT\_EXTMOUNT}. Si vous indiquez \var{AUTOMOUNT\_UNKNOWN='yes'}
+	les partitions de données inconnues seront rattachées. Cela ne fonctionne que si
+	le système de fichiers sur la partition dispose d'un identifiant unique (UUID). Dans ce
+	cas, la partition sera monté dans le répertoire \texttt{/media/<UUID>} (ce répertoire est
+	créé si nécessaire.)
+
+    Paramètre par défaut~: \var{AUTOMOUNT\_UNKNOWN='no'}
+
+\config{AUTOMOUNT\_UNKNOWN\_OPTS}{AUTOMOUNT\_UNKNOWN\_OPTS}{AUTOMOUNTUNKNOWNOPTS}
+
+    Dans cette variable vous indiquez les options de \texttt{montage} qui
+	seront utilisés pour les partitions de données inconnus pendant l'installation.
+	Si vous avez paramétré une partition de données avec \var{OPT\_EXTMOUNT} les
+	informations seront enregistrées dans le fichier \texttt{/etc/fstab}, alors
+	les options mentionnées ici ne seront \emph{pas} utilisées. Il faut plutôt
+	indiquer les options dans la variable \var{EXTMOUNT\_x\_OPTIONS.}
+
+    Paramètre par défaut~: \var{AUTOMOUNT\_UNKNOWN\_OPTS='ro'} (avec cette option
+	les accès en écriture sur les partitions de données inconnues seront empêchés
+	par défaut)
+
+\end{description}
+
+    Chaque partition de données est vérifiée avant de montage en utilisant un
+	programme qui contrôle le système de fichier pour déceler les erreurs, le programme
+	(\texttt{e2fsck} est utilisé pour les systèmes de fichier ext2/ext3/ext4 et
+	\texttt{fsck.fat} pour le système de fichier (V)FAT. Si la vérification ou
+	la correction automatique échoue, le système de fichier ne sera \emph{pas} installé
+	pour éviter la corruption de données.
+	
+	Si le système de fichier a été suspendu sur le support et qu'il soit monté, le
+	support se démontera plus tard via la commande \texttt{umount}. Naturellement
+	vous ne pouvez pas écrire des données dessus (car le volume n'est plus là) et vous ne
+	pourrez pas accéder à ce volume qui n'existe plus. La manière correcte pour supprimer
+	un disque, est bien sûr, de démonter \emph{seulement} le système de fichier et
+	\emph{ensuite} de retirer le disque. Car certains types de périphériques empêchent
+	le retrait lorsque le système de fichier est installé (par exemple, cela fonctionne
+	bien avec les lecteurs de CD), vous devez peut être contrôler l'ordre correct des actions
+	pour l'installation un périphérique.
+
+    Toutes les actions de la variable \var{OPT\_AUTOMOUNT} sont enregistrés dans le
+	fichier journal \texttt{/var/log/automount.log}. Vous pouvez voir ci-dessous un exemple
+	du fichier journal pour une installation. Dans ce fichier vous pouvez voir tout d'abord,
+	les partions de données qui sont déjà disponibles au moment du démarrage avec
+	(\texttt{ACTION=change})~:
+
+\begin{tiny}
+\begin{verbatim}
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vda1 DEVPATH=/devices/pci0000:00/0000:00:08.0/virtio4/block/vda/vda1 MDEV=vda1
+[2015-04-25 00:33:35] [INFO   ] TYPE: vfat
+[2015-04-25 00:33:35] [INFO   ] UUID: 442e-93ba
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/442e-93ba
+[2015-04-25 00:33:35] [ERROR  ] /dev/vda1 already mounted on /boot, giving up
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vda2 DEVPATH=/devices/pci0000:00/0000:00:08.0/virtio4/block/vda/vda2 MDEV=vda2
+[2015-04-25 00:33:35] [INFO   ] TYPE: ext3
+[2015-04-25 00:33:35] [INFO   ] UUID: 77ab35b3-029e-42c9-93a0-d197c01e6e89
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/77ab35b3-029e-42c9-93a0-d197c01e6e89
+[2015-04-25 00:33:35] [INFO   ] /dev/vda2: clean, 671/26208 files, 57544/104420 blocks
+[2015-04-25 00:33:35] [NOTICE ] /dev/vda2 mounted on /media/77ab35b3-029e-42c9-93a0-d197c01e6e89
+[2015-04-25 00:33:36] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vda3 DEVPATH=/devices/pci0000:00/0000:00:08.0/virtio4/block/vda/vda3 MDEV=vda3
+[2015-04-25 00:33:36] [INFO   ] TYPE: ext3
+[2015-04-25 00:33:35] [INFO   ] UUID: 1580b80c-92b1-4492-abfa-92a12a7d2027
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/1580b80c-92b1-4492-abfa-92a12a7d2027
+[2015-04-25 00:33:35] [ERROR  ] /dev/vda3 already mounted on /data, giving up
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vdb1 DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1 MDEV=vdb1
+[2015-04-25 00:33:35] [INFO   ] TYPE: ext3
+[2015-04-25 00:33:35] [INFO   ] UUID: 4c1a03e1-3a0c-4835-88dc-a51879def464
+[2015-04-25 00:33:35] [INFO   ] mount point: /mnt/extra
+[2015-04-25 00:33:35] [ERROR  ] /dev/vdb1 already mounted on /mnt/extra, giving up
+[2015-04-25 00:33:35] [INFO   ] ACTION=change SUBSYSTEM=block DEVNAME=vdc1 DEVPATH=/devices/pci0000:00/0000:00:1f.0/virtio6/block/vdc/vdc1 MDEV=vdc1
+[2015-04-25 00:33:35] [INFO   ] TYPE: vfat
+[2015-04-25 00:33:35] [INFO   ] UUID: ba6e-9ebd
+[2015-04-25 00:33:35] [INFO   ] mount point: /media/ba6e-9ebd
+[2015-04-25 00:33:35] [INFO   ] fsck.fat 3.0.26 (2014-03-07)
+[2015-04-25 00:33:35] [INFO   ] /dev/vdc1: 0 files, 0/32672 clusters
+[2015-04-25 00:33:35] [NOTICE ] /dev/vdc1 mounted on /media/ba6e-9ebd
+\end{verbatim}
+\end{tiny}
+
+    Deux partitions de données ont été interrompues (\texttt{/dev/vda2} et
+    \texttt{/dev/vdc1}), ces deux partition n'ont pas été configurées avec
+	\var{OPT\_EXTMOUNT} et ont été suspendu dans le répertoire \texttt{/media}.
+	Les trois autres partitions de données \texttt{/dev/vda1}, \texttt{/dev/vda3}
+    et \texttt{/dev/vdb1} ont été configuré dans un autre script de démarrage et
+	correspond aux partitions définie par l'utilisateur dans la variable \var{OPT\_AUTOMOUNT}.
+
+    Maintenant les partitions \texttt{/dev/vdb1} et \texttt{/dev/vdc1} vont être
+	démonté avec (\texttt{ACTION=remove}. Vous pouvez voir un avertissement pour
+	\texttt{/dev/vdb1} il a été trouvé sur la partition une base de données et
+	celle-ci n'a pas été supprimée, cela est sans danger et rappel que la partition
+	à été montée au démarrage avec \var{OPT\_EXTMOUNT} et non avec \var{OPT\_AUTOMOUNT}...
+
+\begin{tiny}
+\begin{verbatim}
+[2015-04-25 00:34:52] [INFO   ] ACTION=remove SUBSYSTEM=block DEVNAME=vdb1 DEVPATH=/devices/pci0000:00/0000:00:0a.0/virtio5/block/vdb/vdb1 MDEV=vdb1
+[2015-04-25 00:34:52] [WARNING] /dev/vdb1 not found in volume database
+[2015-04-25 00:34:52] [INFO   ] mount point: /mnt/extra
+[2015-04-25 00:34:52] [NOTICE ] /dev/vdb1 unmounted from /mnt/extra
+[2015-04-25 00:34:55] [INFO   ] ACTION=remove SUBSYSTEM=block DEVNAME=vdc1 DEVPATH=/devices/pci0000:00/0000:00:1f.0/virtio6/block/vdc/vdc1 MDEV=vdc1
+[2015-04-25 00:34:55] [INFO   ] UUID: ba6e-9ebd
+[2015-04-25 00:34:55] [INFO   ] mount point: /media/ba6e-9ebd
+[2015-04-25 00:34:55] [NOTICE ] /dev/vdc1 unmounted from /media/ba6e-9ebd
+\end{verbatim}
+\end{tiny}
+
+	... dans le sens inverse vous pouvez voir que les partition sont à nouveau
+	installées avec (\texttt{ACTION=add})~:
+
+\begin{tiny}
+\begin{verbatim}
+[2015-04-25 00:35:14] [INFO   ] ACTION=add SUBSYSTEM=block DEVNAME=vdb1 DEVPATH=/devices/pci0000:00/0000:00:0b.0/virtio5/block/vdb/vdb1 MDEV=vdb1
+[2015-04-25 00:35:14] [INFO   ] TYPE: vfat
+[2015-04-25 00:35:14] [INFO   ] UUID: ba6e-9ebd
+[2015-04-25 00:35:14] [INFO   ] mount point: /media/ba6e-9ebd
+[2015-04-25 00:35:15] [INFO   ] fsck.fat 3.0.26 (2014-03-07)
+[2015-04-25 00:35:15] [INFO   ] /dev/vdb1: 0 files, 0/32672 clusters
+[2015-04-25 00:35:15] [NOTICE ] /dev/vdb1 mounted on /media/ba6e-9ebd
+[2015-04-25 00:35:18] [INFO   ] ACTION=add SUBSYSTEM=block DEVNAME=vdc1 DEVPATH=/devices/pci0000:00/0000:00:0c.0/virtio6/block/vdc/vdc1 MDEV=vdc1
+[2015-04-25 00:35:18] [INFO   ] TYPE: ext3
+[2015-04-25 00:35:18] [INFO   ] UUID: 4c1a03e1-3a0c-4835-88dc-a51879def464
+[2015-04-25 00:35:18] [INFO   ] mount point: /mnt/extra
+[2015-04-25 00:35:18] [INFO   ] /dev/vdc1: recovering journal
+[2015-04-25 00:35:18] [INFO   ] /dev/vdc1: clean, 11/16384 files, 7477/65488 blocks
+[2015-04-25 00:35:18] [NOTICE ] /dev/vdc1 mounted on /mnt/extra
+\end{verbatim}
+\end{tiny}
+
+     Les messages d'erreur du système de fichier ext3 sur la partition \texttt{/dev/vdc1}
+	 ont été enregistrés dans "recovering journal" lors du traîtement, ce n'est pas critique,
+	 mais depuis aucune autre erreur n'a été trouvée.
+
+
+\subsection {OPT\_HDSLEEP~- Régle pour l'arrêt automatique du disque dur}
+\configlabel{OPT\_HDSLEEP}{OPTHDSLEEP}
+
+    Un disque dur peut être arrêté automatiquement après une certaine
+    période d'inactivité. De cette manière la disque utilise moins d'énergie
+    et ne fait pratiquement plus aucun bruit. Si un accès au disque dur à lieu,
+    il redémarre à nouveau automatiquement.
+
+    \achtung{Certain disque dur ne tolèrent pas les redémarre fréquentes.
+    C'est pour cela que nous ne devons pas régler un temps trop cours. Les
+    vieux disques durs IDE n'offrent même pas cette fonction. Avec les supports
+    Flash Media, ce paramètre n'est pas utile ni nécessaire.}
+
+\begin{description}
+\config{HDSLEEP\_TIMEOUT}{HDSLEEP\_TIMEOUT}{HDSLEEPTIMEOUT}
+
+    On paramètre avec cette variable le temps d'inactivité, avant que le
+    disque dur se met au repos. le disque dur s'éteindra automatiquement
+    après le temps d'inactivité et redémarrera au prochain accès sur
+    celui-ci. Le temps d'inactivité se paramètre en minute, de 1 minute à
+    20 minutes, au-delà le réglage passe en intervalle de 30 minutes
+    jusqu'à 5 heures. Donc si on paramètre 21 ou 25 minutes il sera arrondi
+    à 30 minutes. Si le paramètre est trop élevé certains disques durs ne
+    tiennent pas compte de cette valeur et se mettent au repos avant le
+    temps indiqué. Faites plusieurs tests avec des valeurs différents,
+    car cela dépend beaucoup du matériel respectif~!
+
+\begin{example}
+\begin{verbatim}
+        HDTUNE_TIMEOUT='2'              # wait 2 minutes until power down
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+
+\subsection {OPT\_RECOVER~- Option de secours}
+\configlabel{OPT\_RECOVER}{OPTRECOVER}
+
+    Cette variable est utilisé pour créer une option de secours (ou une
+    restauration système), en cas de proplème. Si l'option est activée,
+    vous pouvez utiliser la commande "mkrecover.sh" pour le transfère des
+    données sur le routeur. La commande de secours peut être activé à
+    partir de la console. Si le paquetage "HTTPD" est installé vous pourrez
+    alors activer la restauration système dans le menu Recover.
+
+    L'installation de secours sera disponible au prochain redémarrage de
+    fli4l, dans le menu de Boot sélectionnez Recover sur la console.
+
+\begin{example}
+\begin{verbatim}
+        OPT_RECOVER='yes'
+\end{verbatim}
+\end{example}
+
+
+\subsection {OPT\_HDDRV~- Pilote pour contrôleur de disque dur}
+\configlabel{OPT\_HDDRV}{OPTHDDRV}
+
+    Si vous activez la variable \var{OPT\_\-HDDRV}='yes' vous pouvez installer
+    les pilotes supplémentaires si nécessaires, pour les disque IDE et SATA.
+    Normalement vous n'avez pas besoin d'installer de pilote supplémentaire,
+    parce qu'ils sont déjà chargés depuis le paquetage base.
+
+\begin{description}
+\config{HDDRV\_N}{HDDRV\_N}{HDDRVN}
+{
+    Vous indiquez ici le nombre de pilote à charger.}
+
+\config{HDDRV\_x}{HDDRV\_x}{HDDRVx}
+{
+    Vous indiquez dans la variable \var{HDDRV\_\-1} le pilote correspondant
+    aux contrôleurs utilisés. Une liste de contrôleurs supportés par fli4l
+    est incluent dans le fichier de configuration.
+}
+
+\config{HDDRV\_x\_OPTION}{HDDRV\_x\_OPTION}{HDDRVxOPTION}
+{
+    Vous indiquez dans la variable \var{HDDRV\_\-x\_\-OPTION} les options
+    qui peut être nécessitent aux contrôleurs utilisés. Par exemple une
+    adresse I/O. On peut laisser cette variable vide dans la plupart des cas.
+}
+
+    Vous pouvez voir dans \jump{sec:hd-errors}{l'annexe} un aperçu des erreurs
+    qui se produisent le plus souvent sur les disques durs et les CompactFlash.
+
+
+    Voici quelques exemples sur la façon de charger les pilotes HD dans le
+    fichier de configuration.
+
+    Exemple 1~: Accès au disque dur SCSI avec l'Adaptec 2940
+
+\begin{example}
+\begin{verbatim}
+   OPT_HDDRV='yes'             # install Drivers for Harddisk: yes or no
+   HDDRV_N='1'                 # number of HD drivers
+   HDDRV_1='aic7xxx'           # various aic7xxx based Adaptec SCSI 
+   HDDRV_1_OPTION=''           # no need for options yet
+\end{verbatim}
+\end{example}
+
+    Exemple 2~: Activez l'accés-IDE pour ALIX de PC-Engines
+
+\begin{example}
+\begin{verbatim}
+   OPT_HDDRV='yes'             # install Drivers for Harddisk: yes or no
+   HDDRV_N='1'                 # number of HD drivers
+   HDDRV_1='pata_amd'          # AMD PCI IDE/ATA driver (e.g. ALIX)
+   HDDRV_1_OPTION=''           # no need for options yet
+\end{verbatim}
+\end{example}
+
+\end{description}

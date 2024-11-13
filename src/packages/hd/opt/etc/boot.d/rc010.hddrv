@@ -1,0 +1,54 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/rc010.hddrv
+#
+# Creation:     2004-06-26 hs
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+begin_script BOOT "loading disk drivers ..."
+
+# load all drivers
+PCMCIA_USED="no"
+
+[ "$HDDRV_N" -eq 0 ] || for idx in `seq 1 $HDDRV_N`; do
+    eval drv='$HDDRV_'$idx
+    eval opt='$HDDRV_'$idx'_OPTION'
+
+    case "$drv" in
+	pcmcia-*)
+	    if [ "$PCMCIA_USED" = "no" ]
+	    then
+	      PCMCIA_USED='yes'
+	      if [ -f /lib/modules/${kernel_version}/kernel/drivers/ata/pata_pcmcia.ko ]
+	      then
+	        do_modprobe pata_pcmcia
+		PCMCIA_MODE='scsi'
+	      fi
+	    fi
+	    ;;
+        virtio) # KVM Virtio
+            do_modprobe virtio_pci
+            do_modprobe virtio_blk
+            do_modprobe virtio_balloon
+            ;;
+        xen-hd) # Xen Block Front
+            do_modprobe xen_blkfront
+            ;;
+        *)  # other Controllers
+            do_modprobe $drv $opt
+            ;;
+    esac
+done
+
+# Iterate through all scsi/usb block-devices in /proc/partitions and check,
+# whether its partition table was already scanned, wait up to 5 seconds
+for device in `sed -n 's/.*\(sd[a-z]$\)/\1/p' /proc/partitions`
+do
+    for i in `seq 1 5`
+    do
+        dmesg | grep "^ $device:" && break
+        sleep 1
+    done
+done
+
+end_script

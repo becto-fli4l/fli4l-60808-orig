@@ -1,0 +1,59 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc.hdsleep - change modes for ide-harddisks
+#
+# Creation:	    24.09.2003 hs
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_HDSLEEP" = "yes" ]
+then
+    begin_script HDSLEEP
+
+    # calculate sleeptime-parameter, see hdparm manual, option -S
+    if [ "$HDSLEEP_TIMEOUT" -gt 300 ]
+    then
+        log_error "a timeout above five hours is not supported, changed to five hours"
+        sleep=250
+    elif [ "$HDSLEEP_TIMEOUT" -gt 20 ]
+    then
+        time=`expr $HDSLEEP_TIMEOUT - 1`
+        sleep=`expr $time / 30 + 241`
+    else
+        sleep=`expr $HDSLEEP_TIMEOUT \* 60 / 5`
+    fi
+
+    error=''
+    successful=0
+    # Sleep for Hard-Disks and other Block-Devices listed in /proc/partitions
+    for i in `sed -n 's/.*\([sh]d[a-z]\)$/\1/p' /proc/partitions`
+    do
+        if hdparm -i /dev/$i 2>/dev/null | grep -q nonMagnetic
+	then
+    	    error="$error $i"
+        else
+            hdparm -S $sleep /dev/$i 2>/dev/null || log_error "Disk $i does not support your HDSLEEP-Settings"
+    	    successful=`expr $successful + 1`
+        fi
+    done
+    # Sleep for cdrom drives
+    if [ -f /proc/sys/dev/cdrom/info ]
+    then
+	for drive in `sed -n 's/^drive name:[\t ]*//p' /proc/sys/dev/cdrom/info`
+	do
+	    if ! hdparm -S $sleep /dev/$drive 2>/dev/null
+	    then
+		error="$error $drive"
+	    fi
+	done
+    fi
+    if [ $successful -eq 0 -a -n "$error" ]
+    then
+      for device in $error
+      do
+        devicetyp=`cat /proc/ide/$device/media`
+        log_error "$devicetyp $device does not support your HDSLEEP-Settings"
+      done
+    fi
+    end_script
+fi

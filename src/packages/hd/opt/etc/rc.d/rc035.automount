@@ -1,0 +1,27 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc035.automount - automount volumes
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_AUTOMOUNT in
+yes)
+    begin_script AUTOMOUNT "postprocessing volumes applicable for automounting ..."
+
+    if [ -f /var/run/automount.delayed ]
+    then
+        while read device
+        do
+            if [ -f /sys/class/block/$device/uevent ]
+            then
+                log_info "initiating mount of dev/$device ..."
+                echo "change" > /sys/class/block/$device/uevent
+            fi
+        done < /var/run/automount.delayed
+        rm /var/run/automount.delayed
+    fi
+
+    end_script
+    ;;
+esac

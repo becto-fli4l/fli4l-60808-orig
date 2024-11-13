@@ -1,0 +1,97 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for hd
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+provides hd version 4.0.0
+
+if ! (opt_sshd || opt_sftpserver || (opt_imond == "yes"))
+then
+    if (opt_hdinstall)
+    then
+        error "you can't perform a remote update with this configuration! hdinstall not possible. Please enable imond, ssh or any other file transfer package and read the documentation."
+    else
+        if (boot_type == "hd")
+        then
+            warning "you won't be able to perform a remote update with this configuration! Enabling imond, ssh or any other file transfer package is recommended."
+        fi
+    fi
+fi
+
+if (opt_mount || opt_extmount || opt_automount)
+then
+    add_to_opt "rootfs:sbin/e2fsck" "mode=555"
+    add_to_opt "rootfs:sbin/fsck.fat" "mode=555"
+fi
+
+
+if (opt_hdinstall)
+then
+    if (arch == "x86" || arch == "x86_64")
+    then
+        add_to_opt "usr/share/syslinux/mbr.bin"
+        add_to_opt "usr/sbin/syslinux" "mode=555"
+
+        stat("opt/usr/lib/hdinstall/hdinstallmsg_${locale}.sh", langfile)
+        if(langfile_res == "OK")
+        then
+            add_to_opt "usr/lib/hdinstall/hdinstallmsg_${locale}.sh" "mode=555 flags=sh"
+        else
+            warning "Could not find 'usr/lib/hdinstallmsg_${locale}.sh', perhaps this file isn't translated yet. Falling back to English."
+            add_to_opt "usr/lib/hdinstall/hdinstallmsg_en.sh" "mode=555 flags=sh"
+        fi
+    else
+        error "OPT_HDINSTALL='yes' not available for ARCH='$arch'"
+    fi
+fi
+
+if (opt_recover)
+then
+    if (arch != "x86" && arch != "x86_64")
+    then
+        error "OPT_RECOVER='yes' not available for ARCH='$arch'"
+    fi
+
+    if (opt_httpd)
+    then
+        add_to_opt "etc/rc.d/rc900.recover" "mode=555 flags=sh"
+        add_to_opt "srv/www/admin/control_recover.cgi" "mode=555 flags=sh"
+        if defined (httpd_gui_lang)
+        then
+            if httpd_gui_lang == "auto"
+            then
+                set gui_lang=locale
+            else
+                set gui_lang=httpd_gui_lang
+            fi
+            split (gui_lang, lang_tmp_%, ' ')
+            foreach lang in lang_tmp_%
+            do
+                stat("opt/srv/www/lang/control_recover.$lang", langfile)
+                if(langfile_res == "OK")
+                then
+                    add_to_opt "srv/www/lang/control_recover.$lang" "mode=444 flags=sh"
+                else
+                    warning "could not find 'srv/www/lang/control_recover.$lang', perhaps this file isn't translated yet. Falling back to English."
+                    add_to_opt "srv/www/lang/control_recover.en" "mode=444 flags=sh"
+                fi
+            done
+        fi
+    fi
+fi
+
+if (opt_extmount && !opt_automount)
+then
+    foreach i in extmount_n
+    do
+        set hotplug=extmount_%_hotplug[i]
+        if (hotplug == "yes")
+        then
+            error "EXTMOUNT_${i}_HOTPLUG='yes' requires OPT_AUTOMOUNT='yes'"
+        fi
+    done
+fi

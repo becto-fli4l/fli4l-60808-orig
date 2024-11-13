@@ -1,0 +1,43 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/boot.d/rc100.ls120boot
+#
+# Creation:     2004-08-14 rresch
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+begin_script BOOT "mounting boot device ..."
+# search for boot-partition if no boot=... was found in append-line
+if [ "$boot" = "" ]
+then
+    for i in hda hdb hdc hdd
+    do
+      if [ -f /proc/ide/$i/driver ]
+      then
+        if [ -n "`grep ide-floppy /proc/ide/$i/driver`" ]
+        then
+	    floppy=`cat /proc/ide/$i/model`
+	    echo "ide-floppy $floppy on device /dev/$i"
+	    case $floppy in
+	      *ZIP*)
+		boot=/dev/${i}4
+		;;
+	      *)
+                boot=/dev/"$i"
+	        ;;	
+	    esac
+            break
+        fi
+      fi
+    done
+fi
+
+boot_dev=$boot
+boot_fs=vfat
+mount -r $boot_dev /boot -t $boot_fs || stop "can't mount boot-partition, check drivers"
+end_script
+
+begin_script BOOT "unpacking opt archive ..."
+extract_opt /boot/$opt_archive
+end_script
+
