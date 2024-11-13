@@ -1,0 +1,841 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc898.freifunk - OLRSD startup script
+#
+# Creation:     19.02.2006 Ulrich Wachtel
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# packet present?
+if [ "$OPT_FREIFUNK" = yes ]
+then
+
+    begin_script OLSRD "starting freifunk rc file ..."
+
+olsrdconf="/etc/olsrd.conf"
+pingupfile="/usr/sbin/check_online_status"
+
+ echo "################################################################################# " > $olsrdconf
+ echo "# Configuration file olsrd.conf" >> $olsrdconf
+ echo "# Author: Ulrich Wachtel" >> $olsrdconf
+ echo "# Licence: GPL" >> $olsrdconf
+ echo "################################################################################# " >> $olsrdconf
+ echo " " >> $olsrdconf
+ echo " " >> $olsrdconf
+
+##-----------------------------------------------------------------------------
+## Calculate default values
+##-----------------------------------------------------------------------------
+
+if [ "$FREIFUNK_DEBUGLEVEL" = '' ]
+then 
+	FREIFUNK_DEBUGLEVEL='0'
+fi
+if [ "$FREIFUNK_IPVERSION" = '' ]
+then 
+	FREIFUNK_IPVERSION='4'
+fi
+if [ "$FREIFUNK_ALLOWNOINT" = '' ]
+then 
+	FREIFUNK_ALLOWNOINT='yes'
+fi
+if [ "$FREIFUNK_POLLRATE" = '' ]
+then 
+	FREIFUNK_POLLRATE='0.05'
+fi
+if [ "$FREIFUNK_TCREDUNDACY" = '' ]
+then 
+	FREIFUNK_TCREDUNDACY='2'
+fi
+if [ "$FREIFUNK_NATTHRESHOLD" = '' ]
+then 
+	FREIFUNK_NATTHRESHOLD='0.9'
+fi
+if [ "$FREIFUNK_MPRCOVERAGE" = '' ]
+then 
+	FREIFUNK_MPRCOVERAGE='7'
+fi
+if [ "$FREIFUNK_LINKQUALITYFISHEYE" = '' ]
+then 
+	FREIFUNK_LINKQUALITYFISHEYE='1'
+fi
+if [ "$FREIFUNK_LINK_QUALITY_LEVEL" = '' ]
+then 
+	FREIFUNK_LINK_QUALITY_LEVEL='2'
+fi
+if [ "$FREIFUNK_LINKQUALITYWINSIZE" = '' ]
+then 
+	FREIFUNK_LINKQUALITYWINSIZE='100'
+fi
+if [ "$FREIFUNK_IPC_MAX_CONNECTIONS" = '' ]
+then 
+	FREIFUNK_IPC_MAX_CONNECTIONS='0'
+fi
+if [ "$FREIFUNK_HELLO_INTERVAL" = '' ]
+then 
+	FREIFUNK_HELLO_INTERVAL='6.0'
+fi
+if [ "$FREIFUNK_HELLO_VALIDITY_TIME" = '' ]
+then 
+	FREIFUNK_HELLO_VALIDITY_TIME='108.0'
+fi
+if [ "$FREIFUNK_TC_INTERVAL" = '' ]
+then 
+	FREIFUNK_TC_INTERVAL='4.0'
+fi
+if [ "$FREIFUNK_TC_VALIDITY_TIME" = '' ]
+then 
+	FREIFUNK_TC_VALIDITY_TIME='324.0'
+fi
+if [ "$FREIFUNK_MID_INTERVAL" = '' ]
+then 
+	FREIFUNK_MID_INTERVAL='18.0'
+fi
+if [ "$FREIFUNK_MID_VALIDITY_TIME" = '' ]
+then 
+	FREIFUNK_MID_VALIDITY_TIME='324.0'
+fi
+if [ "$FREIFUNK_HNA_INTERVAL" = '' ]
+then 
+	FREIFUNK_HNA_INTERVAL='18.0'
+fi
+if [ "$FREIFUNK_HNA_VALIDITY_TIME" = '' ]
+then 
+	FREIFUNK_HNA_VALIDITY_TIME='108.0'
+fi
+
+if [ "$FREIFUNK_LINK_QUALITY_MULT" = 'yes' ]
+then
+    if [ "$FREIFUNK_LINK_QUALITY_MULT_QUALITY" = '' ]
+    then
+	FREIFUNK_LINK_QUALITY_MULT_QUALITY='0.5'
+    fi
+fi
+##-----------------------------------------------------------------------------
+## Calculate general parameter
+##-----------------------------------------------------------------------------
+
+ echo " DebugLevel              $FREIFUNK_DEBUGLEVEL"  >> $olsrdconf
+ echo " IpVersion               $FREIFUNK_IPVERSION"  >> $olsrdconf
+ echo " AllowNoInt              $FREIFUNK_ALLOWNOINT"  >> $olsrdconf
+ echo " Pollrate                $FREIFUNK_POLLRATE"  >> $olsrdconf
+ echo " TcRedundancy            $FREIFUNK_TCREDUNDACY"  >> $olsrdconf
+ echo " NatThreshold            $FREIFUNK_NATTHRESHOLD"  >> $olsrdconf
+ echo " MprCoverage             $FREIFUNK_MPRCOVERAGE"  >> $olsrdconf
+ echo " LinkQualityFishEye      $FREIFUNK_LINKQUALITYFISHEYE"  >> $olsrdconf
+ echo " LinkQualityWinSize      $FREIFUNK_LINKQUALITYWINSIZE"  >> $olsrdconf
+ 
+if [ -n "$FREIFUNK_DIJKSTRALIMIT" ];
+then
+     echo " LinkQualityDijkstraLimit $FREIFUNK_DIJKSTRALIMIT"  >> $olsrdconf
+fi
+
+if [ -n "$FREIFUNK_WILLINGNESS" ];
+then 
+	echo " Willingness      $FREIFUNK_WILLINGNESS"  >> $olsrdconf
+fi
+
+ echo " " >> $olsrdconf
+
+
+ echo " LinkQualityLevel  $FREIFUNK_LINK_QUALITY_LEVEL" >> $olsrdconf
+ echo " " >> $olsrdconf	
+ 
+ echo " UseHysteresis  $FREIFUNK_USE_HYSTERESIS" >> $olsrdconf
+ echo " " >> $olsrdconf	
+
+ 
+ if [ "$FREIFUNK_USE_HYSTERESIS" = yes ];
+  	then
+		echo " HystScaling  $FREIFUNK_HYSTERESIS_SCALING" >> $olsrdconf	
+		echo " HystThrHigh  $FREIFUNK_HYSTERESIS_THRHIGH" >> $olsrdconf	
+		echo " HystThrLow  $FREIFUNK_HYSTERESIS_THRLOW" >> $olsrdconf	
+ fi
+ echo " " >> $olsrdconf	
+
+##-----------------------------------------------------------------------------
+## Calculate IPC- parameter
+##-----------------------------------------------------------------------------
+
+	echo " IpcConnect" >> $olsrdconf
+	echo "	{" >> $olsrdconf
+	echo "	MaxConnections  $FREIFUNK_IPC_MAX_CONNECTIONS" >> $olsrdconf
+
+	
+	# default the local host
+	echo "	Host  127.0.0.1" >> $olsrdconf	
+
+    idx=1
+    while [  "$idx" -le "$FREIFUNK_IPC_HOST_N" ]
+    do
+        # Inhalt der Variable
+        eval temp='$FREIFUNK_IPC_HOST_'$idx
+
+       
+        # Nun schreiben wir das ganze in eine Datei der Form
+        # name ipaddr network netmask
+	echo "	Host  $temp" 
+	
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done >> $olsrdconf
+
+
+   if [ "$FREIFUNK_IPC_NET_N" -gt 0 ]
+   then
+
+    idx=1
+    while [  "$idx" -le "$FREIFUNK_IPC_NET_N" ]
+    do
+        # Inhalt der Variable
+        eval temp='$FREIFUNK_IPC_NET_'$idx
+
+        # splitten Netzwerk und Maske 
+        temp2=`echo $temp | /bin/sed 's/:/ /g'`
+        set "$temp2"
+
+        network=$1 
+        netmask=$2
+        
+        # Nun schreiben wir das ganze in eine Datei der Form
+        # name ipaddr network netmask
+	echo "	Net $network $netmask"
+	
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done >> $olsrdconf
+
+   fi
+
+	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+
+
+
+##-----------------------------------------------------------------------------
+# calculate interface parameter
+##-----------------------------------------------------------------------------
+
+    idx=1
+    temp2=""
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_INTERFACE_N" ]
+    do
+        # Inhalt der Variable
+        eval temp='$FREIFUNK_INTERFACE_'$idx
+        temp2="$temp2 \"$temp\"" 
+        
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done  >> $olsrdconf
+
+    echo " Interface  $temp2" >> $olsrdconf
+    set "$temp2"
+
+	echo "	{" >> $olsrdconf
+	echo "	HelloInterval		$FREIFUNK_HELLO_INTERVAL" >> $olsrdconf
+	echo "	HelloValidityTime	$FREIFUNK_HELLO_VALIDITY_TIME" >> $olsrdconf
+	echo "	TcInterval		$FREIFUNK_TC_INTERVAL" >> $olsrdconf
+	echo "	TcValidityTime		$FREIFUNK_TC_VALIDITY_TIME" >> $olsrdconf
+	echo "	MidInterval		$FREIFUNK_MID_INTERVAL" >> $olsrdconf
+	echo "	MidValidityTime		$FREIFUNK_MID_VALIDITY_TIME" >> $olsrdconf
+	echo "	HnaInterval		$FREIFUNK_HNA_INTERVAL" >> $olsrdconf
+	echo "	HnaValidityTime		$FREIFUNK_HNA_VALIDITY_TIME" >> $olsrdconf
+
+	    idx=1
+        while [  "$idx" -le "$FREIFUNK_LINK_QUALITY_MULT_N" ]
+        do
+            eval ip='$FREIFUNK_LINK_QUALITY_MULT_'$idx'_IPADDR'
+            eval quality='$FREIFUNK_LINK_QUALITY_MULT_'$idx'_QUALITY'
+            echo "      LinkQualityMult         $ip $quality" >> $olsrdconf
+            idx=`/usr/bin/expr $idx + 1`
+        done
+
+	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+
+
+##-----------------------------------------------------------------------------
+# Calculate HNA- parameter
+##-----------------------------------------------------------------------------
+
+
+   if [ "$FREIFUNK_HNA4_ROUTE_N" -gt 0 ]
+   then
+	echo " Hna4" >> $olsrdconf
+	echo "	{" >> $olsrdconf
+	echo "	#   Internet gateway:" >> $olsrdconf
+
+  # Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_HNA4_ROUTE_N" ]
+    do
+        # Inhalt der Variable
+        eval temp='$FREIFUNK_HNA4_ROUTE_'$idx
+
+        # splitten Netzwerk und Maske 
+        temp2=`echo $temp | /bin/sed 's/:/ /g'`
+        set "$temp2"
+
+        network=$1 
+        netmask=$2
+        
+        # Nun schreiben wir das ganze in eine Datei der Form
+        # name ipaddr network netmask
+	echo "	$network $netmask"
+
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done >> $olsrdconf
+
+	echo "	}" >> $olsrdconf
+	echo "	" >> $olsrdconf
+
+   fi
+
+	echo "	" >> $olsrdconf
+
+# HNA for IP V6 is not used
+
+	echo "# HNA IPv6 routes" >> $olsrdconf
+	echo "# syntax: netaddr prefix" >> $olsrdconf
+	echo "# Example Internet gateway:" >> $olsrdconf
+	echo "# Hna6" >> $olsrdconf
+	echo "# {" >> $olsrdconf
+	echo "#   Internet gateway:" >> $olsrdconf
+	echo "#   ::              0" >> $olsrdconf
+	echo "#   more entries can be added:" >> $olsrdconf
+	echo "#   fec0:2200:106:: 48" >> $olsrdconf
+	echo "# }" >> $olsrdconf
+	echo " " >> $olsrdconf
+	echo " " >> $olsrdconf
+	echo " " >> $olsrdconf
+
+##-----------------------------------------------------------------------------
+## Plugin Section
+##-----------------------------------------------------------------------------
+
+ if [ "$OPT_FREIFUNK_DYNGWFLI4L" = yes ]
+    then
+	
+	# configure olsrd.conf
+
+	echo "   Loading OLSRD plugin DYN_GW_FLI4L"
+ 	echo " LoadPlugin \"olsrd_dyn_gw_fli4l.so.0.4\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+ 	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+
+	# configure the pingmode if used
+
+
+	if [ "$FREIFUNK_DYNGWFLI4L_PINGMODE" = yes ]
+    	then
+
+	# setup the CRONfile
+	echo "#!/bin/sh" > $pingupfile
+	echo " " >> $pingupfile
+	echo " " >> $pingupfile
+	echo "if [ -f /var/run/dyngw_method_ping ]" >> $pingupfile
+	echo "then" >> $pingupfile
+
+
+	idx=1
+  	while [  "$idx" -le "$FREIFUNK_DYNGWFLI4L_HOST_N" ]
+    		do
+        	# Inhalt der Variable
+        	eval temp='$FREIFUNK_DYNGWFLI4L_HOST_'$idx
+
+
+		echo "ping -c 1 $temp"
+		echo "if [ \$? = 0 ]"
+  		echo "	then"
+    		echo "	echo \"$temp is up\""
+    		echo "	echo \"$temp is up\" >/var/run/dyngw_ping_result.up"
+    		echo "	exit"
+  		echo "	fi"
+
+        	# index um eins erhoehen
+        	idx=`/usr/bin/expr $idx + 1`
+    		done >> $pingupfile
+
+	echo "echo \"Line is down\"" >> $pingupfile
+	echo "rm /var/run/dyngw_ping_result.up" >> $pingupfile
+        echo "fi" >> $pingupfile
+	
+	chmod 555 $pingupfile
+
+	# start the CRON job for pingcheck now
+	echo "*/$FREIFUNK_DYNGWFLI4L_PINGTIME * * * * $pingupfile" >>/var/spool/cron/crontabs/root
+	$pingupfile
+	
+	# start the pingmode for the daemon here
+	echo "dyngw_method_ping" > /var/run/dyngw_method_ping
+	fi
+
+ fi
+
+ if [ "$OPT_FREIFUNK_NAMESERVER" = yes ]
+    then
+	# create an empty hosts file modified by olsrd
+	echo "# hosts file generated by OLSRD" >/var/run/hosts_olsr
+
+	# enable the polling mode in DNSMASQ !! Kommentiere "no-poll" aus
+	 
+        cat /etc/dnsmasq.conf | /bin/sed 's/no-poll/# no-poll /g' >/etc/dnsmasq.conf.new
+	mv /etc/dnsmasq.conf.new /etc/dnsmasq.conf
+	# additional hosts file for the dnsmasq
+	echo "addn-hosts=/var/run/hosts_olsr" >>/etc/dnsmasq.conf
+
+	# restart dnsmasq
+	killall dnsmasq
+	sleep 1
+	dnsmasq || log_error "dnsmasq not restarted by OPT_FREIFUNK!"
+	
+	# read the changed configuration from dnsmasq.conf by a cron job 
+        # insert cron entry for updating the Dnsmasq configuration
+	#    	killall -HUP dnsmasq
+
+	echo "55 * * * * /usr/bin/killall -HUP dnsmasq" >>/var/spool/cron/crontabs/root
+
+	# initialize the nameserver plugin
+	echo "   Loading OLSRD plugin NAMESERVER"
+ 	echo " LoadPlugin \"olsrd_nameservice.so.0.3\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+	# The hostname is also used in the nameserver
+ 	echo "	PlParam \"name\"          \"$HOSTNAME\"" >> $olsrdconf
+	
+	echo "	PlParam \"hosts-file\"          \"/var/run/hosts_olsr\"" >> $olsrdconf
+	echo "	PlParam \"suffix\"        \"$FREIFUNK_NS_SUFFIX\"" >> $olsrdconf
+	echo "	PlParam \"latlon-file\" \"/var/run/latlon.js\"" >> $olsrdconf
+	echo "	PlParam \"lat\"        \"$FREIFUNK_LAT\"" >> $olsrdconf
+	echo "	PlParam \"lon\"        \"$FREIFUNK_LON\"" >> $olsrdconf
+	
+	if [ "$OPT_FREIFUNK_NS_ANNOUNCE_DNS" = yes ]
+	then
+	    # it is a nameserver for the OLSR network and will be announced
+	    echo "	PlParam \"dns-server\"    \"$FREIFUNK_NS_DNS\"" >> $olsrdconf
+	fi
+
+	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+
+ fi
+
+ if [ "$OPT_FREIFUNK_SECURE" = yes ]
+    then
+	echo "   Loading OLSRD plugin SECURE"
+ 	echo " LoadPlugin \"olsrd_secure.so.0.5\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+	echo "	PlParam \"Keyfile\"  \"$FREIFUNK_SECURE_KEYFILE\"" >> $olsrdconf
+ 	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+ fi
+
+ if [ "$OPT_FREIFUNK_DOTDRAW" = yes ]
+    then
+	echo "   Loading OLSRD plugin DOTDRAW"
+ 	echo " LoadPlugin \"olsrd_dot_draw.so.0.3\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+	echo "	PlParam \"accept\"  \"$FREIFUNK_DOTDRAW_HOST\"" >> $olsrdconf
+	echo "	PlParam \"port\"  \"$FREIFUNK_DOTDRAW_PORT\"" >> $olsrdconf
+ 	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+ fi
+
+ if [ "$OPT_FREIFUNK_PGRAPH" = yes ]
+    then
+	echo "   Loading OLSRD plugin PGRAPH"
+ 	echo " LoadPlugin \"olsrd_pgraph.so.1.1\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+ 	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+ fi
+ 
+	echo "   Loading OLSRD plugin TXTINFO"
+ 	echo " LoadPlugin \"olsrd_txtinfo.so.0.1\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+	echo "	PlParam \"accept\"  \"127.0.0.1\"" >> $olsrdconf
+	echo "	PlParam \"port\"  \"2006\"" >> $olsrdconf
+ 	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+
+
+	echo "   Loading OLSRD plugin ARPREFRESH"
+ 	echo " LoadPlugin \"olsrd_arprefresh.so.0.1\" " >> $olsrdconf
+ 	echo "	{" >> $olsrdconf
+ 	echo "	}" >> $olsrdconf
+	echo " " >> $olsrdconf
+ 
+# generate softlinks for the plugins
+
+ if [ "$OPT_FREIFUNK_DYNGWFLI4L" = yes ]
+    then
+	ln -s /opt/files/usr/lib/olsrd_dyn_gw_fli4l.so.0.4 /usr/lib/olsrd_dyn_gw_fli4l
+	ln -s /opt/files/usr/lib/olsrd_dyn_gw_fli4l.so.0.4 /usr/lib/olsrd_dyn_gw_fli4l.so.0.4
+ fi
+
+ if [ "$OPT_FREIFUNK_NAMESERVER" = yes ]
+    then
+	ln -s /opt/files/usr/lib/olsrd_nameservice.so.0.3 /usr/lib/olsrd_nameservice
+	ln -s /opt/files/usr/lib/olsrd_nameservice.so.0.3 /usr/lib/olsrd_nameservice.so.0.3
+ fi
+
+ if [ "$OPT_FREIFUNK_SECURE" = yes ]
+    then
+	ln -s /opt/files/usr/lib/olsrd_secure.so.0.5 /usr/lib/olsrd_secure
+	ln -s /opt/files/usr/lib/olsrd_secure.so.0.5 /usr/lib/olsrd_secure.0.5
+ fi
+
+ if [ "$OPT_FREIFUNK_DOTDRAW" = yes ]
+    then
+	ln -s /opt/files/usr/lib/olsrd_dot_draw.so.0.3 /usr/lib/olsrd_dot_draw
+	ln -s /opt/files/usr/lib/olsrd_dot_draw.so.0.3 /usr/lib/olsrd_dot_draw.0.3
+ fi
+
+ if [ "$OPT_FREIFUNK_PGRAPH" = yes ]
+    then
+	ln -s /opt/files/usr/lib/olsrd_pgraph.so.1.1 /usr/lib/olsrd_pgraph
+	ln -s /opt/files/usr/lib/olsrd_pgraph.so.1.1 /usr/lib/olsrd_pgraph.1.1
+ fi
+
+# activate always 
+
+if [ "$OPT_OLSRD" = yes ]
+then
+	ln -s /opt/files/usr/lib/olsrd_txtinfo.so.0.1 /usr/lib/olsrd_txtinfo
+	ln -s /opt/files/usr/lib/olsrd_txtinfo.so.0.1 /usr/lib/olsrd_txtinfo.0.1
+
+	ln -s /opt/files/usr/lib/olsrd_arprefresh.so.0.1 /usr/lib/olsrd_arprefresh
+	ln -s /opt/files/usr/lib/olsrd_arprefresh.so.0.1 /usr/lib/olsrd_arprefresh.0.1
+fi
+
+
+##-----------------------------------------------------------------------------
+## Bringup the service
+##-----------------------------------------------------------------------------
+
+
+  # clear all old olsrd- routes 
+. /usr/sbin/olsrd-clearroutes
+
+sleep 1
+
+# set all wireless interface parameter
+
+ idx=1
+ while [  "$idx" -le "$FREIFUNK_INTERFACE_N" ]
+    do
+        # Inhalt der Variable
+        eval temp='$FREIFUNK_INTERFACE_'$idx
+	eval bssid='$FREIFUNK_INTERFACE_'$idx'_BSSID'
+        eval rts='$FREIFUNK_INTERFACE_'$idx'_RTS'
+        eval frag='$FREIFUNK_INTERFACE_'$idx'_FRAG'
+        eval txpower='$FREIFUNK_INTERFACE_'$idx'_TXPOWER'
+
+	if [ -n "$bssid" ]
+	    then 
+		# set BSSID to a fixed value
+		iwconfig $temp ap $bssid
+		log_info 'BSSID set to fixed value: $bssid'
+	fi    
+
+	if [ -n "$rts" ]
+	    then 
+		# set the RTS threshold
+		iwconfig $temp rts $rts
+	fi    
+
+	if [ -n "$frag" ]
+	    then 
+		# set the fragmentation threshold
+		iwconfig $temp frag $frag
+	fi    	
+
+	if [ -n "$txpower" ]
+	    then 
+		# set the transmission power
+		iwconfig $temp txpower $txpower
+	fi    	
+
+
+    	# index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+
+   done
+
+##-----------------------------------------------------------------------------
+## BSSID- hack for setting a wrong BSSID
+##-----------------------------------------------------------------------------
+   
+ if [ "$OPT_FREIFUNK_BSSIDHACK" = yes ]
+    then
+     if [ -n "$bssid" ]
+            then 
+                # set BSSID to a fixed value
+                iwconfig $temp ap $bssid
+                log_info 'BSSID set to fixed value: $bssid'
+                /usr/sbin/check_bssid.sh $temp $bssid & 
+     fi 
+fi
+      
+##-----------------------------------------------------------------------------
+## "iwpriv"- commands
+##-----------------------------------------------------------------------------
+
+# Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_IWPRIV_N" ]
+    do
+           
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$FREIFUNK_IWPRIV_'$idx'_INTERFACE'
+	eval temp2='$FREIFUNK_IWPRIV_'$idx'_COMMAND'
+	
+	iwpriv $temp $temp2
+	
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done 
+
+##-----------------------------------------------------------------------------
+## Setup the FREIFUNK- GUI
+##-----------------------------------------------------------------------------
+
+
+if [ "$OPT_FREIFUNK_GUI" = yes ]
+    then
+
+##-----------------------------------------------------------------------------
+## Setup the MAP- files and softlink in www2
+##-----------------------------------------------------------------------------
+
+
+    echo "52 * * * * /usr/sbin/freifunkmap.sh"  >> /var/spool/cron/crontabs/root
+	echo "$FREIFUNK_LAT"", ""$FREIFUNK_LON" > /srv/www2/mygooglemapscoords.txt
+
+	
+if [ "$FREIFUNK_GUI_SHOW_STATUSPAGE" = "no" ];then
+	rm -f /srv/www2/05-cgi-bin-status
+	rm -f /srv/www2/cgi-bin-status.cgi
+fi
+
+if [ "$FREIFUNK_GUI_SHOW_CONTACTPAGE" = "no" ];then
+	rm -f /srv/www2/10-cgi-bin-contact
+	rm -f /srv/www2/cgi-bin-contact.cgi
+fi
+
+if [ "$FREIFUNK_GUI_SHOW_MAPPAGE" = "no" ];then
+	rm -f /srv/www2/37-cgi-bin-map
+	rm -f /srv/www2/cgi-bin-freifunk-map.cgi
+fi
+
+mkdir $FREIFUNK_GUI_PAGE_LOCAL/custom
+chmod 755 $FREIFUNK_GUI_PAGE_LOCAL/custom
+
+##-----------------------------------------------------------------------------
+# Register important variables
+##-----------------------------------------------------------------------------
+
+echo "FREIFUNK_GUI_NICKNAME='$FREIFUNK_GUI_NICKNAME'" > /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_NAME='$FREIFUNK_GUI_NAME'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_EMAIL='$FREIFUNK_GUI_EMAIL'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_FONE='$FREIFUNK_GUI_FONE'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_LOCATION='$FREIFUNK_GUI_LOCATION'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_LAT='$FREIFUNK_LAT'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_LON='$FREIFUNK_LON'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_NOTICE='$FREIFUNK_GUI_NOTICE'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_MAPSERVER='$FREIFUNK_GUI_MAPSERVER'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_MAPIP='$FREIFUNK_GUI_MAPIP'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_MAPINTERVAL='$FREIFUNK_GUI_MAPINTERVAL'" >> /var/run/freifunk_register.conf
+
+echo "FREIFUNK_GUI_SHOW_DEFTEXTTOP='$FREIFUNK_GUI_SHOW_DEFTEXTTOP'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_DEFTEXTDOWN='$FREIFUNK_GUI_SHOW_DEFTEXTDOWN'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_DEFPIC='$FREIFUNK_GUI_SHOW_DEFPIC'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_DEFLINKS='$FREIFUNK_GUI_SHOW_DEFLINKS'" >> /var/run/freifunk_register.conf
+
+echo "FREIFUNK_GUI_SHOW_ROUTING='$FREIFUNK_GUI_SHOW_ROUTING'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_WLANSCAN='$FREIFUNK_GUI_SHOW_WLANSCAN'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_OLSRINFO='$FREIFUNK_GUI_SHOW_OLSRINFO'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_BOOTLOG='$FREIFUNK_GUI_SHOW_BOOTLOG'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_IPNAT='$FREIFUNK_GUI_SHOW_IPNAT'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_INTERFACES='$FREIFUNK_GUI_SHOW_INTERFACES'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_SHOW_CONNECTIONS='$FREIFUNK_GUI_SHOW_CONNECTIONS'" >> /var/run/freifunk_register.conf
+
+echo "FREIFUNK_GUI_PAGE_DLURL='$FREIFUNK_GUI_PAGE_DLURL'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_PAGE_LOCAL='$FREIFUNK_GUI_PAGE_LOCAL'" >> /var/run/freifunk_register.conf
+						      
+echo "FREIFUNK_GUI_PAGE_N='$FREIFUNK_GUI_PAGE_N'" >> /var/run/freifunk_register.conf
+
+ # Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_GUI_PAGE_N" ]
+    do
+           
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$FREIFUNK_GUI_PAGE_'$idx
+	echo "FREIFUNK_GUI_PAGE_$idx='$temp'" >> /var/run/freifunk_register.conf
+        eval temp2='$FREIFUNK_GUI_PAGE_'$idx'_FILE'
+	echo "FREIFUNK_GUI_PAGE_$idx""_FILE='$temp2'" >> /var/run/freifunk_register.conf
+        eval temp3='$FREIFUNK_GUI_PAGE_'$idx'_ORDER'
+	echo "FREIFUNK_GUI_PAGE_$idx""_ORDER='$temp3'" >> /var/run/freifunk_register.conf
+        eval temp4='$FREIFUNK_GUI_PAGE_'$idx'_TARGET'
+	echo "FREIFUNK_GUI_PAGE_$idx""_TARGET='$temp4'" >> /var/run/freifunk_register.conf
+
+        # index um eins erhoehen
+       idx=`/usr/bin/expr $idx + 1`
+    done
+
+
+echo "FREIFUNK_GUI_PIC_FILE='$FREIFUNK_GUI_PIC_FILE'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_PIC_ALT='$FREIFUNK_GUI_PIC_ALT'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_TEXT_BEFORE_FILE='$FREIFUNK_GUI_TEXT_BEFORE_FILE'" >> /var/run/freifunk_register.conf
+echo "FREIFUNK_GUI_TEXT_AFTER_FILE='$FREIFUNK_GUI_TEXT_AFTER_FILE'" >> /var/run/freifunk_register.conf
+
+echo "FREIFUNK_GUI_LINK_N='$FREIFUNK_GUI_LINK_N'" >> /var/run/freifunk_register.conf
+
+ # Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_GUI_LINK_N" ]
+    do
+           
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$FREIFUNK_GUI_LINK_'$idx
+	echo "FREIFUNK_GUI_LINK_$idx='$temp'"
+        eval temp='$FREIFUNK_GUI_LINK_'$idx'_URL'
+	echo "FREIFUNK_GUI_LINK_$idx""_URL='$temp'"
+		eval temp='$FREIFUNK_GUI_LINK_'$idx'_ORDER'
+	echo "FREIFUNK_GUI_LINK_$idx""_ORDER='$temp'"
+        eval temp='$FREIFUNK_GUI_LINK_'$idx'_TARGET'
+	echo "FREIFUNK_GUI_LINK_$idx""_TARGET='$temp'"
+
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done >> /var/run/freifunk_register.conf
+
+echo "FREIFUNK_GUI_PAGELINK_N='$FREIFUNK_GUI_PAGELINK_N'" >> /var/run/freifunk_register.conf
+
+ # Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_GUI_PAGELINK_N" ]
+    do
+           
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$FREIFUNK_GUI_PAGELINK_'$idx
+	echo "FREIFUNK_GUI_PAGELINK_$idx='$temp'"
+        eval temp='$FREIFUNK_GUI_PAGELINK_'$idx'_URL'
+	echo "FREIFUNK_GUI_PAGELINK_$idx""_URL='$temp'"
+		eval temp='$FREIFUNK_GUI_PAGELINK_'$idx'_ORDER'
+	echo "FREIFUNK_GUI_PAGELINK_$idx""_ORDER='$temp'"
+        eval temp='$FREIFUNK_GUI_PAGELINK_'$idx'_TARGET'
+	echo "FREIFUNK_GUI_PAGELINK_$idx""_TARGET='$temp'"
+
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done >> /var/run/freifunk_register.conf
+
+
+
+# Calculate freifunk interface IP address and netmask
+echo "FREIFUNK_INTERFACE_N='$FREIFUNK_INTERFACE_N'" >> /var/run/freifunk_register.conf
+# Laufvariable fuer % Variablen
+    idx=1	
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$IP_NET_N" ]
+    do
+           
+	idy=1
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$IP_NET_'$idx
+	eval temp2='$IP_NET_'$idx'_DEV'
+	eval temp3='$IP_NET_'$idx'_MAC'
+	while [ "$idy" -le "$FREIFUNK_INTERFACE_N" ]	
+	do
+	eval temp4='$FREIFUNK_INTERFACE_'$idy
+	
+	if [ "$temp4" = "$temp2" ];then
+	# WLAN Freifunk device found
+
+	ipaddr=`echo $temp | sed -e 's/\/.*//'`
+      	netmask=`netcalc netmask $temp`
+	
+	echo "FREIFUNK_INTERFACE_$idy""_DEV='$temp2'" >> /var/run/freifunk_register.conf
+	echo "FREIFUNK_INTERFACE_$idy""_IP='$ipaddr'" >> /var/run/freifunk_register.conf
+	echo "FREIFUNK_INTERFACE_$idy""_MASK='$netmask'" >> /var/run/freifunk_register.conf
+	echo "FREIFUNK_INTERFACE_$idy""_MAC='$temp3'" >> /var/run/freifunk_register.conf
+	fi
+
+	# index um eins erhoehen
+        idy=`/usr/bin/expr $idy + 1`
+	done
+
+        # index um eins erhoehen
+        idx=`/usr/bin/expr $idx + 1`
+    done 
+
+
+
+##-----------------------------------------------------------------------------
+# Start HTTP server for public view
+##-----------------------------------------------------------------------------
+
+
+
+   # HTTPD options
+        ff_httpd_options='-D -c **.cgi'
+
+       ff_httpd_options="$ff_httpd_options -p 80"
+       [ "$HTTPD_USER" ] && ff_httpd_options="$ff_httpd_options -u
+$HTTPD_USER" || ff_httpd_options="$ff_httpd_options -u root"
+
+cd /srv/www2
+
+#-------------------------------------------------------------------------
+        # start mini_httpd and restart it, if it is killed
+#-------------------------------------------------------------------------
+        set -f
+        service-restart.sh 0 /usr/sbin/mini_httpd $ff_httpd_options &
+        set +f
+
+
+#-------------------------------------------------------------------------
+        # start MAP- server update
+#-------------------------------------------------------------------------
+. /usr/sbin/freifunkmap.sh
+
+# END OF if "$OPT_FREIFUNK_GUI" = yes "
+fi
+
+ if [ "$OPT_OLSRD" = yes ]
+ then 
+ sleep 10
+
+   # starting OLSRD Daemon 
+
+    set -f
+    service-restart.sh 2 /usr/sbin/olsrd -nofork &
+    set +f
+  
+    end_script
+ fi
+
+
+
+fi
+
+
+
+
+

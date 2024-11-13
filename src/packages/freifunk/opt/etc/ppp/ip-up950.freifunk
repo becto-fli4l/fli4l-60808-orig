@@ -1,0 +1,121 @@
+#!/bin/sh
+
+
+. /var/run/freifunk_register.conf
+
+echo "receiving GUI files over the network..."
+
+
+if [ -n "$FREIFUNK_GUI_PAGE_DLURL" ];
+then 
+	if [ -n "$FREIFUNK_GUI_TEXT_BEFORE_FILE" ];
+	then 
+		wget -q -O $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_BEFORE_FILE.tmp - $FREIFUNK_GUI_PAGE_DLURL/$FREIFUNK_GUI_TEXT_BEFORE_FILE
+		if [ -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_BEFORE_FILE.tmp ]   #file is present?
+		then
+			cp $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_BEFORE_FILE.tmp /srv/www2/$FREIFUNK_GUI_TEXT_BEFORE_FILE
+		else
+			rm -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_BEFORE_FILE.tmp
+		fi
+	fi
+	if [ -n "$FREIFUNK_GUI_TEXT_AFTER_FILE" ];
+	then 
+	
+		wget -q -O $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_AFTER_FILE.tmp - $FREIFUNK_GUI_PAGE_DLURL/$FREIFUNK_GUI_TEXT_AFTER_FILE
+		if [ -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_AFTER_FILE.tmp ]   #file is present?
+		then
+			cp $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_AFTER_FILE.tmp /srv/www2/$FREIFUNK_GUI_TEXT_AFTER_FILE
+		else
+			rm -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_TEXT_AFTER_FILE.tmp
+		fi
+	fi
+	if [ -n "$FREIFUNK_GUI_PIC_FILE" ];
+	then 
+		wget -q -O $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_PIC_FILE.tmp - $FREIFUNK_GUI_PAGE_DLURL/$FREIFUNK_GUI_PIC_FILE
+		if [ -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_PIC_FILE.tmp ]   #file is present?
+		then
+			cp $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_PIC_FILE.tmp /srv/www2/$FREIFUNK_GUI_PIC_FILE
+		else
+			rm -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$FREIFUNK_GUI_PIC_FILE.tmp
+		fi
+	fi
+fi
+
+
+
+# Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_GUI_PAGE_N" ]
+    do
+           
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$FREIFUNK_GUI_PAGE_'$idx
+	eval temp2='$FREIFUNK_GUI_PAGE_'$idx'_FILE'
+	eval temp3='$FREIFUNK_GUI_PAGE_'$idx'_ORDER'
+	eval temp4='$FREIFUNK_GUI_PAGE_'$idx'_TARGET'
+	
+	# get the file from the internet
+
+        if [ -n "$FREIFUNK_GUI_PAGE_DLURL" ]
+        then
+           wget -q -O $FREIFUNK_GUI_PAGE_LOCAL/custom/$temp2.tmp - $FREIFUNK_GUI_PAGE_DLURL/$temp2.txt
+
+		if [ -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$temp2.tmp ]   #file is present?
+		then
+			cp $FREIFUNK_GUI_PAGE_LOCAL/custom/$temp2.tmp /srv/www2/$temp2
+          		# make it executable if it is a cgi script.
+           		chmod 755 /srv/www2/$temp2
+
+		       	echo "<TR><TD><DIV CLASS=\"plugin\"><A CLASS=\"plugin\" HREF=\"$temp2\" " >"/srv/www2/$temp3""-cgi-bin-$temp2" 
+
+	        	if [ -n "$temp4" ]
+        		then
+		           	echo "target=\"$temp4\" " >>"/srv/www2/$temp3""-cgi-bin-$temp2"
+        		fi
+
+        		echo " >$temp</A></DIV></TD>" >>"/srv/www2/$temp3""-cgi-bin-$temp2"
+
+		else
+			rm -f $FREIFUNK_GUI_PAGE_LOCAL/custom/$temp2.tmp
+		fi
+        fi
+
+        # index um eins erhoehen
+       idx=`/usr/bin/expr $idx + 1`
+    done
+       
+    # Calculation of the additional links
+    # Laufvariable fuer % Variablen
+    idx=1
+    # Iteriere ueber alle Variablen und speichere ihren 
+    # Inhalt in eine Datei
+    while [  "$idx" -le "$FREIFUNK_GUI_PAGELINK_N" ]
+    do
+           
+        # Nun schreiben wir das ganze in eine Datei der Form
+        eval temp='$FREIFUNK_GUI_PAGELINK_'$idx
+		eval temp2='$FREIFUNK_GUI_PAGELINK_'$idx'_URL'
+		eval temp3='$FREIFUNK_GUI_PAGELINK_'$idx'_ORDER'
+		eval temp4='$FREIFUNK_GUI_PAGELINK_'$idx'_TARGET'
+	
+	
+    echo "<TR><TD><DIV CLASS=\"plugin\"><A CLASS=\"plugin\" HREF=\"$temp2\" " >"/srv/www2/$temp3""-link" 
+
+	        	if [ -n "$temp4" ]
+        		then
+		           	echo "target=\"$temp4\" " >>"/srv/www2/$temp3""-link" 
+        		fi
+
+        		echo " >$temp</A></DIV></TD>" >>"/srv/www2/$temp3""-link" 
+	
+	
+	# index um eins erhoehen
+       idx=`/usr/bin/expr $idx + 1`
+    done
+
+echo "freifunk-ip-up was running" >/var/run/freifunk-ip-up
+
+
+

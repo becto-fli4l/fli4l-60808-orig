@@ -1,0 +1,35 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/sbin/olrsd-clearroutes - OLRSD clearroutes script
+#
+# Creation:     19.02.2006 uw
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# only real routes are deleted
+/bin/ip r s -n | grep -e "^[0-9]"| while read line  
+do 
+
+	# split of the parameters
+	# a little bit mystic here
+
+	set $line
+
+	# Only next hops are deleted not the own routes, also no default route of a HNA!! 
+    	
+	if [ "$5" -gt 0 ]
+    	then
+
+		temp=""
+    		if [ "$3" != "255.255.255.255" ]
+		then	
+			ip route del -net $1 netmask $3 gw $2 metric $5 dev $8
+			# a remote default route
+		else
+			ip route del $1 gw $2 metric $5 dev $8
+			# routes of hosts
+		fi	
+
+	fi
+
+done
