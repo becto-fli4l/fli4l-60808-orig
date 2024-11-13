@@ -1,0 +1,81 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc900.checkmk - create checkmk configuration
+#
+# Creation: 30.06.2017 Claas Hilbrecht <babel@fli4l.de>
+# Last Update: $Id$
+#--------------------------------------------------------------------
+
+if [ "$OPT_CHECKMK" = "yes" ]
+then
+    begin_script checkmk "creating xinetd config file and prepare firewall for checkmk..."
+
+    port=6556
+    if [ -n "$CHECKMK_LISTEN" ]
+    then
+        # split ip/net and port
+        set `echo $CHECKMK_LISTEN | sed 's/:/ /'`
+        bind=$1
+        port=$2
+        # translate IP_NET_x_IP_ADDR to real ip address
+	res=
+        if translate_ip_net $bind CHECKMK_LISTEN
+        then
+	    bind=$res
+        fi
+    fi
+    # set port to 6556 if not set, default for checkmk
+    [ -z "$port" ] && port=6556
+    echo "checkmk $port/tcp" >> /etc/services
+
+    # create ipset for checkmk access
+    ipset create checkmk hash:ip,port,net
+    # create ipset and xinetd ACL
+    only_from=
+    for idx in `seq 1 $CHECKMK_ONLY_FROM_N`
+    do
+        eval of='$CHECKMK_ONLY_FROM_'$idx
+	res=
+        if ! translate_ip_net $of '$CHECKMK_ONLY_FROM_'$idx
+        then
+	    log_error "Can't translate $of!"
+	    continue
+	else
+	    of=$res
+        fi
+	# add rule for INPUT chain to ipset
+	ipset add checkmk $bind,$port,$of
+        only_from="$only_from $of"
+    done
+    
+    if [ -z "$only_from" ]
+    then
+	# allow every to access checkmk, not recommend
+	ipset destroy checkmk
+	# if no listen interface is given set bind to any for firewall access
+	[ -z "$bind" ] && fw_dst="any:$port" || fw_dst="$bind:$port"
+	fw_append_rule filter INPUT-head "prot:tcp any $fw_dst ACCEPT" 'checkmk INPUT filter'
+        log_info "Access to the CheckMK agent isn't limited, please use CHECKMK_ONLY_FROM_x to restrict access to the CheckMK agent!"
+    else
+	#fw_append_rule filter INPUT-head '-m set --match-set checkmk dst,dst,src -j ACCEPT' 'checkmk INPUT filter'
+	iptables -A INPUT-head -m set --match-set checkmk dst,dst,src -j ACCEPT
+    fi
+    
+    {
+	echo "service checkmk"
+	echo "{"
+	echo "protocol = tcp"
+	[ -n "$bind" ] && echo "bind = $bind"
+	echo "port = $port"
+	echo "cps = 1 60"
+	echo "instances = 1"
+	echo "user = root"
+	echo "group = root"
+	echo "server = /usr/sbin/checkmk_ash.sh"
+	echo "wait = no"
+	[ -n "$only_from" ] && echo "only_from = $only_from"
+	echo "}"
+    }>/etc/xinetd.d/checkmk
+    
+    end_script
+fi
