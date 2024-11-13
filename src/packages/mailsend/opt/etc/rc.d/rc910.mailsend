@@ -1,0 +1,148 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc910.mailsend                      __FLI4LVER__
+#
+# Creation:     2015-12-21  cspiess
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_MAILSEND" = yes ]
+then
+    begin_script MAILSEND "setting up opt_msmtp ..."
+
+    grep "^MAILSEND_" /etc/rc.cfg > /var/run/mailsend.conf
+    chmod 744 /var/run/mailsend.conf
+
+    # create spool dir
+    if [ ! -d "${MAILSEND_SPOOL_DIR}" ]
+    then
+        mkdir -p "${MAILSEND_SPOOL_DIR}"
+        log_info "spool directory ${MAILSEND_SPOOL_DIR} created"
+    fi
+    chmod 777 "${MAILSEND_SPOOL_DIR}"
+
+    # create logdir
+    case "${MAILSEND_LOGFILE}" in
+        ""|"syslog")
+            ;;
+        *)
+            if [ ! -d "`dirname ${MAILSEND_LOGFILE}`" ]
+            then
+                mkdir -p "`dirname ${MAILSEND_LOGFILE}`"
+                log_info "log directory ${MAILSEND_LOGFILE} created"
+            fi
+            ;;
+   esac
+
+    # create default conf entries
+    {
+        echo "defaults"
+        echo "protocol smtp"
+        case "${MAILSEND_LOGFILE}" in
+            "")
+                echo "logfile"
+                echo "syslog off"
+                ;;
+            syslog)
+                echo "logfile"
+                echo "syslog on"
+                ;;
+            *)
+                echo "logfile ${MAILSEND_LOGFILE}"
+                echo "syslog off"
+                ;;
+        esac 
+    } > /etc/msmtp.conf
+
+    _default=0
+    for _n in `seq 1 ${MAILSEND_N}`
+    do
+        # common
+        eval _account='${MAILSEND_'$_n'_ACCOUNT}'
+        eval _auth='${MAILSEND_'$_n'_AUTH}'
+        eval _crypt='${MAILSEND_'$_n'_CRYPT}'
+        eval _host='${MAILSEND_'$_n'_SMTP_SERVER}'
+        eval _port='${MAILSEND_'$_n'_SMTP_PORT}'
+        eval _user='${MAILSEND_'$_n'_SMTP_USERNAME}'
+        eval _pass='${MAILSEND_'$_n'_SMTP_PASSWORD}'
+        eval _crypt='$MAILSEND_'$_n'_CRYPT'
+        eval _test_scert='$MAILSEND_'$_n'_TEST_SCERT'
+        eval _scert='$MAILSEND_'$_n'_SCERT'
+        eval _use_ccert='$MAILSEND_'$_n'_USE_CCERT'
+        eval _ccert='$MAILSEND_'$_n'_CCERT'
+        eval _ckert='$MAILSEND_'$_n'_CKEY'
+        
+        if [ "$_account" = "default" ]
+        then
+            _default=$_n
+        fi
+        {
+            echo ""
+            echo "account $_account"
+
+            # smtp server
+            echo "host $_host"
+            echo "port $_port"
+            
+            # authentication
+            case $_auth in
+                none|pop)
+                    echo "auth off"
+                    ;;
+                *)
+                    echo "auth $_auth"
+                    echo "user $_user"
+                    echo "password $_pass"
+                    ;;
+            esac
+            
+            # encryption
+            case $_crypt in
+                tls)
+                    echo "tls on"
+                    echo "tls_starttls off"
+                    ;;
+                starttls)
+                    echo "tls off"
+                    echo "tls_starttls on"
+                    ;;
+                *)
+                    echo "tls off"
+                    echo "tls_starttls off"
+                    ;;
+            esac
+            
+            # server certificate
+            if [ "$_test_scert" = "yes" ]
+            then
+                echo "tls_certcheck on"
+                echo "tls_trust_file $_scert"
+            else
+                echo "tls_certcheck off"
+            fi
+
+            # client certificate/key
+            if [ "$_use_ccert" = "yes" ]
+            then
+                echo "tls_cert_file $_ccert"
+                echo "tls_key_file $_ckey"
+            fi
+        } >> /etc/msmtp.conf
+    done
+
+    if [ $_default -eq 0 ]
+    then
+        {
+            echo ""
+            echo "account default :${MAILSEND_1_ACCOUNT}"
+        } >> /etc/msmtp.conf 
+    fi
+    # set conf permission
+    chmod 600 /etc/msmtp.conf
+
+    # crontab entry for mailsend-retry, runs every 15 minutes
+    #----------------------------------------------------------
+    add_crontab_entry "*/15 * * * *" "/usr/local/bin/mailsend-retry.sh"
+
+    end_script
+fi

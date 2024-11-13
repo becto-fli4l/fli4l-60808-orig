@@ -1,0 +1,286 @@
+% Last Update: $Id$
+\section {MAILSEND - eMails versenden}
+
+\subsection {Beschreibung}
+    Das Paket MAILSEND stellt eine API zum Versenden von eMails für ander Pakete
+    zur Verfügung.
+    
+    Es wird zusätzlich das Paket EASYCRON benötigt (\var{OPT\_EASYCRON='yes'}).
+
+\subsection {Konfiguration des Paketes MAILSEND}
+    Die Konfiguration erfolgt, wie bei allen fli4l Paketen, durch Anpassung der \\
+    Datei \var{Pfad/fli4l-\version/\emph{\flq config\frq}/mailsend.txt}
+    an die eigenen Anforderungen.
+
+\subsubsection {Allgemeines}
+\begin{description}
+
+\config {OPT\_MAILSEND}{OPT\_MAILSEND}{OPTMAILSEND}
+
+    Die Einstellung \var{'no'} deaktiviert das OPT\_MAILSEND vollständig.
+    Es werden keine Änderungen am fli4l Archiv \var{rootfs.img} bzw. 
+    dem Archiv \var{opt.img} vorgenommen. 
+    Weiterhin überschreibt das OPT\_MAILSEND grundsätzlich keine anderen
+    Teile der fli4l Installation.
+    
+    Um OPT\_MAILSEND zu aktivieren, ist die Variable \var{OPT\_MAILSEND} auf
+    \var{'yes'} zu setzen.
+
+\config {MAILSEND\_SPOOL\_DIR}{MAILSEND\_SPOOL\_DIR}{MAILSENDSPOOLDIR}
+    
+    Diese optionale Einstellung legt das Spoolverzeichnis fest.
+    Das Spoolverzeichnis sollte auf einer persistenten Partition liegen.
+    
+    Als Default wird \var{'/data/spool/mail'} verwendet.
+     
+\config {MAILSEND\_LOGFILE}{MAILSEND\_LOGFILE}{MAILSENDLOGFILE}
+
+    Diese optionale Einstellung legt die Logdatei fest.
+    Diese Einstellung muss auf \var{'syslog'} gesetzt werden, wenn in
+    das System Logbuch geloggt werden soll. 
+    
+    Diese Einstellung muss auf \var{'{}'} gesetzt werden, wenn nicht geloggt 
+    werden soll (Defaultwert).  
+
+\config {MAILSEND\_SEND\_DELAYED}{MAILSEND\_SEND\_DELAYED}{MAILSENDSENDDELAYED}
+    
+    Wird diese Einstellung auf \var{'yes'} gesetzt, so wird die Mail 
+    erst verzögert durch einen cron-Job oder ein ip-up Event gesendet.
+    Bei \var{'no'} (Defaultwert) wird die Mail sofort versendet.
+    
+\config {MAILSEND\_CHARSET}{MAILSEND\_CHARSET}{MAILSENDCHARSET}
+    
+    Diese optionale Einstellung legt den Zeichensatz für die String-Kodierung
+    fest. Als Defaultwert wird \var{'ISO-8859-1'} verwendet, es kann auch z.B. 
+    \var{'UTF-8'} eingestellt werden. 
+                                
+\config {MAILSEND\_N}{MAILSEND\_N}{MAILSENDN}
+  
+  Legt die Anzahl der Mail-Konten fest. 
+
+\end{description}
+
+\subsubsection {Mail-Konten}
+    Einstellungen für die Mail-Konten, diese Einstellungen werden für 
+    jedes Mail-Konto separat vorgenommen.
+     
+\begin {description}
+
+\config {MAILSEND\_\emph{x}\_ACCOUNT}{MAILSEND\_\emph{x}\_ACCOUNT}{MAILSENDACCOUNT}
+    
+    Legt den logischen Namen des Mail-Kontos fest.
+    
+    Hierüber können mehrere Mail-Konten unterschieden werden, 
+    daher muss dieser Name für alle Konten jeweils unterschiedlich sein.
+    
+    Wenn kein Konto den Namen \var{'default'} hat, so kann das Konto mit 
+    dem Index \var{'1'} zusätzlich unter diesem Namen angesprochen werden.
+    
+\config {MAILSEND\_\emph{x}\_AUTH}{MAILSEND\_\emph{x}\_AUTH}{MAILSENDAUTH}
+    
+    Legt die Authentifizierungsmethode fest. Mögliche Werte sind:
+    
+    \begin {itemize}
+      \item [\var{'none'}] keine Authentifizierung
+      \item [\var{'pop'}] POP3 vor SMTP
+      \item [\var{'plain'}] unverschlüsseltes Passwort
+      \item [\var{'cram-md5'}] MD5 Hash-Wert
+      \item [\var{'login'}] unverschlüsseltes Passwort (ähnlich \var{'plain'})
+    \end {itemize}
+    
+\config {MAILSEND\_\emph{x}\_CRYPT}{MAILSEND\_\emph{x}\_CRYPT}{MAILSENDCRYPT}
+
+    Legt die Verschlüsselungsmethode fest. Mögliche Werte sind:
+    
+    \begin {itemize}
+      \item [\var{'none'}] keine Verschlüsselung
+      \item [\var{'TLS'}] SSL/TLS
+      \item [\var{'STARTTLS'}] TLS mit STARTTLS
+    \end {itemize}
+
+\config {MAILSEND\_\emph{x}\_FROM}{MAILSEND\_\emph{x}\_FROM}{MAILSENDFROM}
+
+    Diese optional Einstellung legt die Absenderadresse fest.
+    
+    Wenn diese Einstellung leer ist wird 
+    \smalljump{MAILSENDSMTPUSERNAME}{\var{MAILSEND\_\emph{x}\_SMTP\_USERNAME}} verwendet.
+    
+    Die Absenderadresse kann mit dem \smalljump{sec:mailsendapi}{API} Aufruf 
+    überschrieben werden.
+ 
+\end{description}
+
+\subsubsection {SMTP-Server}
+\begin {description}
+
+\config {MAILSEND\_\emph{x}\_SMTP\_SERVER}{MAILSEND\_\emph{x}\_SMTP\_SERVER}{MAILSENDSMTPSERVER}
+    
+    Legt den SMTP-Server fest, hier kann entweder der Hostname oder
+    die IP-Adresse eingetragen werden.
+            
+\config {MAILSEND\_\emph{x}\_SMTP\_PORT}{MAILSEND\_\emph{x}\_SMTP\_PORT}{MAILSENDSMTPPORT}
+    
+    Mit dieser optionalen Einstellung kann die SMTP-Portnummer festgelegt
+    werden, als Defaultwert wird der SMTP-Standardport \var{'25'} verwendet.
+    
+\config {MAILSEND\_\emph{x}\_SMTP\_USERNAME}{MAILSEND\_\emph{x}\_SMTP\_USERNAME}{MAILSENDSMTPUSERNAME}
+    
+    Der Username für die SMTP-Authentifizierung.
+                
+\config {MAILSEND\_\emph{x}\_SMTP\_PASSWORD}{MAILSEND\_\emph{x}\_SMTP\_PASSWORD}{MAILSENDSMTPPASSWORD}
+    
+    Das Passwort für die SMTP-Authentifizierung.
+
+\end {description}
+
+\subsubsection {Optional: POP3-Server}
+
+    Diese Einstellungen sind nur notwendig wenn 
+    \smalljump{MAILSENDAUTH}{\var{MAILSEND\_\emph{x}\_AUTH}} auf \var{'pop'} gesetzt ist. 
+
+\begin {description}
+\config {MAILSEND\_\emph{x}\_POP3\_SERVER}{MAILSEND\_\emph{x}\_POP3\_SERVER}{MAILSENDPOP3SERVER}
+
+    Legt den POP3-Server fest, hier kann entweder der Hostname oder
+    die IP-Adresse eingetragen werden.
+            
+\config {MAILSEND\_\emph{x}\_POP3\_PORT}{MAILSEND\_\emph{x}\_POP3\_PORT}{MAILSENDPOP3PORT}
+    
+    Mit dieser optionalen Einstellung kann die POP3-Portnummer festgelegt
+    werden, als Defaultwert wird der POP3-Standardport \var{'110'} verwendet.
+
+\config {MAILSEND\_\emph{x}\_POP3\_USERNAME}{MAILSEND\_\emph{x}\_POP3\_USERNAME}{MAILSENDPOP3USERNAME}
+    
+    Der Username für die POP3-vor-SMTP-Authentifizierung.
+    
+\config {MAILSEND\_\emph{x}\_POP3\_PASSWORD}{MAILSEND\_\emph{x}\_POP3\_PASSWORD}{MAILSENDPOP3PASSWORD}
+    
+    Das Passwort für die POP3-vor-SMTP-Authentifizierung.
+
+\end {description}
+
+\subsubsection {Erweiterte Features}
+
+\paragraph {Server-Zertifikat}
+Test des Server-Zertifikats
+
+\begin {description}
+    
+\config {MAILSEND\_\emph{x}\_TEST\_SCERT}{MAILSEND\_\emph{x}\_TEST\_SCERT}{MAILSENDTESTSCERT}
+
+    Wenn diese Einstellung \var{'yes'} ist, wird das SMTP-Server-Zertifikat 
+    gegen das Zertifikat in \smalljump{MAILSENDSCERT}{MAILSEND\_\emph{x}\_SCERT}
+    geprüft.
+
+\config {MAILSEND\_\emph{x}\_SCERT}{MAILSEND\_\emph{x}\_SCERT}{MAILSENDSCERT}
+    
+    Dateiname inklusive Pfad des X.509-Server-Zertifikats im PEM-Format,
+    z.B. \var{'/etc/mailsend/server-cert.pem'}
+    
+    Als Pfad empfiehlt sich \var{'/etc/mailsend/\emph{server}.pem'}
+    Man kann dann das Zertifikat im Konfigurationsverzeichnis unter
+    \var{\emph{\flq config\frq}/etc/mailsend/} ablegen.
+
+\end {description}
+
+\paragraph {Client-Zertifikat/Schlüssel}
+\begin {description}
+
+\config {MAILSEND\_\emph{x}\_USE\_CCERT}{MAILSEND\_\emph{x}\_USE\_CCERT}{MAILSENDUSECCERT}
+
+    Wenn diese Einstellung \var{'yes'} ist, wird der SMTP-Client mit dem Paar
+    aus Zertifikat in \smalljump{MAILSENDCCERT}{MAILSEND\_\emph{x}\_CCERT}
+    und privatem Schlüssel in \smalljump{MAILSENDCKEY}{MAILSEND\_\emph{x}\_CKEY}
+    authentifiziert. 
+
+    
+\config {MAILSEND\_\emph{x}\_CCERT}{MAILSEND\_\emph{x}\_CCERT}{MAILSENDCCERT}
+    
+    Dateiname des X.509-Client-Zertifikats im PEM-Format, \\
+    z.B. \var{'/etc/mailsend/client-cert.pem'}
+
+\config {MAILSEND\_\emph{x}\_CKEY}{MAILSEND\_\emph{x}\_CKEY}{MAILSENDCKEY}
+    
+    Dateiname des X.509-Client-Schlüssels im PEM-Format, \\
+    z.B. \var{'/etc/mailsend/client-key.pem'}
+    
+\end {description}
+
+\marklabel{sec:mailsendapi}{
+\subsection {API}}
+\subsubsection{\var{mailsend}}
+    Der API \var {/usr/local/bin/mailsend} kann der Mailtext entweder 
+    als Datei, als letzter Parameter in Anführungszeichen oder über die 
+    Standard-Input-Pipe übergeben werden
+    (siehe \smalljump{sec:mailsendexample}{Beispiele}).
+
+    Die API kann mit den folgenden Parametern aufgerufen werden:
+    
+\begin {itemize}
+  \item [\var{-t},] \var{-{}-to} \var{"\emph{\flq address\frq}"}
+    \\erforderlich: Legt eine oder mehrere durch Komma getrennte
+    Empfängeradressen fest an die die Mail gesendet wird.
+    \\ Diese Option kann auch mehrfach gesetzt werden.
+
+  \item [\var{-s},] \var{-{}-subject} \var{"\emph{\flq subject\frq}"}
+    \\erforderlich: Legt den Betreff der Mail fest.
+  
+  \item [\var{-A},] \var{-{}-account} \var{"\emph{\flq account\frq}"}
+    \\optional: Legt den \smalljump{MAILSENDACCOUNT}{Kontonamen}
+    fest über den die Mail versendet wird. Fehlt dieser Parameter wird das
+    Konto mit dem \smalljump{MAILSENDACCOUNT}{Namen} \var{default} verwendet.
+  
+  \item [\var{-f},] \var{-{}-from} \var{"\emph{\flq address\frq}"}
+    \\optional: Legt die Absenderadresse fest mit der die Mail gesendet wird. 
+    Fehlt dieser Parameter wird die Adresse aus 
+    \smalljump{MAILSENDFROM}{\var{MAILSEND\_\emph{x}\_FROM}} verwendet.
+  
+  \item [\var{-c},] \var{-{}-cc} \var{"\emph{\flq address\frq}"}
+    \\optional: Legt eine oder mehrere durch Komma getrennte
+    CC-Empfängeradressen fest an die eine Kopie der Mail gesendet wird.
+    \\ Diese Option kann auch mehrfach gesetzt werden.
+
+  \item [\var{-b},] \var{-{}-bcc} \var{"\emph{\flq address\frq}"}
+    \\optional: Legt eine oder mehrere durch Komma getrennte
+    BCC-Empfängeradressen fest an die eine Blindkopie der Mail gesendet wird.
+    \\ Diese Option kann auch mehrfach gesetzt werden.
+
+  \item [\var{-r},] \var{-{}-reply-to} \var{"\emph{\flq address\frq}"}
+    \\optional: Legt eine oder mehrere durch Komma getrennte
+    Antwortadressen fest an die eine Antwort auf die Mail gesendet werden soll.
+    \\ Diese Option kann auch mehrfach gesetzt werden.
+
+  \item [\var{-B},] \var{-{}-body} \var{"\emph{\flq file\frq}"}
+    \\optional: Lädt den Mailtext aus einer Datei (absoluter Pfad).
+    \\Fehlt diese Option wird der Mailtext per Parameter oder Pipe übergeben 
+    (siehe \smalljump{sec:mailsendexample}{Beispiele}).
+
+  \item [\var{-a},] \var{-{}-attach-to} \var{"\emph{\flq file\frq}"}
+    \\optional: Bindet eine Datei als Mailanhang ein (absoluter Pfad).
+    \\ Diese Option kann auch mehrfach gesetzt werden.
+    \\ Es können auch mehrere durch Semikolon (;) getrennte Dateien 
+    angegeben werden.
+  
+  \item [\var{-C},] \var{-{}-charset} \var{"\emph{\flq charset\frq}"}
+    \\optional: legt den Zeichensatz für die String-Kodierung
+    fest. Fehlt dieser Parameter wird der Zeichensatz aus 
+    \smalljump{MAILSENDCHARSET}{\var{MAILSEND\_CHARSET}} verwendet.
+\end{itemize}
+
+\subsubsection{\var{mailsend} Maildatei}
+    Alternativ kann eine \smalljump{rfc5322}{RFC5322} kompatible
+    Maildatei versendet werden. Es werden dann alle Parameter aus dieser 
+    Datei verwendet. 
+    
+    Weitere Parameter (wie z.B. \var{-{}-to}) dürfen dann nicht verwendet werden!  
+
+\begin {itemize}
+  \item [\var{-m},] \var{-{}-mailfile} \var{"\emph{\flq file\frq}"}
+    \\erforderlich: Name der Maildatei (absoluter Pfad).
+  
+  \item [\var{-A},] \var{-{}-account} \var{"\emph{\flq account\frq}"}
+    \\optional: Legt den \smalljump{MAILSENDACCOUNT}{Kontonamen}
+    fest über den die Mail versendet wird. Fehlt dieser Parameter wird das
+    Konto mit dem \smalljump{MAILSENDACCOUNT}{Namen} \var{default} verwendet.
+\end{itemize}
+

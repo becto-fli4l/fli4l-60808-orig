@@ -1,0 +1,79 @@
+##-----------------------------------------------------------------------------
+## mailsend.ext - fli4l extended configuration check      __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##                                L E S E N 
+##
+## Creation:     2015-12-21  cspiess
+## Last Update:  $Id$
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_mailsend)
+then
+    depends on fli4l version 4.0
+    depends on cron version 4.0
+
+    provides mailsend version 4.0
+
+    set use_netcat="no"
+
+    if (mailsend_n > 0)
+    then
+        foreach n in MAILSEND_N
+        do
+            foreach m in MAILSEND_N
+            do
+                if (n != m)
+                then
+                    if (mailsend_%_account[n] == mailsend_%_account[m])
+                    then
+                        error "MAILSEND_${n}_ACCOUNT is same as MAILSEND_${m}_ACCOUNT, use different names."
+                    fi
+                fi
+            done
+            if (mailsend_%_auth[n] == "pop")
+            then
+                set use_netcat="yes"
+    
+                if (mailsend_%_pop3_server[n] == "")
+                then
+                    error "MAILSEND_${n}_AUTH is 'pop' but MAILSEND_${n}_POP3_SERVER is missing."
+                fi
+            fi
+    
+            if (mailsend_%_test_scert[n] == "yes")
+            then
+                if (mailsend_%_scert[n] == "")
+                then
+                    error "MAILSEND_${n}_TEST_SCERT is 'yes' but MAILSEND_${n}_SCERT is missing."
+                fi
+            fi
+    
+            if (mailsend_%_use_ccert[n] == "yes")
+            then
+                if (mailsend_%_ccert[n] == "")
+                then
+                    error "MAILSEND_${n}_USE_CCERT is 'yes' but MAILSEND_${n}_CCERT is missing."
+                fi
+                if (mailsend_%_ckey[n] == "")
+                then
+                    error "MAILSEND_${n}_USE_CCERT is 'yes' but MAILSEND_${n}_CKEY is missing."
+                fi
+            fi
+        done
+    else
+        error "OPT_MAILSEND is 'yes' but MAILSEND_N is '0'."
+    fi
+    
+    if (use_netcat)
+    then
+        add_to_opt "usr/bin/netcat" "mode=555"
+    fi
+fi

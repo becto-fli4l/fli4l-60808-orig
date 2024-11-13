@@ -1,0 +1,438 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/local/bin/mailsend                                   __FLI4LVER__
+#
+# Creation:     2015-12-21  cspiess
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+# helper functions and config variables
+. /usr/local/bin/mailsend-helper.sh
+
+# globale variablen
+_ACCOUNT='default'
+_MAIL=''
+_FROM=''
+_TO=''
+_CC=''
+_BCC=''
+_REPLY=''
+_SUBJECT=''
+_CHARSET=${MAILSEND_CHARSET}
+_BODY=''
+_TEXT=''
+_STDIN=0
+_ATTACH=''
+_DIR=''
+_REPOS='^.*$'
+_RENEG='^$'
+_MAILID=''
+_SPOOLFILE=''
+_BOUNDARY="----"`hexdump -e '"""%x"""' -n 16 /dev/random`"----"
+
+usage ()
+{
+    echo 'usage: mailsend  [-A account] \'
+    echo '                  -m "mailfile"'
+    echo '       mailsend  [-A account] \'
+    echo '                  -t "to address" \'
+    echo '                  -s "subject" \'
+    echo '                 [-f "from address"] \'
+    echo '                 [-c "cc address"] \'
+    echo '                 [-b "bcc address"] \'
+    echo '                 [-r "reply-to address"] \'
+    echo '                 [-B "body file"] \" \'
+    echo '                 [-a [MIME-Type:]attachment file] \'
+    echo '                 [-d directory [-i regex-include] [-e regex-exclude]] \'
+    echo '                 [-C charset] \'
+    echo '                 [ \"body text\"] \'
+    echo '                   or read mail from STDIN (see documentation)'
+}
+
+# test_arg (flag, value)
+test_arg ()
+{
+    local _arg1=$1
+    local _arg2=$2
+
+    if [ "${_arg2}" != "" ]
+    then
+        case "${_arg1}"
+        in
+            "-A"|"--account")
+                _ACCOUNT=${_arg2}
+                ;;
+            "-m"|"--mailfile")
+                _MAIL="${_arg2}"
+                ;;
+            "-f"|"--from")
+                _FROM="${_arg2}"
+                ;;
+            "-t"|"--to")
+                if [ "${_TO}" = "" ]
+                then
+                    _TO="${_arg2}"
+                else
+                    _TO="${_TO},${_arg2}"
+                fi
+                ;;
+            "-c"|"--cc")
+                if [ "${_CC}" = "" ]
+                then
+                    _CC="${_arg2}"
+                else
+                    _CC="${_CC},${_arg2}"
+                fi
+                ;;
+            "-b"|"--bcc")
+                if [ "${_BCC}" = "" ]
+                then
+                    _BCC="${_arg2}"
+                else
+                    _BCC="${_BCC},${_arg2}"
+                fi
+                ;;
+            "-r"|"--reply-to")
+                _REPLY="${_arg2}"
+                ;;
+            "-s"|"--subject")
+                _SUBJECT="${_arg2}"
+                ;;
+            "-B"|"--body")
+                _BODY="${_arg2}"
+                ;;
+            "-a"|"--attach")
+                if [ "${_ATTACH}" = "" ]
+                then
+                    _ATTACH="${_arg2}"
+                else
+                    _ATTACH="${_ATTACH};${_arg2}"
+                fi
+                ;;
+            "-d"|"--dir")
+                _DIR="${_arg2}"
+                ;;
+            "-i"|"--include")
+                _REPOS="${_arg2}"
+                ;;
+            "-e"|"--exclude")
+                _RENEG="${_arg2}"
+                ;;
+            "-C"|"--charset")
+                _CHARSET="${_arg2}"
+                ;;
+                          *)
+                echo "arg1 ${_arg1}"
+                break 2
+                ;;
+        esac
+        return 0
+    else
+        echo "arg2 ${_arg1}"
+    fi
+    return 1
+}
+
+# key_value (key, value)
+key_value ()
+{
+    echo -n "${1}: "
+    shift
+    echo $@ | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[[:space:]]*,[[:space:]]*/, /g'
+}
+
+mail_header ()
+{
+    _n=$(get_account $_ACCOUNT)
+    
+    _date=`date '+%a, %d %b %Y %H:%M:%S %z'`
+    _from=${_FROM}
+    if [ "${_from}" = "" ]
+    then
+        eval _from='${MAILSEND_'$_n'_FROM}'
+        if [ "${_from}" = "" ]
+        then
+            eval _from='${MAILSEND_'$_n'_SMTP_USERNAME}'
+        fi
+    fi
+
+    key_value "From" "${_from}"
+    key_value "To" "${_TO}"
+    if [ "${_REPLY}" != "" ]
+    then
+        key_value "Reply-To" "${_REPLY}"
+    fi
+
+    if [ "${_CC}" != "" ]
+    then
+        key_value "Cc" "${_CC}"
+    fi
+
+    if [ "${_BCC}" != "" ]
+    then
+        key_value "Bcc" "${_BCC}"
+    fi
+
+    # Subject-Kodierung herstellen
+    local _subject=`echo "${_SUBJECT}" | mmencode -q`
+    if [ "${_subject}" = "${_SUBJECT}" ]
+    then
+        echo -e "Subject: ${_SUBJECT}"
+    else
+        echo -e "Subject: =?${MAILSEND_CHARSET}?Q?${_subject}?="
+    fi
+
+    echo -e "X-Sender: fli4l-mailsend"
+    echo -e "Date: ${_date}"
+    echo -e "Message-ID: <${_MAILID}.${_from}>"
+
+}
+
+mail_content ()
+{
+    echo -e "MIME-Version: 1.0"
+    echo -e "Content-Type: multipart/mixed; boundary=\"${_BOUNDARY}\""
+    echo -e ""
+    echo -e "This is a MIME encapsulated multipart message -"
+    echo -e "please use a MIME-compliant e-mail program to open it."
+    echo -e ""
+    echo -e "--${_BOUNDARY}"
+    echo -e "Content-Type: text/plain; charset=\"${_CHARSET}\""
+    echo -e "Content-Transfer-Encoding: quoted-printable"
+    echo -e ""
+}
+
+mail_footer ()
+{
+    echo -e "--${_BOUNDARY}--"
+    echo -e ""
+}
+
+mail_body ()
+{
+    if [ "${_BODY}"  != "" ]
+    then
+        cat "${_BODY}" | mmencode -q
+    else
+        if [ $_STDIN -eq 0 ]
+        then
+            echo "${_TEXT}" | mmencode -q
+        else
+            while read _line
+            do
+                if [ "${_line}" = "." ]
+                then
+                    break 2
+                fi 
+                echo "${_line}" | mmencode -q
+            done
+        fi
+    fi
+    echo -e ""
+}
+
+# mail_attach (file)
+mail_attach ()
+{
+    _file=$1
+
+    _type=`echo "${_file}" | sed 's/^\(.*\):\(.*\)/\1/g'`
+    _file=`echo "${_file}" | sed 's/^\(.*\):\(.*\)/\2/g'`
+
+    if [ "${_type}" = "${_file}" ]
+    then
+        _type=`/usr/bin/file -i "${_file}" | cut -d ':' -f 2`
+    fi
+
+    _base=`basename "${_file}"`
+    echo -e "--${_BOUNDARY}"
+    echo -e "Content-Type:${_type}; name=\"${_base}\""
+    echo -e "Content-Disposition: attachment"
+    echo -e "Content-Transfer-Encoding: base64"
+    echo -e ""
+
+    mmencode "${_file}"
+
+    echo -e ""
+
+    return 1
+}
+
+mail_files ()
+{
+    if [ "${_ATTACH}" != "" ]
+    then
+        _count=0
+        while [ 1 ]
+        do
+            _count=$((_count + 1))
+            _file=`echo ${_ATTACH} | cut -d ';' -f ${_count}`
+            if [ "${_file}" =  ""  ]
+            then
+                break 2
+            fi
+             mail_attach "${_file}"
+            if [ "${_file}" = "${_ATTACH}" ]
+            then
+                break 2
+            fi
+        done
+    fi
+}
+
+mail_dir ()
+{
+    if [ "${_DIR}" != "" ]
+    then
+        _act=`pwd`
+        cd ${_DIR}
+        for _file in `ls "${_DIR}"`
+        do
+            _file=`echo "${_file}" | grep ${_REPOS}`
+            if [ "${_file}" != "" ]
+            then
+                _temp=`echo "${_file}" | grep ${_RENEG}`
+                if [ "${_temp}" != "" ]
+                then
+                    _file=""
+                fi
+            fi
+            if [ "${_file}" != "" ]
+            then
+                mail_attach "${_DIR}/${_file}"
+            fi
+        done
+        cd ${_act}
+    fi
+}
+
+spool_name ()
+{
+    _timestamp=`date +%Y%m%d%H%M%S`
+    _random=`hexdump -e '"""%x"""' -n 4 /dev/random`
+    _MAILID="${_timestamp}.${_random}"
+
+    _spoolfile="${MAILSEND_SPOOL_DIR}/${_ACCOUNT}-${_MAILID}"
+    _SPOOLFILE="${_spoolfile}.mail"
+}
+
+variant_args ()
+{
+    # check address arguments
+    if [ "${_TO}" = "" ]
+    then
+        return 1
+    fi
+    # check body arguments
+    if [ "${_BODY}" = "" -a "${_TEXT}" = "" -a $_STDIN -eq 0 ]
+    then
+        return 1
+    fi
+    if [ "${_BODY}" != "" -a "${_TEXT}" != "" ]
+    then
+        return 1
+    fi
+    if [ "${_BODY}" != "" -a $_STDIN -ne 0 ]
+    then
+        return 1
+    fi
+    if [ "${_TEXT}" != "" -a $_STDIN -ne 0 ]
+    then
+        return 1
+    fi
+
+    # create spool file name
+    spool_name
+
+    # create mailfile
+    mail_header > ${_SPOOLFILE}
+    mail_content  >> ${_SPOOLFILE}
+    mail_body >> ${_SPOOLFILE}
+    mail_files >> ${_SPOOLFILE}
+    mail_dir >> ${_SPOOLFILE}
+    mail_footer >> ${_SPOOLFILE}
+
+    return 0
+}
+
+variant_file ()
+{
+    # check address arguments
+    if [ "${_FROM}" != "" -o "${_TO}" != "" -o "${_CC}" != "" -o "${_BCC}" != "" -o "${_REPLY}" != "" ]
+    then
+        return 1
+    fi
+    # check body arguments
+    if [ "${_BODY}" != "" -o "${_TEXT}" != "" -o "${_SUBJECT}" != "" ]
+    then
+        return 1
+    fi
+    # check attachment arguments
+    if [ "${_ATTACH}" != "" -o "${_DIR}" != "" ]
+    then
+        return 1
+    fi
+
+    # create spool file name
+    spool_name
+
+    cp ${_MAIL} ${_SPOOLFILE}
+
+    return 0
+}
+
+send ()
+{
+    if [ "${MAILSEND_SEND_DELAYED}" = "yes" ]
+    then
+        _spoolfile=`echo "${_SPOOLFILE}" | sed -e 's/\(.*\)\.mail$/\1.retry0/'`
+        mv ${_SPOOLFILE} ${_spoolfile}
+    else
+        mailsend-send.sh "${_SPOOLFILE}"
+        if [ -e "${_SPOOLFILE}" ]
+        then
+            _spoolfile=`echo "${_SPOOLFILE}" | sed -e 's/\(.*\)\.mail$/\1.retry1/'`
+            mv ${_SPOOLFILE} ${_spoolfile}
+        fi
+        fi
+}
+
+# read arguments
+while test $# -gt 1
+do
+    test_arg "$1" "$2"
+    if [ $? -ne 0 ]
+    then
+        usage
+        exit 1
+    fi
+    shift
+    shift
+done
+if [ $# -eq 0 ]
+then
+    if [ "${_BODY}" = "" ]
+    then
+        _STDIN=1
+    fi
+else
+    _TEXT=$1
+fi
+
+if [ "${_MAIL}" = "" ]
+then
+    variant_args
+else
+    variant_file
+fi
+
+if [ "$?" = "1" ]
+then
+    usage
+    exit 1
+fi
+
+chmod 666 ${_SPOOLFILE}
+#cat ${_SPOOLFILE}
+send
+exit 0

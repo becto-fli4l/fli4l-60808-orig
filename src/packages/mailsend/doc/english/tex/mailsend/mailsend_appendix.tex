@@ -1,0 +1,139 @@
+% Synchronized to r0
+
+% ##TRANSLATE## : FFL-1570: begin new package
+ 
+\marklabel{sec:mailsendexample}{
+\section{Examples}}
+\subsection {\var{mailsend} with text as parameter}
+\begin{verbatim}
+mailsend -t "test@test.xy" -s "test" "this is a test"
+\end{verbatim}
+
+\subsection {\var{mailsend} with text by pipe}
+\begin{verbatim}
+echo "this is a test" | mailsend -t "test@test.xy" -s "test"
+\end{verbatim}
+
+\subsection {\var{mailsend} with text as file}
+\begin{verbatim}
+echo "this is a test" > /tmp/mail.txt
+mailsend -t "test@test.xy" -s "test" -B "/tmp/mail.txt"
+\end{verbatim}
+
+\subsection {\var{mailsend} with variables}
+\begin{verbatim}
+_to=#test@test.xy'
+_subject='test'
+_body='this is a test'
+mailsend -t "${_to}" -s "${_subject}" -B "${_body}"
+\end{verbatim}
+
+\subsection {\var{mailsend} with appendix}
+\begin{verbatim}
+mailsend -t "test@test.xy" -s "syslog" -a "/var/log/syslog" "syslog"
+\end{verbatim}
+
+\marklabel{sec:developer}{
+\section{MAILSEND - Hints for package developers}}
+    This chapter describes the things a package developer has to do
+    to add MAILSEND functionality.
+ 
+\subsection{Configuration}
+    Within the file \var{check/myopt.txt} the list of configuration variables 
+    is to extend by at least two variables:
+\begin{verbatim}
+MYOPT_MAIL_ACCOUNT      OPT_MYOPT       -       LABEL "default"
+MYOPT_MAIL_TO           OPT_MYOPT       -       MAILADDR_LIST 
+\end{verbatim}
+
+    If necessaey the indexed variant has to be used:
+\begin{verbatim}
+MYOPT_%_MAIL_ACCOUNT    OPT_MYOPT   MYOPT_N     LABEL "default"
+MYOPT_%_MAIL_TO         OPT_MYOPT   MYOPT_N     MAILADDR_LIST 
+\end{verbatim}
+    
+    Further variables, for e.g. CC or BCC addresses and subject can also be added.
+     
+    The configuration file \var{config/myopt.txt} has to be extended by 
+    the appropriate variables.
+    
+\begin{verbatim}
+MYOPT_MAIL_ACCOUNT='default'
+MYOPT_MAIL_TO='receiver@domain.xyz' 
+\end{verbatim}
+     
+\subsection{Parameter check}
+    Within the file  \var{check/myopt.ext} the installation of MAILSEND will 
+    be checked:
+  
+\begin{verbatim}
+if (my_opt)
+then
+    [...]
+    if (opt_mailsend)
+    then
+        depends on mailsend version 4.0
+        [...]
+    else
+        error "OPT_MAILSEND must be 'yes' when ...'"
+    fi
+fi
+\end{verbatim}
+
+    Also the mail account should be checked:
+\begin{verbatim}
+    if (myopt_mail_account != "default")
+    then
+        set found="no"
+        foreach m in MAILSEND_N
+        do
+            if (mailsend_%_account[m] == myopt_mail_account)
+            then
+                set found="yes" 
+            fi
+        done
+        if (found != "yes")
+        then
+            error "Account '${MYOPT_MAIL_ACCOUNT}' not found in MAILSEND_x_ACCOUNT"
+        fi
+    fi
+\end{verbatim}
+
+\subsection{Mail transmission}
+    Within a script subject and text for a mail shall be generated
+    and passed to \var{mailsend}:
+    
+\begin{verbatim}
+. /var/run/myopt.conf
+_subject='myopt mail subject'
+_message='myopt mail message'
+mailsend -A "${MYOPT_MAIL_ACCOUNT}" -t "${MYOPT_MAIL_TO}" \
+    -s "${_subject}" "${_message}"
+\end{verbatim}
+
+\marklabel{sec:mailsendappendix}{
+\section{Appendix}}
+ 
+\subsection{Credits}
+
+  The package MAILSEND is baes on the package MSMTP 
+  written by Christph Fritsch {[\ref{opt_msmtp}]}.
+
+  The mails are sent by msmtp {[\ref{msmtp}]}.
+  
+\subsection{References}
+
+\newcounter{ref}
+\begin{list}{\textbf{[\arabic{ref}]}}{\usecounter{ref}}
+  
+  \item \label{opt_msmtp}
+  \altlink{http://extern.fli4l.de/fli4l_opt-db3/download.pl?file=2780-opt_msmtp-3.10.1-0.9.13_x86.zip}
+  
+  \item \label{msmtp}
+  \altlink{http://msmtp.sourceforge.net/}
+
+    \item \label{rfc5322}
+    \altlink{https://tools.ietf.org/pdf/rfc5322}
+\end{list}
+
+% ##TRANSLATE## : FFL-1570: end
