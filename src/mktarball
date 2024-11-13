@@ -1,0 +1,139 @@
+#!/bin/bash
+
+export LC_ALL=C
+
+# use a sensible default
+: ${ARCH:=x86}
+
+# $1 = path to package directory
+# $2 = target directory
+# $3 = version
+# $4 = SVN URL pointing to the binary root
+# $5 = SVN revision used for retrieving binaries
+
+if [ $# -ne 3 -a $# -ne 5 ]
+then
+    echo "usage: $(basename $0) <package directory> <target directory> <version> [<svn-binary-url> <svn-binary-revision>]" >&2
+    exit 1
+fi
+
+pkgdir=$1
+tgtdir=$2
+version=$3
+binurl=$4
+binrev=$5
+
+package=$(basename "$pkgdir")
+
+binroot=$pkgdir/../../../bin/$ARCH
+if [ ! -d "$binroot" ] && [ -z "$binurl" -o -z "$binrev" ]
+then
+    echo "$(basename $0): error: either $binroot must exist or an SVN binary URL and revision have to be specified, aborting" >&2
+    exit 3
+fi
+
+# $1 = file
+display_error()
+{
+    echo "$(basename $0): error: source file $1 does not exist" >&2
+}
+
+get_srcfile()
+{
+    if ! cat "$pkgdir/$1" 2>/dev/null
+    then
+        [ "$2" != ignore ] && display_error "$pkgdir/$1"
+        return 1
+    fi
+}
+
+if [ -f "$binroot/src.rev" ]
+then
+    get_binfile() {
+        if ! cat "$binroot/$1" 2>/dev/null
+        then
+            [ "$2" != ignore ] && display_error "$binroot/$1"
+            return 1
+        fi
+    }
+else
+    get_binfile() {
+        if ! svn cat -r "$binrev" "$binurl/$1" 2>/dev/null
+        then
+            [ "$2" != ignore ] && display_error "$binurl/$1@$binrev"
+            return 1
+        fi
+    }
+fi
+
+# $1 = file
+get_pkgfile() {
+    if [ -e "$pkgdir/$1" ]
+    then
+        get_srcfile "$1"
+    else
+        case $1 in
+        opt/*)
+            get_binfile "packages/$package/$1" ignore ||
+                get_binfile "${1#opt/}"
+            ;;
+        img/*|windows/*)
+            get_binfile "$1"
+            ;;
+        *)
+            get_binfile "packages/$package/$1"
+            ;;
+        esac
+    fi
+}
+
+get_files() {
+    get_binfile "packages/$package/files.txt" ignore
+    get_srcfile "files.txt"
+}
+
+if type -p dos2unix >/dev/null && type -p unix2dos >/dev/null
+then
+    # use dos2unix and unix2dos if available
+    D2U=" | dos2unix -f"
+    U2D=" | unix2dos -f"
+else
+    # resort to sed expressions (don't work on Mac/BSD)
+    D2U=" -e \"s/\\r\\+\\\$//\""
+    U2D=" -e \"s/\\r*\\\$/\\r/\""
+fi
+
+type -p gsed >/dev/null && SED=gsed || SED=sed
+
+rc=0
+set -o pipefail
+while read mode arch file
+do
+    arch=${arch#arch=}
+    [ -z "$arch" -o "$arch" = "$ARCH" ] || continue
+
+    target="$tgtdir/$file"
+    mkdir -p $(dirname "$target")
+    case $mode in
+    u|U)
+        eval get_pkgfile \"\$file\" \| \$SED -e \"s/__FLI4LVER__/\$version/g\" $D2U \> \"\$target\" || rc=1
+        ;;
+    d|D)
+        eval get_pkgfile \"\$file\" \| \$SED -e \"s/__FLI4LVER__/\$version/g\" $U2D \> \"\$target\" || rc=1
+        ;;
+    b|B)
+        get_pkgfile "$file" > "$target" || rc=1
+        ;;
+    i|I)
+        ;;
+    *)
+        echo "$(basename $0): unknown mode $mode, ignoring $pkgdir/$file" >&2
+        ;;
+    esac
+    case $mode in
+    U|D|B)
+        [ -e "$target" ] && chmod +x "$target"
+        ;;
+    esac
+done < <(get_files | $SED -n "s/^\(.\) \(\([^:]\+\)::\)\?\(.*\)$/\1 arch=\3 \4/p")
+exit $rc
