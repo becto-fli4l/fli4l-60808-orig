@@ -1,0 +1,216 @@
+% Last Update: $Id$
+\marklabel{sec:opt-ntp}
+{
+\section {NTP - Network Time Protocol Server/Client}
+}
+
+OPT\_NTP erweitert fli4l um das Network Time Protocol (NTP). 
+Dies ist nicht mit dem \emph{normalen} Time Protokoll zu
+verwechseln. Die Protokolle sind nicht
+kompatibel und somit werden gegebenenfalls neue Client-Programme, die NTP
+beherrschen, benötigt.
+
+OPT\_NTP arbeitet sowohl im  Server- als auch im Client Modus. In der
+Funktion des Clients gleicht es die Zeit des fli4l mit Zeitreferenzen (Time
+Server) im Internet ab oder nutzt die Zeitinformationen einer angeschlossenen
+Funkuhr.
+
+In der Funktion des Servers dient OPT\_NTP als Zeitreferenz für das lokale
+Netzwerk (LAN). NTP arbeitet auf Port 123.
+
+\marklabel{sec:konfigntp}{
+\subsection {Konfiguration des Paketes NTP}
+}
+
+Die Konfiguration erfolgt, wie bei allen fli4l Paketen, durch Anpassung der Datei\\
+\var{Pfad/fli4l-\version/$<$config$>$/ntp.txt} an die eigenen Anforderungen.
+
+\begin{description}
+
+\config {OPT\_NTP}{OPT\_NTP}{OPTNTP}
+
+  {Default: \var{OPT\_NTP='no'}
+
+  Die Einstellung \var{'no'} deaktiviert das OPT\_NTP vollständig. Es werden
+  keine Änderungen an dem fli4l-Bootmedium bzw. dem Archiv \var{opt.img}
+  vorgenommen. Weiter überschreibt das OPT\_NTP grundsätzlich keine anderen
+  Teile der fli4l-Installation.
+  Um OPT\_NTP zu aktivieren, ist die Variable \var{OPT\_NTP} auf 
+  \var{'yes'} zu setzen.}
+
+\config {NTP\_REFCLOCK\_TYPE}{NTP\_REFCLOCK\_TYPE}{NTPREFCLOCKTYPE}
+
+  Mit dieser Variable wird die Typenbezeichnung der verwendeten lokal
+  angeschlossenen Referenzuhr eingestellt. Die erlaubten Werte sind in
+  Tab.~\ref{table:ntp:refclocks} aufgelistet. Ist keine Referenzuhr vorhanden
+  und soll die Systemzeit somit allein mit Hilfe anderer Zeitserver im Netzwerk
+  synchronisiert werden, ist ``none'' auszuwählen.
+
+  \begin{table}[ht!]
+    \centering
+    \small
+    \caption{Unterstützte Referenzuhren}
+    \label{table:ntp:refclocks}
+    \begin{tabular}{|l|p{7.5cm}|}
+      \hline
+      Kürzel & Modell \\
+      \hline
+      none              & keine Referenzuhr \\
+      mouseclock-nts    & mouseCLOCK NTS \\
+      mouseclock-usb-ii & mouseCLOCK USB v2.0\\
+      sure              & Sure RPC DCF77 \\
+      neoclock4x        & NeoClock4X DCF77 \\
+      hopf-seriell      & hopf DCF77/GPS (seriell) \\
+      \hline
+    \end{tabular}
+  \end{table}
+
+\config {NTP\_REFCLOCK\_DEVICE}{NTP\_REFCLOCK\_DEVICE}{NTPREFCLOCKDEVICE}
+
+  Diese Variable gibt die Schnittstelle an, an der die Referenzuhr
+  angeschlossen ist. Typischerweise ist dies \texttt{/dev/ttySx} für die
+  (x+1)-te RS232-Schnittstelle oder \texttt{/dev/ttyUSBx} für die (x+1)-te
+  USB-Schnittstelle, beispielsweise \texttt{/dev/ttyS0} oder
+  \texttt{/dev/ttyUSB1}.
+
+\config {NTP\_SERVER\_N}{NTP\_SERVER\_N}{NTPSERVERN}
+
+  Diese Variable spezifiziert die Anzahl der Server zum Zeitabgleich.
+
+\config {NTP\_SERVER\_x\_HOST}{NTP\_SERVER\_x\_HOST}{NTPSERVERxHOST}
+
+  Diese Variable nimmt die IP-Adresse oder den FQDN des Servers, der zum
+  Zeitabgleich genutzt wird, auf.
+  
+\config {NTP\_SERVER\_x\_TYPE}{NTP\_SERVER\_x\_TYPE}{NTPSERVERxTYPE}
+
+  Diese Variable kontrolliert die Art der Beziehung zwischen dem fli4l und dem
+  Zeitserver. Setzt man den Wert auf \var{'peer'}, wird mit dem definierten
+  Server gegenseitig die Zeit abgeglichen. Dies verwendet man, wenn man mehrere
+  lokale NTP-Server hat (die in der Regel Zeitquellen mit ähnlichem
+  Stratum nutzen) und diese sich untereinander abgleichen sollen. Setzt man den
+  Wert hingegen auf \var{'server'}, ist der definierte Server Zeitquelle für
+  den NTP-Server auf dem Router. Dies wird benutzt, wenn man fremde Zeitserver
+  (die in der Regel Zeitquellen mit höherem Stratum nutzen) nutzen möchte.
+ 
+\config {NTP\_SERVER\_x\_BURST}{NTP\_SERVER\_x\_BURST}{NTPSERVERxBURST}
+
+  Diese Konfigurationvariable ist optional.\\
+  Mit \var{'yes'} wird die Synchronisation mit dem definierten
+  NTP-Server beschleunigt. Es werden acht NTP-Abgleichpakete verwendet.
+
+\config {NTP\_SERVER\_x\_IBURST}{NTP\_SERVER\_x\_IBURST}{NTPSERVERxIBURST}
+
+  Diese Konfigurationvariable ist optional.\\
+  Mit \var{'yes'} wird die Synchronisation mit dem definierten
+  NTP-Server beschleunigt. Es werden 16 NTP-Abgleichpakete verwendet.
+
+\config {NTP\_SERVER\_x\_PREFER}{NTP\_SERVER\_x\_PREFER}{NTPSERVERxPREFER}
+
+  Diese Konfigurationvariable ist optional.\\
+  Mit \var{'yes'} wird dieser NTP-Server anderen NTP-Servern mit gleichem
+  Stratum vorgezogen.
+
+\config {NTP\_SERVER\_x\_MINPOLL}{NTP\_SERVER\_x\_MINPOLL}{NTPSERVERxMINPOLL}
+
+  Diese Konfigurationvariable ist optional.\\
+  Diese Variable definert den Mindestzeitabstand zwischen
+  NTP-Zeitabgleichspaketen. Es sind Werte zwischen 4 (15~s) und 6 (64~s)
+  erlaubt.
+
+\config {NTP\_SERVER\_x\_MAXPOLL}{NTP\_SERVER\_x\_MAXPOLL}{NTPSERVERxMAXPOLL}
+
+  Diese Konfigurationvariable ist optional.\\
+  Diese Variable definert den Maximalzeitabstand zwischen
+  NTP-Zeitabgleichspaketen. Es sind Werte zwischen 10 (1.024~s) und 17
+  (131.702~s, entspricht ca. 36,4~h) erlaubt.
+
+\config {NTP\_SERVER\_x\_VERSION}{NTP\_SERVER\_x\_VERSION}{NTPSERVERxVERSION}
+
+  Diese Konfigurationvariable ist optional.\\
+  Diese Variable legt die Versionsnummer fest, die in den NTP-Paketen verwendet
+  wird. Es sind Werte zwischen 1 und 4 erlaubt.
+
+\config {NTP\_LOCAL\_RTC}{NTP\_LOCAL\_RTC}{NTPLOCALRTC}
+
+  Mit \var{'yes'} wird die Uhr des BIOS zusätzlich als Zeitquelle genutzt.
+  Dies macht es dem NTP-Dämon möglich, weiter als Zeitserver zu arbeiten, wenn
+  keiner der definierten Zeitserver erreichbar ist oder die angeschlossene 
+  Funkuhr keine gültige Zeit mehr liefert.
+
+\config {NTP\_LOCAL\_RTC\_STRATUM}{NTP\_LOCAL\_RTC\_STRATUM}{NTPLOCALRTCSTRATUM}
+
+  Definiert die Priorität der lokalen Uhr innerhalb der NTP-Hierarchie.
+  Je höher der Wert desto ungenauer ist die Genauigkeit der genutzten
+  Zeitquelle. Ein Server der die Zeit der Referenzuhr nutzt hat ein Stratum von
+  \var{'1'}. Für die BIOS-Uhr sollte hier im Normalfall ein Wert von \var{'10'}
+  bis \var{'12'} gesetzt werden.
+
+\config {NTP\_ALLOW\_IPV4\_N}{NTP\_ALLOW\_IPV4\_N}{NTPALLOWIPV4N}
+
+  Diese Variable gibt die Anzahl der IPv4-Netze an, die auf den Router via NTP
+  zugreifen dürfen.
+  
+\config {NTP\_ALLOW\_IPV4\_x}{NTP\_ALLOW\_IPV4\_x}{NTPALLOWIPV4x}
+
+  Diese Variable enthält eine Referenz auf ein IPv4-Netzwerk, das auf den
+  NTP-Server zugreifen darf, beispielsweise \var{IP\_NET\_1}.
+
+\config {NTP\_ALLOW\_IPV4\_x\_PEERING}{NTP\_ALLOW\_IPV4\_x\_PEERING}{NTPALLOWIPV4xPEERING}
+
+  Diese Konfigurationvariable ist optional.\\
+  Mit \var{'yes'} wird der gegenseitige Abgleich des fli4l mit NTP-Servern
+  im referenzierten IPv4-Netz erlaubt.
+
+\config {NTP\_ALLOW\_IPV6\_N}{NTP\_ALLOW\_IPV6\_N}{NTPALLOWIPV6N}
+
+  Diese Variable gibt die Anzahl der IPv6-Netze an, die auf den Router via NTP
+  zugreifen dürfen.
+
+\config {NTP\_ALLOW\_IPV6\_x}{NTP\_ALLOW\_IPV6\_x}{NTPALLOWIPV6x}
+
+  Diese Variable enthält eine Referenz auf ein IPv6-Netzwerk, das auf den
+  NTP-Server zugreifen darf, beispielsweise \var{IPV6\_NET\_1}.
+
+\config {NTP\_ALLOW\_IPV6\_x\_PEERING}{NTP\_ALLOW\_IPV6\_x\_PEERING}{NTPALLOWIPV6xPEERING}
+
+  Diese Konfigurationvariable ist optional.\\
+  Mit \var{'yes'} wird der gegenseitige Abgleich des fli4l mit NTP-Servern
+  im referenzierten IPv6-Netz erlaubt.
+
+\config {NTP\_CHECK\_STATUS}{NTP\_CHECK\_STATUS}{NTPCHECKSTATUS}
+
+  Setzt man diese Variable auf \var{'yes'}, werden bei \var{OPT\_HTTPD='yes'}
+  Informationen zu der Zeitsynchronisation in der WebGUI
+  ausgegeben. Bei zusätzlich aktivem \var{RRDTOOL\_NTP} werden Graphen mit
+  Verläufen der Zeitabweichung erzeugt.
+  
+\config {NTP\_SHOW\_STATUS\_VIA\_LED}{NTP\_SHOW\_STATUS\_VIA\_LED}{NTPSHOWSTATUSVIALED}
+
+  Setzt man diese Variable auf\var{'yes'}, wird der NTP-Syn\-chronisationsstatus
+  über die definierten LEDs dargestellt, wenn im Paket ``hwsupp'' die
+  Ansteuerung von LEDs definiert ist. Dabei gilt die folgende Zuordnung:
+  \begin{itemize}
+  \item LED 1 blinkt, solange das Jahr nicht korrekt gesetzt wurde, und ist
+        ansonsten aus.
+  \item LED 2 leuchtet, wenn die Uhrzeit des fli4l synchron ist, und ist aus,
+        wenn die Uhrzeit nicht synchron ist, sondern der NTP-Dämon dabei ist,
+        sie schrittweise anzupassen.
+  \item LED 3 leuchtet, wenn die angeschlossene Funkuhr arbeitet. Sie blinkt,
+        wenn die Funkuhr zwar keine gültige Zeit liefert, aber die
+        Synchronisation über andere NTP-Server hergestellt werden kann. Sie
+        ist aus, wenn der NTP-Server überhaupt keine Zeitquelle zur Verfügung
+        hat.
+  \end{itemize}
+
+\end{description}
+  
+\marklabel{sec:ntpsupport}{
+\subsection{Support}
+}
+Support wird nur im Rahmen der \jump{url:ntpfli4lnews}{fli4l-Newsgroups}
+geleistet. 
+
+\marklabel{url:ntpfli4lnews}{
+ fli4l Newsgroups und ihre Spielregeln: \altlink{http://www.fli4l.de/hilfe/newsgruppen-irc-forum/}
+}

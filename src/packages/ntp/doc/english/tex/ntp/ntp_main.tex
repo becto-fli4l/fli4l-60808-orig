@@ -1,0 +1,200 @@
+% Synchronized to r39854
+\marklabel{sec:opt-ntp}
+{
+\section {NTP - Network Time Protocol Server/Client}
+}
+
+OPT\_NTP provides the Network Time Protocol (NTP) for fli4l.
+This is not to be confused with the \emph{normal} Time Protocol.
+The protocols are not compatible and thus new client programs
+understanding the NTP are required.
+
+OPT\_NTP works in both server and client mode. In client mode it
+synchronizes fli4l's system time with Internet time references (Time
+Servers) or uses the time information of a connected Radio clock.
+
+In server mode OPT\_NTP acts as a time server for the local
+net (LAN). NTP uses port 123.
+
+\marklabel{sec:konfigntp}{
+\subsection {Configuration Of The Package NTP}
+}
+
+Like with all fli4l packages configuration is done by adapting the file\\
+\var{Path/fli4l-\version/$<$config$>$/ntp.txt} to your needs.
+
+\begin{description}
+
+\config {OPT\_NTP}{OPT\_NTP}{OPTNTP}
+
+  {Default: \var{OPT\_NTP='no'}
+
+  Setting this to \var{'no'} completely deactivates OPT\_NTP. No changes
+  to the fli4l boot medium resp. archive \var{opt.img} are made.
+  OPT\_NTP does not overwrite any other part of the fli4l installation.
+  To activate OPT\_NTP set \var{OPT\_NTP} to \var{'yes'}.}
+
+\config {NTP\_REFCLOCK\_TYPE}{NTP\_REFCLOCK\_TYPE}{NTPREFCLOCKTYPE}
+
+  This variable determines the type of a locally connected reference clock.
+  Possible values are listed in Tab.~\ref{table:ntp:refclocks}. If no reference clock
+  is available and hence system time is only synchronized by other network time servers
+  specify ``none'' here.
+
+  \begin{table}[ht!]
+    \centering
+    \small
+    \caption{Supported Reference Clocks}
+    \label{table:ntp:refclocks}
+    \begin{tabular}{|l|p{7.5cm}|}
+      \hline
+      Shortcut & Model \\
+      \hline
+      none              & no Reference Clock \\
+      mouseclock-nts    & mouseCLOCK NTS \\
+      mouseclock-usb-ii & mouseCLOCK USB v2.0\\
+      sure              & Sure RPC DCF77 \\
+      neoclock4x        & NeoClock4X DCF77 \\
+      hopf-seriell      & hopf DCF77/GPS (serial) \\
+      \hline
+    \end{tabular}
+  \end{table}
+
+\config {NTP\_REFCLOCK\_DEVICE}{NTP\_REFCLOCK\_DEVICE}{NTPREFCLOCKDEVICE}
+
+  This variable specifies the interface to which the reference clock is connected.
+  Typically, this is \texttt{/dev/ttySx} for the (x+1)-th RS232-Interface or
+  \texttt{/dev/ttyUSBx} for the (x+1)-th USB-Interface, i.e. \texttt{/dev/ttyS0} or
+  \texttt{/dev/ttyUSB1}.
+
+\config {NTP\_SERVER\_N}{NTP\_SERVER\_N}{NTPSERVERN}
+
+  This variable specifies the the number of servers for time synchronisation.
+
+\config {NTP\_SERVER\_x\_HOST}{NTP\_SERVER\_x\_HOST}{NTPSERVERxHOST}
+
+  This variable contains the IP address or the FQDN of the server to be used
+  for time synchronisation.
+
+\config {NTP\_SERVER\_x\_TYPE}{NTP\_SERVER\_x\_TYPE}{NTPSERVERxTYPE}
+
+  This variable controls the type of relationship between fli4l and the
+  time Server. When setting the value to \var{'peer'}, the time is synchronized
+  with the defined server. This is used if more local NTP servers exist
+  (usually using time sources with similar Stratum) and that should be
+  synchronized with each other. Setting this value to \var{'server'}
+  specifies the defined time server as the source for the router's NTP server.
+  This is for using external time servers (which usually have time sources with
+  a higher stratum).
+
+\config {NTP\_SERVER\_x\_BURST}{NTP\_SERVER\_x\_BURST}{NTPSERVERxBURST}
+
+  This variable is optional.\\
+  \var{'yes'} speeds up the synchronization with the defined NTP Server
+  by using eight NTP adjustment packages.
+\config {NTP\_SERVER\_x\_IBURST}{NTP\_SERVER\_x\_IBURST}{NTPSERVERxIBURST}
+
+  This variable is optional.\\
+  \var{'yes'} speeds up the synchronization with the defined NTP Server
+  by using 16 NTP adjustment packages.
+
+\config {NTP\_SERVER\_x\_PREFER}{NTP\_SERVER\_x\_PREFER}{NTPSERVERxPREFER}
+
+  This variable is optional.\\
+  With \var{'yes'} this NTP server is preferred over other NTP servers with
+  the same Stratum.
+
+\config {NTP\_SERVER\_x\_MINPOLL}{NTP\_SERVER\_x\_MINPOLL}{NTPSERVERxMINPOLL}
+
+  This variable is optional.\\
+  This variable defines the minimum time interval between
+  NTP time synchronization packets. Values between 4 (15~s) and 6 (64~s)
+  are allowed.
+\config {NTP\_SERVER\_x\_MAXPOLL}{NTP\_SERVER\_x\_MAXPOLL}{NTPSERVERxMAXPOLL}
+
+  This variable is optional.\\
+  This variable defines the maximum time interval between
+  NTP time synchronization packets. Values between 10 (1024~s) and 17
+  (131 702~s = around 36.4~h) are allowed.
+\config {NTP\_SERVER\_x\_VERSION}{NTP\_SERVER\_x\_VERSION}{NTPSERVERxVERSION}
+
+  This variable is optional.\\
+  This variable specifies the NTP packet's version number to be used. Values
+  between 1 and 4 are allowed.
+
+\config {NTP\_LOCAL\_RTC}{NTP\_LOCAL\_RTC}{NTPLOCALRTC}
+
+  With \var{'yes'} the clock of the BIOS is also used as a time source.
+  This enables the NTP daemon to continue to work as a time server even if
+  none of the specified time servers can be reached or the connected
+  radio clock does not provide a valid time anymore.
+
+\config {NTP\_LOCAL\_RTC\_STRATUM}{NTP\_LOCAL\_RTC\_STRATUM}{NTPLOCALRTCSTRATUM}
+
+  Defines the priority of the local clock within the NTP hierarchy.
+  The higher the value the more inaccurate is the accuracy of the time source
+  used. A server using the time of the reference clock has a stratum of
+  \var{'1'}. The BIOS clock should normally have a value from \var{'10'}
+  to \var{'12'} assigned.
+
+\config {NTP\_ALLOW\_IPV4\_N}{NTP\_ALLOW\_IPV4\_N}{NTPALLOWIPV4N}
+
+  This variable specifies the number of IPv4 networks which are allowed to
+  access the router via NTP.
+
+\config {NTP\_ALLOW\_IPV4\_x}{NTP\_ALLOW\_IPV4\_x}{NTPALLOWIPV4x}
+
+  This variable holds a reference to an IPv4 network that is allowed to access the
+  NTP server, for example, \var{IP\_NET\_1}.
+
+\config {NTP\_ALLOW\_IPV4\_x\_PEERING}{NTP\_ALLOW\_IPV4\_x\_PEERING}{NTPALLOWIPV4xPEERING}
+
+  This variable is optional.\\
+  \var{'yes'} allows peering of fli4l with NTP servers in the referenced IPv4 network.
+
+\config {NTP\_ALLOW\_IPV6\_N}{NTP\_ALLOW\_IPV6\_N}{NTPALLOWIPV6N}
+
+  This variable specifies the number of IPv6 networks which are allowed to
+  access the router via NTP.
+
+\config {NTP\_ALLOW\_IPV6\_x}{NTP\_ALLOW\_IPV6\_x}{NTPALLOWIPV6x}
+
+  This variable holds a reference to an IPv6 network that is allowed to access the
+  NTP server, for example, \var{IPV6\_NET\_1}.
+
+\config {NTP\_ALLOW\_IPV6\_x\_PEERING}{NTP\_ALLOW\_IPV6\_x\_PEERING}{NTPALLOWIPV6xPEERING}
+
+  This variable is optional.\\
+  \var{'yes'} allows peering of fli4l with NTP servers in the referenced IPv6 network.
+
+\config {NTP\_CHECK\_STATUS}{NTP\_CHECK\_STATUS}{NTPCHECKSTATUS}
+
+  Setting this variable to \var{'yes'} will display information on the time
+  synchronization in the WebGUI in case of \var{OPT\_HTTPD='yes'}. With an activated
+  \var{RRDTOOL\_NTP} graphs for the time drift are generated in addition.
+
+\config {NTP\_SHOW\_STATUS\_VIA\_LED}{NTP\_SHOW\_STATUS\_VIA\_LED}{NTPSHOWSTATUSVIALED}
+
+  Specifying \var{'yes'} here will indicate the state of NTP synchronisation
+  on the defined LEDs given that the package ``hwsupp'' defines any LEDs.
+  The following assignment applies:
+  \begin{itemize}
+  \item If LED 1 blinks no correct year is provided, else it is off.
+  \item If LED 2 is on fli4l's time is in sync and is off if not and the NTP
+	daemon is in the process of adjusting it in steps.
+  \item If LED 3 is on the connected radio clock is working. It blinks if
+        the radio clock does not provide a valid time but synchronisation
+        can be accomplished with other NTP servers. It is off if the NTP
+        server has no valid time source at all.
+  \end{itemize}
+
+\end{description}
+
+\marklabel{sec:ntpsupport}{
+\subsection{Support}
+}
+Yo will only get support within the \jump{url:ntpfli4lnews}{fli4l-Newsgroups}.
+
+\marklabel{url:ntpfli4lnews}{
+ fli4l Newsgroups and their rules: \altlink{http://www.fli4l.de/hilfe/newsgruppen-irc-forum/}
+}

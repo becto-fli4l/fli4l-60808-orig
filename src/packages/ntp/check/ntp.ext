@@ -1,0 +1,94 @@
+﻿##-----------------------------------------------------------------------------
+## ntp.ext - fli4l extended configuration check                    __FLI4LVER__
+##
+##        P L E A S E   R E A D   T H E   D O C U M E N T A T I O N ,
+##                      S E E   R E A D M E . T X T
+##
+##        B I T T E  U N B E D I N G T   D I E   D O K U M E N T A T I O N
+##              L E S E N ,  S I E H E   R E A D M E . T X T
+##
+## Creation:     24.08.2009  babel
+## Last Update:  $Id$
+##
+## Copyright (c) 2005 Linum Software GmbH <babel@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if (opt_ntp)
+then
+    provides ntp version 4.0.0
+    depends on fli4l version 4.0
+
+    if (rtc_sync == "hwclock")
+    then
+        error "OPT_NTP='yes' and RTC_SYNC='hwclock' collide as the kernel"
+        error "and hwclock would compete for control over the hardware clock."
+        error "Please use RTC_SYNC='kernel'."
+    fi
+
+    if (opt_chrony)
+    then
+        error "Using OPT_CHRONY='yes' and OPT_NTP='yes' together doesn't make sense, choose the one package that fits your needs."
+    fi
+
+    if (ntp_check_status && !opt_httpd)
+    then
+        error "NTP_CHECK_STATUS='yes' requires OPT_HTTPD='yes' to show the status information'"
+    fi
+
+    if (ntp_check_status && !rrdtool_ntp)
+    then
+        warning "NTP_CHECK_STATUS='yes' can put information about time synchronisation into graphs if you use RRDTOOL_NTP='yes'"
+        if (ntp_refclock_type != "none")
+        then
+            warning "NTP_CHECK_STATUS='yes' can put information about your reference clock into a graph if you use RRDTOOL_NTP='yes'"
+        fi
+    fi
+
+    if (ntp_check_status && ntp_show_status_via_led && (!defined(hwsupp_led_n) || hwsupp_led_n < 1))
+    then
+        error "You want to display NTP status information via LED but you haven't defined any LED with HWSUPP_LED_N."
+    fi
+
+    if (ntp_allow_ipv4_n > 0 && !opt_ipv4)
+    then
+        error "NTP_ALLOW_IPV4_N='$NTP_ALLOW_IPV4_N' requires OPT_IPV4='yes'"
+    fi
+    if (ntp_allow_ipv6_n > 0 && !opt_ipv6)
+    then
+        error "NTP_ALLOW_IPV6_N='$NTP_ALLOW_IPV6_N' requires OPT_IPV6='yes'"
+    fi
+    
+    if (opt_httpd)
+    then
+        set files="status_ntp"
+    
+        if ( httpd_gui_lang == "auto" )
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            split (files, files_tmp_%, ' ')
+            foreach file in files_tmp_%
+            do
+                stat("opt/srv/www/lang/$file.$lang", langfile)
+                if( langfile_res == "OK" )
+                then
+                    add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+                else
+                    warning "could not find 'srv/www/lang/$file.$lang', perhaps this file isn't translated yet. Falling back to English."
+                    add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+                fi
+            done
+        done
+     fi
+fi

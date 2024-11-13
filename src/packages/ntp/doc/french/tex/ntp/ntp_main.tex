@@ -1,0 +1,212 @@
+% Synchronized to r39854
+
+\marklabel{sec:opt-ntp}
+{
+\section {NTP - Network Time Protocol serveur/client}
+}
+
+Le paquetage OPT\_NTP Network Time Protocol (NTP) étend les fonctionnalités
+du routeur fli4l. Il ne doit pas être confondu avec le Protocol \emph{normal} Time.
+Les deux protocoles ne sont pas compatibles, si vous avez un nouveau programme
+client qui utilise le NTP vous pouvez l'utiliser.
+
+Le paquetage OPT\_ntp fonctionne aussi bien en mode serveur qu'en mode client.
+Le routeur fli4l met à l'heure l'ordinateur en fonction du client, par l'intermédiaire
+du (serveur de temps) sur Internet ou en utilisant les informations d'une horloge
+radio-pilotée sur le routeur.
+
+La fonction du serveur et de l'OPT\_NTP sert à mettre à l'heure les ordinateurs
+dans le réseau local (LAN). Le NTP fonctionne sur port 123.
+
+\marklabel{sec:konfigntp}{
+\subsection {Configuration du paquetage NTP}
+}
+
+La configuration est réalisée, comme tous les paquetage de fli4l, en adaptant
+le fichier\\
+\var{répertoire/fli4l-\version/$<$config$>$/ntp.txt} selon vos besoins.
+
+\begin{description}
+
+\config {OPT\_NTP}{OPT\_NTP}{OPTNTP}
+
+  {Par défaut~: \var{OPT\_NTP='no'}
+
+  Si vous indiquez \var{'no'} vous déactivez complètement l'OPT\_NTP. Il n'y aura
+  aucune modification sur le démarrage du médias ou dans l'archive \var{opt.img}
+  de fli4l. L'OPT\_NTP ne remplace jamais d'autres parties de l'installation de
+  fli4l. Pour activer l'OPT\_NTP vous devez placer la variable \var{OPT\_NTP}
+  sur \var{'yes'}.}
+
+\config {NTP\_REFCLOCK\_TYPE}{NTP\_REFCLOCK\_TYPE}{NTPREFCLOCKTYPE}
+
+  Dans cette variable vous indiquez la référence du type d'horloge radio-pilotée
+  localement. Les valeurs autorisées sont répertorié dans le Tab.~\ref{table:ntp:refclocks}.
+  Si aucune référence pour l'horloge n'est disponible et si vous voulez synchroniser
+  l'horloge du système à l'aide d'un serveur de temps, vous devez indiquer "none" dans
+  cette variable.
+
+  \begin{table}[ht!]
+    \centering
+    \small
+    \caption{Référence des horloges prise en charge}
+    \label{table:ntp:refclocks}
+    \begin{tabular}{|l|p{7.5cm}|}
+      \hline
+      Référence & Model \\
+      \hline
+      none              & aucune référence \\
+      mouseclock-nts    & mouseCLOCK NTS \\
+      mouseclock-usb-ii & mouseCLOCK USB v2.0\\
+      sure              & Sure RPC DCF77 \\
+      neoclock4x        & NeoClock4X DCF77 \\
+      hopf-seriell      & hopf DCF77/GPS (seriell) \\
+      \hline
+    \end{tabular}
+  \end{table}
+
+\config {NTP\_REFCLOCK\_DEVICE}{NTP\_REFCLOCK\_DEVICE}{NTPREFCLOCKDEVICE}
+
+  Dans cette variable vous indiquez l'interface à laquelle la référence de l'horloge
+  est connecté. Précisément vous avez \texttt{/dev/ttySx} pour (x+1)-ème interface
+  RS232 ou \texttt{/dev/ttyUSBx} pour (x+1)-ème interface USB. Par exemple,
+  \texttt{/dev/ttyS0} ou \texttt{/dev/ttyUSB1}.
+
+\config {NTP\_SERVER\_N}{NTP\_SERVER\_N}{NTPSERVERN}
+
+  Dans cette variable vous indiquez le nombre de serveur de temps que vous voulez utiliser.
+
+\config {NTP\_SERVER\_x\_HOST}{NTP\_SERVER\_x\_HOST}{NTPSERVERxHOST}
+
+  Dans cette variable vous indiquez l'adresse IP ou le serveur FQDN qui sera utilisé
+  pour la synchronisation de l'heure sur le LAN.
+
+\config {NTP\_SERVER\_x\_TYPE}{NTP\_SERVER\_x\_TYPE}{NTPSERVERxTYPE}
+
+  Cette variable contrôle le type de relation entre fli4l et le serveur de temps.
+  En indiquant la valeur \var{'peer'}, l'heure sera aligné mutuellement au serveur
+  défini. Ceci est utilisé lorsque vous avez plusieurs serveurs NTP locaux (habituellement
+  la source de temps utilise un stratum similaire) ceux-ci, devraient être synchronisés
+  entre eux. Si on met au contraire la valeur \var{'server'}, le serveur défini sera
+  la source de temps pour le serveur NTP sur le routeur. Ceci est utilisé si vous
+  (habituellement la source de temps utilise un stratum similaire) souhaitez vous connecter
+  à un serveur de temps distant.
+
+\config {NTP\_SERVER\_x\_BURST}{NTP\_SERVER\_x\_BURST}{NTPSERVERxBURST}
+
+  La configuration de cette variable est optionnelle.\\
+  Si vous indiquez \var{'yes'} la synchronisation avec le serveur NTP défini sera
+  accéléré. Huit synchroniséations seront utilisées pour les paquets NTP.
+
+\config {NTP\_SERVER\_x\_IBURST}{NTP\_SERVER\_x\_IBURST}{NTPSERVERxIBURST}
+
+  La configuration de cette variable est optionnelle.\\
+  Si vous indiquez \var{'yes'} la synchronisation avec le serveur NTP défini sera
+  accéléré. Seize synchroniséations seront utilisées pour les paquets NTP.
+
+\config {NTP\_SERVER\_x\_PREFER}{NTP\_SERVER\_x\_PREFER}{NTPSERVERxPREFER}
+
+  La configuration de cette variable est optionnelle.\\
+  Si vous indiquez \var{'yes'} Le serveur NTP sera préféré à d'autres serveurs NTP
+  dans le même stratum.
+
+\config {NTP\_SERVER\_x\_MINPOLL}{NTP\_SERVER\_x\_MINPOLL}{NTPSERVERxMINPOLL}
+
+  La configuration de cette variable est optionnelle.\\
+  Avec cette variable vous définissez l'intervalle minimum entre les paquets NTP
+  pour la synchronisation du temps. Les valeurs autorisée sont comprises entre
+  4 (15~s) et 6 (64~s).
+
+\config {NTP\_SERVER\_x\_MAXPOLL}{NTP\_SERVER\_x\_MAXPOLL}{NTPSERVERxMAXPOLL}
+
+  La configuration de cette variable est optionnelle.\\
+  Avec cette variable vous définissez l'intervalle maximum entre les paquets NTP
+  pour la synchronisation du temps. Les valeurs autorisée sont comprises entre
+  10 (1.024~s) et 17 (131.702~s, ce qui équivaut environ à 36,4~h).
+
+\config {NTP\_SERVER\_x\_VERSION}{NTP\_SERVER\_x\_VERSION}{NTPSERVERxVERSION}
+
+  La configuration de cette variable est optionnelle.\\
+  Avec cette variable vous indiquez le numéro de version qui est utilisé pour
+  les paquets NTP. Les valeurs que vous pouvez indiquer sont de 1 à 4.
+
+\config {NTP\_LOCAL\_RTC}{NTP\_LOCAL\_RTC}{NTPLOCALRTC}
+
+  Si vous indiquez \var{'yes'} l'horloge du BIOS sera utilisé comme une source de
+  temps. Cela permet au démon NTP de travailler comme un serveur de temps, si aucun
+  des serveurs de temps spécifié peut être atteint ou si l'horloge radio-pilotée
+  ne peux fournir une heure valide.
+
+\config {NTP\_LOCAL\_RTC\_STRATUM}{NTP\_LOCAL\_RTC\_STRATUM}{NTPLOCALRTCSTRATUM}
+
+  Dans cette variable vous indiquez la priorité de l'horloge locale à l'intérieur de
+  la hiérarchie NTP. Plus la valeur est précise, plus la source de l'horloge utilisée
+  est exact. Donc un serveur de temps utilise la référence de statum \var{'1'}. Pour
+  l'horloge du BIOS, la valeur est normalement de \var{'10'} voir \var{'12'}.
+
+\config {NTP\_ALLOW\_IPV4\_N}{NTP\_ALLOW\_IPV4\_N}{NTPALLOWIPV4N}
+
+  Dans cette variable vous indiquez le nombre de réseaux IPv4 qui seront autorisés à accéder
+  au routeur via le protocole NTP.
+
+\config {NTP\_ALLOW\_IPV4\_x}{NTP\_ALLOW\_IPV4\_x}{NTPALLOWIPV4x}
+
+  Dans cette variable vous indiquez le réseau IPv4 qui aura accès au serveur NTP,
+  par exemple \var{IP\_NET\_1}.
+
+\config {NTP\_ALLOW\_IPV4\_x\_PEERING}{NTP\_ALLOW\_IPV4\_x\_PEERING}{NTPALLOWIPV4xPEERING}
+
+  La configuration de cette variable est optionnelle.\\
+  Si vous indiquez \var{'yes'} la comparaison mutualisé avec les serveurs NTP et fli4l sera
+  permise pour le réseau IPv4 référencé.
+
+\config {NTP\_ALLOW\_IPV6\_N}{NTP\_ALLOW\_IPV6\_N}{NTPALLOWIPV6N}
+
+  Dans cette variable vous indiquez le nombre de réseaux IPv6 qui seront autorisés à accéder
+  au routeur via le protocole NTP.
+
+\config {NTP\_ALLOW\_IPV6\_x}{NTP\_ALLOW\_IPV6\_x}{NTPALLOWIPV6x}
+
+  Dans cette variable vous indiquez le réseau IPv6 qui aura accès au serveur NTP,
+  par exemple \var{IPV6\_NET\_1}.
+
+\config {NTP\_ALLOW\_IPV6\_x\_PEERING}{NTP\_ALLOW\_IPV6\_x\_PEERING}{NTPALLOWIPV6xPEERING}
+
+  La configuration de cette variable est optionnelle.\\
+  Si vous indiquez \var{'yes'} la comparaison mutualisé avec les serveurs NTP et fli4l sera
+  permise pour le réseau IPv6 référencé.
+
+\config {NTP\_CHECK\_STATUS}{NTP\_CHECK\_STATUS}{NTPCHECKSTATUS}
+
+  En placant cette variable sur \var{'yes'}, et si le paquetage \var{OPT\_HTTPD='yes'} est
+  activé les informations délivrées par la synchronisation de l'heure seront affichées dans
+  le WebGUI. En outre avec le paquetage \var{RRDTOOL\_NTP} un graphique actif sera généré,
+  pour les écarts de temps.
+
+\config {NTP\_SHOW\_STATUS\_VIA\_LED}{NTP\_SHOW\_STATUS\_VIA\_LED}{NTPSHOWSTATUSVIALED}
+
+  En placant cette variable sur \var{'yes'}, et si le paquetage "hwsupp" est activé le status
+  de la synchronisation NTP sera affiché par des LEDs commandées. L'affectation des LEDs sera
+  la suivante~:
+  \begin{itemize}
+  \item LED 1 clignote, tant que l'année n'est pas réglée correctement, ne peux pas
+		être autrement.
+  \item LED 2 éclairée, lorsque l'heure avec fli4l est synchrone et éteinte lorsque l'heure
+		n'est pas synchronisée, mais le démon NTP l'adaptera progressivement.
+  \item LED 3 éclairée quand l'horloge radio-pilotée fonctionne. Elle clignote lorsque
+		l'horloge radio-pilotée fourni une heure valide et la synchronisation avec un autre
+		serveur NTP peut être établie. Elle est exécutée si le serveur NTP n'a pas de source
+		de temps.
+  \end{itemize}
+
+\end{description}
+
+\marklabel{sec:ntpsupport}{
+\subsection{Aide}
+}
+Un aide pour ce programme sera assurée uniquement dans les \jump{url:ntpfli4lnews}{Newsgroups fli4l}.
+
+\marklabel{url:ntpfli4lnews}{
+Les newsgroups fli4l et sont règlement~: \altlink{http://www.fli4l.de/fr/aide/newsgroup-forum/}
+}
+

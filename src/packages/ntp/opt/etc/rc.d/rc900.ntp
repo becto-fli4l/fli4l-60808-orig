@@ -1,0 +1,175 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc900.ntp - create ntp configuration
+#
+# Creation: 10.03.2004 Claas Hilbrecht <babel@fli4l.de>
+# Last Update: $Id$
+#--------------------------------------------------------------------
+
+# $1 = network
+# $2 = netmask
+# $3 = allow peers? (yes/no)
+ntp_write_restrict_entry()
+{
+    case $3 in
+    yes) local peering="";;
+    no)  local peering=" nopeer";;
+    esac
+
+    echo "restrict $1 mask $2 nomodify notrap$peering"
+}
+
+if [ "$OPT_NTP" = "yes" ]
+then
+    begin_script ntp "starting ntp daemon..."
+
+    # for driftfile
+    mkdir -p /var/lib/persistent/ntp
+
+    # add ntp services to /etc/services.
+    # this is REQUIRED for ntpd to work!
+    echo "ntp 123/udp" >> /etc/services
+
+    for i in $(seq 1 $NTP_SERVER_N)
+    do
+        eval host=\$NTP_SERVER_${i}_HOST
+        eval type=\$NTP_SERVER_${i}_TYPE
+        eval burst=\$NTP_SERVER_${i}_BURST
+        eval iburst=\$NTP_SERVER_${i}_IBURST
+        eval prefer=\$NTP_SERVER_${i}_PREFER
+        eval minpoll=\$NTP_SERVER_${i}_MINPOLL
+        eval maxpoll=\$NTP_SERVER_${i}_MAXPOLL
+        eval version=\$NTP_SERVER_${i}_VERSION
+
+        : ${burst:=no}
+        : ${iburst:=no}
+        : ${prefer:=no}
+
+        entry="$type $host"
+        [ "$burst" = yes ] && entry="$entry burst"
+        [ "$iburst" = yes ] && entry="$entry iburst"
+        [ "$prefer" = yes ] && entry="$entry prefer"
+        [ -n "$minpoll" ] && entry="$entry minpoll $minpoll"
+        [ -n "$maxpoll" ] && entry="$entry maxpoll $maxpoll"
+        [ -n "$version" ] && entry="$entry version $version"
+        echo "$entry"
+    done > /etc/ntp.peers
+
+    if [ "$NTP_LOCAL_RTC" = yes ]
+    then
+        echo "server 127.127.1.0"
+        echo "fudge 127.127.1.0 stratum $NTP_LOCAL_RTC_STRATUM"
+    fi >> /etc/ntp.peers
+
+    if [ $NTP_REFCLOCK_TYPE != none ]
+    then
+        case $NTP_REFCLOCK_DEVICE in
+            ttyS*)
+                setserial /dev/$NTP_REFCLOCK_DEVICE low_latency
+                ;;
+        esac
+
+        case $NTP_REFCLOCK_TYPE in
+            mouseclock-nts)
+                ln -s /dev/$NTP_REFCLOCK_DEVICE /dev/refclock-0
+                echo "server 127.127.8.0 mode 14 iburst" > /etc/ntp.refclock
+                ;;
+            mouseclock-usb-ii)
+                ln -s /dev/$NTP_REFCLOCK_DEVICE /dev/refclock-0
+                echo "server 127.127.8.0 mode 19 iburst" > /etc/ntp.refclock
+                ;;
+            sure)
+                ln -s /dev/$NTP_REFCLOCK_DEVICE /dev/refclock-0
+                echo "server 127.127.8.0 mode 14 iburst" > /etc/ntp.refclock
+                ;;
+            hopf-seriell)
+                ln -s /dev/$NTP_REFCLOCK_DEVICE /dev/refclock-0
+                echo "server 127.127.8.0 mode 12 iburst" > /etc/ntp.refclock
+                ;;
+            neoclock4x)
+                ln -s /dev/$NTP_REFCLOCK_DEVICE /dev/neoclock4x-0
+                cat <<EOF>>/etc/ntp.refclock
+server 127.127.44.0 iburst
+# use CMOS clock to sync 1=enable 0=disable
+fudge 127.127.44.0 flag1 0
+# use CMOS clock even it wasn't synced before (dangerous!) 1=enable 0=disable
+fudge 127.127.44.0 flag2 0
+# 1=enable extensive logging
+fudge 127.127.44.0 flag4 1
+EOF
+                ;;
+            *)
+                ;;
+        esac
+    else
+        echo "#" > /etc/ntp.refclock
+    fi
+
+    if [ "$OPT_IPV4" = yes ]
+    then
+        cat >/etc/ntp.restrict <<EOF
+#
+# allow to ask for time but nothing else. send a KissOfDeath to clients
+# who abuse our service (see http://www.cis.udel.edu/~mills/ntp/html/rate.html)
+#
+restrict default kod limited nomodify notrap nopeer noquery
+restrict 127.0.0.1
+EOF
+
+        for i in $(seq 1 $NTP_ALLOW_IPV4_N)
+        do
+            eval translate_ip_net \$NTP_ALLOW_IPV4_${i} NTP_ALLOW_IPV4_${i} ||
+                continue
+            for addr in $res
+            do
+                net=$(netcalc network "$addr")
+                mask=$(netcalc netmask "$addr")
+                eval peering=\$NTP_ALLOW_IPV4_${i}_PEERING
+                ntp_write_restrict_entry "$net" "$mask" ${peering:-no}
+            done
+        done >>/etc/ntp.restrict
+    fi
+
+    if [ "$OPT_IPV6" = yes ]
+    then
+        cat >>/etc/ntp.restrict <<EOF
+
+#
+# allow to ask for time but nothing else. send a KissOfDeath to clients
+# who abuse our service (see http://www.cis.udel.edu/~mills/ntp/html/rate.html)
+#
+restrict -6 default kod limited nomodify notrap nopeer noquery
+restrict [::1]
+EOF
+
+        for i in $(seq 1 $NTP_ALLOW_IPV6_N)
+        do
+            eval translate_ip6_net \$NTP_ALLOW_IPV6_${i} NTP_ALLOW_IPV6_${i} ||
+                continue
+            for addr in $res
+            do
+                net=$(netcalc network "$addr")
+                mask=$(netcalc netmask "$addr")
+                eval peering=\$NTP_ALLOW_IPV6_${i}_PEERING
+                ntp_write_restrict_entry "[$net]" "$mask" ${peering:-no}
+            done
+        done >>/etc/ntp.restrict
+    fi
+
+    ntpd_options="-g"
+    case $OPT_IPV4:$OPT_IPV6 in
+        yes:no) ntpd_options="$ntpd_options -4";;
+        no:yes) ntpd_options="$ntpd_options -6";;
+    esac
+    ntpd $ntpd_options
+
+    if [ $NTP_CHECK_STATUS = yes ]
+    then
+        echo "ntp_firstsync=yes" > /var/run/ntp_firstsync
+        httpd-menu.sh add -p 300 status_ntp.cgi NTP '$_MT_stat' status
+
+        service-restart.sh 1 /usr/bin/check_ntp_status $NTP_REFCLOCK_TYPE $NTP_SHOW_STATUS_VIA_LED &
+    fi
+
+    end_script
+fi
