@@ -1,0 +1,225 @@
+#!/bin/sh
+##-----------------------------------------------------------------------------
+## /etc/rc.d/rc200.cpmvrmlog - copy or move files on shutdown
+##
+## Creation:     23.05.2004  lanspezi
+## Last Update:  $Id$
+## Changes for art=backup based on code from bgehl
+## Minor cleanups, support for timestamps and directories added by HBc 06-04-08
+##-----------------------------------------------------------------------------
+
+if [ "$OPT_CPMVRMLOG" = "yes" ]
+then
+
+    begin_script CPMVRMLOG "CPMVRMLOG creating config and files ..."
+
+    mkdir -p /var/run/cpmvrmlog
+
+    if [ "$CPMVRMLOG_VERBOSE" = "yes" ]
+    then
+        echo "yes" > /var/run/cpmvrmlog/verbose
+    fi 
+
+    if [ "$CPMVRMLOG_DEVRAM_CHECK" = "yes" ]
+    then
+        echo "$CPMVRMLOG_DEVRAM_FREE" > /var/run/cpmvrmlog/check.blks  
+        ### use function from opt_easycron ###
+        add_crontab_entry "*/2 * * * *" "/usr/local/bin/cpmvrmlog/check.sh"
+    fi
+
+
+    # create sh-files for all cpmvrmlog_n
+    idx=1
+    while [ "$idx" -le "$CPMVRMLOG_N" ]
+    do
+        eval art='$CPMVRMLOG_'$idx'_ACTION'    
+        eval quell='$CPMVRMLOG_'$idx'_SOURCE'
+        eval ziel='$CPMVRMLOG_'$idx'_DESTINATION'
+        eval custom='$CPMVRMLOG_'$idx'_CUSTOM'
+        eval maxcount='$CPMVRMLOG_'$idx'_MAXCOUNT'
+        if [ -z "$maxcount" ]
+        then
+            maxcount=0
+        fi
+        eval crontime='$CPMVRMLOG_'$idx'_CRONTIME'
+        shfilebase="${art}_$idx.sh"
+        shfile="/var/run/cpmvrmlog/$shfilebase"
+
+        {
+            echo "#!/bin/sh"
+            echo "## $shfile created by rc200.cpmvrmlog"
+            echo "##"
+            echo "## this file is executed by cron or by /usr/local/bin/cpmvrmlog.sh"
+            echo "##"
+            echo ""
+            echo "compress=\"$CPMVRMLOG_COMPRESS\""      
+            echo ""
+            echo "for srcfile in $quell"
+            echo "do"
+            echo "    if [ -f \$srcfile -o -d \$srcfile ]"
+            echo "    then"
+            
+            # "delete" shouldn't have a destination anyway, but you never know...
+            if [ "$art" != "delete" ]
+            then
+                echo "        if [ ! -d $ziel ]"
+                echo "        then" 
+                echo "            mkdir -p $ziel"
+                echo "        fi"
+            fi
+            
+            echo "        quellfile=\"\`basename \$srcfile\`\""
+
+            if [ "$art" != "backup" ]
+            then
+                echo "       tmpext=\"cpmvrm-\$\$\""
+            fi
+            echo ""
+            
+            if [ "$art" = "move" -o "$art" = "copy" ]
+            then
+                # zielfile evaluation must be made at script runtime on a file by file base
+                echo "        if [ -f \$srcfile  -a \"\$compress\" = \"yes\" ]"
+                echo "        then"
+                echo "            zielfile=\"$ziel/\$quellfile.gz\""
+                echo "        else"
+                echo "            zielfile=\"$ziel/\$quellfile\""
+                echo "        fi"
+                if [ $maxcount -gt 0 ]
+                then
+                    # check old files for maxcount
+                    echo ""
+                    echo "        if [ -f \$zielfile.$maxcount -o -d \$zielfile.$maxcount ]"
+                    echo "        then"
+                    echo "            rm -rf \$zielfile.$maxcount"
+                    echo "            /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - removed oldest version of \$zielfile\""
+                    echo "        fi"
+                    echo "        var_x=`/usr/bin/expr $maxcount - 1`"
+                    echo "        while [ \"\$var_x\" -gt \"0\" ]"
+                    echo "        do"
+                    echo "            if [ -f \$zielfile.\$var_x -o -d \$zielfile.\$var_x ]"
+                    echo "            then"
+                    echo "                mv \$zielfile.\$var_x \$zielfile.\`expr \$var_x + 1\`"
+                    echo "            fi"
+                    echo "            var_x=\`expr \$var_x - 1\`"
+                    echo "        done"
+                elif [ $maxcount -eq 0 ]
+                then
+                    # delete directory tree if srcfile is a directory
+                    # (single files will be overwritten automatically)
+                    echo "        if [ -d \$srcfile ]"
+                    echo "        then"
+                    echo "            rm -rf \$zielfile"
+                    echo "            /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - removed directory tree \$zielfile\""
+                    echo "        fi"
+                fi
+
+                if [ "$art" = "move" ]
+                then
+                    echo "        mv \$srcfile \$srcfile.\$tmpext"
+                    if [ "$custom" != "" ]
+                    then
+                        echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - execute $custom\""
+                        echo "        ${custom}"
+                    fi
+                    echo "        mv \$srcfile.\$tmpext $ziel/\$quellfile"
+                    echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - \$srcfile moved ...\""
+
+                else		# must be "copy"
+                    echo "        cp -a \$srcfile $ziel"
+                    echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - \$srcfile copied ...\""
+                    if [ "$custom" != "" ]
+                    then
+                        echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - execute $custom\""
+                        echo "        $custom"
+                    fi
+                fi
+
+                if [ "$CPMVRMLOG_COMPRESS" = "yes" ]
+                then
+                    echo "        gzip -f $ziel/\$quellfile"
+                fi
+                if [ $maxcount -gt 0 ]
+                then
+                    echo "        mv \$zielfile \$zielfile.1"
+                elif [ $maxcount -lt 0 ]
+                then
+                    echo "        mv \$zielfile \$zielfile.\`date +%F-%H:%M\`"
+                fi
+
+            fi
+      
+            if [ "$art" = "backup" ]
+            then
+                if [ $maxcount -eq 0 ]
+                then
+                    # delete directory tree if srcfile is a directory
+                    # (single files will be overwritten automatically)
+                    echo "        if [ -d \$srcfile ]"
+                    echo "        then"
+                    echo "            zielfile=\"$ziel/\$quellfile\""
+                    echo "            rm -rf \$zielfile"
+                    echo "            /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - removed directory tree \$zielfile\""
+                    echo "        fi"
+                fi
+                echo "        cp -a \$srcfile ${ziel}"
+                echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - \$srcfile backed up ...\""
+                if [ "$custom" != "" ]
+                then
+                    echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - execute $custom\""
+                    echo "        ${custom}"
+                fi
+            fi
+
+            if [ "$art" = "delete" ]
+            then
+                echo "        mv \$srcfile \$srcfile.\$tmpext"
+                if [ "$custom" != "" ]
+                then
+                    echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - execute $custom\""
+                    echo "        ${custom}"
+                fi
+		echo "        rm -rf \$srcfile.\$tmpext"
+		echo "        /usr/local/bin/cpmvrmlog/echo.sh \"cpmvrmlog\" \"$shfilebase - \$srcfile deleted ...\""
+            fi
+            echo "    fi"
+            echo "done"
+     
+        } > $shfile
+
+        # make file executable
+        /bin/chmod 700 $shfile
+
+        # add entry to crontable
+        ### use function from opt_easycron ###
+	if [ "$crontime" != "" ]
+	then
+            add_crontab_entry "$crontime" "$shfile"
+	fi
+
+        # restore files
+        if [ "$art" = "backup" ]
+        then
+            filename=`echo "$quell" | sed -e 's/.*\///'`
+  	    pathname=`echo "$quell" | sed -e 's/\/'$filename'$//'`
+            sourcelist="$ziel/$filename"
+            if [ ! -d "$pathname" ] 
+            then
+                mkdir -p $pathname
+            fi
+            for srcfile in $sourcelist
+            do
+                if [ -f "$srcfile" -o -d "$srcfile" ]
+                then
+                    cp -a $srcfile $pathname/
+                    /usr/local/bin/cpmvrmlog/echo.sh "cpmvrmlog" "$shfilebase - $srcfile restored ..."
+                fi
+            done
+        fi
+    
+        idx=`expr $idx + 1`
+    done
+
+    end_script
+fi
+

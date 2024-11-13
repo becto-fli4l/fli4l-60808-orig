@@ -1,0 +1,138 @@
+% Last Update: $Id$
+\section {OPT\_CPMVRMLOG - kopieren/verschieben/löschen/sichern von LOG-Dateien}
+
+OPT\_CPMVRMLOG erweitert fli4l um eine Funktion um z.b. LOG-Dateien zu kopieren,
+zu verschieben, zu löschen oder zu sichern.
+
+
+\textbf{Disclaimer: }\emph{Der Autor gibt weder eine Garantie auf die
+Funktionsfähigkeit des OPT\_\-CPMVRMLOG, noch haftet er für Schäden, z.B.
+Datenverlust, die durch den Einsatz von OPT\_\-CPMVRMLOG entstehen.}
+
+
+\marklabel{sec:konfigcpmvrmlog}{
+\subsection {Konfiguration des OPT\_CPMVRMLOG}
+}
+
+Die Konfiguration erfolgt, wie bei allen fli4l Opts, durch Anpassung der Datei
+\var{Pfad/fli4l-\version/$<$config$>$/cpmvrmlog.txt} an die eigenen Anforderungen.
+
+
+\begin{description}
+
+\config {OPT\_CPMVRMLOG}{OPT\_CPMVRMLOG}{OPTCPMVRMLOG}
+
+  Default: \var{OPT\_CPMVRMLOG='no'}
+
+  Die Einstellung \var{'no'} deaktiviert das OPT\_CPMVRMLOG vollständig. Es werden
+  keine Änderungen an dem fli4l Bootmedium bzw. dem Archiv \var{opt.img}
+  vorgenommen. Weiter überschreibt das OPT\_CPMVRMLOG grundsätzlich keine anderen
+  Teile der fli4l Installation.\\
+  Um OPT\_CPMVRMLOG zu aktivieren, ist die Variable \var{OPT\_CPMVRMLOG} auf 
+  \var{'yes'} zu setzen. Sollte das nötige Paket OPT\_EASYCRON nicht aktiv sein,
+  wird beim generieren der neuen fli4l-Dateien nach dem Aufruf von mkfli4l.sh
+  oder mkfli4l.bat eine Warnmeldung ausgegeben.
+
+  
+\config {CPMVRMLOG\_VERBOSE}{CPMVRMLOG\_VERBOSE}{CPMVRMLOGVERBOSE}
+
+  Default: \var{CPMVRMLOG\_VERBOSE='yes'}
+
+  \var{CPMVRMLOG\_VERBOSE} schaltet die Ausgabe von zusätzlichen Meldungen
+  an bzw. aus.\\
+
+\config {CPMVRMLOG\_COMPRESS}{CPMVRMLOG\_COMPRESS}{CPMVRMLOGCOMPRESS}
+
+  Default: \var{CPMVRMLOG\_COMPRESS='yes'}
+  
+  \var{CPMVRMLOG\_COMPRESS} aktiviert die Kompression der Dateien, die kopiert bzw. 
+  verschoben werden. Diese Einstellung wird bei 'backup' Operationen ignoriert.\\
+ 
+\config {CPMVRMLOG\_DEVRAM\_CHECK}{CPMVRMLOG\_DEVRAM\_CHECK}{CPMVRMLOGDEVRAMCHECK}
+
+  Default: \var{CPMVRMLOG\_DEVRAM\_CHECK='yes'}
+
+  \var{CPMVRMLOG\_DEVRAM\_CHECK} schaltet die regelmäßige Prüfung des freien Platzes
+  in der Ramdisk des rootfs an bzw. aus.\\
+  
+\config {CPMVRMLOG\_DEVRAM\_FREE}{CPMVRMLOG\_DEVRAM\_FREE}{CPMVRMLOGDEVRAMFREE}
+
+  Default: \var{CPMVRMLOG\_DEVRAM\_FREE='250'}
+
+  \var{CPMVRMLOG\_DEVRAM\_FREE} legt den minimalen Wert an freien Blöcken in der
+  Ramdisk fest. Sollte der Wert unterschritten werden, werden die Aktionen 'move'
+  oder 'remove' durchgeführt.\\
+
+\config {CPMVRMLOG\_N}{CPMVRMLOG\_N}{CPMVRMLOGN}
+
+  Default: \var{CPMVRMLOG\_N='1'}
+
+  \var{CPMVRMLOG\_N} legt die Anzahl der aktiven nachfolgenden Aktionsabschnitte fest.\\
+
+
+\config {CPMVRMLOG\_x\_ACTION}{CPMVRMLOG\_x\_ACTION}{CPMVRMLOGxACTION}
+
+  \var{CPMVRMLOG\_x\_ACTION} legt fest, ob kopiert (copy), gelöscht (delete). 
+  verschoben (move) oder gesichert (backup) werden soll.
+  Die mit der Aktion 'backup' gesicherten (kopierten) Dateien werden beim 
+  Systemstart wiederhergestellt. \var{CPMVRMLOG\_COMPRESS} und
+  \var{CPMVRMLOG\_MAXCOUNT} werden ignoriert.\\
+ 
+\config {CPMVRMLOG\_x\_SOURCE}{CPMVRMLOG\_x\_SOURCE}{CPMVRMLOGxSOURCE}
+
+  \var{CPMVRMLOG\_x\_SOURCE} ist der Name inclusive komplettem Pfad der
+  zu bearbeitenden Datei oder des Verzeichnisses. \\
+  
+\config {CPMVRMLOG\_x\_DESTINATION}{CPMVRMLOG\_x\_DESTINATION}{CPMVRMLOGxDESTINATION}
+
+  \var{CPMVRMLOG\_x\_DESTINATION} legt den Zielpfad fest (nur bei 'copy', 'move'
+  und 'backup'). Wenn \var{CPMVRMLOG\_x\_SOURCE} ein Verzeichnisname ist, wird 
+  hier das Verzeichnis angegeben, in welches das Quell-Verzeichnis kopiert oder 
+  verschoben werden soll.\\
+
+\config {CPMVRMLOG\_x\_CUSTOM}{CPMVRMLOG\_x\_CUSTOM}{CPMVRMLOGxCUSTOM}
+
+  über \var{CPMVRMLOG\_x\_CUSTOM} kann nach der ausgeführten Aktion ein 
+  zusätzliches Programm oder ein Befehl ausgeführt
+  werden. So ist es z.B. unbedingt nötig, per 'killall -HUP syslogd' dem syslogd
+  das Signal '-HUP' zu schicken, damit dieser nach einem 'delete' oder 'move' 
+  eine neue Logdatei anlegt und benutzt. Anstelle eines einzelnen Shell-Befehls 
+  kann auch eine durch ';' getrennte Befehlskette angegeben werden.\\
+
+\config {CPMVRMLOG\_x\_MAXCOUNT}{CPMVRMLOG\_x\_MAXCOUNT}{CPMVRMLOGxMAXCOUNT}
+
+  \var{CPMVRMLOG\_x\_MAXCOUNT} legt die maximale Anzahl der Archiv-Dateien 
+  fest. Wird ignoriert, wenn \var{CPMVRMLOG\_x\_ACTION} den Wert 'backup' 
+  oder 'delete' hat. Wenn diese Variable einen Wert größer 0 hat, wird den 
+  verarbeiteten Dateien oder Verzeichnissen ein numerischer Suffix angehängt.
+  Bei bereits vorhandenen Kopien wird der Suffix
+  um eins hochgezählt, die älteste Version wird (wenn der Wert von 
+  \var{CPMVRMLOG\_x\_MAXCOUNT} erreicht ist) gelöscht.\\
+  Wird ein ganzer Verzeichnisbaum kopiert oder verschoben, erhalten nur die 
+  Dateien und Verzeichnisse auf der obersten Ebene diesen Suffix.\\
+  Wenn für \var{CPMVRMLOG\_x\_MAXCOUNT} der Wert '-1' angegeben wird, erhält die
+  kopierte bzw. verschobene Datei einen Zeitstempel im Format yyyy-mm-dd-hh:mm 
+  angehängt. Diese Variante eignet sich besonders zum zeitlich unbeschränkten,
+  regelmäßigen Sichern von Logdateien. Der Administrator ist in diesem Fall 
+  selbst für die Überwachung des freien Platzes auf dem verwendeten Speichermedium 
+  (Festplatte, Speicherkarte, ...) verantwortlich.
+
+\config {CPMVRMLOG\_x\_CRONTIME}{CPMVRMLOG\_x\_CRONTIME}{CPMVRMLOGxCRONTIME}
+
+  \var{CPMVRMLOG\_x\_CRONTIME} legt in CRON-Syntax (siehe Paket EASYCRON) 
+  das Intervall fest, in dem die Aktion ausgeführt wird. Diese Variable kann 
+  bei der Aktion 'backup' leer bleiben; in diesem Fall werden die angegebenen 
+  Dateien nur beim Shutdown des Routers weggesichert.\\
+
+\end{description}
+  
+
+\subsection{Literatur}
+
+\marklabel{url:CPMVRMLOGhpauthor}{
+ Homepage des Authors:  \altlink{http://www.lan4me.de/}
+ }
+
+\marklabel{url:CPMVRMLOGfli4lnews}{
+ fli4l Newsgroups und ihre Spielregeln: \altlink{http://www.fli4l.de/hilfe/newsgruppen/}
+}
