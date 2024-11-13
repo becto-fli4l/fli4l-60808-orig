@@ -1,0 +1,21 @@
+# part of Package DYNDNS __FLI4LVER__, see documentation for licence
+# Provider afraid.org
+# Last change: $Id$
+update_method='http'
+
+default_update_host_n='1'
+default_update_host_1='http://freedns.afraid.org/dynamic/update.php?${dyndns_password}'
+
+afraid_protocol_check ()
+{
+    local file=$1
+    if grep -q '^ERROR:.*' $file; then
+        grep -q '^ERROR:.*Address.*has not changed' $file && return 0
+        return $EPROV_PERM
+    fi
+    grep -q "502 Bad Gateway" $file && return $EPROV_TMP
+    grep -q "^Updated.*$host.*to.*${dyndns_new_ipv4}" $file && return 0
+    return $EPROV_UNKNOWN
+}
+
+update_success='|afraid_protocol_check'

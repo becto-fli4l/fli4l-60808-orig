@@ -1,0 +1,45 @@
+# part of Package DYNDNS __FLI4LVER__, see documentation for licence
+# Provider nsupdate
+# Last change: $Id$
+
+update_method='nsupdate'
+
+default_update_host_n='0'
+# FQDN with optional port
+#update_host_1=''
+# URL
+#update_host_1_url=''
+
+#default_login_time=
+
+# what DNS records can be updated
+default_update_a='yes'
+default_update_a_ttl='60'
+default_update_aaaa='no'
+default_update_aaaa_ttl='300'
+default_update_wildcard='yes'
+default_update_wilrcard_ttl='60'
+default_update_mx='no'
+default_update_mx_ttl='300'
+default_detect_ext_ip='stun'
+
+# falscher NS -> "response to SOA query was unsuccessful"
+
+update_failure='.*response to SOA query was unsuccessful.*'
+update_success="|nsupdate_update_check"
+
+nsupdate_update_check ()
+{
+    local file=$1
+    res=`sed -ne '/\(^Answer:$\)/{N; s#^Answer:.*status: \+\(NOERROR\),.*#\1#p}' $file`
+    case $res in
+        NOERROR)
+            return 0
+        ;;
+        REFUSED)
+            return $EPROV_PERM
+        ;;
+    esac    
+
+    return $EPROV_UNKNOWN
+}

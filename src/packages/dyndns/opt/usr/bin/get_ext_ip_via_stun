@@ -1,0 +1,39 @@
+#!/bin/sh
+
+localaddr="--localaddr $1"
+
+# select a single random STUN server from our STUN server list
+# head -$(($RANDOM % $(wc -l < /etc/stun-servers.list ) +1 )) /etc/stun-servers.list  | tail -1
+
+get_ip()
+{
+    extip=
+    result=`stunclient $localaddr $host_and_port`
+    if echo $result | grep -qe "^Binding test: success"
+    then
+        extip=`echo $result | sed -e 's/.*[[:space:]]\+Mapped address:[[:space:]]\+\([^:]\+\):[[:digit:]]\+$/\1/'`    
+	echo $extip
+	return 0
+    fi
+    return 1
+}
+
+if [ -f /etc/stun-servers.list.random ]
+then
+    for dummy in `seq 1 10`
+    do
+        host_and_port=`head -$(($RANDOM % $(wc -l < /etc/stun-servers.list ) +1 )) /etc/stun-servers.list  | tail -1`
+        get_ip 
+        [ $? = 0 ] && break
+    done
+else
+    while read host_and_port
+    do
+        if echo $host_and_port | grep -qe "^#"
+        then
+            continue
+        fi
+	get_ip
+	[ $? = 0 ] && break
+     done < /etc/stun-servers.list
+fi

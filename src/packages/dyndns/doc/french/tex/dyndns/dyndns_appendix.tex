@@ -1,0 +1,219 @@
+% Do not remove the next line
+% Synchronized to r29817
+
+\section{DYNDNS}
+\subsection{Ajouter un nouveau fournisseur DynDNS}
+
+L'ajout de nouveaux fournisseurs est en fait très facilement, étant donné
+que les scripts de mise à jour des fournisseurs d'accés sont séparées. Pour
+installer un nouveau fournisseur vous devez modifier le fichier suivant~:
+
+\subsubsection{Fichier opt/etc/dyndns/provider.NAME}
+
+Ce fichier dans lequel est défini les paramètres, est utilisé pour la  mise à
+jour de fournisseur d'accès spécial. Le plus souvent, le fichier ce compose
+seulement d'une liste de variables, il s'agit d'un script-shell tout a fait
+normal, cependant, des opérations plus complexes peuvent être exécutées,
+mais cela est rarement nécessaire. Dans ce fichier, les variables suivants
+peuvent être utilisés~:
+
+\begin{description}
+\item[\$ip] Adresse-IP de l'interface qui doit recevoir un nom d'hôte
+  dynamique.
+\item[\$host] Nom d'hôte complet, que l'utilisateur a donné dans sa
+  configuration.
+\item[\$subdom] Composants du nom d'hôte avec le point suivant
+  (\textbf{name}.provider.dom)
+\item[\$domain] Les deux dernières composantes du nom d'hôte
+  (name.\textbf{provider.dom})
+\item[\$provider] Nom symbolique du fournisseur d'accès, que l'utilisateur a
+  spécifié dans son fichier de configuration.
+\item[\$user] Nom d'utilisateur pour ce service.
+\item[\$pass] Mot de passe pour ce service.
+\end{description}
+
+Ces variables peuvent être écrites entre deux accolades, pour une séparation plus
+claire par rapport au texte, c'est à dire \texttt{\$ip} cela devient \texttt{\$\{ip\}}.
+Lors de l'application de guillemets faite attention, de ne \emph{pas} utiliser
+les guillemets simples avec les extentions de variables ci-dessus, mais utilisez
+les guillemets doubles. En règle générale, on peut donc dire~: toujours utiliser
+des guillemets simples, mais dès que l'on utilise des extentions de variables,
+utiliser les guillemets doubles.
+
+Les variables suivantes doivent être définis dans ce fichier, de manière à ce
+que le paquet sache comment mettre à jour le fournisseur d'accès correspondant~:
+
+\begin{description}
+\item[provider\_update\_type] Cela détermine la nature de la demande, qui est
+    adressée au serveur du fournisseur d'accès. Pour le monent on prend en charge~:
+  \begin{description}
+  \item[http] On détermine l'appelle automatiquement une page Web, du fournisseur
+    d'accès et ainsi on récupére la mise à jour de DynDNS actualisé.
+  \item[netcat] On détermine un simple texte, qui est envoyé au serveur du
+    fournisseur d'accès pour déclencher la mise à jour.
+  \item[gnudip] Une simple authentification pour une mise à jour des procédures,
+    ce lequel est exécuté plus de deux demandes HTTP.
+  \end{description}
+\item[provider\_host] Nom de l'hôte du fournisseur d'accès, qui est contacté
+  pour la  mise à jour.
+\item[provider\_port] Port de l'hôte du fournisseur d'accès, qui est concerné.
+  Le port par défaut pour HTTP est 80.
+\end{description}
+  
+Selon le type de mise à jour d'autres variables doivent être indiquées~:
+
+\begin{description}
+\item[HTTP]
+
+\begin{description}
+\item[provider\_url] Ici on met URL relative (sans le nom d'hôte, mais avec
+  un / au début du Script du fournisseur d'accès. Pour les exemples voir
+  s'il vous plaît les fichiers des autres fournisseurs d'accès enregistrés.
+\item[provider\_auth] (optionnel) Les fournisseurs d'accès ont besoin pour
+  l'ouverture de la session une Authentication basic, le format est
+  \texttt{"{}USER:PASSWORD"{}}.
+\end{description}
+
+\item[Netcat]
+
+\begin{description}
+\item[provider\_data] On indique ici le texte qui sera envoyé au serveur du
+  fournisseur d'accès. On peut indiquer par ex. \texttt{provider.DYNEISFAIR}.
+\end{description}
+
+\item[GNUDip]
+
+\begin{description}
+\item[provider\_script] On indique ici le chemin d'accès au GNUDip script du
+  serveur, ce qui ressemble généralement à quelque chose comme ça
+  \texttt{'/cgi-bin/gdipupdt.cgi'}.
+\end{description}
+
+\end{description}
+\subsubsection{Fichier opt/dyndns.txt}
+
+Dans ce fichier une ou plusieurs lignes doivent être insérées pour le nouveau fournisseur
+d'accès. Le plus souvent une ligne suffit comme indiqué ci-dessous~:
+
+\begin{verbatim}
+  dyndns_%_provider   NAME   etc/dyndns/provider.NAME
+\end{verbatim}
+
+Si l'Authentication Basic est utilisé pour le fournisseur d'accès HTTP, on a
+encore besoin de l'outil base64~:
+
+\begin{verbatim}
+  dyndns_%_provider   NAME   files/usr/local/bin/base64
+\end{verbatim}
+
+Si d'autres outils sont demandés, s'il vous plaît envoyer moi plus tôt un Mail,
+pour que je puisse les examiner et voir si ils conviennent au paquetage OPT\_DYNDNS.
+
+\subsubsection{Fichier check/dyndns.exp}
+
+Vous devez indiquer dans ce fichier, à la ligne \texttt{DYNPROVIDER = } le nom du
+fournisseur d'accès, vous devez ajouter un trait vertical derrière des autres
+paramètre, de manière séparée le nouveau nom.
+
+\subsubsection{Fichier doc/$<$langue$>$/tex/dyndns/dyndns\_main.tex}
+
+Enregistrer un nouvelle section dans la documentation. Là encore, les
+fournisseurs d'accès sont trié par ordre alphabétique selon le nom abrégé,
+c'est celui-ci que les utilisateurs paramètre dans le fichier de Config. \\
+Un macro-tableau est présent au début de la documentation, qui est
+suffisament explicite.
+
+\subsection{Remerciment}
+
+Je tiens à remercier tout le monde qui a participés au lancement de ce
+paquet et une longue vie à ce paquet:
+
+Thomas Müller (\email{opt\_dyndns@s2h.cx}) il a fait un excellent travail,
+sans lui il n'était pas possible de proposé ce paquet dans la forme actuelle.
+
+Je voudrais remercier Marcel Döring (\email {m@rcel.to}) qui a longtemps
+maintenu ce paquet.
+
+Lors de l'élaboration du paquet de très nombreuses personnes m'ont aidé et
+ont trouvées des idées. Je tiens à remercier tous ces courageux volontaires.
+
+En outre, je remercie Frank Meyer et le reste de l'équipe-fli4l de leurs
+inlassable travail qui ont bricolage l'un des meilleurs routeur-disquette
+du monde (exusez c'est pas très sérieux ;-).
+
+En outre, je tiens à remercier les personnes suivantes, pour leurs conseils,
+les rapports d'erreur des nouveaux fournisseurs, etc, ont participé au paquet~:
+
+\begin{itemize}
+\item Paul Bischof pour le fournisseur AFRAID.
+\item Jens Fischer schrieb das Paket opt\_dtdns, welches mich erst auf die
+  Idee brachte, ein Paket für DynDNS.org zu schreiben.
+\item Till Jäger schrieb das Paket opt\_cjb, welches in in opt\_dyndns
+  übernommen habe.
+\item Tobias Gruetzmacher hat auf \altlink{http://portfolio16.de/index.de} Informationen zu
+  weiteren DynDNS-Anbietern zusammengetragen, die hier verwendet werden.
+\item Die Anbieter dynamischer DNS, die auf ihren Webseiten zum Teil sehr
+  gute, zum Teil weniger gute Beschreibungen des zu verwendenden Protokolls
+  veröffentlicht haben.
+\item Die Programmierer diverser Update-Programme für DynDNS Anbieter, aus
+  deren Code schamlos geklaut wurde. ;-)
+\item Heiko Ambos von dynaccess.de hat mich bei der Entwicklung der
+  Unterstützung für diesen Anbieter unterstützt.
+\item Dennis Neuhäuser, der die Idee hatte, die Antworten der Dienste per
+  Webserver verfügbar zu machen statt sie auf der Konsole auszugeben
+  und auch gleich eine erste Implementation dafür geschickt hat.
+\item Lars Winkler der freundlicherweise die Änderungen, um das Paket unter
+  2.0pre2 zum Laufen zu bringen zur Verfügung gestellt hat.
+\item Markus Kraft und Tobias Gruetzmacher haben die Grundlage für die
+  Anpassung an fli4l 2.0 gelegt.
+\item Diverse andere Leute haben mir ihre jeweilige Portierung auf fli4l 2.0
+  geschickt. Ich muss zu meiner Schande gestehen, dass ich mir die wenigsten
+  davon angesehen habe.
+\item Georg Bärwald für die Daten zu Selfhost.de
+\item Mark C. Storck für die Daten zu Storck.org
+\item Arne Biermann für den Hinweis auf den Anbieter hn.org
+\item Detlef Paschke für die Daten zu dyn.ee und dyndns.dk
+\item Martin Kisser für seine Idee zum Vermeiden von Updates, wenn die
+  IP sich nicht geändert hat.
+\item Björn Hoffmann für die Daten von DnsArt.com
+\item Christian Busch für die Daten von no-ip.com.
+\item Ralf Gill für das Update der Daten von selfhost.de.
+\item Michael (HeinB) für eine weitere Möglichkeit sich mit fli4l selbst
+  in den Fuss zu schiessen. ;-)
+\item Marcus Mönnig, dito.
+\end{itemize}
+
+\subsection{Licence}
+
+Copyright \copyright  2001-2002 Thomas Müller (\email{opt\_dyndns@s2h.cx}) \\
+Copyright \copyright  2002-2003 Tobias Gruetzmacher (\email{fli4l@portfolio16.de}) \\
+Copyright \copyright  2004-201x L'équipe fli4l (\email{team@fli4l.de}) \\
+
+Ce programme est un logiciel libre. Il est distribué selon les termes
+de la GNU License General Public comme prévu par la Free
+Software Foundation. Pour de plus amples informations sur la licence, reportez-vous
+s'il vous plaît à \altlink{http://www.gnu.org/licenses/gpl.txt}.
+
+Ce programme est distribué dans l'espoir qu'il sera utile, mais SANS AUCUNE
+GARANTIE~-. Sans même la garantie implicite de COMMERCIALISATION ou
+D'ADAPTATION À UN USAGE PARTICULIER Les détails peuvent être trouvés dans
+la GNU licence General Public.
+
+Vous devriez avoir reçu une copie de la licence GNU General Public avec ce
+programme. Sinon, écrivez à~:
+
+\begin{verbatim}
+    Free Software Foundation Inc.
+    59 Temple Place
+    Suite 330
+    Boston MA 02111-1307 USA.
+\end{verbatim}
+
+Le texte de la licence GNU General Public est également publié sur Internet
+\altlink{http://www.gnu.org/licenses/gpl.txt}. Une traduction non officielle en
+Allemand peut être trouvé ici \altlink{http://www.gnu.de/documents/gpl.de.html}
+et une traduction non officielle en Français ici \altlink{http://org.rodage.com//gpl-3.0.fr.html}
+Ces traductions sont cependant, les meilleures compréhensions de l'aide GPL,
+pour les droits juridiques vous devez utiliser la version anglaise.
+
+% vi: set ts=4 sw=4 tw=78:

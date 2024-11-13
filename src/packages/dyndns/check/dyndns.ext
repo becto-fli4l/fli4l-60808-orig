@@ -1,0 +1,162 @@
+﻿##-----------------------------------------------------------------------------
+## dyndns.ext - extended check of dyndns parameters                __FLI4LVER__
+##
+## Creation:     09.03.2008  frankr
+## Last Update:  $Id$
+##
+## Copyright (c) 2008      Frank Rudolph    <fli4l@fr-net.de>
+## Copyright (c) 2014-     babel (Claas Hilbrecht)
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if ( opt_dyndns && dyndns_save_output == "yes" )
+then
+        depends on httpd version 4.0
+
+        set files="status_dyndns"
+        if ( ! defined(http_gui_lang) || httpd_gui_lang == "auto" )
+        then
+                set gui_lang=locale
+        else
+                set gui_lang=httpd_gui_lang
+        fi
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+                split (files, files_tmp_%, ' ')
+                foreach file in files_tmp_%
+                do
+                        stat("opt/srv/www/lang/$file.$lang", langfile)
+                        if( langfile_res == "OK" )
+                        then
+                                add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+                                add_to_opt "srv/www/lang/$file.sed.$lang" "mode=444 flags=sh"
+                        else
+                warning "could not find 'srv/www/lang/$file.$lang', perhaps this file isn't translated yet. Falling back to English."
+                add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+                add_to_opt "srv/www/lang/$file.sed.en" "mode=444 flags=sh"
+                        fi
+                done
+        done
+        if (dyndns_no_frames)
+        then
+                add_to_opt "srv/www/css/status_dyndns_no_frames.css" "mode=444 flags=utxt name=srv/www/css/status_dyndns.css"
+        else
+                add_to_opt "srv/www/css/status_dyndns.css" "mode=444 flags=utxt"
+        fi
+fi
+
+if ( opt_dyndns )
+then
+    provides dyndns version 4.0.0
+
+    depends on curl version 4.0
+
+    if (!opt_curl)
+    then
+        error "OPT_DYNDNS depends on OPT_CURL. Please make sure that you download and extract the 'tools' package and set OPT_CURL='yes'"
+    fi
+
+    if (dyndns_n == 0)
+    then
+        error "OPT_DYNDNS='yes' requires at least one configured DynDNS provider, i.e. DYNDNS_N must be greater than zero!"
+    fi
+
+    foreach i in dyndns_n
+    do
+        set check_time=dyndns_%_check_time[i] ?: ""
+        if(check_time != "" && check_time != "ipup")
+        then
+            depends on cron version 4.0
+        fi
+
+        if (defined(dyndns_%_force_update_time[i]))
+        then
+             depends on cron version 4.0
+        fi
+
+        set uhn=dyndns_%_update_host_n[i]
+        foreach uh in uhn
+        do
+            set update_host=dyndns_%_update_host_%[i][uh]
+            set cafile=dyndns_%_update_host_%_ca[i][uh] ?: ""
+
+            if(update_host =~ "^https://.*")
+            then
+                if(cafile != "")
+                then
+                    stat("opt/usr/share/curl/$cafile", cafile)
+                    if(cafile_res == "OK")
+                    then
+                        error "dyndns: The filename $cafile is already used by a certificate file in opt/usr/share/curl, you need to choose another filename to use your own certificat file! If you want to use the standard ca-bundle.crt simply remove the config line DYNDNS_${i}_UPDATE_HOST_${uh}_CA from your dyndns.txt config file and the ca-bundle.crt is used as a default value."
+                    fi
+                    stat("$config_dir/etc/ssl/$cafile", cafile)
+                    if(cafile_res == "OK")
+                    then
+                        add_to_opt "etc/ssl/$cafile" "mode=644 flags=utxt"
+                    else
+                        if(cafile != "ca-bundle.crt")
+                    	then
+                            error "dyndns: missing certificate file $config_dir/etc/ssl/$cafile that is set with DYNDNS_${i}_UPDATE_HOST_${uh}_CA='$cafile'!"
+                       fi
+		    fi
+                fi
+ 
+            else
+                if(defined(cafile) && cafile != "")
+                then
+		    error "dyndns: Using a certificate file with DYNDNS_${i}_UPDATE_HOST_${uh}_CA='${cafile}' without a https update host is useless!"
+                fi
+            fi
+
+            if(update_host =~ "^(http|https)://.*")
+            then
+	        set dp=dyndns_%_provider[i]
+	        if(dp =~ "(NSUPDATE|NETCAT)")
+		then
+		    error "dyndns: Setting an URL with DYNDNS_${i}_UPDATE_HOST_${uh}='${update_host}' to use with DYNDNS_${i}_PROVIDER='${dp}' doesn't make sense, use a simple hostname without URL prefix for this dyndns provider!"
+		fi
+            fi
+        done
+
+        set detectextipv4=dyndns_%_detect_ext_ipv4[i] ?: ""
+        if (detectextipv4 == "stun" && (!defined(opt_stun) || opt_stun == "no"))
+        then
+            error "To use DYNDNS_${i}_DETECT_EXT_IPV4='${detectextipv4}' you have to set OPT_STUN='yes'!"
+        fi
+
+	set cn=dyndns_%_circuit_n[i]
+        if (cn == 0)
+        then
+	    set dyndns_hostname=dyndns_%_hostname[i]
+            error "You need to 'link' your dyndns host DYNDNS_${i}_HOSTNAME='${dyndns_hostname}' to a circuit by setting DYNDNS_${i}_CIRCUIT_N to a non-zero value and setting DYNDNS_${i}_CIRCUIT_x= to the circuit that should be used to update the IP address of this dyndns host. Otherwise, your dynamic host name will never be updated!"
+        fi
+	foreach c in cn
+	do
+	    set circ=dyndns_%_circuit_%[i][c]
+	    if (!(circ =~ "^((${circ_ipv4})|(${circ_ipv6}))$"))
+    	    then
+                error "There is no circuit that matches (name or tag) '${circ}' from DYNDNS_${i}_CIRCUIT_${c}!"
+            fi
+
+# Wie bekomme ich heraus welches CIRC_%_NAME benutzt wird?
+#            if (!defined(detectextipv4) || detectextipv4 == "" || detectextipv4 == "none")
+#            then
+#                foreach ci in circ_n
+#                do
+#                    set circ_type=circ_%_type[ci]
+#                    if(circ_type == "route")
+#                    then
+#                        warning "Using DYNDNS_${i}_DETECT_EXT_IPV4='${detectextipv4}' with CIRC_${ci}_TYPE='${circ_type}' is unreliable. We recommend to use another DYNDNS_${i}_DETECT_EXT_IPV4 setting with this kind of circuit."
+#                    fi
+#               done
+#            fi
+
+        done
+
+    done
+fi

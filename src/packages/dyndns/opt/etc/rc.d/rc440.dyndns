@@ -1,0 +1,174 @@
+#!/bin/sh
+#---------------------------------------------------------------------------
+# /etc/rc.d/rc540.dyndns - write config for dyndns
+# part of Package DYNDNS __FLI4LVER__, see documentation for licence
+#
+# Copyright (c) 2001-2002 - Thomas Mueller
+# Copyright (c) 2002-2003 - Tobias Gruetzmacher
+# Copyright (c) 2003-2016 - fli4l-Team <team@fli4l.de>
+#
+# Created by:  Thomas Mueller
+# Last change: $Id$
+#----------------------------------------------------------------------------
+
+case $OPT_DYNDNS in
+yes)
+    begin_script DYNDNS "Setting up dynamic hostname configuration(s) ..."
+
+    [ "$DYNDNS_DEBUG_PROVIDER" = yes ] && > /etc/dyndns/debug_provider
+    [ "$DYNDNS_LOOKUP_NAMES" = yes ]   && > /etc/dyndns/lookup_names
+
+    # create directory which contains dyndns host configurations
+    confdir=/etc/dyndns
+    mkdir -p $confdir/host.d
+
+    [ 0$DYNDNS_N -eq 0 ] || for idx in `seq 1 $DYNDNS_N`
+    do
+        # get config entries for provider idx
+        eval provider='$DYNDNS_'$idx'_PROVIDER'
+        eval login_username='$DYNDNS_'$idx'_LOGIN_USERNAME'
+        eval login_password='$DYNDNS_'$idx'_LOGIN_PASSWORD'
+        eval dyndns_username='$DYNDNS_'$idx'_USERNAME'
+        eval dyndns_password='$DYNDNS_'$idx'_PASSWORD'
+        eval hostname='$DYNDNS_'$idx'_HOSTNAME'
+        eval update_a='$DYNDNS_'$idx'_UPDATE_A'
+        eval update_a_ttl='$DYNDNS_'$idx'_UPDATE_A_TTL'
+        eval update_aaaa='$DYNDNS_'$idx'_UPDATE_AAAA'
+        eval update_aaaa_ttl='$DYNDNS_'$idx'_UPDATE_AAAA_TTL'
+        eval update_wildcard='$DYNDNS_'$idx'_UPDATE_WILDCARD'
+        eval update_wildcard_ttl='$DYNDNS_'$idx'_UPDATE_WILDCARD_TTL'
+        eval update_mx='$DYNDNS_'$idx'_UPDATE_MX'
+        eval update_mx_ttl='$DYNDNS_'$idx'_UPDATE_MX_TTL'
+        eval check_time='$DYNDNS_'$idx'_CHECK_TIME'
+        eval check_with='$DYNDNS_'$idx'_CHECK_WITH'
+        eval detect_ext_ipv4='$DYNDNS_'$idx'_DETECT_EXT_IPV4'
+        eval detect_ext_ipv6='$DYNDNS_'$idx'_DETECT_EXT_IPV6'
+        eval force_update_time='$DYNDNS_'$idx'_FORCE_UPDATE_TIME'
+
+        conffile=$confdir/host.d/$hostname.conf
+
+        # now get the defaults of the dyndns provider and set every
+        # empty option to the dyndns provider default
+        default_update_host_n=
+        default_update_a=
+        default_update_a_ttl=
+        default_update_aaaa=
+        default_update_aaaa_ttl=
+        default_update_wildcard=
+        default_update_wildcard_ttl=
+        default_update_mx=
+        default_update_mx_ttl=
+        default_detect_ext_ipv4=
+        default_detect_ext_ipv6=
+
+        . $confdir/provider.d/$provider
+
+        [ -z "$default_update_a" ] && default_update_a="yes"
+        [ -z "$default_update_a_ttl" ] && default_update_a_ttl=300
+        [ -z "$default_update_aaaa" ] && default_update_aaaa="no"
+        [ -z "$default_update_aaaa_ttl" ] && default_update_aaaa_ttl=300
+        [ -z "$default_update_wildcard" ] && default_update_wildcard="no"
+        [ -z "$default_update_wildcard_ttl" ] && default_update_wildcard_ttl=300
+        [ -z "$default_update_mx" ] && default_update_mx="no"
+        [ -z "$default_update_mx_ttl" ] && default_update_mx_ttl=300
+        [ -z "$default_detect_ext_ipv4" ] && default_detect_ext_ipv4="none"
+        [ -z "$default_detect_ext_ipv6" ] && default_detect_ext_ipv6=""
+
+        : ${update_a:=$default_update_a}
+        : ${update_a_ttl:=$default_update_a_ttl}
+        : ${update_aaaa:=$default_update_aaaa}
+        : ${update_aaaa_ttl:=$default_update_aaaa_ttl}
+        : ${update_wildcard:=$default_update_wildcard}
+        : ${update_wildcard_ttl:=$default_update_wildcard_ttl}
+        : ${update_mx:=$default_update_mx}
+        : ${update_mx_ttl:=$default_update_mx_ttl}
+        : ${detect_ext_ipv4:=$default_detect_ext_ipv4}
+        : ${detect_ext_ipv6:=$default_detect_ext_ipv6}
+
+        # sometime we need two username/password pair
+        # the first one (LOGIN_USERNAME and LOGIN_PASSWORD)
+        # is used for http_basic|digest|ntlm the second to
+        # to update the hostname. If LOGIN_USERNAME/PASSWORD
+        # is not set we simply use USERNAME and PASSWORD
+        : ${login_username:=$dyndns_username}
+        : ${login_password:=$dyndns_password}
+
+        # try to update dns on timely basis if update if not handled with ipup
+        : ${check_time:=ipup}
+        [ "$check_time" != "ipup" ] && add_crontab_entry "$check_time" "/usr/bin/dyndns-update -s update $hostname"
+
+        # if this a single number we assume this is the number of days to force a dns refresh.
+        # to avoid expiring such dns entrie we run a dns expire check once a day at 03:00 regardless
+        # any ip up/down events
+        if echo "$force_update_time" | grep -q "^[[:digit:]]\+$"
+        then
+            add_crontab_entry "3 * * * *" "/usr/bin/dyndns-update -s update -f $hostname"
+        elif [ -n "$force_update_time" ]
+        then
+            # anything other than a single number we assume this is a crontab entry
+            # in this case we force a dyndns update
+            add_crontab_entry "$force_update_time" "/usr/bin/dyndns-update -s update -f $hostname"
+        fi
+
+        cat > $conffile <<EOF
+provider="$provider"
+update_method="$update_method"
+login_username="$login_username"
+login_password="$login_password"
+dyndns_username="$dyndns_username"
+dyndns_password="$dyndns_password"
+hostname="$hostname"
+update_a="$update_a"
+update_a_ttl="$update_a_ttl"
+update_aaaa="$update_aaaa"
+update_aaaa_ttl="$update_aaaa_ttl"
+update_wildcard="$update_wildcard"
+update_wildcard_ttl="$update_wildcard_ttl"
+update_mx="$update_mx"
+update_mx_ttl="$update_mx_ttl"
+detect_ext_ipv4="$detect_ext_ipv4"
+detect_ext_ipv6="$detect_ext_ipv6"
+check_time="$check_time"
+check_with="$check_with"
+force_update_time="$force_update_time"
+EOF
+
+        eval jdx_n='$DYNDNS_'$idx'_UPDATE_HOST_N'
+        if [ 0$jdx_n -eq 0 ]
+        then
+            grep ^default_update_host $confdir/provider.d/$provider | sed -e 's/^default_//' >>$conffile
+        else
+            echo "update_host_n=$jdx_n">>$conffile
+            for jdx in `seq 1 $jdx_n`
+            do
+                eval host='$DYNDNS_'$idx'_UPDATE_HOST_'$jdx
+                echo "update_host_${jdx}=\"$host\"">>$conffile
+                eval ca_file='$DYNDNS_'$idx'_UPDATE_HOST_'$jdx'_CA'
+                echo "update_host_${jdx}_ca=\"$ca_file\"">>$conffile
+            done
+        fi
+
+        eval jdx_n='$DYNDNS_'$idx'_CIRCUIT_N'
+        echo "circuit_n=$jdx_n">>$conffile
+        for jdx in `seq 1 $jdx_n`
+        do
+            eval circ='$DYNDNS_'$idx'_CIRCUIT_'$jdx
+            echo "circuit_$jdx=\"$circ\"">>$conffile
+        done
+
+        chmod 600 $conffile
+    done
+
+    # Create directories for logging, history and registered IPs
+    mkdir -p /var/log/dyndns /var/log/dyndns/history /var/run/dyndns
+    chmod a+r /var/log/dyndns /var/log/dyndns/history
+
+    if [ "$OPT_HTTPD$DYNDNS_SAVE_OUTPUT" = 'yesyes' ]
+    then
+        httpd-menu.sh add -p 900 status_dyndns.cgi "DynDNS" '$_MT_stat' dyndns
+        [ "$DYNDNS_DEBUG_PROVIDER" = yes ] && httpd-menu.sh add -p 910 'status_dyndns.cgi?action=debug_provider' "DynDNS-Debug" Debug dyndns
+    fi
+
+    end_script
+;;
+esac

@@ -1,0 +1,74 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/ppp/ip-up.zdyndns - Update for DynDNS-Providers
+# part of Package DYNDNS __FLI4LVER__, see documentation for licence
+#
+# (c) copyright 2001-2002 Thomas Mueller
+# (c) copyright 2002-2004 Tobias Gruetzmacher
+#
+# Creation:    05.08.2002 tobig
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+update_hosts ()
+{
+    wait_time=2
+    wait_string=`seq 1 $wait_time`
+
+    dyn_lock=/var/run/dyndns/dyndns_ip-up.$$
+
+    circ=$1
+    shift
+
+    while [ "$1" ]
+    do
+        > ${dyn_lock}.$1
+        host=$1
+        shift
+        echo "Starting update for '$host' on circuit '$circ'"
+        nice -10 dyndns-update -s -l ${dyn_lock}.${host} update $host $circ &
+        for i in $wait_string
+        do
+            [ -f ${dyn_lock}.${host} ] || break
+            sleep 1
+        done
+    done
+    # lock-file was removed by dyndns-update.sh
+    #rm -f $dyn_lock
+}
+
+local hosts_that_needs_dyndns_update=
+local dyn_hostdir=/etc/dyndns/host.d
+for host in $dyn_hostdir/*.conf
+do
+    . $host
+    host=`basename $host|sed -e 's/\.conf$//'`
+    echo "Checking dyndns host '$host' for matching circuit '$circ_id'."
+    for idx in `seq 1 $circuit_n`
+    do
+        eval circ='$circuit_'$idx
+        dyndns_circ_ids=$(circuit_resolve $circ)
+        echo "The circuit '$circ' is mapped to the circuit IDs '$dyndns_circ_ids'."
+        found=
+        for c in $dyndns_circ_ids
+        do
+            if [ "$c" = "$circ_id" ]
+            then
+                echo "Found match for host '$host' with circuit ID '$circ_id', dyndns update will be executed soon."
+                hosts_that_needs_dyndns_update="$hosts_that_needs_dyndns_update $host"
+                found=1
+                break
+            fi
+        done
+        if [ -z "$found" ]
+        then
+            echo "The host '$host' doesn't belong to the circuit ID '$circ_id', no dyndns update required."
+        fi
+    done
+done
+
+if [ -n "$hosts_that_needs_dyndns_update" ]
+then
+    echo "Executing dyndns update for hosts: $hosts_that_needs_dyndns_update"
+    update_hosts $circ_id $hosts_that_needs_dyndns_update 2>&1 | logmsg ip-up440.dyndns &
+fi

@@ -1,0 +1,23 @@
+#
+# *_protocol_success=""
+# *_protocol_failure=""
+#
+
+#
+# DynDNS Protocol
+#
+dyndns_protocol_success="|dyndns_protocol_check"
+dyndns_protocol_failure="badauth\|!donator\|notfqdn\|nohost\|numhost\|abuse\|badagent"
+dyndns_protocol_check ()
+{
+    local file=$1
+    if [ "$ip" != 127.0.0.1 ]; then
+        grep -v 127.0.0.1 $file | grep -q -e ^good -e ^nochg && return 0
+    else
+        grep -q -e ^good -e ^nochg $file && return 0
+    fi
+    grep -q -e ^dnserr -e ^911 -e ^502 -e "Bad Gateway" $file && return $EPROV_TMP
+    grep -q -e "^\($dyndns_protocol_failure\)" $file && return $EPROV_PERM
+    return $EPROV_UNKNOWN
+}
+
