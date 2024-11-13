@@ -1,0 +1,30 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/link-down900.ppp
+# called whenever a PPP link part of a multilink bundle goes offline
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+circuit_lock $circ_id link-down900.ppp
+
+circuit_read_field $circ_id circ_type
+if [ "$circ_type" = "ppp" ]
+then
+    otherlinks=$(bundle_lookup_links "$BUNDLE" | grep -v "^$circ_id$")
+    if [ $circ_id = "$circ_master" -a -n "$otherlinks" ]
+    then
+        # If the link controlled by the multilink master is terminated and
+        # there are other links belonging to the bundle, the pppd daemon
+        # remains running in order to control the other links. In this case we
+        # have to hangup the circuit immediately, instead of waiting for the
+        # pppd to exit.
+        circ_force_hangup=true
+    fi
+
+    # restore circ_dev from circ_ppp_dev, see link-up100.ppp for details
+    circuit_read_field $circ_id circ_ppp_dev
+    circuit_write_field $circ_id circ_dev $circ_ppp_dev
+fi
+
+circuit_unlock $circ_id link-down900.ppp

@@ -1,0 +1,187 @@
+% Do not remove the next line
+% Synchronized to r29817
+
+\marklabel{sec:optppp}
+{
+\section {PPP - Connecter un ordinateur via le port série}
+}
+\configlabel{OPT\_PPP}{OPTPPP}
+
+    En mettant la variable \var{OPT\_\-PPP='yes'} sur yes, il sera
+    possible d'utiliser un PC via le port série pour se connecter au réseau local.
+    Ceci peut être utile pour intégrer dans le réseau par ex. un ordinateur
+    portable, qui n'a pas de carte réseau. Voici, une documentation sur
+    l'interface série pour PC-client
+
+\begin{description}
+\config{PPP\_DEV}{PPP\_DEV}{PPPDEV}
+
+        On indiquer ici, le port série de fli4l. Les valeurs suivantes
+        sont permises~:
+
+        \begin{tabular}[h]{l l}
+          'com1' &           Port-COM1 (en minuscules!) \\
+          'com2' &           Port-COM2 (en minuscules!) \\
+        \end{tabular}
+
+\config{PPP\_SPEED}{PPP\_SPEED}{PPPSPEED}
+
+        On indiquer ici la vitesse de transmission (bit/sec). 38400 est
+        supporté par les anciennes interfaces. Il peut y avoir éventuellement
+        des problèmes si l'on paramètre les taux trop élevés de 57600, voire 115200 bit/s.
+
+\begin{example}
+\begin{verbatim}
+    Exemple : PPP_SPEED='38400'
+\end{verbatim}
+\end{example}
+
+
+
+\configlabel{PPP\_IPADDR}{PPPIPADDR}
+\configlabel{PPP\_PEER}{PPPPEER}
+\configvar {PPP\_IPADDR PPP\_PEER}
+
+        On paramètre dans la variable \var{PPP\_\-IPADDR} l'adresse IP
+        du routeur fli4l pour la connextion au port-COM, par ex. '192.168.4.1'
+        et dans la variable \var{PPP\_\-PEER} l'adresse IP du PC-client,
+        par exemple '192.168.4.2'.
+
+
+\configlabel{PPP\_NETWORK}{PPPNETWORK}
+\configlabel{PPP\_NETMASK}{PPPNETMASK}
+\configvar {PPP\_NETWORK PPP\_NETMASK}
+
+        On paramètre dans la variable \var{PPP\_\-NETWORK} le réseau utilisé,
+        par ex. '198.168.4.0' et dans la variable \var{PPP\_\-NETMASK} Masque
+        de sous-réseau utilisé, par ex. '255.255.0.0'. Ces deux variables sont
+        complémentaires au paquetage 'samba\_lpd'.
+
+    \wichtig{Il faut faire attention aux points suivants~:}
+    \begin{enumerate}
+    \item  Les adresses IP ne doivent \textbf{pas} provenir de la plage
+      d'adresses du réseau Ethernet LAN, mais il faut avoir pour utiliser
+      la configuration Point-to-Point une plage d'adresses réseau propre~!
+
+
+     \item  2.	Pour que le PC-client puisse aussi avoir une connexion Internet
+       il faut ajouter, un mini-réseau du type PPP et aussi de masquer le LAN
+       (ou réseau local). Le réseau doit être également enregistré dans
+       \jump{MASQNETWORK}{\var{MASQ\_NETWORK}} (voir ce chapitre).
+
+
+     \item  3.	En plus, vous devez ajouter le PC-client dans la table d'hôte
+       pour le serveur DNS du routeur fli4l.
+    \end{enumerate}
+
+       La raison est la suivante~:
+
+       Si vous souhaitez utiliser le PC-client avec telnet ou ftp pour se connecter,
+       le démon du routeur fli4l fait du Reverse-DNS-Lookup, afin de d'établir
+       avec le client une connecter au réseau local. Si le PC-client ne figure pas
+       dans la table d'hôte, fli4l établit une connexion Internet, pour rechercher
+       le nom du client sur Iternet. C'est pour cela qu'il faut absolument écrire
+       le PC-client dans la table d'hôte du routeur fli4l.
+
+       Exemple de configuration avec liaison PPP sur le port série~:
+
+\begin{example}
+\begin{verbatim}
+        PPP_DEV='com1'
+        PPP_SPEED='38400'
+        PPP_IPADDR='192.168.4.1'
+        PPP_PEER='192.168.4.2'
+        PPP_NETWORK='192.168.4.0'
+        PPP_NETMASK='255.255.255.0'
+\end{verbatim}
+\end{example}
+
+           Et en plus dans le fichier config/base.txt~:
+
+\begin{example}
+\begin{verbatim}
+        MASQ_NETWORK='192.168.6.0/24 192.168.4.0/24'    # ancienne configuration
+        PF_POSTROUTING_1='192.168.6.0/24 192.168.4.0/24' MASQUERADE    # nouvelle configuration
+\end{verbatim}
+\end{example}
+
+           ci-dessus le premier numéro du réseau concerne le LAN-Ethernet,
+           et le second concerne le réseau PPP.
+
+           Si vous ne possédez pas de circuit ISDN sur le réseau 192.168.x.x
+           qui doit être accessible de l'interne (chez moi - à cause de mon entreprise
+           j'ai une telle connexion supplémentaire). En résumer, il faudrait que
+           les deux réseaux soient \jump{MASQNETWORK}{\var{MASQ\_NETWORK}} on peut
+           simplifier les règles pour le firewall (ou pare-feu).
+
+           Par conséquent, le mieux~:
+
+\begin{example}
+\begin{verbatim}
+        MASQ_NETWORK='192.168.0.0/16'    # ancienne configuration
+        PF_POSTROUTING_1='192.168.0.0/16' MASQUERADE    # nouvelle configuration
+\end{verbatim}
+\end{example}
+
+           C'est-à-dire~: "Masquer tout ce qui concerne et qui commence par 192.168".
+
+
+           Et enfin il faut toujours configurer le DNS, par exemple~:
+
+\begin{example}
+\begin{verbatim}
+        HOST_5='192.168.4.2 serial-pc'
+\end{verbatim}
+\end{example}
+
+           Ne pas oublier d'incrémenter la variable \jump{HOSTN}{\var{HOST\_\-N}}~!
+
+           Si le PC-client est un ordinateur Windows, vous devez configurer la carte
+           d'accès distant pour une connexion PPP, pour pouvoir accéder au routeur fli4l.
+
+           Lorsque vous utilisez un ordinateur sous Linux, le mieux est de créer un script
+           shell qui sera installé sur le PC-client (par exemple /usr/local/bin/ppp-on)~:
+\begin{example}
+\begin{verbatim}
+    #! /bin/sh
+    dev='/dev/ttyS0'                    # COM1, für COM2: ttyS1
+    speed='38400'                       # Speed
+    options='defaultroute crtscts'      # Options
+    myip='192.168.4.2'                  # IP-Adresse Notebook
+    fli4lip='192.168.4.1'               # IP-Adresse fli4l-Router
+    pppd $dev $speed $options $myip:$fli4lip &
+\end{verbatim}
+\end{example}
+
+        Si vous avez des problèmes avec le démon pppd
+
+
+        L'ordinateurs-fli4l doit également être enregistré dans le serveur de DNS
+        sur le PC-client, si on souhaite se connecter à Internet. Il doit être
+        enregistré dans le fichier /etc/resolv.conf du PC-client, entrer les deux
+        lignes suivantes~: le Nom de domaine et adresse IP Ethernet du routeur fli4l.
+
+        Exemple~:
+
+\begin{example}
+\begin{verbatim}
+    search domain.de
+    nameserver 192.168.1.4
+\end{verbatim}
+\end{example}
+
+        Les valeurs correspondantes aux "Domain.de" et "192.168.1.4" sont à remplacer
+        par vos paramètres. Important~: L'adresse IP doit être celle de la carte Ethernet
+        du routeur-fli4l!
+
+
+        La liaison série se fait avec un \jump{NULLMODEMKABEL}{cable-Nullmodem}. Des
+        informations à ce sujet sont dans l'annexe de la documentation Base.
+
+        Walter Oliver a rédigé un Howto (ou un guide), pour configurer le pc-client
+        Windows avec le protocole PPP qui peut être lu ici~:
+
+            \altlink{http://www.fli4l.de/hilfe/howtos/basteleien/opt-ppp-howto/}
+
+
+\end{description}

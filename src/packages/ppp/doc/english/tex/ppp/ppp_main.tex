@@ -1,0 +1,169 @@
+% Synchronized to r29817
+\marklabel{sec:optppp}
+{
+\section {PPP - Connection Of Computers Via Serial Interface}
+}
+\configlabel{OPT\_PPP}{OPTPPP}
+
+    With \var{OPT\_\-PPP='yes'} a computer can be connected via its serial 
+    interface. This may be useful i.e. for connecting computers to a network 
+    that does not have a network interface card. The computer connected to the serial
+    interface is called client PC below.
+
+\begin{description}
+\config{PPP\_DEV}{PPP\_DEV}{PPPDEV}
+
+        Specify fli4l's serial interface the client PC is connected to. Possible 
+        values are:
+
+        \begin{tabular}[h]{l l}
+          'com1' &           COM1 port (lower cases only!) \\
+          'com2' &           COM2 port (lower cases only!) \\
+        \end{tabular}
+
+\config{PPP\_SPEED}{PPP\_SPEED}{PPPSPEED}
+
+        Set transfer rate here (bit/sec). 38400 is supported by older interfaces too. 
+        Problems may occur when using rates above this.
+
+\begin{example}
+\begin{verbatim}
+    Example: PPP_SPEED='38400'            
+\end{verbatim}
+\end{example}
+
+
+
+\configlabel{PPP\_IPADDR}{PPPIPADDR}
+\configlabel{PPP\_PEER}{PPPPEER}
+\configvar {PPP\_IPADDR PPP\_PEER}
+
+        \var{PPP\_\-IPADDR} holds fli4l's  IP address on the COM port, i.e. '192.168.4.1'. 
+        In variable \var{PPP\_\-PEER} the IP address of the client PC is set, i.e. '192.168.4.2'.
+
+        
+\configlabel{PPP\_NETWORK}{PPPNETWORK}
+\configlabel{PPP\_NETMASK}{PPPNETMASK}
+\configvar {PPP\_NETWORK PPP\_NETMASK}        
+        
+        \var{PPP\_\-NETWORK} holds the network used and variable \var{PPP\_\-NETMASK} 
+        the netmask. These two variables are used by the extra package 'samba\_lpd'.
+
+    \wichtig{Consider the following:}
+    \begin{enumerate}
+    \item Those IP addresses may \textbf{not} originate from the network address range of the 
+      ethernet LANs. Point-To-Point-Configuration must use a separate network address range!
+
+    
+     \item  For the Client PC's connection to the Internet this mini-PPP-network has to be 
+       masked in the same way as the LAN. The net has to be entered additionally in 
+       \jump{MASQNETWORK}{\var{MASQ\_NETWORK}} (see next chapter) as well.
+
+    
+     \item  The client PC should be added to the host table of the DNS server.
+    \end{enumerate}
+
+       Causes:
+
+       If telnet or ftp should be used from the client PC to the fli4l router 
+       the daemons concerned on fli4l do a reverse DNS lookup to resolve the 
+       client PC. If it is not found in the host table a connection to the Internet 
+       will be established to do this - which is of course useless. To avoid
+       this enter the client PC in the host table.
+
+       Example for PPP Configuration over the serial interface:
+
+\begin{example}
+\begin{verbatim}
+        PPP_DEV='com1'
+        PPP_SPEED='38400'
+        PPP_IPADDR='192.168.4.1'
+        PPP_PEER='192.168.4.2'
+        PPP_NETWORK='192.168.4.0'
+        PPP_NETMASK='255.255.255.0'
+\end{verbatim}
+\end{example}
+
+           and further on in config/base.txt:
+
+\begin{example}
+\begin{verbatim}
+        MASQ_NETWORK='192.168.6.0/24 192.168.4.0/24'
+\end{verbatim}
+\end{example}
+           
+           The first network number is the one of the ethernet LAN and the 
+           second the one of the PPP network.
+           
+           As long as there is no other net in the 192.168. range in use 
+           both nets can be joined in \jump{MASQNETWORK}{\var{MASQ\_NETWORK}}. 
+           This simplifies configuring firewall rules.
+
+           In this case use:
+
+\begin{example}
+\begin{verbatim}
+        MASQ_NETWORK='192.168.0.0/16'
+\end{verbatim}
+\end{example}
+
+           this masks every net starting with 192.168.
+
+
+           Last thing is to adapt DNS Configuration. Example:
+
+\begin{example}
+\begin{verbatim}
+        HOST_5='192.168.4.2 serial-pc'
+\end{verbatim}
+\end{example}
+
+           Do not forget to increment \jump{HOSTN}{\var{HOST\_\-N}}!
+           
+           If the client PC is running Windows you have to configure 
+           the dial-up adapter for a PPP connection to the fli4l router.
+           
+           If a linux client is used create a shell script on the client (i.e.
+           /usr/local/bin/ppp-on):
+\begin{example}
+\begin{verbatim}
+    #! /bin/sh
+    dev='/dev/ttyS0'                    # COM1, for COM2: ttyS1
+    speed='38400'                       # speed
+    options='defaultroute crtscts'      # options
+    myip='192.168.4.2'                  # IP address client
+    fli4lip='192.168.4.1'               # IP address fli4l router
+    pppd $dev $speed $options $myip:$fli4lip &
+\end{verbatim}
+\end{example}
+
+        In case of problems: man pppd
+
+        
+        The fli4l router has to be used as the DNS server on the client 
+        if a connection to the Internet is desired. Add two lines to /etc/resolv.conf 
+        on the client: the domain used and the ethernet IP address of the fli4l router 
+        as name server.
+
+        Example:
+
+\begin{example}
+\begin{verbatim}
+    search domain.de
+    nameserver 192.168.1.4
+\end{verbatim}
+\end{example}
+        
+        ``domain.de'' res. ``192.168.1.4'' have to be changed to your needs. 
+        Important: The IP address has to be the one of fli4l's ethernet card!
+
+        
+        A so called \jump{NULLMODEMKABEL}{null modem cable} is used as the physical connection. 
+        See appendix for package base for pin wirings.
+        
+        A (german) Howto for connecting a Windows client with serial PPP can be found at:
+        
+            \altlink{http://www.fli4l.de/hilfe/howtos/basteleien/opt-ppp-howto/}
+
+
+\end{description}

@@ -1,0 +1,24 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/link-up100.ppp
+# corrects the PPP device used when a PPP link part of a multilink bundle
+# goes online
+#
+# Last Update:     $Id$
+#----------------------------------------------------------------------------
+
+circuit_lock $circ_id link-up100.ppp
+
+circuit_read_field $circ_id circ_type
+if [ "$circ_type" = "ppp" ]
+then
+    # update circ_dev; a PPP link circuit has a separate PPP interface, but
+    # if it ends in being part of a bundle, it's interface is eventually the
+    # same as the interface of the bundle circuit, so let's update circ_dev
+    # accordingly
+    circuit_read_field $circ_id circ_dev
+    circuit_write_field $circ_id circ_ppp_dev $circ_dev
+    circuit_write_field $circ_id circ_dev $interface
+fi
+
+circuit_unlock $circ_id link-up100.ppp

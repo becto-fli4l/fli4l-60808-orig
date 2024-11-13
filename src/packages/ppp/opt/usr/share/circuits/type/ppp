@@ -1,0 +1,707 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp - PPP circuits (client and server)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# provides ppp_filter_get()
+. /etc/rc.d/ppp-filter-helper
+
+ppp_peers_dir=/etc/ppp/peers
+
+# PPP parameters, not configurable
+PPP_DEFAULT_MRU=1500        # see RFC 1661
+PPP_MAX_MRRU=16384          # maximum MRRU value as supported by Cisco routers
+                            # keep it synchronized with PPP_MRRU in circuits.exp
+PPP_MULTILINK_HDRLEN=4      # size of multilink header, see RFC 1990
+                            # (we don't use the 2-byte short sequence format)
+PPP_LCP_ECHO_INTERVAL=5     # default LCP echo interval if no data is received
+PPP_LCP_ECHO_MAX_FAILURES=3 # number of LCP echo attempts before giving up
+
+# $1 = variable
+# $2 = string to write if ${$1} is true;
+#      if empty, $1 is written if ${$1} is true
+# $3 = string to write if ${$1} is false;
+#      if empty, nothing is written if ${$1} is false
+ppp_bool_entry()
+{
+    eval local var=\$$1
+    if [ "$var" = yes ]
+    then
+        [ -n "$2" ] && echo "$2" || echo "$1"
+    else
+        [ -n "$3" ] && echo "$3"
+    fi
+}
+
+# $1 = variable
+# $2 = string to write if ${$1} is false;
+#      if empty, no$1 is written if ${$1} is false
+ppp_bool_noentry()
+{
+    eval local var=\$$1
+    if [ "$var" != yes ]
+    then
+        [ -n "$2" ] && echo "$2" || echo "no$1"
+    fi
+}
+
+# $1 = variable
+# $2 = name of option to use if ${$1} is not empty;
+#      if empty, $1 is used
+ppp_entry()
+{
+    eval local var=\$$1
+    if [ -n "$var" ]
+    then
+        [ -n "$2" ] && echo "$2 \"$var\"" || echo "$1 \"$var\""
+    fi
+}
+
+# creates local endpoing discriminator of type "local"
+# $1 = PPP service to use
+ppp_make_epdisc()
+{
+    local name="$1" letter=
+    echo -n "local"
+    while [ -n "$name" ]
+    do
+        letter=${name:0:1}
+        name=${name:1}
+        printf ":%x" "'$letter"
+    done
+}
+
+# use with circuit_clone() for PPP server circuits
+ppp_server_clone_adaptor()
+{
+    circ_ppp_type=${circ_ppp_type}-instance
+}
+
+#----------------------------------------------------------------------------
+# Computes the MRRU for a bundle.
+#
+# $1 = bundle identifier
+# output = MRRU or zero if no links have been registered for this bundle.
+#----------------------------------------------------------------------------
+ppp_compute_mrru()
+{
+    local links=$(circuit_get_bundle_links "$1") link circ_ppp_mru mrru=0
+    for link in $links
+    do
+        circuit_read_field $link circ_ppp_mru
+        mrru=$((mrru+circ_ppp_mru-PPP_MULTILINK_HDRLEN))
+    done
+
+    if [ $mrru -gt $PPP_MAX_MRRU ]
+    then
+        mrru=$PPP_MAX_MRRU
+    elif [ $mrru -lt 0 ]
+    then
+        mrru=0
+    fi
+
+    echo $mrru
+}
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+ppp_circuit_add()
+{
+    # PPP uses a brand new interface for each circuit (at least potentially,
+    # with the exception of links to be attached to a multilink bundle)
+    circ_newif=yes
+    # a hyphen is used to separate prefix from suffix; this is only important
+    # if circ_multi=yes
+    circ_multi_ifsuffix="-"
+
+    # heuristic to determine whether a circuit is a server circuit
+    case $circ_ppp_type in
+    *-server)
+        circ_server=yes
+        # all PPP server circuits are potentially multi-instance circuits as
+        # they can become part of a multilink bundle, and such a bundle needs
+        # to be cloned together with its link because one does not know whether
+        # an incoming connection shares an already existing bundle or not
+        circ_multi=yes
+        ;;
+    esac
+
+    # allocate device
+    local ppp_unit=${circ_id#$circuit_prefix}
+    case "$circ_bundle" in
+    '')
+        case "$circ_origin" in
+        '')
+            # not a clone
+            circ_dev=ppp${ppp_unit}
+            ;;
+        *)
+            # determine PPP device prefix from the origin
+            circ_dev=$(circuit_get_interface "{$circ_origin}")
+            if [ -z "$circ_dev" ]
+            then
+                eval $2="\"Cannot determine interface for PPP circuit '$circ_origin'\""
+                return 1
+            fi
+            circuit_allocate_device ${circ_dev}${circ_multi_ifsuffix} circ_dev 1
+            ;;
+        esac
+        circ_alias=$circ_dev
+        ;;
+
+    *)
+        # determine PPP device from the bundle
+        circ_dev=$(circuit_get_interface "{$circ_bundle}")
+        if [ -z "$circ_dev" ]
+        then
+            eval $2="\"Cannot determine interface for PPP multilink circuit '$circ_bundle'\""
+            return 1
+        fi
+
+        circuit_allocate_device ${circ_dev}: circ_alias 1
+    esac
+
+    # initialize peer file variable
+    mkdir -p $ppp_peers_dir
+    local ppp_peer_file=$ppp_peers_dir/circuit.$circ_id.manual
+
+    # the name of this PPP instance, used for authentication
+    if [ -n "$circ_origin" ]
+    then
+        local circ_ppp_name=$(hostname)-$circ_origin
+    else
+        local circ_ppp_name=$(hostname)-$circ_id
+    fi
+
+    # handle basic PPP configuration which is not overridable by type-specific
+    # PPP circuit setup functions
+    case "$circ_bundle" in
+    '')
+        # by default, clamp MSS to Path MTU
+        local circ_ppp_nf_mss=${circ_ppp_nf_mss:-PMTU}
+        # don't authenticate peer by default
+        local circ_ppp_peer_auth=${circ_ppp_peer_auth:-no}
+        # compression is not activated for neither direction, as
+        # packet compression leads to unwanted delays when packets are missing
+        # or received in wrong order -- enable compression if your underlying
+        # link is reliable
+        local circ_ppp_vj=${circ_ppp_vj:-no}
+        local circ_ppp_vjccomp=${circ_ppp_vjccomp:-no}
+        local circ_ppp_comp_bsdcomp=${circ_ppp_comp_bsdcomp:-no}
+        local circ_ppp_comp_bsdcomp_level=${circ_ppp_comp_bsdcomp_level:-12}
+        local circ_ppp_comp_deflate=${circ_ppp_comp_deflate:-no}
+        local circ_ppp_comp_deflate_level=${circ_ppp_comp_deflate_level:-12}
+        local circ_ppp_comp_lzscomp=${circ_ppp_comp_lzscomp:-no}
+        local circ_ppp_comp_lzscomp_nhist=${circ_ppp_comp_lzscomp_nhist:-1}
+        local circ_ppp_comp_mppe=${circ_ppp_comp_mppe:-no}
+        local circ_ppp_comp_mppe_key_len=${circ_ppp_comp_mppe_key_len:-128}
+        local circ_ppp_decomp_bsdcomp=${circ_ppp_decomp_bsdcomp:-no}
+        local circ_ppp_decomp_bsdcomp_level=${circ_ppp_decomp_bsdcomp_level:-12}
+        local circ_ppp_decomp_deflate=${circ_ppp_decomp_deflate:-no}
+        local circ_ppp_decomp_deflate_level=${circ_ppp_decomp_deflate_level:-12}
+        local circ_ppp_decomp_lzscomp=${circ_ppp_decomp_lzscomp:-no}
+        local circ_ppp_decomp_lzscomp_nhist=${circ_ppp_decomp_lzscomp_nhist:-1}
+
+        case $circ_debug in
+        0) local ppp_debug=no ;;
+        *) local ppp_debug=yes ;;
+        esac
+
+        local ppp_comp=0
+
+        # handle BSDComp
+        local bsdcomp=
+        case $circ_ppp_decomp_bsdcomp in
+        yes)
+            do_modprobe bsd_comp
+            bsdcomp="bsdcomp $circ_ppp_decomp_bsdcomp_level"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        no)
+            bsdcomp="bsdcomp 0"
+            ;;
+        esac
+        case $circ_ppp_comp_bsdcomp in
+        yes)
+            do_modprobe bsd_comp
+            bsdcomp="$bsdcomp,$circ_ppp_comp_bsdcomp_level"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        no)
+            bsdcomp="$bsdcomp,0"
+            ;;
+        esac
+
+        # handle Deflate
+        local deflate=
+        case $circ_ppp_decomp_deflate in
+        yes)
+            do_modprobe ppp_deflate
+            deflate="deflate $circ_ppp_decomp_deflate_level"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        no)
+            deflate="deflate 0"
+            ;;
+        esac
+        case $circ_ppp_comp_deflate in
+        yes)
+            do_modprobe ppp_deflate
+            deflate="$deflate,$circ_ppp_comp_deflate_level"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        no)
+            deflate="$deflate,0"
+            ;;
+        esac
+
+        # handle Stac/HiFn LZS
+        local lzscomp=
+        case $circ_ppp_decomp_lzscomp:$circ_ppp_comp_lzscomp in
+        yes:yes)
+            lzscomp="lzs $circ_ppp_decomp_lzscomp_nhist:3,$circ_ppp_comp_lzscomp_nhist:3"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        yes:no)
+            lzscomp="lzs $circ_ppp_decomp_lzscomp_nhist:3,-1"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        no:yes)
+            lzscomp="lzs -1,$circ_ppp_comp_lzscomp_nhist:3"
+            ppp_comp=$((ppp_comp+1))
+            ;;
+        *)
+            lzscomp="nolzs"
+            ;;
+        esac
+
+        case $circ_ppp_decomp_lzscomp:$circ_ppp_comp_lzscomp in
+        yes:*|*:yes)
+            do_modprobe lzs_comp comp=$PPP_COMP_LZSCOMP_LEVEL
+            ;;
+        esac
+
+        # handle MPPE
+        local mppe=
+        case $circ_ppp_comp_mppe in
+        yes)
+            do_modprobe arc4
+            do_modprobe sha1
+            do_modprobe ecb
+            do_modprobe ppp_mppe
+            ppp_comp=$((ppp_comp+1))
+
+            case $circ_ppp_comp_mppe_key_len in
+            128)
+                mppe="require-mppe-128"
+                ;;
+            40)
+                mppe="require-mppe-40"
+                ;;
+            *)
+                mppe="require-mppe"
+                ;;
+            esac
+            ;;
+        *)
+            mppe="nomppe"
+            ;;
+        esac
+
+        # MPPE requires MS-CHAP or MS-CHAPv2; however, don't use MS-CHAP
+        # (*not* MS-CHAPv2) due to its security weaknesses
+
+        # deactivate CCP if no compression has been activated at all
+        local ccp=
+        case $ppp_comp in
+        0)
+            ccp="no"
+            ;;
+        *)
+            ccp="yes"
+            ;;
+        esac
+
+        # make sure that
+        #
+        # (1) clients can distinguish links to different server-side PPP bundles
+        # by different 'endpoint' values which are set to <hostname>-<bundle-id>
+        # [note that we prefix the endpoint name with <hostname> because this
+        # name goes to the server during authentication (at least if using CHAP
+        # or EAP), so the endpoint name should be sufficiently unique]
+        #
+        # (2) servers can distinguish links from different client-side PPP
+        # bundles by different 'bundle' values which are set to the identifier
+        # of the corresponding bundle circuit [note that this bundle name never
+        # goes over the wire and is local to the fli4l, so it need only be
+        # unique on the fli4l]
+        local ppp_endpoint=$(ppp_make_epdisc "$circ_ppp_name")
+        if [ -n "$circ_origin" ]
+        then
+            local ppp_bundle=$circ_origin
+        else
+            local ppp_bundle=$circ_id
+        fi
+
+        # write settings to peer file
+        cat <<EOF > $ppp_peer_file
+$(ppp_entry ppp_unit unit)
+$(ppp_entry circ_dev ifname)
+nodetach
+noipdefault
+hide-password
+ktune
+maxfail 0
+nodefaultroute
+nolog
+$(ppp_entry circ_ppp_name name)
+$(ppp_entry ppp_bundle bundle)
+$(ppp_entry ppp_endpoint endpoint)
+$(ppp_bool_entry circ_usepeerdns usepeerdns)
+$(ppp_bool_entry ppp_debug debug)
+$(ppp_entry circ_id ipparam)
+$(ppp_entry ip_down_timeout child-timeout)
+$(ppp_entry circ_ppp_dns1 ms-dns)
+$(ppp_entry circ_ppp_dns2 ms-dns)
+$(ppp_entry circ_ppp_wins1 ms-wins)
+$(ppp_entry circ_ppp_wins2 ms-wins)
+$(ppp_bool_entry circ_ppp_peer_auth auth noauth)
+$(ppp_bool_noentry circ_ppp_vj novj)
+$(ppp_bool_noentry circ_ppp_vjccomp novjccomp)
+$bsdcomp
+$deflate
+$lzscomp
+$mppe
+$(ppp_bool_entry circ_ppp_comp_mppe refuse-pap)
+$(ppp_bool_entry circ_ppp_comp_mppe refuse-chap)
+$(ppp_bool_entry circ_ppp_comp_mppe refuse-mschap)
+$(ppp_bool_noentry ccp)
+$(ppp_entry circ_ppp_mrru mrru)
+EOF
+
+        # authenticating client to server (use OPT_PPP_PEERS for authenticating
+        # server to client)
+        case "$circ_ppp_userid" in
+        '')
+            ;;
+        *)
+            # we don't use ppp_entry() for writing the password into the peer
+            # file as the password may be empty on purpose, and ppp_entry()
+            # does not write entries with empty value into the file
+            cat <<EOF >> $ppp_peer_file
+$(ppp_entry circ_ppp_userid user)
+password "$circ_ppp_password"
+EOF
+            ;;
+        esac
+        ;;
+
+    *)
+        # we need the protocols configuration from the bundle circuit,
+        # not from the link circuit
+        local circ_protocols
+        circuit_read_field $circ_bundle circ_protocols
+
+        cat <<EOF > $ppp_peer_file
+call circuit.$circ_bundle.manual
+$(ppp_entry circ_id ipparam)
+multilink
+plugin mp-plugin.so
+EOF
+
+        # are we the master circuit?
+        local circ_ppp_master=
+        circuit_read_field $circ_bundle circ_ppp_master
+        if [ -n "$circ_ppp_master" ]
+        then
+            if [ "$circ_ppp_master" = "$circ_id" -o "$circ_ppp_master" = "$circ_name" ]
+            then
+                # yes, we are the master: read hangup timeout from bundle so
+                # this circuit will be recognized as dial-on-demand later
+                circuit_read_field $circ_bundle circ_hup_timeout
+            else
+                # no, we are not the master, so make us dependent on the master
+                circ_deps="$circ_deps $circ_ppp_master"
+            fi
+        fi
+        ;;
+    esac
+
+    if [ "$circ_ppp_type" != "bundle" ]
+    then
+        local use_ipv4= use_ipv6=
+        echo $circ_protocols | grep -q "\<ipv4\>" && use_ipv4=yes
+        echo $circ_protocols | grep -q "\<ipv6\>" && use_ipv6=yes
+
+        # assign reasonable default values for addresses
+        local ppp_ipcp_accept_local=no
+        local circ_ppp_localip=$circ_ppp_localip
+        if [ -z "$circ_ppp_localip" -a -n "$use_ipv4" ]
+        then
+            circ_ppp_localip=169.254.0.1  # use some APIPA address
+            ppp_ipcp_accept_local=yes
+        fi
+
+        local ppp_ipcp_accept_remote=no
+        local circ_ppp_remoteip=$circ_ppp_remoteip
+        if [ -z "$circ_ppp_remoteip" -a -n "$use_ipv4" ]
+        then
+            circ_ppp_remoteip=169.254.0.2 # use some APIPA address
+            ppp_ipcp_accept_remote=yes
+        fi
+
+        local ppp_ipv6cp_accept_local=no
+        local circ_ppp_localip6=$circ_ppp_localip6
+        if [ -z "$circ_ppp_localip6" -a -n "$use_ipv6" ]
+        then
+            circ_ppp_localip6=::2
+            ppp_ipv6cp_accept_local=yes
+        fi
+
+        local ppp_ipv6cp_accept_remote=no
+        local circ_ppp_remoteip6=$circ_ppp_remoteip6
+        if [ -z "$circ_ppp_remoteip6" -a -n "$use_ipv6" ]
+        then
+            circ_ppp_remoteip6=::1
+            ppp_ipv6cp_accept_remote=yes
+        fi
+
+        local ppp_ipv4opt=noip ppp_ipv6opt=noipv6
+        if [ -n "$use_ipv4" ]
+        then
+            ppp_ipv4opt="$circ_ppp_localip:$circ_ppp_remoteip"
+        fi
+        if [ -n "$use_ipv6" ]
+        then
+            ppp_ipv6opt="ipv6 $circ_ppp_localip6,$circ_ppp_remoteip6"
+        fi
+
+        cat <<EOF >> $ppp_peer_file
+$ppp_ipv4opt
+$ppp_ipv6opt
+$(ppp_bool_entry ppp_ipcp_accept_local ipcp-accept-local)
+$(ppp_bool_entry ppp_ipcp_accept_remote ipcp-accept-remote)
+$(ppp_bool_entry ppp_ipv6cp_accept_local ipv6cp-accept-local)
+$(ppp_bool_entry ppp_ipv6cp_accept_remote ipv6cp-accept-remote)
+EOF
+    fi
+
+    # non-configurable defaults, overridable by ppp_<type>_circuit_add()
+    local ppp_connect=                # path to connect script
+    local ppp_disconnect=             # path to disconnect script
+
+    # localize some PPP variables
+    local circ_ppp_mtu=$circ_ppp_mtu
+    local circ_ppp_mru=$circ_ppp_mru
+    local circ_ppp_lcp_echo_adaptive=$circ_ppp_lcp_echo_adaptive
+    local circ_ppp_lcp_echo_interval=$circ_ppp_lcp_echo_interval
+    local circ_ppp_lcp_echo_max_failures=$circ_ppp_lcp_echo_max_failures
+
+    # call PPP type dependent setup function
+    local func="ppp_${circ_ppp_type//-/_}_circuit_add"
+    if type $func >/dev/null 2>&1 && ! $func $1 $ppp_peer_file $2
+    then
+        rm -f $ppp_peer_file
+        return 2
+    fi
+
+    # remaining PPP configuration
+
+    # use default MTU/MRU if not set by PPP type dependent setup function
+    circ_ppp_mtu=${circ_ppp_mtu:-$PPP_DEFAULT_MRU}
+    circ_ppp_mru=${circ_ppp_mru:-$PPP_DEFAULT_MRU}
+    # use adaptive echos: avoid them if receiving data over the line
+    circ_ppp_lcp_echo_adaptive=${circ_ppp_lcp_echo_adaptive:-yes}
+    # if no data is received, send an echo packet every five seconds
+    circ_ppp_lcp_echo_interval=${circ_ppp_lcp_echo_interval:-$PPP_LCP_ECHO_INTERVAL}
+    # detect broken line after 5*3=15 seconds
+    circ_ppp_lcp_echo_max_failures=${circ_ppp_lcp_echo_max_failures:-$PPP_LCP_ECHO_MAX_FAILURES}
+
+    cat <<EOF >> $ppp_peer_file
+$(ppp_entry ppp_connect connect)
+$(ppp_entry ppp_disconnect disconnect)
+$(ppp_entry circ_ppp_mtu mtu)
+$(ppp_entry circ_ppp_mru mru)
+$(ppp_bool_entry circ_ppp_lcp_echo_adaptive lcp-echo-adaptive)
+$(ppp_entry circ_ppp_lcp_echo_interval lcp-echo-interval)
+$(ppp_entry circ_ppp_lcp_echo_max_failures lcp-echo-failure)
+EOF
+
+    cat > ${ppp_peer_file%.manual}.auto <<EOF
+call circuit.$circ_id.manual
+EOF
+
+    # IMPORTANT: We cannot use "persist" because when using Multilink PPP, we
+    # have to be able to terminate the master circuit without forcing the whole
+    # bundle to be terminated and _without_ having the master circuit to redial
+    # (e.g. if the master circuit goes into the state "down"). However, with
+    # "persist", we have only the choice of hanging up but allowing redial
+    # (by sending SIGHUP to the pppd controlling the master circuit/multilink
+    # bundle) or of terminating the whole bundle (by sending SIGTERM to the
+    # pppd controlling the master circuit/multilink bundle). So we have to
+    # handle redialing by our circuit system and not by pppd itself.
+
+    if [ $circ_hup_timeout -gt 0 ]
+    then
+        # after $circ_hup_timeout seconds of inactivity the link is terminated
+        cat <<EOF >> $ppp_peer_file
+$(ppp_entry circ_hup_timeout idle)
+EOF
+
+        local ppp_active_filter=
+        case "$circ_ppp_filter" in
+        yes)
+            case "$circ_ppp_filter_expr" in
+            '')
+                # hold the connection if there are
+                # - outgoing packets
+                # - which are neither TCP RST packets
+                # - nor ICMP echo replies
+                ppp_active_filter='outbound and not tcp[13] & 4 != 0 and not icmp[0] != 8'
+                ;;
+            *)
+                # trust the user
+                ppp_active_filter="$circ_ppp_filter_expr"
+                ;;
+            esac
+            ppp_active_filter="$ppp_active_filter$(ppp_filter_get)"
+            ;;
+        esac
+        cat <<EOF >> $ppp_peer_file
+$(ppp_entry ppp_active_filter active-filter)
+EOF
+
+        # when using dialmode 'auto', dial on demand; as "demand" implies
+        # "persist", we have to explicitly use "nopersist" here
+        cat >> ${ppp_peer_file%.manual}.auto <<EOF
+demand
+nopersist
+EOF
+    #else: dial immediately, don't hang up
+    fi
+
+    # save values to circuit file
+    cat << EOF >> $1
+circ_ppp_type="$circ_ppp_type"
+circ_ppp_mtu=$circ_ppp_mtu
+circ_ppp_mru=$circ_ppp_mru
+circ_ppp_lcp_echo_adaptive=$circ_ppp_lcp_echo_adaptive
+circ_ppp_lcp_echo_interval=$circ_ppp_lcp_echo_interval
+circ_ppp_lcp_echo_max_failures=$circ_ppp_lcp_echo_max_failures
+circ_ppp_localip="$circ_ppp_localip"
+circ_ppp_remoteip="$circ_ppp_remoteip"
+circ_ppp_filter=$circ_ppp_filter
+circ_ppp_filter_expr="$circ_ppp_filter_expr"
+circ_ppp_userid="$circ_ppp_userid"
+circ_ppp_password="$circ_ppp_password"
+circ_ppp_peer_auth=$circ_ppp_peer_auth
+circ_ppp_mrru=$circ_ppp_mrru
+circ_ppp_dns1="$circ_ppp_dns1"
+circ_ppp_dns2="$circ_ppp_dns2"
+circ_ppp_wins1="$circ_ppp_wins1"
+circ_ppp_wins2="$circ_ppp_wins2"
+circ_ppp_vj=$circ_ppp_vj
+circ_ppp_vjccomp=$circ_ppp_vjccomp
+circ_ppp_comp_bsdcomp=$circ_ppp_comp_bsdcomp
+circ_ppp_comp_bsdcomp_level=$circ_ppp_comp_bsdcomp_level
+circ_ppp_comp_deflate=$circ_ppp_comp_deflate
+circ_ppp_comp_deflate_level=$circ_ppp_comp_deflate_level
+circ_ppp_comp_lzscomp=$circ_ppp_comp_lzscomp
+circ_ppp_comp_lzscomp_nhist=$circ_ppp_comp_lzscomp_nhist
+circ_ppp_comp_mppe=$circ_ppp_comp_mppe
+circ_ppp_comp_mppe_key_len=$circ_ppp_comp_mppe_key_len
+circ_ppp_decomp_bsdcomp=$circ_ppp_decomp_bsdcomp
+circ_ppp_decomp_bsdcomp_level=$circ_ppp_decomp_bsdcomp_level
+circ_ppp_decomp_deflate=$circ_ppp_decomp_deflate
+circ_ppp_decomp_deflate_level=$circ_ppp_decomp_deflate_level
+circ_ppp_decomp_lzscomp=$circ_ppp_decomp_lzscomp
+circ_ppp_decomp_lzscomp_nhist=$circ_ppp_decomp_lzscomp_nhist
+circ_ppp_nf_mss=$circ_ppp_nf_mss
+circ_ppp_master="$circ_ppp_master"
+circ_ppp_name="$circ_ppp_name"
+EOF
+
+    return 0
+}
+
+# $1 = circuit index
+ppp_circuit_remove()
+{
+    local circ_ppp_type
+    circuit_read_field $1 circ_ppp_type
+
+    # call PPP type dependent cleanup function
+    local func="ppp_${circ_ppp_type//-/_}_circuit_remove"
+    if type $func >/dev/null 2>&1
+    then
+        $func $1
+    fi
+
+    local circ_ppp_nf_mss
+    circuit_read_field $1 circ_ppp_nf_mss
+    if [ -n "$circ_ppp_nf_mss" ]
+    then
+        local circ_dev
+        circuit_read_field $1 circ_dev
+
+        case $circ_ppp_nf_mss in
+            PMTU) local ppp_tcpmss_opt="--clamp-mss-to-pmtu" ;;
+            *)    local ppp_tcpmss_opt="--set-mss $circ_ppp_nf_mss" ;;
+        esac
+
+        iptables -t mangle -D POSTROUTING-tail -o $circ_dev -p tcp --tcp-flags SYN,RST SYN -j TCPMSS $ppp_tcpmss_opt
+        if [ "$OPT_IPV6" = yes ]
+        then
+            ip6tables -t mangle -D POSTROUTING-tail -o $circ_dev -p tcp --tcp-flags SYN,RST SYN -j TCPMSS $ppp_tcpmss_opt
+        fi
+    fi
+
+    rm -f $ppp_peers_dir/circuit.$1.*
+}
+
+# Performs two things:
+# - Computes the MRRU for each bundle if not explicitly configured.
+# - Installs the necessary firewall rules.
+#
+# Input:
+#   $1 = circuit identifier
+ppp_post_processing()
+{
+    local id=$1 circ_ppp_type= circ_ppp_mrru=
+
+    # compute MRRU
+    circuit_read_field $id circ_ppp_type
+    if [ "$circ_ppp_type" = "bundle" ]
+    then
+        circuit_read_field $id circ_ppp_mrru
+        : ${circ_ppp_mrru:=0}
+        if [ $circ_ppp_mrru -eq 0 ]
+        then
+            circ_ppp_mrru=$(ppp_compute_mrru $id)
+            circuit_write_field $id circ_ppp_mrru $circ_ppp_mrru
+            ppp_entry circ_ppp_mrru mrru >> $ppp_peers_dir/circuit.$id.manual
+        fi
+    fi
+
+    # install firewall rules
+    local circ_ppp_nf_mss
+    circuit_read_field $id circ_ppp_nf_mss
+    if [ -n "$circ_ppp_nf_mss" ]
+    then
+        local circ_dev
+        circuit_read_field $1 circ_dev
+
+        case $circ_ppp_nf_mss in
+            PMTU) local ppp_tcpmss_opt="--clamp-mss-to-pmtu" ;;
+            *)    local ppp_tcpmss_opt="--set-mss $circ_ppp_nf_mss" ;;
+        esac
+
+        iptables -t mangle -A POSTROUTING-tail -o $circ_dev -p tcp --tcp-flags SYN,RST SYN -j TCPMSS $ppp_tcpmss_opt
+        if [ "$OPT_IPV6" = yes ]
+        then
+            ip6tables -t mangle -A POSTROUTING-tail -o $circ_dev -p tcp --tcp-flags SYN,RST SYN -j TCPMSS $ppp_tcpmss_opt
+        fi
+    fi
+}

@@ -1,0 +1,1089 @@
+% Last Update: $Id$
+\marklabel{sec:optppp}{
+\section {PPP - Unterstützung für das Point-to-Point-Protokoll}
+}
+
+Mit Hilfe dieses Pakets kann der Router Verbindungen zu anderen Rechnern
+aufbauen, welche die PPP-Protokollfamilie als zugrunde liegendes
+Layer-2-Protokoll nutzen und PPP für die Aushandlung von IP-Adressen,
+Kompression, Verschlüsselung etc. verwenden. Die meisten Internet-Anbindungen in
+Deutschland nutzen PPP auf die eine oder andere Art. Wenn Sie einen
+Internet-Zugang via DSL, ISDN oder UMTS nutzen, benötigen Sie aller Voraussicht
+nach dieses Paket.
+
+Dieses Paket bringt zum einen generelle Unterstützung für PPP mit. Zum anderen
+werden mit dem Paket gleich drei spezielle PPP-Module (``bundle'', ``serial''
+und ``serial-server'') aktiviert, mit denen PPP-Verbindungen gepündelt (PPP-Typ
+``bundle'') oder ohne Modem über die serielle Schnittstelle mit Hilfe eines so
+genannten Null-Modem-Kabels\footnote{Die Anschluss-Belegung ist im Anhang der
+Dokumentation des base-Pakets beschrieben.} (PPP-Typen ``serial'' und
+``serial-server'') genutzt werden können. Im Folgenden werden sowohl die
+allgemeinen Einstellungen für alle PPP-Circuit-Typen erläutert als auch die
+speziellen Einstellungen für die serielle Anbindung.
+
+\marklabel{sect:ppp-circuits}{\subsection{Circuits vom Typ ``ppp''}}
+
+Ein Circuit vom Typ ``ppp'' baut eine Verbindung zwischen zwei Rechnern mit
+Hilfe des Point-to-Point-Protokolls (PPP)\footnote{siehe RFC 1661}
+auf. PPP ist ein recht komplexes Protokoll, mehr eine Protokoll-Familie, und
+erlaubt eine Aushandlung von u.\,a. der zu verwendenden IP-Adressen, Kompression
+und/oder Verschlüsselung. Auch können mehrere PPP-Verbindungen zum selben
+Zielrechner (``Peer'' genannt) gebündelt werden (MP).\footnote{
+``Multilink PPP'', siehe RFC 1990 und den Abschnitt
+\jump{sect:multilink-ppp}{Multilink PPP}}.
+
+Das ppp-Paket bringt die nötige allgemeine Infrastruktur für PPP-Verbindungen
+mit. Diese wird über die folgende Variable eingebunden und aktiviert:
+
+\begin{description}
+\config{OPT\_PPP}{OPT\_PPP}{OPTPPP}
+
+Diese Variable aktiviert den PPP-Dämon, der für alle PPP-Verbindungen notwendig
+ist.
+
+Standard-Einstellung: \verb+OPT_PPP='no'+
+
+Beispiel: \verb+OPT_PPP='yes'+
+
+\end{description}
+
+Zusätzlich werden spezielle \emph{PPP-Module} benötigt, die spezifisch für den
+jeweiligen Typ von Verbindung sind. Die folgende Tabelle listet die zugehörigen
+fli4l-Pakete samt Typ und Beschreibung auf.
+
+\begin{longtable}{|l|l|l|p{0.5\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{PPP-Typ}} &
+    \multicolumn{1}{|l}{\textbf{Paket}} &
+    \multicolumn{1}{|l}{\textbf{OPT}} &
+    \multicolumn{1}{|l|}{\textbf{Beschreibung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+bundle & ppp (dieses Paket) & \var{OPT\_MULTILINK\_PPP} &
+Mit Hilfe von bundle-Circuits ist es möglich, PPP-Kanäle zu bündeln. Mehr dazu
+steht im Abschnitt \jump{sect:multilink-ppp}{Multilink PPP}.
+    \\
+    \hline
+serial & ppp (dieses Paket) & \var{OPT\_PPP\_SERIAL} &
+Mit Hilfe von serial-Circuits ist eine Verbindung zu einem anderen Rechner
+über ein serielles Null-Modem-Kabel möglich.
+    \\
+    \hline
+ethernet & pppoe & \var{OPT\_PPP\_ETHERNET} &
+Mit Hilfe von ethernet-Circuits ist eine DSL-Einwahl ins Internet über
+PPPoE\footnote{``Point-to-Point Protocol over Ethernet'', siehe RFC 2516}
+möglich. Dabei ist der Router über eine normale Ethernet-Netzanbindung mit
+einem DSL-Modem verbunden, das dann die physikalische Einwahl durchführt.
+    \\
+    \hline
+dslmodem & dslmodem & \var{OPT\_PPP\_DSLMODEM} &
+Mit Hilfe von dslmodem-Circuits ist eine DSL-Einwahl ins Internet über ein
+im fli4l integriertes DSL-Modem möglich. Dabei ist der Router direkt mit dem
+DSL-Splitter verbunden. Momentan wird nur der Fritz!DSL-Adapter der Firma AVM
+unterstützt.
+    \\
+    \hline
+pptp & vpn & \var{OPT\_PPP\_PPTP} &
+Mit Hilfe von pptp-Circuits ist eine DSL-Einwahl ins Internet über
+PPTP\footnote{``Point-to-Point Tunneling Protocol'', siehe RFC 2637}
+möglich. Dabei ist der Router über eine normale Ethernet-Netzanbindung mit einem
+DSL-Modem verbunden, das dann die physikalische Einwahl durchführt. Abgesehen
+von der Internet-Einwahl können pptp-Circuits auch für VPN-Tunnel eingesetzt
+werden, wobei auf Grund von Sicherheitsproblemen bei der Authentifizierung von
+ihrem Gebrauch abgeraten werden muss.
+    \\
+    \hline
+isdn & isdn & \var{OPT\_ISDN} &
+Mit Hilfe von isdn-Circuits ist eine ISDN-Einwahl ins Internet über das
+HDLC-Protokoll\footnote{``High-level data link control'', siehe RFC 1618}
+möglich. Dabei ist der Router mit Hilfe eines ISDN-Adapters mit einem NTBA
+verbunden. Die physikalische Einwahl wird von dem ISDN-Adapter durchgeführt.
+    \\
+    \hline
+umts & umts & \var{OPT\_UMTS} &
+Mit Hilfe von umts-Circuits ist eine Einwahl ins Internet via UMTS oder LTE,
+also über eine geeignete Funkverbindung, möglich. Ein spezielles Funkmodem,
+das in der Regel als USB-Stick vorliegt, stellt die physikalische Anbindung
+her.
+    \\
+    \hline
+modem & modem & \var{OPT\_MODEM} &
+Mit Hilfe von modem-Circuits ist eine Einwahl ins Internet über eine serielle
+Leitung möglich. Dabei stellt ein analoges Modem die physikalische Anbindung
+her.
+    \\
+    \hline
+    \caption{Verfügbare PPP-Typen}\marklabel{circuit:ppp-types}{}
+\end{longtable}
+
+\subsubsection{Allgemeine PPP-Konfigurationsvariablen}
+
+Neben den allgemeinen Circuit-Variablen sind Angaben über die folgenden
+Variablen nötig:
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_TYPE}{CIRC\_x\_PPP\_TYPE}{CIRCxPPPTYPE}
+
+Jeder ppp-Circuit hat einen Typ. Dieser Typ bestimmt, wie das
+Wählen und Auflegen eines ppp-Circuits konkret funktioniert.
+
+Es sind immer nur die Typen der aktivierten Pakete verfügbar. Wenn Sie also
+z.\,B. einen PPP-over-Ethernet-Circuit (PPP-Typ ``ethernet'') verwenden möchten,
+dann müssen Sie das Paket pppoe herunterladen und PPP/ethernet-Circuits mit
+\verb+OPT_PPP_ETHERNET='yes'+ aktivieren. Andernfalls bekommen Sie bei der
+Verwendung des Typs ``ethernet'' beim Bauen der Installationsarchive eine
+Fehlermeldung.
+
+Beispiel: \verb+CIRC_1_PPP_TYPE='ethernet'+
+
+\config{CIRC\_x\_PPP\_MTU}{CIRC\_x\_PPP\_MTU}{CIRCxPPPMTU}
+
+Mit dieser optionalen Variable kann die Größe der so genannten \emph{MTU}
+(Maximum Transmission Unit) in Bytes eingestellt werden. Normalerweise beträgt
+die MTU 1492 Bytes, dies ist gleichzeitig die größtmögliche Angabe. Diese
+Einstellung sollte nur in Sonderfällen geändert werden!
+
+Standard-Einstellung: je nach PPP-Typ
+
+Beispiel: \verb+CIRC_1_PPP_MTU='1488'+
+
+\config{CIRC\_x\_PPP\_MRU}{CIRC\_x\_PPP\_MRU}{CIRCxPPPMRU}
+
+Mit dieser optionalen Variable kann die Größe der so genannten \emph{MRU}
+(Maximum Receive Unit) in Bytes eingestellt werden. Normalerweise beträgt
+die MRU 1492 Bytes, dies ist gleichzeitig die größtmögliche Angabe. Diese
+Einstellung sollte nur in Sonderfällen geändert werden!
+
+Standard-Einstellung: je nach PPP-Typ
+
+Beispiel: \verb+CIRC_1_PPP_MRU='1488'+
+
+\config{CIRC\_x\_PPP\_NF\_MSS}{CIRC\_x\_PPP\_NF\_MSS}{CIRCxPPPNFMSS}
+
+Bei manchen Providern treten Effekte folgender Art auf:
+\begin{itemize}
+\item der Webbrowser bekommt eine Verbindung, macht aber danach nichts mehr
+\item eine kleine E-Mail kann verschickt werden, eine große E-Mail nicht
+\item ssh funktioniert, scp hängt nach dem initialen Verbindungsaufbau
+\end{itemize}
+
+Um diese Probleme zu umgehen, manipuliert fli4l standardmäßig die MTU. In
+einigen Fällen reicht das allerdings nicht, daher gestattet fli4l explizit das
+Setzen der MSS (Message Segment Size) für TCP-Verbindungen auf einen vom
+Provider vorgegebenen Wert. Falls der Provider nichts vorgibt, ist 1412 ein
+guter Startwert zum Probieren; falls er die MTU vorgibt, sind hier 40 Bytes
+(für IPv4-Verbindungen)\footnote{siehe RFC 879} bzw. 60 Bytes (falls auch IPv6
+genutzt werden soll)\footnote{siehe RFC 2460} weniger einzutragen.
+
+Fehlt diese Variable oder wird sie leer gelassen, wird die MSS automatisch
+vom Linux-Kern aus der PMTU errechnet.\footnote{Die PMTU oder Pfad-MTU
+(``Path MTU'') ist die MTU für den gesamten Netzwerk\emph{pfad} zwischen Sender
+und Empfänger und berechnet sich aus dem Minimum aller MTUs auf dem Weg zwischen
+Sender und Empfänger.}
+
+Beispiel: \verb+CIRC_1_PPP_NF_MSS='1412'+
+
+\config{CIRC\_x\_PPP\_LOCALIP}{CIRC\_x\_PPP\_LOCALIP}{CIRCxPPPLOCALIP}
+
+Diese Variable legt die zu verwendende IPv4-Adresse auf Client-Seite für die
+PPP-Verbindung fest. Wird diese Variable weggelassen, wird eine temporäre
+IPv4-Adresse aus dem Adress-Bereich 169.254.0.0/16 genommen und gleichzeitig
+dem Peer signalisiert, dass man ``offen für Vorschläge'' ist, d.h. der Peer kann
+eine alternative IPv4-Adresse für unsere Seite der Verbindung vorschlagen. Dies
+ist z.B. bei Internet-Anbindungen üblich.
+
+Beispiel: \verb+CIRC_1_PPP_LOCALIP='192.168.11.22'+
+
+\config{CIRC\_x\_PPP\_REMOTEIP}{CIRC\_x\_PPP\_REMOTEIP}{CIRCxPPPREMOTEIP}
+
+Diese Variable legt die zu verwendende IPv4-Adresse auf Peer-Seite für die
+PPP-Verbindung fest. Wird diese Variable weggelassen, wird eine temporäre
+IPv4-Adresse aus dem Adress-Bereich 169.254.0.0/16 genommen und gleichzeitig
+dem Peer signalisiert, dass man ``offen für Vorschläge'' ist, d.h. der Peer kann
+eine alternative IPv4-Adresse für seine Seite der Verbindung vorschlagen. Dies
+ist z.B. bei Internet-Anbindungen üblich.
+
+Beispiel: \verb+CIRC_1_PPP_REMOTEIP='192.168.11.23'+
+
+\config{CIRC\_x\_PPP\_LOCALIP6}{CIRC\_x\_PPP\_LOCALIP6}{CIRCxPPPLOCALIP6}
+
+Diese Variable legt das Suffix der zu verwendenden IPv6-Adresse auf
+Client-Seite für die PPP-Verbindung fest. Wird diese Variable weggelassen,
+wird \verb+::2+ genommen. In jedem Fall wird dem Peer signalisiert, dass man
+``offen für Vorschläge'' ist, d.h. der Peer kann eine alternative IPv6-Adresse
+für unsere Seite der Verbindung vorschlagen. Dies ist z.B. bei
+Internet-Anbindungen üblich.
+
+Beispiel: \verb+CIRC_1_PPP_LOCALIP6='::2'+
+
+\config{CIRC\_x\_PPP\_REMOTEIP6}{CIRC\_x\_PPP\_REMOTEIP6}{CIRCxPPPREMOTEIP6}
+
+Diese Variable legt die zu verwendende IPv6-Adresse auf Peer-Seite für die
+PPP-Verbindung fest. Wird diese Variable weggelassen, wird \verb+::1+ genommen.
+In jedem Fall wird dem Peer signalisiert, dass man ``offen für Vorschläge''
+ist, d.h. der Peer kann eine alternative IPv4-Adresse für seine Seite der
+Verbindung vorschlagen. Dies ist z.B. bei Internet-Anbindungen üblich.
+
+Beispiel: \verb+CIRC_1_PPP_REMOTEIP6='::1'+
+
+\config{CIRC\_x\_PPP\_FILTER}{CIRC\_x\_PPP\_FILTER}{CIRCxPPPFILTER}
+
+Der fli4l legt automatisch auf, wenn während der über den Hangup-Timeout
+angegebenen Zeit keine Daten über die PPP-Schnittstelle gehen.
+Leider wertet der Linux-Kern auch Datentransfers mit, die von außen
+kommen, z.\,B. durch Verbindungsversuche eines P2P-Clients wie
+eDonkey. Da man heutzutage eigentlich pemanent von anderen kontaktiert
+wird, kann es passieren, dass fli4l die DSL-Verbindung nie beendet.
+
+Hier hilft die Option \var{CIRC\_x\_PPP\_FILTER}. Setzt man die Variable auf
+`yes', wird nur noch Verkehr gewertet, der von der eigenen Maschine generiert
+wird, und von außen eingehende Daten werden komplett ignoriert. Da von draußen
+hereinkommender Datenverkehr in der Regel dazu führt, dass der Router oder
+dahinter liegende Rechner reagieren, indem sie z.\,B. Verbindungswünsche
+ablehnen, werden zusätzlich noch einige hinausgehende Pakete ignoriert.
+\footnote{Wie das genau funktioniert, kann man unter
+\altlink{http://www.fli4l.de/hilfe/howtos/basteleien/hangup-problem-loesen/} und
+\altlink{http://web.archive.org/web/20061107225118/http://www.linux-bayreuth.de/dcforum/DCForumID2/46.html}
+nachlesen.}
+
+Standard-Einstellung: \verb+CIRC_x_PPP_FILTER='no'+
+
+Beispiel: \verb+CIRC_1_PPP_FILTER='yes'+
+
+\config{CIRC\_x\_PPP\_FILTER\_EXPR}{CIRC\_x\_PPP\_FILTER\_EXPR}{CIRCxPPPFILTEREXPR}
+
+Hier steht der zu nutzende Filter, wenn \var{CIRC\_x\_PPP\_FILTER} auf `yes'
+gesetzt ist. Ist die Variable undefiniert oder leer, wird der Standard-Filter
+genutzt. Dieser lautet:
+
+\begin{example}
+\begin{verbatim}
+    outbound and not icmp[0] != 8 and not tcp[13] & 4 != 0
+\end{verbatim}
+\end{example}
+
+Zu beachten ist, dass der Standard-Ausdruck oder der hier angegebene Ausdruck
+(je nachdem) unter Umständen erweitert wird, wenn andere OPTs aktiviert werden.
+So verhindert das IPv6-OPT, dass bestimmte IPv6-Multicast-Pakete, die vom
+Linux-Kern über \emph{jede} IPv6-fähige Schnittstelle versandt werden, die
+Verbindung aufrecht erhalten, und das Chrony-OPT erweitert den Ausdruck
+dergestalt, dass Zeitabfragen für die Messung der Netzaktivität ignoriert
+werden, damit die regelmäßige Zeitsynchronisation via NTP nicht zu einer
+Dauereinwahl führt. Der hier angegebene Ausdruck kann sich somit von dem
+letztlich verwendeten unterscheiden.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_FILTER_EXPR=''+
+
+Beispiel: \verb+CIRC_1_PPP_FILTER_EXPR='outbound and tcp dst port 80'+
+
+Dieser (nicht unbedingt praxistaugliche) Ausdruck berücksichtigt nur ausgehende
+HTTP-Verbindungen (TCP-Verbindungen zu Port 80). Alle anderen Datenpakete
+fließen in die Bewertung der Netzaktivität nicht mit ein.
+
+\end{description}
+
+\subsubsection{Authentifizierung}
+
+PPP ermöglicht es, dass die Rechner auf beiden Seiten einer Verbindung sich
+gegenseitig authentifizieren, d.h. mit Hilfe einer jeweils vom anderen Rechner
+akzeptierten Kombination eines Benutzernamens und eines Passworts ausweisen. Die
+im Folgenden erläuterten Einstellungen erlauben es, die PPP-Authentifizierung
+wunschgemäß zu konfigurieren.
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_USERID}{CIRC\_x\_PPP\_USERID}{CIRCxPPPUSERID}
+\config{CIRC\_x\_PPP\_PASSWORD}{CIRC\_x\_PPP\_PASSWORD}{CIRCxPPPPASSWORD}
+
+Hier sind Benutzerkennung und Passwort für den jeweils benutzten PPP-Peer
+(das ist i.\,d.\,R. der Internet-Provider) anzugeben. \var{CIRC\_x\_PPP\_USERID}
+enthält die Benutzerkennung, \var{CIRC\_x\_PPP\_PASSWORD} das Passwort.
+
+Für einen T-Online-Zugang ist Folgendes zu beachten:
+
+Die Benutzerkennung \texttt{AAAAAAAAAAAATTTTTTTTTTTTMMMM@t-online.de} setzt
+sich aus der zwölfstelligen Anschlusskennung \texttt{AAAAAA...}, der
+T-Online-Nummer \texttt{TTTTTT...}, der vierstelligen Mitbenutzernummer
+\texttt{MMMM} und dem Suffix \texttt{@t-online.de} zusammen. Hinter der
+T-Online-Nummer muss ein \texttt{\#} angegeben werden, wenn deren Länge
+kürzer als zwölf Zeichen ist.
+
+Sollte dies in Einzelfällen nicht zum Erfolg führen (offenbar abhängig
+von der Vermittlungsstelle), muss zusätzlich zwischen der Anschlusskennung und
+der T-Online-Nummer ein weiteres \texttt{\#}-Zeichen eingefügt werden.
+
+Ansonsten (T-Online-Nummer ist zwölfstellig) sind keine \texttt{\#}-Zeichen
+anzugeben.
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+CIRC_1_PPP_USERID='111111111111222222#0001@t-online.de'
+CIRC_1_PPP_PASSWORD='12345678'
+\end{verbatim}
+\end{example}
+
+Informationen über Benutzerkennungen bei anderen Providern finden sich in der
+FAQ (\altlink{http://extern.fli4l.de/fli4l_faqengine/faq.php?list=category&catnr=3&prog=1}).
+
+\config{CIRC\_x\_PPP\_PEER\_AUTH}{CIRC\_x\_PPP\_PEER\_AUTH}{CIRCxPPPPEERAUTH}
+
+Mit dieser optionalen Variable kann der PPP-Peer aufgefordert werden, sich zu
+authentifizieren. Dazu muss er einen gültigen Benutzernamen und ein gültiges
+Passwort übermitteln. Welche Benutzername/Passwort-Kombinationen für welche
+Circuits gültig sind, wird über das \verb+OPT_PPP_PEERS+ eingestellt. Generell
+ist dies eher für PPP-Circuits auf Server-Seite interessant.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_PEER_AUTH='no'+
+
+Beispiel: \verb+CIRC_1_PPP_PEER_AUTH='yes'+
+
+\end{description}
+
+\subsubsection{TCP/IP-Kompression}
+
+PPP bietet die Möglichkeit, für TCP/IPv4-Verbindungen die Van Jacobson-
+Header-Kompri\-mierung nach RFC 1144 zu aktivieren und somit die effektive
+Bandbreite zu erhöhen. Dies ist vor allem bei eher langsamer physikalischer
+Anbindung (serielle Leitung, ISDN) nützlich.
+
+Generell gilt, dass diese Form der Kompression dazu führt, dass im Falle
+verloren gegangener Pakete es etwas dauert, bis der Fehler bemerkt und auf
+beiden Seiten entsprechende Korrekturmaßnahmen eingeleitet worden sind.
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_VJ}{CIRC\_x\_PPP\_VJ}{CIRCxPPPVJ}
+
+Diese Variable aktiviert die Van Jacobson-Komprimierung für TCP/IPv4-Header.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_VJ='no'+
+
+Beispiel: \verb+CIRC_1_PPP_VJ='yes'+
+
+\config{CIRC\_x\_PPP\_VJCCOMP}{CIRC\_x\_PPP\_VJCCOMP}{CIRCxPPPVJCCOMP}
+
+Mit dieser Option kann man erreichen, dass trotz aktivierter
+Van Jacobson-Komprimierung (\verb+CIRC_x_PPP_VJ='yes'+) die Verbindungsnummer
+(``Connection ID'') Teil eines jeden Pakets ist. Dies erreicht man durch
+\verb+CIRC_x_PPP_VJCCOMP='no'+, ein Weglassen der Verbindungsnummer erreicht man
+durch \verb+CIRC_x_PPP_VJCCOMP='yes'+. Das unbedingte Senden der
+Verbindungsnummer (\verb+CIRC_x_PPP_VJCCOMP='no'+) kann dazu führen, dass
+im Falle verloren gegangener Pakete es nicht ganz so lange dauert, bis der
+Fehler bemerkt und auf beiden Seiten entsprechende Korrekturmaßnahmen
+eingeleitet worden sind.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_VJCCOMP='no'+
+
+Beispiel: \verb+CIRC_1_PPP_VJCCOMP='yes'+
+
+\end{description}
+
+\subsubsection{PPP-Kompression}
+
+PPP bietet die Möglichkeit, unabhängig für jede Verbindungsrichtung das
+Komprimieren (Packen) von Paketen auszuhandeln. Dies wird über die folgenden
+Variablen konfiguriert. Das Aktivieren der \verb+CIRC_x_PPP_COMP_y+-Variablen
+hat zur Folge, dass dem Verbindungspartner (Peer) angeboten wird, ihm die Pakete
+komprimiert zu schicken (was er verweigern kann, etwa wenn er die vorgeschlagene
+Kompression nicht versteht). Im Gegenzug führt das Aktivieren der
+\verb+CIRC_x_PPP_DECOMP_y+-Variablen dazu, dass dem Peer mitgeteilt wird, dass
+man in der Lage ist, bestimmte komprimierte Pakete verarbeiten (d.\,h.
+entpacken) zu können. Es handelt sich in beiden Fällen jeweils um
+\emph{Vorschläge}, die entsprechend zurückgewiesen werden können~-- man kann
+den Peer nicht dazu zwingen, die Pakete komprimiert zu verschicken oder
+komprimierte Pakete zu verarbeiten.
+
+Generell ist das Entpacken effizienter zu realisieren als das Packen. Ist die
+Hardware des fli4l-Routers nicht sehr leistungsfähig, ist es somit u.\,U.\ zu
+empfehlen, höchstens das Entpacken anzubieten (\verb+CIRC_x_PPP_DECOMP_y='yes'+)
+und das Packen nicht (\verb+CIRC_x_PPP_COMP_y='no'+).
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_COMP\_BSDCOMP}{CIRC\_x\_PPP\_COMP\_BSDCOMP}{CIRCxPPPCOMPBSDCOMP}
+\config{CIRC\_x\_PPP\_DECOMP\_BSDCOMP}{CIRC\_x\_PPP\_DECOMP\_BSDCOMP}{CIRCxPPPDECOMPBSDCOMP}
+
+Diese Variablen aktivieren die Möglichkeit, Pakete vor dem Versenden an den Peer
+mit Hilfe des BSD-Kompressionsalgorithmus zu komprimieren
+(\verb+CIRC_x_PPP_COMP_BSDCOMP='yes'+) bzw. entsprechend komprimierte Pakete
+vom Peer zu empfangen (\verb+CIRC_x_PPP_DECOMP_BSDCOMP='yes'+).
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_BSDCOMP='no'+\\
+\verb+CIRC_x_PPP_DECOMP_BSDCOMP='no'+
+
+Beispiel:
+
+\verb+CIRC_1_PPP_COMP_BSDCOMP='yes'+\\
+\verb+CIRC_1_PPP_DECOMP_BSDCOMP='yes'+
+
+\config{CIRC\_x\_PPP\_COMP\_BSDCOMP\_LEVEL}{CIRC\_x\_PPP\_COMP\_BSDCOMP\_LEVEL}{CIRCxPPPCOMPBSDCOMPLEVEL}
+\config{CIRC\_x\_PPP\_DECOMP\_BSDCOMP\_LEVEL}{CIRC\_x\_PPP\_DECOMP\_BSDCOMP\_LEVEL}{CIRCxPPPDECOMPBSDCOMPLEVEL}
+
+Ist die BSD-Kompression mit Hilfe der Variablen
+\verb+CIRC_x_PPP_COMP_BSDCOMP='yes'+ bzw. \verb+CIRC_x_PPP_DECOMP_BSDCOMP='yes'+
+aktiviert worden, kann mit Hilfe der Variablen
+\verb+CIRC_x_PPP_COMP_BSDCOMP_LEVEL+ bzw. \verb+CIRC_x_PPP_DECOMP_BSDCOMP_LEVEL+
+die zu verwendende Kompressionsstufe konfiguriert werden. Diese Variablen
+erwarten einen Wert von 9 (schwächste Kompression, am schnellsten) bis 15
+(stärkste Kompression, am langsamsten).
+
+Diese Stufe ist jeweils als Vorschlag einer oberen Grenze zu sehen; der Peer
+kann eine schwächere Stufe aushandeln, falls er mit dem Vorschlag nicht
+einverstanden ist.
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_BSDCOMP_LEVEL='12'+\\
+\verb+CIRC_x_PPP_DECOMP_BSDCOMP_LEVEL='12'+
+
+Beispiel (langsame Hardware, nur schwache Kompression möglich):
+
+\verb+CIRC_1_PPP_COMP_BSDCOMP_LEVEL='9'+\\
+\verb+CIRC_1_PPP_DECOMP_BSDCOMP_LEVEL='15'+
+
+\config{CIRC\_x\_PPP\_COMP\_DEFLATE}{CIRC\_x\_PPP\_COMP\_DEFLATE}{CIRCxPPPCOMPDEFLATE}
+\config{CIRC\_x\_PPP\_DECOMP\_DEFLATE}{CIRC\_x\_PPP\_DECOMP\_DEFLATE}{CIRCxPPPDECOMPDEFLATE}
+
+Diese Variablen aktivieren die Möglichkeit, Pakete vor dem Versenden an den Peer
+mit Hilfe des Deflate-Kompressionsalgorithmus zu komprimieren
+(\verb+CIRC_x_PPP_COMP_DEFLATE='yes'+) bzw. entsprechend komprimierte Pakete
+vom Peer zu empfangen
+(\verb+CIRC_x_PPP_DECOMP_DEFLATE='yes'+).
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_DEFLATE='no'+\\
+\verb+CIRC_x_PPP_DECOMP_DEFLATE='no'+
+
+Beispiel:
+
+\verb+CIRC_1_PPP_COMP_DEFLATE='yes'+\\
+\verb+CIRC_1_PPP_DECOMP_DEFLATE='yes'+
+
+\config{CIRC\_x\_PPP\_COMP\_DEFLATE\_LEVEL}{CIRC\_x\_PPP\_COMP\_DEFLATE\_LEVEL}{CIRCxPPPCOMPDEFLATELEVEL}
+\config{CIRC\_x\_PPP\_DECOMP\_DEFLATE\_LEVEL}{CIRC\_x\_PPP\_DECOMP\_DEFLATE\_LEVEL}{CIRCxPPPDECOMPDEFLATELEVEL}
+
+Ist die Deflate-Kompression mit Hilfe der Variablen
+\verb+CIRC_x_PPP_COMP_DEFLATE='yes'+ bzw. \verb+CIRC_x_PPP_DECOMP_DEFLATE='yes'+
+aktiviert worden, kann mit Hilfe der Variablen
+\verb+CIRC_x_PPP_COMP_DEFLATE_LEVEL+ bzw. \verb+CIRC_x_PPP_DECOMP_DEFLATE_LEVEL+
+die zu verwendende Kompressionsstufe konfiguriert werden. Diese Variablen
+erwarten einen Wert von 9 (schwächste Kompression, am schnellsten) bis 15
+(stärkste Kompression, am langsamsten).
+
+Diese Stufe ist jeweils als Vorschlag einer oberen Grenze zu sehen; der Peer
+kann eine schwächere Stufe aushandeln, falls er mit dem Vorschlag nicht
+einverstanden ist.
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_DEFLATE_LEVEL='12'+\\
+\verb+CIRC_x_PPP_DECOMP_DEFLATE_LEVEL='12'+
+
+Beispiel (langsame Hardware, nur schwache Kompression möglich):
+
+\verb+CIRC_1_PPP_COMP_DEFLATE_LEVEL='9'+\\
+\verb+CIRC_1_PPP_DECOMP_DEFLATE_LEVEL='15'+
+
+\config{CIRC\_x\_PPP\_COMP\_LZSCOMP}{CIRC\_x\_PPP\_COMP\_LZSCOMP}{CIRCxPPPCOMPLZSCOMP}
+\config{CIRC\_x\_PPP\_DECOMP\_LZSCOMP}{CIRC\_x\_PPP\_DECOMP\_LZSCOMP}{CIRCxPPPDECOMPLZSCOMP}
+
+Diese Variablen aktivieren die Möglichkeit, Pakete vor dem Versenden an den Peer
+mit Hilfe des Stac/HiFn-LZS-Kompressionsalgorithmus zu komprimieren
+(\verb+CIRC_x_PPP_COMP_LZSCOMP='yes'+) bzw. entsprechend komprimierte Pakete vom
+Peer zu empfangen (\verb+CIRC_x_PPP_DECOMP_LZSCOMP='yes'+).
+
+Der Nutzung dieses Algorithmus ist lizenzrechtlich problematisch. Die
+Implementierung für das ISDN4Linux-Subsystem des Linux-Kerns enthält die
+folgende Passage:
+
+\begin{verbatim}
+The code is Copyleft 1998-2001 by Andre Beck under terms of the
+GNU GPL. While the code is provided free and under GPL, it may infringe
+patents Stac has applied for in the US and maybe other countries. Verify
+that this is not the case in your country before using it. This code is a
+private development related in no way whatsoever to my employer, written
+in Germany where software patents are still considered bogus. This
+situation might change any day due to EU law. Linux distributors who
+supply this stuff shrink wrapped should reconsider doing this (not only
+for isdn_lzscomp, but as well for isdn_bsdcomp, which is likely to
+infringe on the infamous Unisys LZW patent) with their law departement.
+[...]
+Please check whether using this code constitutes a crime in your country.
+While I just implemented a module that can source and sink the data
+format described by Stac/HiFn in RFC1974, they claim to have US Patents
+on practically every aspect of this format. Thus I assume that selling
+this code violates these US Patents. As this code is
+
+a) Freeware under GPL and
+b) Developed in Germany
+
+I hope I wont get any terror from the lawyers of the patent holders. I'm
+sure that the availability of this code will actually help HiFn sales
+because more users (the Linux community) will ask their ISPs for LZS
+support on their NASes and these NASes will contain HiFn chips for that
+purpose. Then again, after they claimed even deflate would be covered by
+their patents and tried to sue Netscape for using deflate in the PNG code
+of Mozilla, they are probably not on the planet for good will games.
+We'll see.
+\end{verbatim}
+
+Außerdem gibt es Probleme, wenn die Datenübertragung nicht sehr stabil ist
+und gelegentlich Pakete verloren gehen: Die dann nötige Resynchronisation der
+Zustände des Kompressors/Dekompressors reduziert die
+Übertragungsgeschwindigkeit derart, dass der Geschwindigkeitsgewinn u.\,U.
+gänzlich aufgefressen wird.
+
+Man sollte den Algorithmus somit nur verwenden, wenn man muss, wenn der
+PPP-Peer also keinen anderen, frei verfügbaren Algorithmus anbietet bzw.
+versteht und man die Komprimierung gerne nutzen möchte (was sich vor allem bei
+eher langsamen Verbindungen wie ISDN merklich auf die Übertragungsgeschwindigkeit
+auswirkt). Ansonsten sollte man ausprobieren, ob mit eingeschalteter Kompression
+die Datenübertragung in den eigenen typischen Anwendungsfällen wirklich
+schneller ist.
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_LZSCOMP='no'+\\
+\verb+CIRC_x_PPP_DECOMP_LZSCOMP='no'+
+
+Beispiel:
+
+\verb+CIRC_1_PPP_COMP_LZSCOMP='yes'+\\
+\verb+CIRC_1_PPP_DECOMP_LZSCOMP='yes'+
+
+\config{CIRC\_x\_PPP\_COMP\_LZSCOMP\_NHIST}{CIRC\_x\_PPP\_COMP\_LZSCOMP\_NHIST}{CIRCxPPPCOMPLZSCOMPNHIST}
+\config{CIRC\_x\_PPP\_DECOMP\_LZSCOMP\_NHIST}{CIRC\_x\_PPP\_DECOMP\_LZSCOMP\_NHIST}{CIRCxPPPDECOMPLZSCOMPNHIST}
+
+Ist die Stac-LZS-Kompression mit Hilfe der Variablen
+\verb+CIRC_x_PPP_COMP_LZSCOMP='yes'+ bzw. \verb+CIRC_x_PPP_DECOMP_LZSCOMP='yes'+
+aktiviert worden, kann mit Hilfe der Variablen
+\verb+CIRC_x_PPP_COMP_LZSCOMP_NHIST+ bzw. \verb+CIRC_x_PPP_DECOMP_LZSCOMP_NHIST+
+eingestellt werden, wie viele verschiedene Historien verwendet werden sollen.
+Verschiedene Historien erlauben es, verschiedene TCP-Verbindungen unabhängig
+voneinander zu komprimieren. Aufgrund von Einschränkungen im Linux-Kern werden
+momentan jedoch nur zwei Einstellungen unterstützt: 0 (keine Historie) und 1
+(eine Historie). Bei 0 wird jedes Paket individuell komprimiert. Das senkt den
+Kompressionsgewinn erheblich, erhöht jedoch die Robustheit, da ein Verlust eines
+Pakets sich nicht auf die anderen übertragenen Pakete auswirkt.
+
+Dieser Wert ist jeweils als Vorschlag einer oberen Grenze zu sehen; der Peer
+kann weniger Historien aushandeln, falls er mit dem Vorschlag nicht
+einverstanden ist.
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_LZSCOMP_NHIST='1'+\\
+\verb+CIRC_x_PPP_DECOMP_LZSCOMP_NHIST='1'+
+
+Beispiel (hochgradig unzuverlässige Verbindung):
+
+\verb+CIRC_1_PPP_COMP_LZSCOMP_NHIST='0'+\\
+\verb+CIRC_1_PPP_DECOMP_LZSCOMP_NHIST='0'+
+
+\config{PPP\_COMP\_LZSCOMP\_LEVEL}{PPP\_COMP\_LZSCOMP\_LEVEL}{PPPCOMPLZSCOMPLEVEL}
+
+Diese globale, nicht Circuit-spezifische Variable gibt an, welche
+Stufe beim Stac/HiFn-LZS-Algorithmus für die Komprimierung von Paketen verwendet
+werden soll. Diese Variable erwartet einen Wert von 1 (schwächste Kompression,
+am schnellsten) bis 9 (stärkste Kompression, am langsamsten).
+
+Diese Einstellung ist global, weil sie nicht Teil der Aushandlung der
+PPP-Verbindungs\-eigenschaften ist und beim Laden des entsprechenden Kern-Moduls
+fest angegeben werden muss.
+
+Stufe 9 ist nicht unbedingt für den produktiven Betrieb geeignet. Die
+Dokumentation besagt:
+
+\begin{verbatim}
+Try 9 only for fun, it is rather useless (compresses only 1 or 2%
+better than 8, but a P100 facing that amount of brute force becomes
+sluggish, jumping mouse etc) - just not worth the burned CPU (even
+if you have a GHz oven).
+\end{verbatim}
+
+Standard-Einstellung:
+
+\verb+PPP_COMP_LZSCOMP_LEVEL='8'+
+
+Beispiel (langsame Hardware, nur schwache Kompression möglich):
+
+\verb+PPP_COMP_LZSCOMP_LEVEL='1'+
+
+\config{CIRC\_x\_PPP\_COMP\_MPPE}{CIRC\_x\_PPP\_COMP\_MPPE}{CIRCxPPPCOMPMPPE}
+
+Diese Variable aktiviert die Möglichkeit, Pakete vor dem Versenden an den Peer
+mit Hilfe des MPPE-Algorithmus zu komprimieren und zu verschlüsseln. Im
+Gegensatz zu den anderen Algorithmen gibt es keine separate Einstellung für
+die Pakete vom Peer zum fli4l-Router, weil MPPE immer symmetrisch ausgehandelt
+wird, d.\,h. dass MPPE entweder für beide Richtungen aktiv ist oder für keine.
+
+MPPE wird vor allem in Zusammenhang mit PPTP-Tunneln genutzt. Für andere
+Einsatzzwecke sollte MPPE aufgrund bekannter kryptographischer Schwachstellen
+nicht verwendet werden.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_COMP_MPPE='no'+
+
+Beispiel: \verb+CIRC_1_PPP_COMP_MPPE='yes'+
+
+\config{CIRC\_x\_PPP\_COMP\_MPPE\_KEY\_LEN}{CIRC\_x\_PPP\_COMP\_MPPE\_KEY\_LEN}{CIRCxPPPCOMPMPPEKEYLEN}
+
+Ist die MPPE-Verschlüsselung mit Hilfe der Variable
+\verb+CIRC_x_PPP_COMP_MPPE='yes'+ aktiviert, ist es u.\,U. nötig, die
+erlaubten Schlüssellängen einzustellen. Dies kann mit Hilfe der
+Variable \verb+CIRC_x_PPP_COMP_MPPE_KEY_LEN+ konfiguriert werden. Es gibt drei
+Möglichkeiten:
+
+\begin{longtable}{|l|p{0.7\textwidth}|}
+    \hline
+    \multicolumn{1}{|l}{\textbf{Wert}} &
+    \multicolumn{1}{|l|}{\textbf{Bedeutung}} \\
+    \hline
+    \endhead
+    \hline
+    \endfoot
+    \endlastfoot
+\texttt{40}   & Es soll ein 40-Bit-Schlüssel verwendet werden. Die
+                Aushandlung eines 128-Bit-Schlüssels wird abgelehnt.
+                \emph{(nicht empfohlen)}\\
+\texttt{128}  & Es soll ein 128-Bit-Schlüssel verwendet werden. Die
+                Aushandlung eines 40-Bit-Schlüssels wird abgelehnt.
+                \emph{(empfohlen)}\\
+\texttt{both} & Es können sowohl 40-Bit- als auch 128-Bit-Schlüssel genutzt
+                werden.
+                \emph{(nicht empfohlen)}\\
+    \hline
+    \caption{Mit \var{CIRC\_x\_PPP\_COMP\_MPPE\_KEY\_LEN} konfigurierbare MPPE-Schlüssellängen}
+\end{longtable}
+
+Generell gilt: Je länger der Schlüssel, desto sicherer die Verschlüsselung.
+Wenn möglich, sollten somit immer 128-Bit-Schlüssel verwendet werden.
+
+Standard-Einstellung:
+
+\verb+CIRC_x_PPP_COMP_MPPE_KEY_LEN='128'+
+
+Beispiel (für die Nutzung eines Peers, der nur mit 40-Bit-Schlüsseln umgehen
+kann):
+
+\verb+CIRC_1_PPP_COMP_MPPE_KEY_LEN='40'+
+
+\end{description}
+
+\marklabel{sect:multilink-ppp}{\subsection{Multilink PPP: PPP-Circuits vom Typ ``bundle''}}
+
+PPP erlaubt es, mehrere Verbindungen zum selben Peer zu \emph{bündeln}. Das
+bedeutet, dass mehrere unterschiedliche physische Verbindungen (z.\,B.
+ISDN-Kanäle oder Ethernet-Netzwerk\-verbindungen) logisch zu einer
+\emph{einzigen} Verbindung (``Bündel'' genannt) zusammengefasst werden können.
+Somit handelt es sich bei Multilink PPP um eine Variante des
+BONDings.\footnote{BOND steht für ``Bandwidth ON Demand'' und bezeichnet eine
+Technik, bei der dynamisch~-- je nach Auslastung der (logischen) Verbindung~--
+weitere physische Übertragungskanäle hinzugefügt oder bestehende entfernt
+werden, ohne dass die logische Verbindung etwas davon mitbekommt.} Pakete, die
+über ein Multilink-Bündel transportiert werden, werden zuerst in einzelne
+Fragmente aufgeteilt. Diese Fragmente werden dann über die zum Bündel gehörenden
+PPP-Verbindungen verschickt und auf der Gegenseite vom Peer wieder in der
+richtigen Reihenfolge zusammengebaut.\footnote{Die Anzahl der Fragmente sowie
+die Auswahl der Verbindungen erfolgt automatisch vom Linux-Kern und ist nicht
+beeinflussbar.} Bei genügend viel Datenverkehr werden alle Verbindungen im
+Bündel gleichmäßig ausgelastet, was zur Erhöhung der Übertragungsgeschwindigkeit
+führt, weil mehr Daten pro Zeiteinheit übertragen werden können.
+
+Um Multilink PPP zu konfigurieren, muss ein so genanntes \emph{PPP-Bündel}
+konfiguriert werden. Das ist ein spezieller PPP-Circuit vom Typ ``bundle''.
+Alle eigentlichen PPP-Kanäle, die gebündelt werden sollen, müssen dann dieses
+Bündel mit Hilfe der Variable \verb+CIRC_x_BUNDLE+ referenzieren. Dies
+funktioniert gleichermaßen auf Client- wie auf Server-Seite. Wird weiterhin die
+Dial-on-Demand-Funktionalität des fli4l für diesen Bündel-Circuit aktiviert
+(d.h. dass erst bei tatsächlich ausgehenden Netzwerkpaketen gewählt werden
+soll), muss einer dieser Circuits im Bündel als so genannter ``Master''
+ausgezeichnet werden, der auf diese Pakete ``horcht''; dies wird mit Hilfe der
+Variablen \verb+CIRC_x_PPP_MASTER+ vorgenommen.
+
+Generell können die PPP-Kanäle eines PPP-Bündels beliebig hinzu- und
+herausgenommen werden: So lange auch nur ein Kanal im Bündel verbleibt, bleibt
+das gesamte Bündel intakt. Im Falle von Dial-on-Demand-Bündeln (siehe oben) ist
+die Situation etwas anders: Legt der Master-Circuit auf, so legen auch alle
+anderen Kanäle desselben Bündels auf.
+
+Bei Multilink PPP muss man zum einen beachten, dass mehrere physisch
+\emph{unabhängige} Übertragungskanäle genutzt werden (müssen). Dies bedeutet
+in der Regel, dass die Kosten sich entsprechend vervielfachen (wenn man z.\,B.
+mehrere ISDN-Verbindungen oder mehrere DSL-Verbindungen nutzt). Zum anderen
+müssen \emph{beide} Verbindungspartner Multilink PPP unterstützen. Wenn der
+eigene Internet-Provider kein Multilink PPP anbietet, hat man also Pech...
+Typischerweise bieten Internet-Provider bei ISDN-Verbindungen Multilink PPP an,
+während dies bei DSL-Verbindungen die Seltenheit ist.
+
+Multilink PPP ist aber natürlich nicht auf die Verbindung zum Internet-Provider
+beschränkt, sondern kann auch für andere Zwecke verwendet werden, etwa um
+lokale Netze übers Internet mit Hilfe mehrerer, unabhängiger Verbindungen
+performant zu verbinden. Wenn jedoch keine spezielle PPP-Funktionalität wie
+Kompression oder IP-Adress-Vergabe benötigt wird, ist im Falle von
+Ethernet-Verbindungen das von Linux angebotene Ethernet-Bonding effizienter,
+weil der Overhead des PPP-Protokolls entfällt.
+
+Viele Einstellungen müssen für das gesamte PPP-Bündel identisch sein. Dies wird
+so realisiert, dass einige Einstellungen nur beim PPP-Bündel-Circuit
+konfiguriert werden (können) und die zugehörigen PPP-Kanäle diese übernehmen.
+Deswegen ist es erforderlich, dass der Bündel-Circuit \emph{vor} den Circuits
+für die einzelnen PPP-Kanäle konfiguriert wird, d.\,h. einen niedrigeren Index
+besitzt. Die folgenden Einstellungen werden von den Kanälen übernommen bzw.
+haben nur auf den Bündel-Circuit Auswirkungen und dürfen folglich \emph{nicht}
+für PPP-Kanäle separat konfiguriert werden:
+
+\begin{itemize}
+\item alles, was mit Netzwerk-Eigenschaften zu tun hat (Protokolle, Routen
+etc.):
+\begin{itemize}
+\item \verb+CIRC_x_NETS_IPV4_%+
+\item \verb+CIRC_x_NETS_IPV6_%+
+\item \verb+CIRC_x_PROTOCOLS+
+\item \verb+CIRC_x_USEPEERDNS+
+\item \verb+CIRC_x_PPP_NF_MSS+
+\end{itemize}
+\item Authentifizierung:
+\begin{itemize}
+\item \verb+CIRC_x_PPP_USERID+
+\item \verb+CIRC_x_PPP_PASSWORD+
+\item \verb+CIRC_x_PPP_PEER_AUTH+
+\end{itemize}
+\item Paketfilter und Hangup-Timeout:
+\begin{itemize}
+\item \verb+CIRC_x_HUP_TIMEOUT+
+\item \verb+CIRC_x_PPP_FILTER+
+\end{itemize}
+\item alle PPP-Kompressionseinstellungen\footnote{Der verwendete PPP-Dämon
+unterstützt Kompression nur auf Bündel- und nicht auf Verbindungsebene.}
+\item \verb+CIRC_x_PPP_MRRU+
+\end{itemize}
+
+Typische individuelle Einstellungen für einen PPP-Kanal sind die
+\jump{CIRCxPPPMTU}{MTU} und die \jump{CIRCxPPPMRU}{MRU}, die für jede physische
+Verbindung separat konfiguriert werden (können) sowie Einstellungen, die den
+jeweiligen PPP-Typ betreffen (also z.\,B. die Netzwerk-Schnittstelle bei
+einer PPPoE-Verbindung) und somit ebenfalls für jede physische Verbindung
+unterschiedlich sind bzw. sein können.
+
+Die Unterstützung für PPP-Bündel wird über die folgende Variable eingebunden
+und aktiviert:
+
+\begin{description}
+\config{OPT\_MULTILINK\_PPP}{OPT\_MULTILINK\_PPP}{OPTMULTILINKPPP}
+
+Diese Variable aktiviert die PPP-Multilink-Unterstützung. Zusätzlich muss das
+\verb+OPT_BUNDLE+ aus dem base-Paket aktiviert werden.
+
+Standard-Einstellung: \verb+OPT_MULTILINK_PPP='no'+
+
+Beispiel:
+\begin{example}
+\begin{verbatim}
+OPT_BUNDLE='yes'
+OPT_MULTILINK_PPP='yes'
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+Bei einem Bündel-Circuit kommen zu den allgemeinen Circuit- und
+PPP-Circuit-Variablen noch die folgenden hinzu, die spezifisch für
+PPP/bundle-Circuits sind:
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_MASTER}{CIRC\_x\_PPP\_MASTER}{CIRCxPPPMASTER}
+
+Falls das PPP-Bündel für Dial-on-Demand konfiguriert ist (d.h. falls
+im Bündel \verb+CIRC_x_HUP_TIMEOUT+ größer null ist), dann wird mit Hilfe
+dieser Variable festgelegt, welcher PPP-Kanal zuerst aufgebaut wird. Dies ist
+nötig, weil nicht alle PPP-Kanäle gleichzeitig auf Netzwerkaktivität horchen
+können. Der Wert kann ein Bezeichner der Form \emph{circ<Index>} oder der Name
+(\verb+CIRC_+\emph{Index}\verb+_NAME='+\emph{Name}\verb+')+ des jeweiligen
+Circuits sein. Der referenzierte Circuit muss ein PPP-Circuit sein, der Teil
+dieses Bündels ist.
+
+Bei Circuits, die sich sofort einwählen (\verb+CIRC_x_HUP_TIMEOUT='0'+), wird
+diese Einstellung ignoriert.
+
+Beispiel: \verb+CIRC_1_PPP_MASTER='ppp-serial1'+
+
+\config{CIRC\_x\_PPP\_MRRU}{CIRC\_x\_PPP\_MRRU}{CIRCxPPPMRRU}
+
+Die MRRU ist die \jump{CIRCxPPPMRU}{MRU} auf der Ebene des Multilink-Bündels.
+Sie sagt aus, wie groß ein aus Fragmenten zusammengesetztes PPP-Paket höchstens
+werden darf. Die MRRU entspricht somit auf der Seite des Peers der maximalen
+Größe eines PPP-Pakets, bevor es fragmentiert und über die einzelnen
+Verbindungen des Bündels verschickt wird.
+
+Wird die MRRU nicht konfiguriert oder wird sie auf null gesetzt, wird die MRRU
+aus den MRUs der zum Bündel gehörenden Circuits automatisch berechnet.
+
+Die MRRU ist als Vorschlag einer oberen Grenze zu sehen; der Peer kann eine
+kleinere MRRU aushandeln, falls er mit dem Vorschlag nicht einverstanden ist.
+
+Standard-Einstellung: \verb+CIRC_x_PPP_MRRU='0'+
+
+Beispiel: \verb+CIRC_1_PPP_MRRU='yes'+
+
+\end{description}
+
+Das nachfolgende Beispiel zeigt, wie man auf Client- und Server-Seite eine
+PPP-Multilink-Verbindung definiert. Dabei wird das Paket pppoe vorausgesetzt,
+welches die entsprechenden PPP-Module ``ethernet'' und ``ethernet-server''
+mitbringt.
+
+Beispiel (Client): Der Client ``wotan'' baut zwei zu einem Bündel
+zusammengefasste PPPoE-Verbindungen zum Server ``odin'' auf und authentifiziert
+sich mit Benutzernamen ``user'' und Passwort ``pass''.
+
+\begin{example}
+\begin{verbatim}
+    HOSTNAME='wotan'
+    OPT_BUNDLE='yes'
+    OPT_PPP='yes'
+    OPT_MULTILINK_PPP='yes'
+    OPT_PPP_ETHERNET='yes'
+    #
+    CIRC_N='3'
+    #
+    CIRC_1_NAME='ppp2odin'
+    CIRC_1_TYPE='ppp'
+    CIRC_1_ENABLED='yes'
+    CIRC_1_UP='yes'
+    CIRC_1_NETS_IPV4_N='1'
+    CIRC_1_NETS_IPV4_1='192.168.12.0/24'
+    CIRC_1_PPP_TYPE='bundle'
+    CIRC_1_PPP_USERID='user'
+    CIRC_1_PPP_PASSWORD='pass'
+    #
+    CIRC_2_NAME='ppp2odin-eth1'
+    CIRC_2_TYPE='ppp'
+    CIRC_2_ENABLED='yes'
+    CIRC_2_UP='yes'
+    CIRC_2_BUNDLE='ppp2odin'
+    CIRC_2_PPP_TYPE='ethernet'
+    CIRC_2_PPP_ETHERNET_DEV='eth1'
+    CIRC_2_PPP_ETHERNET_TYPE='kernel'
+    #
+    CIRC_3_NAME='ppp2odin-eth2'
+    CIRC_3_TYPE='ppp'
+    CIRC_3_ENABLED='yes'
+    CIRC_3_UP='yes'
+    CIRC_3_BUNDLE='ppp2odin'
+    CIRC_3_PPP_TYPE='ethernet'
+    CIRC_3_PPP_ETHERNET_DEV='eth2'
+    CIRC_3_PPP_ETHERNET_TYPE='kernel'
+\end{verbatim}
+\end{example}
+
+Beispiel (Server): Der Server ``odin'' wartet auf zwei Ethernet-Schnittstellen
+auf PPPoE-Verbindungsanfragen von Client ``wotan'' und verlangt eine
+Authentifizierung mit Benutzernamen ``user'' und Passwort ``pass''. Diese
+PPPoE-Kanäle werden zu einem PPP-Bündel zusammengefasst. Weil keine Netze hin
+zum Client geroutet werden (\verb+CIRC_1_NETS_IPV4_N+ ist nicht definiert), muss
+via \verb+CIRC_1_PROTOCOLS='ipv4'+ explizit mitgeteilt werden, dass IPv4 über
+diese PPP-Verbindungen genutzt werden soll.  Via \verb+CIRC_1_PPP_LOCALIP+ und
+\verb+CIRC_1_PPP_REMOTEIP+ wird konfiguriert, welche IPv4-Adressen der Client
+und der Server für diese PPP-Verbindung nutzen sollen.
+
+\begin{example}
+\begin{verbatim}
+    HOSTNAME='odin'
+    OPT_BUNDLE='yes'
+    OPT_PPP='yes'
+    OPT_MULTILINK_PPP='yes'
+    OPT_PPP_ETHERNET_SERVER='yes'
+    OPT_PPP_PEERS='yes'
+    PPP_PEER_N='1'
+    PPP_PEER_1_USERID='user'
+    PPP_PEER_1_PASSWORD='pass'
+    PPP_PEER_1_CIRCUITS='ppp2wotan'
+    #
+    CIRC_N='3'
+    #
+    CIRC_1_NAME='ppp2wotan'
+    CIRC_1_TYPE='ppp'
+    CIRC_1_ENABLED='yes'
+    CIRC_1_UP='yes'
+    CIRC_1_PROTOCOLS='ipv4'
+    CIRC_1_PPP_TYPE='bundle'
+    CIRC_1_PPP_PEER_AUTH='yes'
+    CIRC_1_PPP_LOCALIP='192.168.222.1'
+    CIRC_1_PPP_REMOTEIP='192.168.222.2'
+    #
+    CIRC_2_NAME='ppp2wotan-eth1'
+    CIRC_2_TYPE='ppp'
+    CIRC_2_ENABLED='yes'
+    CIRC_2_UP='yes'
+    CIRC_2_BUNDLE='ppp2wotan'
+    CIRC_2_PPP_TYPE='ethernet-server'
+    CIRC_2_PPP_ETHERNET_DEV='eth1'
+    CIRC_2_PPP_ETHERNET_TYPE='kernel'
+    #
+    CIRC_3_NAME='ppp2wotan-eth2'
+    CIRC_3_TYPE='ppp'
+    CIRC_3_ENABLED='yes'
+    CIRC_3_UP='yes'
+    CIRC_3_BUNDLE='ppp2wotan'
+    CIRC_3_PPP_TYPE='ethernet-server'
+    CIRC_3_PPP_ETHERNET_DEV='eth2'
+    CIRC_3_PPP_ETHERNET_TYPE='kernel'
+\end{verbatim}
+\end{example}
+
+\marklabel{sect:ppp-serial}{\subsection{PPP-Circuits vom Typ ``serial''}}
+
+Dieser Circuit-Typ erlaubt es, PPP-Verbindungen zu einem anderen Rechner über
+eine serielle Leitung (ohne Modem) aufbauen zu können. Das Paket wird über die
+Variable \var{OPT\_PPP\_SERIAL} aktiviert:
+
+\begin{description}
+\config{OPT\_PPP\_SERIAL}{OPT\_PPP\_SERIAL}{OPTPPPSERIAL}
+
+Diese Variable muss auf 'yes' gesetzt werden, um PPP-Circuits vom Typ ``serial''
+anlegen zu können.
+
+Standard-Einstellung: \verb+OPT_PPP_SERIAL='no'+
+\end{description}
+
+Soll eine konkrete serielle Verbindung aufgebaut werden können, so muss ein
+passender Circuit konfiguriert werden, siehe Abschnitt
+\jump{sect:circuits}{Circuit-Konfiguration}. Der zu verwendende Typ in
+\var{CIRC\_x\_TYPE} lautet ``ppp'', der zu verwendende PPP-Typ in
+\var{CIRC\_x\_PPP\_TYPE} lautet ``serial''. Zu den allgemeinen Circuit-Variablen
+kommen die folgenden hinzu, die spezifisch für PPP/serial-Circuits sind:
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_SERIAL\_DEV}{CIRC\_x\_PPP\_SERIAL\_DEV}{CIRCxPPPSERIALDEV}
+
+Hier ist die serielle Schnittstelle anzugeben, die verwendet werden soll. Sie
+können entweder ``com1'' bis ``com4'' oder alternativ ``ttyS0'' bis ``ttyS3''
+für die seriellen Schnittstellen 1--4 eintragen.
+
+Beispiel: \verb+CIRC_1_PPP_SERIAL_DEV='com2'+
+
+\config{CIRC\_x\_PPP\_SERIAL\_SPEED}{CIRC\_x\_PPP\_SERIAL\_SPEED}{CIRCxPPPSERIALSPEED}
+
+Hier muss die Übertragungsrate in Baud eingetragen werden. 38400 wird auch von
+alten Schnittstellen unterstützt. Eventuell kann es Probleme geben, wenn man die
+Rate auf 57600 oder gar 115200 Baud einstellt.
+
+Beispiel: \verb+CIRC_1_PPP_SERIAL_SPEED='38400'+
+
+\end{description}
+
+\marklabel{sect:ppp-serial-server}{\subsection{PPP-Circuits vom Typ
+``serial-server''}}
+
+Dieser Circuit-Typ erlaubt es, PPP-Verbindungen von einem anderen Rechner über
+eine serielle Leitung (ohne Modem) annehmen zu können. Es entspricht in seiner
+Funktionsweise dem \verb+OPT_PPP+ in älteren fli4l-Versionen. Ein sinnvolles
+Anwendungsgebiet ist beispielsweise das Einbinden eines Notebook ohne
+Netzwerkkarte in das Netzwerk. Das Paket wird über die Variable
+\var{OPT\_PPP\_SERIAL\_SERVER} aktiviert:
+
+\begin{description}
+\config{OPT\_PPP\_SERIAL\_SERVER}{OPT\_PPP\_SERIAL\_SERVER}{OPTPPPSERIALSERVER}
+
+Diese Variable muss auf 'yes' gesetzt werden, um PPP-Circuits vom Typ
+``serial-server'' anlegen zu können.
+
+Standard-Einstellung: \verb+OPT_PPP_SERIAL_SERVER='no'+
+\end{description}
+
+Soll eine konkrete serielle Verbindung angenommen werden können, so muss ein
+passender Circuit konfiguriert werden, siehe Abschnitt
+\jump{sect:circuits}{Circuit-Konfiguration}. Der zu verwendende Typ in
+\var{CIRC\_x\_TYPE} lautet ``ppp'', der zu verwendende PPP-Typ in
+\var{CIRC\_x\_PPP\_TYPE} lautet ``serial-server''. Zu den allgemeinen
+Circuit-Variablen kommen die folgenden hinzu, die spezifisch für
+PPP/serial-server-Circuits sind:
+
+\begin{description}
+
+\config{CIRC\_x\_PPP\_SERIAL\_SERVER\_DEV}{CIRC\_x\_PPP\_SERIAL\_SERVER\_DEV}{CIRCxPPPSERIALSERVERDEV}
+
+Hier ist die serielle Schnittstelle anzugeben, die verwendet werden soll. Sie
+können entweder ``com1'' bis ``com4'' oder alternativ ``ttyS0'' bis ``ttyS3''
+für die seriellen Schnittstellen 1--4 eintragen.
+
+Beispiel: \verb+CIRC_1_PPP_SERIAL_SERVER_DEV='com2'+
+
+\config{CIRC\_x\_PPP\_SERIAL\_SERVER\_SPEED}{CIRC\_x\_PPP\_SERIAL\_SERVER\_SPEED}{CIRCxPPPSERIALSERVERSPEED}
+
+Hier muss die Übertragungsrate in Baud eingetragen werden. 38400 wird auch von
+alten Schnittstellen unterstützt. Eventuell kann es Probleme geben, wenn man die
+Rate auf 57600 oder gar 115200 Baud einstellt.
+
+Beispiel: \verb+CIRC_1_PPP_SERIAL_SERVER_SPEED='38400'+
+
+\end{description}
+
+Beispiel (Client): Der Client ``wotan'' baut eine PPP-Verbindung zum Server
+``odin'' auf und authentifiziert sich mit Benutzernamen ``user'' und Passwort
+``pass''.
+
+\begin{example}
+\begin{verbatim}
+    HOSTNAME='wotan'
+    OPT_PPP='yes'
+    OPT_PPP_SERIAL='yes'
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='ppp2odin'
+    CIRC_1_TYPE='ppp'
+    CIRC_1_ENABLED='yes'
+    CIRC_1_NETS_IPV4_N='1'
+    CIRC_1_NETS_IPV4_1='192.168.12.0/24'
+    CIRC_1_UP='yes'
+    CIRC_1_PPP_TYPE='serial'
+    CIRC_1_PPP_USERID='user'
+    CIRC_1_PPP_PASSWORD='pass'
+    CIRC_1_PPP_SERIAL_DEV='com1'
+    CIRC_1_PPP_SERIAL_SPEED='38400'
+\end{verbatim}
+\end{example}
+
+Beispiel (Server): Der Server ``odin'' wartet auf eine PPP-Verbindungsanfrage
+von Client ``wotan'' und verlangt eine Authentifizierung mit Benutzernamen
+``user'' und Passwort ``pass''. Weil keine Netze hin zum Client geroutet werden
+(\verb+CIRC_1_NETS_IPV4_N+ ist nicht definiert), muss via
+\verb+CIRC_1_PROTOCOLS='ipv4'+ explizit mitgeteilt werden, dass IPv4 über diese
+PPP-Verbindung genutzt werden soll.  Via \verb+CIRC_1_PPP_LOCALIP+ und
+\verb+CIRC_1_PPP_REMOTEIP+ wird konfiguriert, welche IPv4-Adressen der Client
+und der Server für diese PPP-Verbindung nutzen sollen.
+
+\begin{example}
+\begin{verbatim}
+    HOSTNAME='odin'
+    OPT_PPP='yes'
+    OPT_PPP_SERIAL_SERVER='yes'
+    OPT_PPP_PEERS='yes'
+    PPP_PEER_N='1'
+    PPP_PEER_1_USERID='user'
+    PPP_PEER_1_PASSWORD='pass'
+    PPP_PEER_1_CIRCUITS='ppp2wotan'
+    #
+    CIRC_N='1'
+    CIRC_1_NAME='ppp2wotan'
+    CIRC_1_TYPE='ppp'
+    CIRC_1_ENABLED='yes'
+    CIRC_1_PROTOCOLS='ipv4'
+    CIRC_1_UP='yes'
+    CIRC_1_PPP_PEER_AUTH='yes'
+    CIRC_1_PPP_LOCALIP='192.168.222.1'
+    CIRC_1_PPP_REMOTEIP='192.168.222.2'
+    CIRC_1_PPP_SERIAL_DEV='com1'
+    CIRC_1_PPP_SERIAL_SPEED='38400'
+\end{verbatim}
+\end{example}

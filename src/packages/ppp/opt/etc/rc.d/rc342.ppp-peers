@@ -1,0 +1,61 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc342.ppp-peers - configuration of PPP peer authentication db
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+ppp_pap_secrets=/etc/ppp/pap-secrets
+ppp_chap_secrets=/etc/ppp/chap-secrets
+
+case $OPT_PPP_PEERS in
+yes)
+    begin_script ppp-peers "creating PPP peer authentication database ..."
+
+    if [ ! -f $ppp_pap_secrets ]    # already existing?
+    then                            # yes, don't overwrite
+        log_info "writing /etc/ppp/pap-secrets ..."
+
+        cat << EOF > $ppp_pap_secrets
+#----------------------------------------------------------------------------
+# /etc/ppp/pap-secrets - secrets for PPP authentication using PAP/CHAP/EAP
+# automatically created by rc342.ppp-peers
+#
+# client     server  secret                  IP addresses
+#----------------------------------------------------------------------------
+EOF
+        chmod 600 $ppp_pap_secrets
+
+        if [ ! -f $ppp_chap_secrets ]   # already existing?
+        then                            # yes, don't overwrite
+            ln -s $ppp_pap_secrets $ppp_chap_secrets
+        fi
+    fi
+
+    for i in $(seq 1 0$PPP_PEER_N)
+    do
+        eval local ppp_peer_userid=\$PPP_PEER_${i}_USERID
+        eval local ppp_peer_password=\$PPP_PEER_${i}_PASSWORD
+        eval local ppp_peer_remoteips=\$PPP_PEER_${i}_REMOTEIPS
+        : ${ppp_peer_remoteips:="*"}
+        eval local ppp_peer_circuits=\$PPP_PEER_${i}_CIRCUITS
+        if [ -z "$ppp_peer_circuits" ]
+        then
+            echo "\"$ppp_peer_userid\"  *  \"$ppp_peer_password\"  $ppp_peer_remoteips"
+        else
+            for circ in $ppp_peer_circuits
+            do
+                circuit_read_field $circ circ_ppp_name
+                if [ -n "$circ_ppp_name" ]
+                then
+                    echo "\"$ppp_peer_userid\"  \"$circ_ppp_name\"  \"$ppp_peer_password\"  $ppp_peer_remoteips"
+                else
+                    log_warn "circuit '$circ' does not exist or has no PPP name, ignoring it while processing PPP_PEER_${i}_CIRCUITS"
+                fi
+            done
+        fi
+    done >> $ppp_pap_secrets
+
+    end_script
+    ;;
+esac

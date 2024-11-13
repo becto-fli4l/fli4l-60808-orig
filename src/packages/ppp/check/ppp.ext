@@ -1,0 +1,379 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for ppp
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2007-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_ppp)
+then
+    provides ppp version 4.0.0
+    depends on fli4l version 4.0
+
+    if (opt_ppp_multilink && !opt_bundle)
+    then
+        error "OPT_PPP_MULTILINK='yes' requires OPT_BUNDLE='yes'"
+    fi
+fi
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set type=CIRC_%_TYPE[i]
+        set protocols=CIRC_%_PROTOCOLS[i]
+        if (opt_ipv4)
+        then
+            set nets_ipv4_n=CIRC_%_NETS_IPV4_N[i]
+        else
+            set nets_ipv4_n=0
+        fi
+        if (opt_ipv6)
+        then
+            set nets_ipv6_n=CIRC_%_NETS_IPV6_N[i]
+        else
+            set nets_ipv6_n=0
+        fi
+
+        set bundle_ref=CIRC_%_BUNDLE[i] ?: ""
+        set bundle=0
+        if (bundle_ref != "")
+        then
+            foreach j in CIRC_N
+            do
+                if (CIRC_%_ENABLED[j] == "yes")
+                then
+                    if (bundle_ref == CIRC_%_NAME[j])
+                    then
+                        set bundle=j
+                    fi
+                fi
+            done
+        fi
+
+        if (type == "ppp")
+        then
+            if (!opt_ppp)
+            then
+                error "CIRC_${i}_TYPE='ppp' requires OPT_PPP='yes'"
+            fi
+
+            if (nets_ipv6_n > 0 || protocols =~ "ipv6")
+            then
+                add_to_opt "etc/ppp/ipv6-up050.ppp" "mode=555 flags=sh"
+            fi
+
+            set ppptype=CIRC_%_PPP_TYPE[i]
+            if (ppptype == "")
+            then
+                error "CIRC_${i}_TYPE='ppp' requires CIRC_${i}_PPP_TYPE to be set"
+            fi
+            if (ppptype == "bundle")
+            then
+                if (!opt_ppp_multilink)
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require OPT_PPP_MULTILINK='yes'"
+                fi
+
+                set huptimeout=CIRC_%_HUP_TIMEOUT[i]
+                set master_ref=CIRC_%_PPP_MASTER[i] ?: ""
+                if (huptimeout != "" && huptimeout > 0)
+                then
+                    set name=CIRC_%_NAME[i]
+                    if (master_ref != "")
+                    then
+                        set master="no"
+                        foreach j in CIRC_N
+                        do
+                            if (CIRC_%_ENABLED[j] == "yes")
+                            then
+                                if (master_ref == CIRC_%_NAME[j])
+                                then
+                                    set master="yes"
+                                    set bundle_ref=CIRC_%_BUNDLE[j] ?: ""
+                                    if (bundle_ref != name)
+                                    then
+                                        error "CIRC_${i}_PPP_MASTER='${master_ref}' refers to a circuit which is not part of the multilink bundle (please set CIRC_${j}_BUNDLE='${name}')"
+                                    fi
+                                fi
+                            fi
+                        done
+                        if (master != "yes")
+                        then
+                            error "CIRC_${i}_PPP_MASTER='${master_ref}' does not refer to a valid circuit"
+                        fi
+                    else
+                        error "The dial-on-demand PPP multilink bundle '${name}' has no master circuit; please set CIRC_${i}_PPP_MASTER accordingly"
+                    fi
+                fi
+
+                if (defined(CIRC_%_PPP_LCP_ECHO_INTERVAL[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_LCP_ECHO_INTERVAL to be undefined: please configure LCP echo interval at link level, not at bundle level"
+                fi
+
+                if (defined(CIRC_%_PPP_LCP_ECHO_MAX_FAILURES[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_LCP_ECHO_MAX_FAILURES to be undefined: please configure LCP echo maximum failure count at link level, not at bundle level"
+                fi
+
+                if (defined(CIRC_%_PPP_LCP_ECHO_ADAPTIVE[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_LCP_ECHO_ADAPTIVE to be undefined: please configure LCP adaptive echo at link level, not at bundle level"
+                fi
+
+                if (defined(CIRC_%_PPP_LOCALIP[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_LOCALIP to be undefined: please configure local IPv4 address at link level, not at bundle level"
+                fi
+
+                if (defined(CIRC_%_PPP_REMOTEIP[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_REMOTEIP to be undefined: please configure remote IPv4 address at link level, not at bundle level"
+                fi
+
+                if (defined(CIRC_%_PPP_LOCALIP6[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_LOCALIP6 to be undefined: please configure local IPv6 address at link level, not at bundle level"
+                fi
+
+                if (defined(CIRC_%_PPP_REMOTEIP6[i]))
+                then
+                    error "CIRC_${i}_TYPE='ppp' and CIRC_${i}_PPP_TYPE='bundle' require CIRC_${i}_PPP_REMOTEIP6 to be undefined: please configure remote IPv6 address at link level, not at bundle level"
+                fi
+            else
+                if (defined(CIRC_%_PPP_MASTER[i]))
+                then
+                    error "CIRC_${i}_PPP_TYPE='${ppptype}' requires CIRC_${i}_PPP_MASTER to be undefined"
+                fi
+            fi
+
+            if (dialmode != "auto")
+            then
+                set timeout=circ_%_hup_timeout[i]
+                if (timeout > 0)
+                then
+                    warning "With DIALMODE='${DIALMODE}' and CIRC_${i}_HUP_TIMEOUT='${timeout}', you will have to redial circuit ${i} manually each time the link is inactive for ${timeout} seconds."
+                fi
+            fi
+
+            # general PPP properties (equal among all links in a bundle)
+            if (defined(CIRC_%_PPP_USERID[i]) && !defined(CIRC_%_PPP_PASSWORD[i]))
+            then
+                set userid=CIRC_%_PPP_USERID[i]
+                error "CIRC_${i}_PPP_USERID='${userid}' requires CIRC_${i}_PPP_PASSWORD to be non-empty"
+            fi
+
+            # PPP Van Jacobson TCP/IP header compression
+            set circ_ppp_vj=CIRC_%_PPP_VJ[i] ?: "no"
+            set circ_ppp_vjccomp=CIRC_%_PPP_VJCCOMP[i] ?: "no"
+            if (circ_ppp_vj != "yes" && circ_ppp_vjccomp == "yes")
+            then
+                error "CIRC_${i}_VJCCOMP='yes' requires CIRC_${i}_VJ='yes'"
+            fi
+
+            # PPP compression
+            if (CIRC_%_PPP_COMP_MPPE[i] ?: "no" == "yes")
+            then
+                if (CIRC_%_PPP_COMP_BSDCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_PPP_COMP_MPPE='yes' requires CIRC_${i}_PPP_COMP_BSDCOMP='no'"
+                fi
+                if (CIRC_%_PPP_DECOMP_BSDCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_PPP_COMP_MPPE='yes' requires CIRC_${i}_PPP_DECOMP_BSDCOMP='no'"
+                fi
+                if (CIRC_%_PPP_COMP_DEFLATE[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_PPP_COMP_MPPE='yes' requires CIRC_${i}_PPP_COMP_DEFLATE='no'"
+                fi
+                if (CIRC_%_PPP_DECOMP_DEFLATE[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_PPP_COMP_MPPE='yes' requires CIRC_${i}_PPP_DECOMP_DEFLATE='no'"
+                fi
+                if (CIRC_%_PPP_COMP_LZSCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_PPP_COMP_MPPE='yes' requires CIRC_${i}_PPP_COMP_LZSCOMP='no'"
+                fi
+                if (CIRC_%_PPP_DECOMP_LZSCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_PPP_COMP_MPPE='yes' requires CIRC_${i}_PPP_DECOMP_LZSCOMP='no'"
+                fi
+            fi
+
+            set net_ref=i
+            if (bundle > 0)
+            then
+                if (!opt_ppp_multilink)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' makes this PPP circuit a part of a bundle which requires OPT_PPP_MULTILINK='yes'"
+                fi
+
+                set bundle_type=CIRC_%_TYPE[bundle]
+                if (bundle_type != "ppp")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${bundle}_TYPE='ppp'"
+                fi
+                if (CIRC_%_PPP_TYPE[bundle] != "bundle")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${bundle}_PPP_TYPE='bundle'"
+                fi
+
+                # packet size and filters
+                if (defined(CIRC_%_PPP_NF_MSS[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_NF_MSS to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_NF_MSS appropriately)"
+                fi
+                if (CIRC_%_PPP_FILTER[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_FILTER='no' (configure the bundle circuit instead by using CIRC_${bundle}_PPP_FILTER='yes')"
+                fi
+                # PPP authentication
+                if (defined(CIRC_%_PPP_USERID[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_USERID to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_USERID appropriately)"
+                fi
+                if (defined(CIRC_%_PPP_PASSWORD[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_PASSWORD to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_PASSWORD appropriately)"
+                fi
+                if (defined(CIRC_%_PPP_PEER_AUTH[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_PEER_AUTH to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_PEER_AUTH appropriately)"
+                fi
+                # PPP multilink
+                if (defined(CIRC_%_PPP_MRRU[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_MRRU to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_MRRU appropriately)"
+                fi
+                # PPP Van Jacobson TCP/IP header compression
+                if (CIRC_%_PPP_VJ[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_VJ to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_VJ appropriately)"
+                fi
+                # PPP compression
+                if (CIRC_%_PPP_COMP_BSDCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_COMP_BSDCOMP to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_COMP_BSDCOMP appropriately)"
+                fi
+                if (CIRC_%_PPP_COMP_DEFLATE[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_COMP_DEFLATE to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_COMP_DEFLATE appropriately)"
+                fi
+                if (CIRC_%_PPP_COMP_LZSCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_COMP_LZSCOMP to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_COMP_LZSCOMP appropriately)"
+                fi
+                if (CIRC_%_PPP_COMP_MPPE[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_COMP_MPPE to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_COMP_MPPE appropriately)"
+                fi
+                # PPP decompression
+                if (CIRC_%_PPP_DECOMP_BSDCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_DECOMP_BSDCOMP to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_DECOMP_BSDCOMP appropriately)"
+                fi
+                if (CIRC_%_PPP_DECOMP_DEFLATE[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_DECOMP_DEFLATE to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_DECOMP_DEFLATE appropriately)"
+                fi
+                if (CIRC_%_PPP_DECOMP_LZSCOMP[i] ?: "no" == "yes")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_DECOMP_LZSCOMP to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_DECOMP_LZSCOMP appropriately)"
+                fi
+                # DNS
+                if (defined(CIRC_%_PPP_DNS1[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_DNS1 to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_DNS1 appropriately)"
+                fi
+                if (defined(CIRC_%_PPP_DNS2[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_DNS2 to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_DNS2 appropriately)"
+                fi
+                # WINS
+                if (defined(CIRC_%_PPP_WINS1[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_WINS1 to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_WINS1 appropriately)"
+                fi
+                if (defined(CIRC_%_PPP_WINS2[i]))
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PPP_WINS2 to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PPP_WINS2 appropriately)"
+                fi
+
+                # layer-3 protocols and routing
+                if (protocols != "")
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_PROTOCOLS to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_PROTOCOLS appropriately)"
+                fi
+                if (nets_ipv4_n > 0)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_NETS_IPV4_% to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_NETS_IPV4_% appropriately)"
+                fi
+                if (nets_ipv6_n > 0)
+                then
+                    error "CIRC_${i}_BUNDLE='${bundle_ref}' requires CIRC_${i}_NETS_IPV6_% to be undefined (configure the bundle circuit instead by setting CIRC_${bundle}_NETS_IPV6_% appropriately)"
+                fi
+
+                # overwrite with values from the bundle for check below
+                set net_ref=bundle
+                set protocols=CIRC_%_PROTOCOLS[bundle]
+                if (opt_ipv4)
+                then
+                    set nets_ipv4_n=CIRC_%_NETS_IPV4_N[bundle]
+                else
+                    set nets_ipv4_n=0
+                fi
+                if (opt_ipv6)
+                then
+                    set nets_ipv6_n=CIRC_%_NETS_IPV6_N[bundle]
+                else
+                    set nets_ipv6_n=0
+                fi
+            fi
+
+            # PPP local/remote IP
+            if (defined(CIRC_%_PPP_LOCALIP[i]) && nets_ipv4_n == 0 && (protocols == "" || !(protocols =~ "ipv4")))
+            then
+                set localip=CIRC_%_PPP_LOCALIP[i]
+                error "CIRC_${i}_LOCALIP='${localip}' requires CIRC_${net_ref}_PROTOCOLS to contain 'ipv4'"
+            fi
+            if (defined(CIRC_%_PPP_REMOTEIP[i]) && nets_ipv4_n == 0 && (protocols == "" || !(protocols =~ "ipv4")))
+            then
+                set remoteip=CIRC_%_PPP_REMOTEIP[i]
+                error "CIRC_${i}_REMOTEIP='${remoteip}' requires CIRC_${net_ref}_PROTOCOLS to contain 'ipv4'"
+            fi
+            if (defined(CIRC_%_PPP_LOCALIP6[i]) && nets_ipv6_n == 0 && (protocols == "" || !(protocols =~ "ipv6")))
+            then
+                set localip=CIRC_%_PPP_LOCALIP6[i]
+                error "CIRC_${i}_LOCALIP6='${localip}' requires CIRC_${net_ref}_PROTOCOLS to contain 'ipv6'"
+            fi
+            if (defined(CIRC_%_PPP_REMOTEIP6[i]) && nets_ipv6_n == 0 && (protocols == "" || !(protocols =~ "ipv6")))
+            then
+                set remoteip=CIRC_%_PPP_REMOTEIP6[i]
+                error "CIRC_${i}_REMOTEIP6='${remoteip}' requires CIRC_${net_ref}_PROTOCOLS to contain 'ipv6'"
+            fi
+        fi
+    fi
+done
+
+if (opt_ppp_serial)
+then
+    provides ppp_client version 4.0.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_SERIAL='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+if (opt_ppp_serial_server)
+then
+    provides ppp_server version 4.0.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_SERIAL_SERVER='yes' requires OPT_PPP='yes'"
+    fi
+fi

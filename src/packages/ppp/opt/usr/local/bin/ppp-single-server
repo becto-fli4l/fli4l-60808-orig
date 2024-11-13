@@ -1,0 +1,55 @@
+#! /bin/sh
+#----------------------------------------------------------------------------
+# /usr/local/bin/ppp-single-server                               __FLI4LVER__
+#
+# invokes the PPP daemon for a server-side PPP connection where at most one
+# client can connect (e.g. PPP-over-serial-line)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /usr/share/circuits/api
+
+script="$(basename $0)[$$]"
+facility=$circuit_logfacility
+. /usr/share/logfunc.sh
+
+exit_server()
+{
+    log_info "exiting PPP single server for $circ_id [$clone_id]"
+    if [ -n "$clone_id" ]
+    then
+        circuit_usable $clone_id && fli4lctrl hangup $clone_id
+    fi
+}
+
+circ_id=$1
+exit_trap_add exit_server
+
+if [ -z "$circ_id" ]
+then
+    log_error "circuit identifier is missing"
+    exit 1
+fi
+
+log_info "starting PPP single server for $circ_id"
+
+while true
+do
+    clone_id=
+
+    if ! circuit_clone $circ_id ppp_server_clone_adaptor "" clone_id errmsg
+    then
+        log_error "error while cloning circuit $circ_id: $errmsg"
+        exit 2
+    fi
+
+    log_info "waiting for circuit $clone_id"
+    while circuit_usable $clone_id
+    do
+        sleep 1
+    done
+    log_info "circuit $clone_id hung up"
+done
+
+exit 0

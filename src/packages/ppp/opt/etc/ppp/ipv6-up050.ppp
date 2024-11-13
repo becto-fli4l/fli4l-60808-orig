@@ -1,0 +1,22 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ipv6-up050.ppp
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# send router solicitation on PPP interface
+if [ $circ_type = "ppp" ]
+then
+    path=/proc/sys/net/ipv6/conf/$circ_dev
+    if [ -d $path ]
+    then
+        # don't let the kernel override any routes...
+        echo 0 > $path/accept_ra_defrtr
+        # ...but learn Prefix Information (note that accept_ra_pinfo is enabled
+        # by default if accept_ra is non-zero)
+        echo 2 > $path/accept_ra
+        # emit a router solicitation immediately
+        rdisc6 -1 -r 3 $circ_dev
+    fi
+fi
