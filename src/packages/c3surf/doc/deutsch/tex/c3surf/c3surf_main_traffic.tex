@@ -1,0 +1,97 @@
+% Last Update: $Id$
+  Das OPT\_C3SURF\_TRAFFIC ermöglicht ``Power User'' auszubremsen und in ihre Schranken zu weisen.
+  Es wird das Datenvolumen in einem definierbaren Zeitintervall überwacht und ausgewertet. Die 
+  Kofiguration kann nach eigenen Bedürfnissen angepasst werden.
+
+\section {Konfiguration OPT\_C3SURF\_TRAFFIC}
+
+\begin{description}
+
+\config{OPT\_C3SURF\_TRAFFIC}{OPT\_C3SURF\_TRAFFIC}{OPTC3SURFTRAFFIC}
+   
+  Standard-Einstellung: \var{OPT\_C3SURF\_TRAFFIC='no'}
+   
+  Die Angabe von 'yes' hier aktiviert das Traffic-Modul. Die weitere Variablen sind im
+  Folgenden beschrieben. Die Defaultwerte sind für einen DSL-6000 Anschluss ausgelegt
+   
+  Mit den folgenden Variablen kann eingestellt werden in welcher Zeit welches Datenvolumen nicht überschritten
+  werden darf. Dabei wird nicht zwischen Up- und Download unterschieden. Die Logik dieses Moduls ist so konzipiert,
+  dass bei zweimaliger Überschreitung des Volumens in Folge die Abmeldung des Verursachers erfolgt und dieser mit
+  der definierten Zeitstrafe (Blockzeit) belegt wird. Diese Einstellungen wirken global für alle C3SURF-Benutzer.
+  Die Wahl der richtigen Parameter sollte von der vor Ort verfügbaren Bandbreite abhängen. Da keine Sperre bei
+  einmaliger Überschreitung erfolgt, kann auch mal ein Betriebssystem-Update oder das normale Herunterladen größerer
+  Datenmengen erfolgen. Sollte der Verbrauch der Bandbreite aber als ``dauerhaft'' erkannt werden wird eine
+  Sperre aktiv.
+   
+  Will man beispielsweise das gelegentliche Herunterladen von größeren Datenmengen erlauben, so muss bei
+  der Wahl der Parameter aus der erlaubten Datenmenge und der verfügbaren Bandbreite eine Zeit kalkuliert
+  werden, in der die Datenmenge herunterladbar sein soll.
+
+\achtung{Beispiel:}
+
+   Das Herunterladen einer Distributions-CD (700MB) würde im günstigsten
+   Fall folgende Zeiten in Anspruch nehmen:
+   
+   \begin{tabular}{lrlrl}
+    
+    DSL-&1000 & ca.& 93 & Minuten \\
+    DSL-&2000 & ca.& 47 & Minuten \\
+    DSL-&6000 & ca.& 16 & Minuten \\
+    DSL-&16000 & ca.& 6 & Minuten \\
+    
+   \end{tabular}
+
+   Die erlaubte Datenmenge (hier 700MB) sollte durch einen Wert kleiner (aber nahe an) 2 und größer 1 geteilt werden.
+ 
+   \achtung{Beispiel (konservativ):} 700MB / 1,9 = 386317473 Bytes \\
+   Das wäre die Anzahl Bytes, die in der oben kalkulierten Zeit maximal heruntergeladen werden darf. Ob es
+   sinnvoll ist, solch ein hohes Volumen bei DSL-1000 oder DSL-2000 pro Nutzer zuzulassen, hängt auch von
+   der Anzahl der erwarteten Nutzer ab.
+
+   Will man solche Datenmengen nicht zulassen, sondern maximal z. B. das Musikhören eines mp3-Streams oder
+   einen kontinuierlichen Datenstrom von 128 kBit/s erlauben, so sollte man unabhängig vom DSL-Anschluss
+   folgende Werte wählen: 16220160 Bytes pro 15 Minuten (ergibt sich aus 128kBit/s * 1024 / 8Bit = 16384
+   Bytes/s * 60 = 983040 Bytes/min * 15min = 14745600 Bytes * 1,1 = 16220160 Bytes (pro 15 min)).
+   Da es sich um einen kontinuierlichen Datenstrom handelt darf nicht geteilt werden, denn diese Last ist
+   ja immer zulässig. Hier ist es sinnvoll noch 10\% Sicherheitsaufschlag zu kalkulieren, da neben der
+   reinen Datenmenge auch noch andere Informationen transportiert werden müssen. Daher wurde der errechnete
+   Wert von 14745600 Bytes noch mit 1,1 multipliziert.
+
+   Im Folgenden werden die Variablen vorgestellt mit Default-Werten für das hier angeführte Beispiel mit dem
+   gelegentlichen CD-Download an einem DSL-6000 Anschluss.
+   
+\config{C3SURF\_TRAFFIC\_BYTES}{C3SURF\_TRAFFIC\_BYTES}{C3SURFTRAFFICBYTES}
+   
+   \var{C3SURF\_TRAFFIC\_BYTES='386317473'}
+   
+   Wertebereich: natürliche Zahlen
+   
+   Legt die Anzahl der Bytes fest, die maximal in der Zeit \jump{C3SURFTRAFFICMINUTES}
+   {\var{C3SURF\_TRAFFIC\_MINUTES}} heruntergeladen werden darf. Hier als Beispiel der 1,9te Teil einer
+   700MB CD. Für das Beispiel mp3-Hören mit 128kBit ist hier 16220160 einzutragen.
+   
+\config{C3SURF\_TRAFFIC\_MINUTES}{C3SURF\_TRAFFIC\_MINUTES}{C3SURFTRAFFICMINUTES}
+   
+   \var{C3SURF\_TRAFFIC\_BYTES='16'}
+   
+   Wertebereich: natürliche Zahlen
+
+   Legt die Zeit in Minuten fest, die zwischen zwei Messungen des Datenvolumens verstreicht. Wird nach der
+   hier abgelaufenen Zeit eine Überschreitung festgestellt, so wird der Verursacher zunächst temporär
+   gespeichert. Wird bei der nächsten Messung wieder eine Überschreitung festgestellt, so erfolgt automatisch
+   die Abmeldung und Sperrung (für \jump{C3SURFTRAFFICBLOCKTIME}{\var{C3SURF\_TRAFFIC\_BLOCKTIME}} Minuten).
+   Wird bei der zweiten Messung keine Überschreitung mehr festgestellt, wird die temporäre Speicherung wieder
+   gelöscht.
+
+   Für das mp3-Beispiel ist hier '15' einzustellen.
+
+\config{C3SURF\_TRAFFIC\_BLOCKTIME}{C3SURF\_TRAFFIC\_BLOCKTIME}{C3SURFTRAFFICBLOCKTIME}
+   
+   \var{C3SURF\_TRAFFIC\_BLOCKTIME='60'}
+   
+   Wertebereich: ganze Zahlen
+
+   Legt die Zeit in Minuten fest, die ein Zugang nach Überschreitung des Traffic-Limits gesperrt wird.
+   
+   
+\end{description}

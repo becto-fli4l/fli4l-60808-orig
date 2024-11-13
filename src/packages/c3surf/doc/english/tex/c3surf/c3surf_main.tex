@@ -1,0 +1,531 @@
+% Synchronized to r30843
+\section{Introduction}
+
+With C3SURF you can create an open, unencrypted network/WiFi. For legal reasons,
+however, you should control who uses the network. C3SURF allows an informal
+registration to the network. The package is based on ``opt\_onco'' (Copyright
+(c) 2001-2007 Michael Mattes). By using OPT\_LOGINUSR an ``almost'' real login
+can be realized. C3SURF can generate vouchers and a rudimentary (experimental)
+control function to suppress excessive downloads is integrated as well.
+
+It may be defined, which hosts or entire networks are managed by C3SURF. These
+are initially blocked on router startup and the http requests are sent to the C3SURF
+login page. After registering an account on the login page, usage is allowed on a time basis.
+Everything will be logged and can be controlled via the web interface of C3SURF.
+
+\section {Notes On Installation}
+
+\begin{itemize}
+\item As always with opt-packets for the fli4l:
+  \begin{itemize}
+     \item unpack opt\_c3surf\_$<$version$>$.tar.gz to the fli4l directory (Build-PC).
+     \item adapt c3surf.txt to your own needs.
+     \item add the rights 'c3surf:view,admin' to httpd.txt (if needed).
+     \item generate a new fli4l build.\\
+\end{itemize}
+\achtung{Important: fli4l has to be configured as the DNS server on all clients and should be
+         able to perform name resolution. To accomplish this}\\
+          \begin{itemize}
+                \item \emph{a ``Forward'' to the DNS server of the net is needed or}
+                \item \emph{fli4l itself is the DNS server and may establish connections automatically.}
+          \end{itemize}
+
+	\emph{Otherwise problems may arise to redirect requests to the login page. In all cases the
+	page may also be accessed by entering its URL.}
+
+\section {Configuration OPT\_C3SURF}
+\begin{description}
+
+\config {OPT\_C3SURF}{OPT\_C3SURF}{OPTC3SURF}
+
+  Default Setting: \var{OPT\_\-C3SURF='no'}
+
+  Activate or deactivate the package.
+
+\config {C3SURF\_LOG\_PATH}{C3SURF\_LOG\_PATH}{C3SURFLOGPATH}
+
+  Default Setting: \var{C3SURF\_LOG\_PATH='/var/log/c3surf'}
+
+  Defines the directory for C3SURF's log files. On router shutdown
+  the log files should be saved to a persistent medium or the path
+  can be set here, if you want to keep the files. The path must exist
+  on the permanent medium.
+
+  \wichtig{'c3surf\_mac.blacklist' resides in the persistent directory\\
+  \jump{C3SURFPERSISTENTPATH}{\var{C3SURF\_PERSISTENT\_PATH}}. An own
+  blacklist has to be copied there. The scope of the protocol is defined
+  below.}
+
+\config {C3SURF\_DOLOG\_LOGIN}{C3SURF\_DOLOG\_LOGIN}{C3SURFDOLOGLOGIN}
+
+  Default Setting: \var{C3SURF\_DOLOG\_LOGIN='yes'}
+
+  Logging of Login/Logout: c3surf\_login.log (default: 'yes')
+
+\config {C3SURF\_DOLOG\_INVALID}{C3SURF\_DOLOG\_INVALID}{C3SURFDOLOGINVALID}
+
+  Default Setting: \var{C3SURF\_DOLOG\_INVALID='yes'}
+
+  Logging of invalid logins: c3surf\_invalid.log (default: 'yes'). If
+  \jump{OPTLOGINUSR}{\var{OPT\_LOGINUSR}} is set to 'yes', invalid logins
+  can not be logged.
+
+\config {C3SURF\_DOLOG\_PAGE}{C3SURF\_DOLOG\_PAGE}{C3SURFDOLOGPAGE}
+
+  Default Setting: \var{C3SURF\_DOLOG\_PAGE='no'}
+
+  Logging of accesses to the html page: c3surf\_page.log (default: 'no').
+  Each access to the login page will be logged. The page log grows
+  fast and thus is only recommended for the ``curious''.
+
+\config {C3SURF\_DOLOG\_HTTPD}{C3SURF\_DOLOG\_HTTPD}{C3SURFDOLOGHTTPD}
+
+  Default Setting: \var{C3SURF\_DOLOG\_HTTPD='no'}
+
+  Logging of all accesses to mini\_httpd: c3surf\_httpd.log (default: 'no').
+
+  \wichtig{In addition start the log function of the Mini-httpd (use only for tests or
+  debugging). When turned on, it is advisable to regularly check the log and delete it,
+  it quickly gets quite large.}
+
+  opt\_cpmvrmlog: \altlink{http://extern.fli4l.de/fli4l_opt-db3/search.pl?pid=427}
+  may be used for regular saving. The mini\_httpd has to be restarted afterwards
+  for correct logging. The script \var{/usr/local/bin/c3surf\_kill\_httpd.sh}
+  \jump{C3SURFLOG}{\var{(Config example in appendix) exists for this purpose.}}
+
+\config {C3SURF\_PERSISTENT\_PATH}{C3SURF\_PERSISTENT\_PATH}{C3SURFPERSISTENTPATH}
+
+  Adapt in any case, recommendation: '/var/lib/persistent/c3surf'
+
+  Defines the directory for files that should be preserved after a reboot or poweroff.
+  Ideally, this points to a hard disk or CF card ('/var/lib/persistent/c3surf'). A directory in
+  the RAM disk may be selected as well (eg in order to minimize access to the medium).
+  In this case the directory should be copied to the disk from time to time (eg by
+  opt\_cpmvrmlog) because the data would be lost after a reboot, crash or power loss.
+
+  \achtung{What is saved here:}
+\newpage
+  \achtung{MAC blacklists:}
+
+  'c3surf\_mac.blacklist', will be created when needed (see Admin
+  Interface). Blocking of a MAC address is solved via an own file
+  and not with the packet filter, because large amounts of entries may
+  cause problemes there. Don't forget: blocked MAC addresses keep
+  average users away from your net, which is enough for normal usecases,
+  but not professionals. The MAC blacklist only prevents the login via
+  C3SURF / loginusr, there are no direct blocks in the firewall.
+
+  \achtung{User data:}
+
+  $<$userloginname$>$.data (i.e. 'frank.data'), these files contain data on the
+  user such as first and lastname, E-mail address, statistics and quotas. Persistant
+  user data allows to avoid recreating user data files on every startup.
+  This means: if for user ``frank'' a file 'frank.data' exist on system start
+  the settings in the config file will be ignored.
+\parskip 12pt
+
+  Overwriting of user data may be forced by \jump{LOGINUSRACCOUNTxOVERWRITE}{\var{LOGINUSR\_ACCOUNT\_x\_OVERWRITE='yes'}}.
+  By \jump{LOGINUSRDELETEPERSISTENTDATA}{\var{LOGINUSR\_DELETE\_PERSISTENT\_DATA='yes'}},
+  all ``*.data'' files will be deleted on reboot.
+
+\config {C3SURF\_WORKON\_TMP}{C3SURF\_WORKON\_TMP}{C3SURFWORKONTMP}
+
+  Default Setting: \var{C3SURF\_WORKON\_TMP='no'}
+
+  If \jump{C3SURFPERSISTENTPATH}{\var{C3SURF\_PERSISTENT\_PATH}}
+  is set, you may specify 'yes' here. On system start persistent data will
+  then be copied from the harddisk to the directory C3SURF\_TMP\_PATH
+  and only be accessed there. Accesses to the harddisk by C3SURF only will
+  occur if the admin writes data to persistent files.
+
+ \wichtig{Persistant data is:}
+  \begin{itemize}
+  \item \emph{User accounts}
+  \item \emph{MAC blacklist}
+  \item \emph{System lock files (blocking of logins)}\\
+  \end{itemize}
+
+  \emph{For FLASH memory specify 'no' here, because in normal use C3SURF will
+  only read files. Write accesses are only caused by the admin.}
+
+\config {C3SURF\_QUOTA}{C3SURF\_QUOTA}{C3SURFQUOTA}
+
+  Default Setting: \var{C3SURF\_QUOTA='no'}
+
+  If the access should be limited, enter 'yes' here. Access is blocked for an IP
+  address for \jump{C3SURFBLOCKTIME}{\var{C3SURF\_BLOCKTIME}} minutes after
+  reaching time limit or the maximum registration counter. Default value is 'yes'.
+
+  \wichtig{Individual -TIME, -BLOCKTIME and -COUNTER for LOGIN\_USR accounts are
+  activated ('yes') or deactivated ('no') by this variable.}
+
+\config {C3SURF\_COUNTER}{C3SURF\_COUNTER}{C3SURFCOUNTER}
+
+  Default Setting: \var{C3SURF\_COUNTER='0'}
+
+  Specifies the number of possible interruptions within the
+  surftime.
+
+  \wichtig{A multitude of interruptions for (Logout/Login) may be defined. If i.e. '1'
+  is specified here the user may logout and login once within the surftime which corresponds to
+  two registrations in this time. On the following registration the user gets the
+  time difference left from \jump{C3SURFTIME}{\var{C3SURF\_TIME}}.}
+
+  \emph{If in addition \jump{C3SURFBLOCKTIME}{\var{C3SURF\_BLOCKTIME='0'}} is set the
+  \jump{C3SURFCOUNTER}{\var{C3SURF\_COUNTER}} will be reset at 0:00 o'clock the following day.}
+
+  \begin{itemize}
+    \item{With C3SURF\_COUNTER='0'}
+
+    the value corresponds to the parking meter principle (money in, money gone, time runs: no interruption
+    possible).
+
+    \item{With C3SURF\_COUNTER= '-1'}
+
+    this function is deactivated = as many interruptions of surftime as you like are possible.
+
+    \item{With C3SURF\_COUNTER='-2'}
+
+    as many interruptions of surftime as you like are possible (like '-1'), but blocking time countdown
+    starts with the first login. In contrary to '-1', where blocking time starts after using the whole time.
+    Since blocking time countdown runs simultaneously, the user will only be blocked when he consumes his
+    or her quota too quickly.
+
+  \end{itemize}
+
+  Notes to the long-term contingent (C3SURF\_COUNTER='-2'):\\
+  Hence you may combine i.e. 10 hours of online time {C3SURFTIME}{\var{(C3SURF\_TIME='600')}} with
+  a blocking time of a week \jump{C3SURFBLOCKTIME}{\var{(C3SURF\_BLOCKTIME='10080'}} : 60sec x 24h x 7days).
+  This way the 10 hours may be used during one week. Those using all the time on the first day in one piece
+  will have to wait for the rest of the week. After the blocking time 10 hours will be provided anew.
+  Short: The user may use ten hours in one week, which he may spread in a meaningful manner over this timespan.
+
+  If the quota is not used within a week, no ``Quota-Block'' will occur. Then there is no waiting time.
+  If the quota is used on the first day then the account is blocked for the remaining 6 days of the week.
+  Applies also to \jump{LOGINUSRACCOUNTxCOUNTER}{\var{LOGINUSR\_ACCOUNT\_x\_COUNTER}}.
+
+  Recommendation: \jump{C3SURFSAVEQUOTA}{\var{C3SURF\_SAVE\_QUOTA='yes'}}, to retain the values also after
+  a normal reboot. On a power failure the values will be lost.
+
+  If \jump{C3SURFQUOTA}{\var{C3SURF\_QUOTA='yes'}}, after reaching the counter a block
+  corresponding to \jump{C3SURFBLOCKTIME}{\var{C3SURF\_BLOCKTIME}} is activated.
+
+\config {C3SURF\_TIME}{C3SURF\_TIME}{C3SURFTIME}
+
+  Default Setting: \var{C3SURF\_TIME='60'}
+
+  Number of minutes that an activation is valid.
+
+  The value '0' means an unlimited login (also applies for LOGINUSR\_ACCOUNT\_x\_TIME).
+
+\underline{Special case:}
+\begin{itemize}
+  \item{C3SURF\_TIME='0'}
+
+  Means unlimitited online time. The user himself should perform the logout.
+  C3SURF will only logout the user if the computer was shut down and\\
+  \jump{C3SURFCHECKARP}{\var{C3SURF\_CHECK\_ARP='yes'}} (default) was set.
+\end{itemize}
+
+\config {C3SURF\_BLOCKTIME}{C3SURF\_BLOCKTIME}{C3SURFBLOCKTIME}
+
+  Default Setting: \var{C3SURF\_BLOCKTIME='240'}
+
+  Number of minutes an IP gets blocked if surftime was exceeded or the Admin performs
+  a block via the Web interface. By this a computer may be blocked from the net for this
+  time and thus usage is restricted. \jump{C3SURFQUOTA}{\var{C3SURF\_QUOTA='yes'}} has to
+  be set in order to perform the block.
+
+\underline{Special cases:}\\
+\begin{itemize}
+  \item{C3SURF\_BLOCKTIME='0'}
+
+	a block of the addresse resp. the user is preformed until 00:00 o'clock
+	of the following day.
+    \item{C3SURF\_BLOCKTIME='-1'}
+
+	no blocking will be performed.
+  \end{itemize}
+
+    \wichtig{Unblocking is performed with an accuracy of one minute.}
+
+\config {C3SURF\_SAVE\_QUOTA}{C3SURF\_SAVE\_QUOTA}{C3SURFSAVEQUOTA}
+
+  Default Setting: \var{C3SURF\_SAVE\_QUOTA='yes'}
+
+  Saves Quota values on shutdown and restores them on systemstart of the router.
+  The temporary files of the quota-management will be written to
+  \jump{C3SURFPERSISTENTPATH}{\var{C3SURF\_PERSISTENT\_PATH}} on normal shutdown
+  and will be restored to the temporary directory on system start again.
+  All actual user data will be preserved this way. An accidental shutdown
+  will not be recoverable this way.
+
+  \wichtig{\jump{LOGINUSRDELETEPERSISTENTDATA}{\var{LOGINUSR\_DELETE\_PERSISTENT\_DATA='no'}},
+  should be set because otherwise this setting will delete all user accounts und their quota data.}
+
+\config {C3SURF\_CHECK\_ARP}{C3SURF\_CHECK\_ARP}{C3SURFCHECKARP}
+
+  Default Setting: \var{C3SURF\_CHECK\_ARP='yes'}
+
+  Check in the countdown module whether an IP of a computer has vanished from the ARP table.
+  Shut down computers may be recognized this way, but sometimes with a massive time delay.
+
+\config {C3SURF\_CONTROL\_HOST\_OR\_NET\_N}{C3SURF\_CONTROL\_HOST\_OR\_NET\_N}{C3SURFCONTROLHOSTORNETN}
+
+ \var{C3SURF\_CONTROL\_HOST\_OR\_NET\_N='0'}
+
+  Value: integer numbers.\\
+  How much and which IP ranges or hosts should be controlled by c3Surf?
+  This affects forwarding to another net (FORWARD Chain).
+
+\config {C3SURF\_CONTROL\_HOST\_OR\_NET\_x}{C3SURF\_CONTROL\_HOST\_OR\_NET\_x}{C3SURFCONTROLHOSTORNETx}\ \\
+ \var{C3SURF\_CONTROL\_HOST\_OR\_NET\_x='Netzwerk OR Host OR IP-Address'}
+
+  Controls all clients.
+
+  \wichtig{A complete net may be specified here for simplicity, e.g. WLAN.
+	   Then all wireless users need to use the login page. Also a reference
+	   to a host (@host) or an IP address may be specified. Who or what is
+	   entered here is redirected to the login page and the blocking rules
+	   defined below apply.}
+
+\underline{Example:}
+
+\begin{example}
+\begin{verbatim}
+C3SURF_CONTROL_HOST_OR_NET_1='IP_NET_3'       # Specify the net IP/MASK
+C3SURF_CONTROL_HOST_OR_NET_2='@T8200'         # or host @HOST
+C3SURF_CONTROL_HOST_OR_NET_3='192.168.13.11'  # or IP address
+\end{verbatim}
+\end{example}
+
+The next example is basically the same as the one above (IP\_NET\_3) if in "base.txt" the
+IP address has been set accordingly.
+
+\begin{example}
+\begin{verbatim}
+C3SURF_CONTROL_HOST_OR_NET_1='192.168.0.1/24' # controls all clients
+\end{verbatim}
+\end{example}
+
+For a computer to be excluded, you may either include all IP addresses
+individually in C3SURF.txt (i.e. create a list of all 256 addresses
+and leave one out), or you can use the CIDR notation (as above).
+Then IP groups have to be used causing less writing (8 rows instead of 255).
+
+\underline{This may look as follows:}
+
+\begin{example}
+\begin{verbatim}
+C3SURF_CONTROL_HOST_OR_NET_N='8'                # Number of hosts or nets
+C3SURF_CONTROL_HOST_OR_NET_1='192.168.0.0/31'   # 0-1
+C3SURF_CONTROL_HOST_OR_NET_2='192.168.0.3'      # only 3 not 2
+C3SURF_CONTROL_HOST_OR_NET_3='192.168.0.4/30'   # 4-7
+C3SURF_CONTROL_HOST_OR_NET_4='192.168.0.8/29'   # 8-15
+C3SURF_CONTROL_HOST_OR_NET_5='192.168.0.16/28'  # 16-31
+C3SURF_CONTROL_HOST_OR_NET_6='192.168.0.32/27'  # 32-63
+C3SURF_CONTROL_HOST_OR_NET_7='192.168.0.64/26'  # 64-127
+C3SURF_CONTROL_HOST_OR_NET_8='192.168.0.128/25' # 128-255
+\end{verbatim}
+\end{example}
+
+The computer with the IP '192.168.0.2' is able to do everything
+allowed by fli4l's firewall without registration.
+
+\config {C3SURF\_CONTROL\_PORT\_N}{C3SURF\_CONTROL\_PORT\_N}{C3SURFCONTROLPORTN}
+
+   \var{C3SURF\_CONTROL\_PORT\_N='0'}
+
+  Value: Integer numbers.\\
+  How much TCP ports of the routers should be controlled?
+
+  How much and which ports explicitely named should be controlled by c3Surf?
+  IP ranges and hosts from above are affected.\\
+  \jump{C3SURFCONTROLHOSTORNETN}{\var{C3SURF\_CONTROL\_HOST\_OR\_NET\_N}}. c3Surf
+  controls these ports and frees them after successful login so that all services
+  existing on this ports of the router may be used (INPUT-Chain).
+
+\config {C3SURF\_CONTROL\_PORT\_x}{C3SURF\_CONTROL\_PORT\_x}{C3SURFCONTROLPORTx}
+
+   \var{C3SURF\_CONTROL\_PORT\_x='port\_nr'}
+
+  Port number and the access to the services of the router (fli4l) behind them
+  are blocked until login. After successful registration, services can be used for
+  the time provided.
+
+\underline{Examples:}
+\begin{example}
+\begin{verbatim}
+C3SURF_CONTROL_PORT_1='515' # i.e. lpdsrv (printer usable after login)
+C3SURF_CONTROL_PORT_2='21'  # i.e. ftp - (note: ftp on the router!)
+\end{verbatim}
+\end{example}
+
+\begin{example}
+\begin{verbatim}
+Other possible port adresses:
+  21=ftp
+  22=ssh
+  5000=imonc
+  5001=telmod
+  8118=privoxy
+  9050=tor
+  3128=squid
+  20000=mtgcapri
+  80=http(Admin)
+  515=lpdsrv
+\end{verbatim}
+\end{example}
+
+All depends on your own configuration. To all ports not mentioned here
+the rules from 'base.txt' apply. After registration, the rules of 'base.txt'
+are still valid. c3Surf is only a pre-chain to these rules until the login
+was performed successfully. So after registration all the rules are still
+obeyed. So you may, for example, deny access from WLAN to the wired network
+in 'base.txt'. This is also valid for users legitimated in WLAN by c3Surf.
+
+\config {C3SURF\_BLOCK\_PORT\_N}{C3SURF\_BLOCK\_PORT\_N}{C3SURFBLOCKPORTN}
+
+   \var{C3SURF\_BLOCK\_PORT\_N='0'}
+
+  Value: Integer numbers.\\
+  How much TCP ports of the routers should be blocked?
+
+   \underline{Hints:}\\
+   Permanent blocking of services for nets and hosts mentioned above\\
+   \jump{C3SURFCONTROLHOSTORNETN}{\var{C3SURF\_CONTROL\_HOST\_OR\_NET\_N}}. How much
+   and which ports explicitely named should be blocked permanently by c3Surf?
+   No access to the router's services behind those ports for hosts and/or computers
+   of the blocked nets even not after login. This affects the INPUT-Chain.
+   If you want to block certain services permanently, you should better
+   do this with the parameters for the INPUT chain in 'base.txt'.
+   \underline{Why:}\\
+   Because these rules are not valid anymore if the parameter
+   \jump{OPTC3SURF}{\var{OPT\_C3SURF='no'}} is set. If you deactivate C3SURF
+   the rules defined here have to be transferred to the 'base.txt' if you
+   want your blocks for the hosts or nets mentioned above to persist.
+
+
+\config {C3SURF\_BLOCK\_PORT\_x}{C3SURF\_BLOCK\_PORT\_x}{C3SURFBLOCKPORTx}
+
+   \var{C3SURF\_BLOCK\_PORT\_x='port\_nr'}
+
+\underline{Examples:}
+\begin{example}
+\begin{verbatim}
+C3SURF_BLOCK_PORT_1='5000'           # z.B. imonc
+C3SURF_BLOCK_PORT_2='5001'           # z.B. telmond
+C3SURF_BLOCK_PORT_3='20000'          # z.B. mtgcapri (OPT_MTGCAPRI)
+C3SURF_BLOCK_PORT_4='22'             # z.B. ssh
+C3SURF_BLOCK_PORT_5='8118'           # z.B. privoxy (PROXY)
+C3SURF_BLOCK_PORT_6='9050'           # z.B. tor (PROXY)
+C3SURF_BLOCK_PORT_7='80'             # z.B. httpd Admin interface (HTTPD)
+C3SURF_BLOCK_PORT_8='7437'           # z.B. caiviar (OPT_CAIVIAR)
+\end{verbatim}
+\end{example}
+
+\config {C3SURF\_HTTPD\_PORT}{C3SURF\_HTTPD\_PORT}{C3SURFHTTPDPORT}
+
+  Default Setting: \var{C3SURF\_HTTPD\_PORT='8080'}
+
+  On which port and which IP address should the mini\_httpd listen for
+  login attempts? http queries from computers will be redirected to
+  this address and port. Port 8080 is the default here.
+
+  \achtung{The following should be considered when choosing the port number:}
+  \begin{itemize}
+  \item You should not use the port from the httpd package (usually this is 80).
+  \item The httpd for fli4l's web admin per default binds to all local IP's.
+  \item also use no port number that is already used by another service.\\
+  \end{itemize}
+  If by mistake a port already in use is defined here, fli4l tries again and again
+  to start httpd. This fails because the port is already occupied by the Admin
+  Interface or another service. This can only be seen on the console or in the logs.
+  You notice it because C3SURF will not work and fli4l generates high CPU load
+  and appears to be running slowly.
+
+\config {C3SURF\_HTTPD\_LISTENIP}{C3SURF\_HTTPD\_LISTENIP}{C3SURFHTTPDLISTENIP}
+
+  Default Setting: \var{C3SURF\_HTTPD\_LISTENIP='Host OR IP\-Address'}
+
+  Specifies the local IP to which the login interface will bind to, either IP
+  address or @hostname. Http requests of clients will be redirected on demand
+  (i.e., when they are not logged in). Hence, users come quickly to the login page.
+
+\underline{Examples:}
+\begin{example}
+\begin{verbatim}
+C3SURF_HTTPD_LISTENIP='@wifi-router'    # Hostname
+C3SURF_HTTPD_LISTENIP='192.168.11.3'    # IP-address
+C3SURF_HTTPD_LISTENIP='IP_NET_1_IPADDR' # IP-address-variable
+\end{verbatim}
+\end{example}
+
+The http service for C3SURF always binds to exactly one IP address.
+
+\end{description}
+
+\subsection {Optional Parameters For OPT\_C3SURF}
+
+\begin{description}
+
+\config {C3SURF\_CONTROL\_SQUID}{C3SURF\_CONTROL\_SQUID}{C3SURFCONTROLSQUID}
+
+  Default Setting: \var{C3SURF\_CONTROL\_SQUID='no'}
+
+  By adding the variable C3SURF\_CONTROL\_SQUID='yes' the control over squid
+  will be forced. The C3SURF port redirection will be set to the beginning
+  which also affects other packages (i.e. openvpn).
+
+  Recommendation is 'no', those using i.e. squid should check, if no
+  other functions are affected inadvertently by it.
+
+\config {C3SURF\_SLOPPY\_MAC}{C3SURF\_SLOPPY\_MAC}{C3SURFSLOPPYMAC}
+
+  Default Setting: \var{C3SURF\_SLOPPY\_MAC='no'}
+
+   \begin{itemize}
+      \item{C3SURF\_SLOPPY\_MAC='no'}
+
+            (Standard) - if this parameter is not specified only allow
+            login with MAC addresses from the ARP table.
+
+       \item{C3SURF\_SLOPPY\_MAC='yes'}
+
+            C3SURF accepts missing MAC addresses or those not contained in the ARP table.
+            If you set this to 'yes' you should set \jump{C3SURFCHECKARP}{\var{C3SURF\_CHECK\_ARP='no'}}.
+            Else the automatic logout (in average after one minute) will be performed because the
+            ``countdown'' process will fire due to a missing entry in the ARP table.
+   \end{itemize}
+
+\config {C3SURF\_CHECK\_CURFEW}{C3SURF\_CHECK\_CURFEW}{C3SURFCHECKCURFEW}
+
+  Default Setting: \var{C3SURF\_CHECK\_CURFEW='yes'}
+
+  Turn automatic logoff when reaching the curfew on (\var{'yes'}) or off (\var{'no'}).
+
+\config {C3SURF\_PORTAL\_DEFAULT\_LANG}{C3SURF\_PORTAL\_DEFAULT\_LANG}{C3SURFPORTALDEFAULTLANG}
+
+  Default Setting: \var{C3SURF\_PORTAL\_DEFAULT\_LANG='de'}
+
+  Possible values: a two-characters country code (i.e. 'de', 'fr', 'en').
+
+  Sets the default language for the login page. If omitted, 'de' is assumed.
+
+  Under \textasciitilde/opt/files/srv/www/c3surf/lang/ a file named
+  c3surf.$<$countrycode$>$ should exist. At the moment 'de', 'fr', 'en' and
+  'it' are supported. If you want to create a file for another language you may
+  send it to the fli4l team for inclusion.
+
+\config {C3SURF\_PORTAL\_LANGUAGES}{C3SURF\_PORTAL\_LANGUAGES}{C3SURFPORTALLANGUAGES}\ \\
+
+  Default Setting: \var{C3SURF\_PORTAL\_DEFAULT\_LANG='de fr en it'}
+
+  Value range: a list of two characters each, separated by spaces.
+
+  Specifies the language files that should be transferred to the system for the login page.
+  If there is no language file corresponding to the two character shortcut here, a warning
+  will be issued that no file was found for it and therefore nothing was copied. The build
+  process is not aborted.
+
+\end{description}

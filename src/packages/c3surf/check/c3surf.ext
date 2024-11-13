@@ -1,0 +1,103 @@
+﻿##------------------------------------------------------------------------------
+## c3Surf - login for services                                      __FLI4LVER__
+##
+## Creation:    07.01.2008 Frank Saurbier - c3Surf@arcor.de
+## Last Update: $Id$
+##
+## Copyright (c) 2008-2010 - Frank Saurbier <c3surf@arcor.de>
+## Copyright (c) 2010-2016 - Frank Saurbier, fli4l-Team <team@fli4l.de>
+##
+## Licence and conditions look at ~/config/c3surf.txt
+##-------------------------------------------------------------------------------
+
+# OPT_C3SURF='yes'?
+if (opt_c3surf)
+then
+
+# Paket-Identifer für andere Pakete bereitstellen
+provides c3surf version 2.3.1
+
+# Abhängigkeit zu einem bestimmten Paket definieren
+depends on fli4l version 4.0
+depends on cron version 4.0
+depends on httpd version 4.0
+
+# select the language file for Admin interface
+if (httpd_gui_lang == "auto")
+then
+    set gui_lang=locale
+else
+    set gui_lang=httpd_gui_lang
+fi
+
+split (gui_lang, lang_tmp_%, ' ')
+foreach lang in lang_tmp_%
+do
+  stat("opt/srv/www/lang/c3surf.$lang", langfile)
+  if(langfile_res == "OK")
+  then
+    add_to_opt "srv/www/lang/c3surf.$lang" "mode=444 flags=sh"
+  else
+    warning "could not find 'srv/www/lang/c3surf.$lang', perhaps this file isn't translated yet. Falling back to english."
+    add_to_opt "srv/www/lang/c3surf.en" "mode=444 flags=sh"
+  fi
+done
+
+# select the language file for Portal interface
+if (!defined(c3surf_portal_languages))
+then
+    set gui_lang="de en fr it"
+else
+    set gui_lang=c3surf_portal_languages
+fi
+
+split (gui_lang, lang_tmp_%, ' ')
+foreach lang in lang_tmp_%
+do
+  stat("opt/srv/www/c3surf/lang/c3surf.$lang", langfile)
+  if(langfile_res == "OK")
+  then
+    add_to_opt "srv/www/c3surf/lang/c3surf.$lang" "mode=444 flags=sh"
+  else
+    warning "could not find 'srv/www/c3surf/lang/c3surf.$lang', perhaps this file isn't translated yet. Portal language file not copied."
+  fi
+  # we have to add the admin lang-files too, for voucher printing
+  stat("opt/srv/www/lang/c3surf.$lang", langfile)
+  if(langfile_res == "OK")
+  then
+    add_to_opt "srv/www/lang/c3surf.$lang" "mode=444 flags=sh"
+  else
+    warning "could not find 'srv/www/lang/c3surf.$lang', perhaps this file isn't translated yet. Admin language file not copied."
+  fi
+done
+
+# Echtes Login verwenden, statt der freien Registrierung
+if (opt_loginusr)
+then
+   if (!opt_c3surf)
+   then
+      warning "If you want to use OPT_LOGINUSR, you have to enable OPT_C3SURF too / first"
+   else
+      foreach i in loginusr_account_n
+      do
+         crypt (loginusr_account_%_pwd[i])
+         if (loginusr_account_%_forename[i] == "" && loginusr_account_%_surname[i] == "")
+         then
+            warning "c3surf: at least a forename or surname for user: no. $i would be fine"
+         fi
+      done
+      # Die verwendeten User müssen verschieden sein
+      foreach i in LOGINUSR_ACCOUNT_%_USER
+      do
+         foreach j in LOGINUSR_ACCOUNT_%_USER
+         do
+            if ("%i" != "%j" && "$i" == "$j")
+            then
+               error "c3surf: user %i and %j have the same account"
+            fi
+         done
+      done
+   fi
+fi
+
+fi # OPT_C3SURF

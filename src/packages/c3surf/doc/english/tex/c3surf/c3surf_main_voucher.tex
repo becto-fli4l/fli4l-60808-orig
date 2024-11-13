@@ -1,0 +1,201 @@
+% Synchronized to r30494
+OPT\_C3SURF\_VOUCHER allows anonymous access to the Internet. There are vouchers
+created which can be arranged in various categories. The opt can then be managed manually
+or automatically on the Web Interface.
+
+\section {Configuration Of OPT\_VOUCHER}
+
+\begin{description}
+\config {OPT\_C3SURF\_VOUCHER}{OPT\_C3SURF\_VOUCHER}{OPTC3SURFVOUCHER}
+
+  \var{OPT\_C3SURF\_VOUCHER='no'}
+
+  Activate the voucher system of opt C3SURF\_VOUCHER ('yes'), default is 'no'. Vouchers are
+  anonymous yet secure single-use accounts that can be used for login.
+  Requirement is the setting \jump{OPTLOGINUSR}{\var{OPT\_LOGINUSR='yes'}}.
+
+  The creation and deletion of the vouchers is done by two nightly cron jobs which also can
+  be started manually at any time (admin interface). The following explains how to manage these jobs.
+
+  All newly generated vouchers are attached to a print list. Only in the print list the password
+  corresponding to the voucher is stored in plain text. You can download, print or delete this
+  list at any time. After deleting the list, the password can not be recovered again. Normally
+  the list is printed first and then deleted. There should only exist one printed copy of a voucher.
+  the print function is implemented in html, page feeds are not taken into account. Vouchers which
+  are not printed caused by a page feed should be destroyed (though they get invalid due to expiration
+  anyway). Lists that were not printed but downloaded may get an own layout with other programs which
+  also avoids the page feed caveat.
+
+\config {C3SURF\_VOUCHER\_N}{C3SURF\_VOUCHER\_N}{C3SURFVOUCHERN}
+
+   \var{C3SURF\_VOUCHER\_N='n'}
+
+  Value range: 0 and natural numbers
+
+  How many different voucher categories should be produced? The most important criterion
+  for vouchers is the runtime. Next to it are the number of vouchers and their validity in days.
+  See also the following variables.
+
+\config {C3SURF\_VOUCHER\_x\_TIME}{C3SURF\_VOUCHER\_x\_TIME}{C3SURFVOUCHERxTIME}
+
+   \var{C3SURF\_VOUCHER\_x\_TIME='30'}
+
+  Value range: natural numbers
+
+  Duration in minutes (here: 30) for a voucher of this category ('n' see above).
+
+\config{C3SURF\_VOUCHER\_x\_COUNT}{C3SURF\_VOUCHER\_x\_COUNT}{C3SURFVOUCHERxCOUNT}
+
+   \var{C3SURF\_VOUCHER\_x\_COUNT='3'}
+
+  Value range: natural numbers
+
+  How many vouchers of this category (in this case 3) should be produced?
+
+\config{C3SURF\_VOUCHER\_x\_DAYS}{C3SURF\_VOUCHER\_x\_DAYS}{C3SURFVOUCHERxDAYS}
+
+   \var{C3SURF\_VOUCHER\_x\_DAYS='90'}
+
+  Value range: 0 and natural numbers
+
+  How many days do you want the voucher to be valid starting from its generation (here: 90).
+  Thus, an expiration date for this coupon is generated. The deletion is then carried out
+  either manually or via cron job. The voucher is void when it is first used.
+
+  \wichtig{'0' means that vouchers of this category have no expiration date. They only
+	   become invalid with use or if the time has been completely consumed (also affected by
+           C3SURF\_VOUCHER\_LIVES\_N). However they may be deleted at any time in the admin interface.}
+
+\end{description}
+
+\subsection {Optional Parameters Of OPT\_VOUCHER}
+
+\begin{description}
+
+\config{C3SURF\_VOUCHER\_x\_LIVES}{C3SURF\_VOUCHER\_x\_LIVES}{C3SURFVOUCHERxLIVES}
+
+   \var{C3SURF\_VOUCHER\_x\_LIVES='n'}
+
+   Value range(s): -1, 0, natural numbers
+
+   Number of hours, in which the voucher is still valid after your first login.
+
+\achtung{Special cases:}
+
+\begin{itemize}
+   \item{C3SURF\_VOUCHER\_x\_LIVES='-1'}
+
+         valid until the expiration date originally generated with C3SURF\_VOUCHER\_DAYS
+   \item{C3SURF\_VOUCHER\_x\_LIVES='0'}
+
+         (Standard), means voucher will become invalid with the first login.
+    \item{C3SURF\_VOUCHER\_x\_LIVES='Natural number'}
+
+	  Number of hours for which voucher is still valid after the first login - calculate a new
+          expiration date if necesssary.
+\end{itemize}
+\parskip 12pt
+
+  These vouchers will not become invalid with the first login, but are valid for 'n' more hours. Once the voucher
+  is used, a time-limited LOGINUSR account is generated or the expiry date of the voucher is recalculated.
+  This account / voucher may login and logout for any number of times. The quota system of LOGIN\_USR is used for
+  this account. If the total time or the expiry date (C3SURF\_VOUCHER\_DAYS\_N) is reached, C3SURF
+  will automatically delete this account.
+
+\config{C3SURF\_VOUCHER\_DEL\_CRON}{C3SURF\_VOUCHER\_DEL\_CRON}{C3SURFVOUCHERDELCRON}
+
+   \var{C3SURF\_VOUCHER\_DEL\_CRON='0 4 * * *'}
+
+  Value range: 'cron-Syntax' or 'never'
+
+  The above value is the default if the variable is missing in the config file 'c3surf.txt'.
+  Default: delete all expired vouchers every morning at 4 o'clock.
+
+  Cron syntax must be obeyed and will not be verified. The value 'never' may be used in addition.
+  Then the job is not scheduled by the system. In the admin interface all expired vouchers may be
+  deleted manually at any time.
+
+\config{C3SURF\_VOUCHER\_GEN\_CRON}{C3SURF\_VOUCHER\_GEN\_CRON}{C3SURFVOUCHERGENCRON}
+
+  \var{C3SURF\_VOUCHER\_GEN\_CRON='15 4 * * *'}
+
+  Value range: 'cron-Syntax' or 'never'
+
+  The above value is the default if the variable is missing in the config file 'c3surf.txt'.
+  Default: generate new vouchers daily at 4:15 AM if less than\\ C3SURF\_VOUCHER\_COUNT exist.
+
+  Cron syntax must be obeyed and will not be verified. The value 'never' may be used in addition.
+  Then the job is not scheduled by the system. In the admin interface new vouchers may be generated
+  manually at any time, up to the amount defined in \jump{C3SURFVOUCHERxCOUNT}{\var{C3SURF\_VOUCHER\_x\_COUNT}}.
+
+  All newly generated vouchers are attached to a print list. Only in the print list the password
+  corresponding to the voucher is stored in plain text. Each voucher should be printed only once.
+  The list should be deleted immediately after printing or downloading.
+
+\config{C3SURF\_VOUCHER\_PRTUPDATE}{C3SURF\_VOUCHER\_PRTUPDATE}{C3SURFVOUCHERPRTUPDATE}
+
+  Default Setting: \var{C3SURF\_VOUCHER\_PRTUPDATE='no'}
+
+  Value range: 'yes' or 'no'
+
+  Update of the print file. My recommendation: 'no'. If only a few vouchers are held in the system and
+  the print file should not be deleted after printing or downloading, an update of the print file can be
+  specified with 'yes' when vouchers are used. In the case of 'yes' used vouchers are also deleted from
+  the print file. This requires resources on the router.
+
+\config{C3SURF\_VOUCHER\_USRLEN}{C3SURF\_VOUCHER\_USRLEN}{C3SURFVOUCHERUSRLEN}
+
+  Default Setting: \var{C3SURF\_VOUCHER\_USRLEN='12'}
+
+  Value range: '1-16'
+
+  Set character length for voucher account, from 8 characters on '-' will be filled in as separators,
+  which also must also be entered. There are always four characters grouped. The maximum value is 16.
+
+\config{C3SURF\_VOUCHER\_USRCAP}{C3SURF\_VOUCHER\_USRCAP}{C3SURFVOUCHERUSRCAP}
+
+  Default Setting: \var{C3SURF\_VOUCHER\_USRCAP='random'}
+
+  \begin{tabular}{rlrl}
+   -&'yes'&:&only capital letters \\
+   -&'no'&:&all lowercase\\
+   -&'random'&:&random change of upper and lower case (recommended)\\
+  \end{tabular}
+
+  This variable determines whether uppercase or lowercase letters should be used in the user name.
+  The value \var{'random'} (recommended) causes a random selection.
+
+\config{C3SURF\_VOUCHER\_PWDLEN}{C3SURF\_VOUCHER\_PWDLEN}{C3SURFVOUCHERPWDLEN}
+
+  Default Setting: \var{C3SURF\_VOUCHER\_PWDLEN='6'}
+
+  Value range: 1-12
+
+  Character length for the voucher password.
+
+\config{C3SURF\_VOUCHER\_PWDMOD}{C3SURF\_VOUCHER\_PWDMOD}{C3SURFVOUCHERPWDMOD}
+
+  Default Setting: \var{C3SURF\_VOUCHER\_PWDMOD='3'}
+
+  Value range: 1-5
+
+  Modulo for random extensions of the password. Max: 5 (the values 0, 1, 2, 3, 4),
+  Min 1 (the value 0). It is used randomly in the password generation to change the
+  possible values. This results by default in password lengths from 6 to 8 characters.
+  The maximum are password-lengths between 12 and 16 characters, in conjunction with
+  random upper- and lowercase letters this is considered as safe.
+
+\config{C3SURF\_VOUCHER\_PWDCAP}{C3SURF\_VOUCHER\_PWDCAP}{C3SURFVOUCHERPWDCAP}
+
+   Default Setting: \var{C3SURF\_VOUCHER\_PWDCAP='random'}
+
+  \begin{tabular}{rlrl}
+   -&'yes'&:&only capital letters \\
+   -&'no'&:&all lowercase\\
+   -&'random'&:&random change of upper and lower case (recommended)\\
+  \end{tabular}
+
+  This variable determines whether uppercase or lowercase letters should be used in the password.
+  The value \var{'random'} (recommended) causes a random selection.
+
+\end{description}

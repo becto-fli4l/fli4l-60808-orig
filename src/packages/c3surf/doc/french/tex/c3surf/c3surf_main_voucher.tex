@@ -1,0 +1,225 @@
+% Synchronized to r30494
+OPT\_C3SURF\_VOUCHER permet d'avoir un accès anonyme à Internet. Des tickets sont créés pour chaque compte,
+ils pourront être mise en place dans diverses catégories. L'opt peut ensuite les gérés automatiquement
+ou manuellement via l'interface Web admin.
+
+\section {Configuration de OPT\_VOUCHER}
+
+\begin{description}
+\config {OPT\_C3SURF\_VOUCHER}{OPT\_C3SURF\_VOUCHER}{OPTC3SURFVOUCHER}
+
+   \var{OPT\_C3SURF\_VOUCHER='no'}
+
+  Avec cette variable vous activez le système voucher C3SURF\_VOUCHER ('yes') par défaut la valeur est
+  sur 'no'. Le système de ticket est utilisé par C3SURF. Des tickets anonymes à usage unique peuvent
+  être utilisés à l'enregistrement des comptes.
+  La condition est que la variable \jump{OPTLOGINUSR}{\var{OPT\_LOGINUSR='yes'}} soit activée.
+
+  La création et la suppression des tickets se fait en deux tâches avec cron nocturne, ils peuvent également
+  être lancé manuellement et à tout moment avec (interface admin). Ci-dessous vous découvrirez comment gérer
+  le fonctionnement de voucher.
+
+  Tous les tickets nouvellement générées sont attachés à une liste d'impression. Le mot de passe correspondant
+  au ticket qui est stocké dans la liste d'impression est en texte brut. Vous pouvez télécharger, imprimer ou
+  supprimer cette liste à tout moment. Après la suppression de la liste, le mot de passe ne peut plus être
+  récupéré. Normalement, vous devez en premier imprimer la liste et ensuite, la supprimé. Il devrait exister
+  seulement une copie imprimée des tickets. la fonction d'impression rudimentaire est implémentée dans le html,
+  la page RSS n'est pas prise en compte. Vous pouvez détruire les tickets qui sont victime de pagination,
+  (de toute façon, ils deviennent invalide en raison de l'expiration). Les listes qui n'ont pas été imprimés
+  mais téléchargés peuvent avoir une mise en page avec un traitement de texte, la pagination sera alors prise
+  en compte.
+
+\config {C3SURF\_VOUCHER\_N}{C3SURF\_VOUCHER\_N}{C3SURFVOUCHERN}
+
+   \var{C3SURF\_VOUCHER\_N='n'}
+
+    Plage de valeur~: 0 et nombre entier naturel
+
+  Dans cette variable vous indiquez le nombre de catégories de ticket différents qui seront
+  produits. Le critère le plus important pour les tickets est le temps que vous pouvez rester
+  connecté. De plus il faut faire attention au nombre de ticket et leur validité en jours. Voir
+  également les variables suivantes.
+
+\config {C3SURF\_VOUCHER\_x\_TIME}{C3SURF\_VOUCHER\_x\_TIME}{C3SURFVOUCHERxTIME}
+
+   \var{C3SURF\_VOUCHER\_x\_TIME='30'}
+
+    Plage de valeur~: nombre entier naturel
+
+  Dans cette variable vous indiquez un temps en minute pour la catégorie de ticket ('n' voir ci-dessus).
+
+  Exemple~: le(s) 'n' catégorie de ticket sont conçus pour 30 minutes.
+
+\config{C3SURF\_VOUCHER\_x\_COUNT}{C3SURF\_VOUCHER\_x\_COUNT}{C3SURFVOUCHERxCOUNT}
+
+   \var{C3SURF\_VOUCHER\_x\_COUNT='3'}
+
+   Plage de valeur~: nombre entier naturel
+
+  Dans cette variable vous indiquez le nombre de ticket qui doit être généré dans une catégorie.
+
+  Exemple~: on produit un total de 3 tickets pour une catégorie de temps.
+
+\config{C3SURF\_VOUCHER\_x\_DAYS}{C3SURF\_VOUCHER\_x\_DAYS}{C3SURFVOUCHERxDAYS}
+
+   \var{C3SURF\_VOUCHER\_x\_DAYS='90'}
+
+   Plage de valeur~: 0 et nombre entier naturel
+
+  Dans cette variable vous indiquez le nombre de jours, c'est le temps de validité du ticket généré.
+  C'est cette Date d'expiration que C3SURF utilisera pour le ticket généré. La suppression pourra
+  alors être effectuée manuellement ou via cron (c'est son job). Le ticket disparaît plus tôt, à savoir quand il
+  est utilisée pour la première fois.
+
+  Exemple~: Ces tickets sont valables pendant 90 jours après leur création.
+
+  \wichtig{La valeur '0', signifie que cette catégorie de ticket n'ont pas de date d'expiration.
+		Ils perdent leur validité en les utilisant ou si le temps a été complètement consommé
+		cette valeur est également (affecté par C3SURF\_VOUCHER\_LIVES\_N). Cependant,
+		ils peuvent être supprimés à tout moment dans l'interface Web admin}
+
+\end{description}
+
+\subsection {Paramètre Optionnel de OPT\_VOUCHER}
+
+\begin{description}
+
+\config{C3SURF\_VOUCHER\_x\_LIVES}{C3SURF\_VOUCHER\_x\_LIVES}{C3SURFVOUCHERxLIVES}
+
+   \var{C3SURF\_VOUCHER\_x\_LIVES='n'}
+
+   (n) plage de valeur~: -1, 0 et nombre entier naturel
+
+  Dans cette variable vous indiquez le nombre d'heure, que le ticket peut vivre même après
+  la première application.
+
+\achtung{Cas particuliers~:}
+
+\begin{itemize}
+   \item{C3SURF\_VOUCHER\_x\_LIVES='-1'}
+
+         Valable jusqu'à la date d'expiration initialement généré avec C3SURF\_VOUCHER\_DAYS.
+   \item{C3SURF\_VOUCHER\_x\_LIVES='0'}
+
+         (Par défaut), cela signifie que le ticket ne sera plus valide après la première application.
+    \item{C3SURF\_VOUCHER\_x\_LIVES='nombre entier naturel'}
+
+          Nombre d'heures que vit le ticket après la première application - calculer une nouvelle date
+		  d'expiration si nécessaire.
+\end{itemize}
+\parskip 12pt
+
+  Ces tickets ne sont plus valables à la première application, mais sont valables pour 'n' heures de plus.
+  Une fois que le ticket est utilisé, un compte LOGINUSR limitée dans le temps est généré, alors,
+  la date d'expiration du ticket peut être recalculée. Ce compte / ticket peut être connecter et déconnecter
+  pendant un certain nombre de fois. Le système de quotas de LOGIN\_USR est utilisé pour ce compte. Si
+  la durée totale ou la date d'expiration avec (C3SURF\_VOUCHER\_DAYS\_n) est atteint, C3SURF supprimera
+  automatiquement ce compte.
+
+\config{C3SURF\_VOUCHER\_DEL\_CRON}{C3SURF\_VOUCHER\_DEL\_CRON}{C3SURFVOUCHERDELCRON}
+
+   \var{C3SURF\_VOUCHER\_DEL\_CRON='0 4 * * *'}
+
+   Plage de valeur~: 'cron-Syntax' ou 'never'
+
+  La valeur ci-dessus est la valeur par défaut, si la variable est manquante dans le fichier
+  config 'c3surf.txt'.
+  Par défaut~: supprime tous les tickets expirés tous les matins à 4 heures.
+
+  La syntaxe cron doit être respectée, elle ne sera pas vérifiée. La valeur 'never' peut être utilisé
+  en complément. Le travail n'est pas planifié par le système. Dans l'interface Web admin tous
+  les tickets périmés peuvent être supprimés manuellement à tout moment.
+
+\config{C3SURF\_VOUCHER\_GEN\_CRON}{C3SURF\_VOUCHER\_GEN\_CRON}{C3SURFVOUCHERGENCRON}
+
+   \var{C3SURF\_VOUCHER\_GEN\_CRON='15 4 * * *'}
+
+   Plage de valeur~: 'cron-Syntax' ou 'never'
+
+  La valeur ci-dessus est la valeur par défaut, si la variable est manquante dans le fichier
+  config 'c3surf.txt'.
+  Par défaut~: génére les nouveaux tickets tous les jours à 4h15 du matin, tout au moin si C3SURF\_VOUCHER\_COUNT
+  est configuré.
+
+  La syntaxe cron doit être respectée, elle ne sera pas vérifiée. La valeur 'never' peut être utilisé
+  en complément. Le travail n'est pas planifié par le système. Dans l'interface Web admin tous
+  les tickets périmés peuvent être supprimés manuellement à tout moment par rapport à la quantité
+  définie dans \jump{C3SURFVOUCHERxCOUNT}{\var{C3SURF\_VOUCHER\_x\_COUNT}}.
+
+  Tous les tickets nouvellement générées sont attachés à une liste d'impression. Seulement, le mot
+  de passe correspondant au ticket est enregistré en texte brut dans la liste d'impression. Chaque
+  ticket doit être imprimé qu'une seule fois. La liste devrait être supprimé immédiatement après
+  l'impression ou téléchargement.
+
+\config{C3SURF\_VOUCHER\_PRTUPDATE}{C3SURF\_VOUCHER\_PRTUPDATE}{C3SURFVOUCHERPRTUPDATE}
+
+   Paramètre par défaut~: \var{C3SURF\_VOUCHER\_PRTUPDATE='no'}
+
+   Plage de valeur~: 'yes' ou 'no'
+
+   Avec cette variable vous paramétrez la mise à jour du fichier d'impression. Recommandation~:
+   vous pouvez indiquer 'no' si quelques tickets sont enregistrés dans le système, le fichier
+   d'impression ne doit pas être supprimé après l'impression ou le téléchargement, vous pouvez
+   spécifier 'yes' pour la mise à jour du fichier d'impression, quand les tickets sont utilisés.
+   Dans le cas ou vous avez indiqué 'yes' les tickets utilisés seront également supprimées du
+   fichier d'impression. Ceci nécessite des ressources sur le routeur.
+
+\config{C3SURF\_VOUCHER\_USRLEN}{C3SURF\_VOUCHER\_USRLEN}{C3SURFVOUCHERUSRLEN}
+
+   Paramètre par défaut~: \var{C3SURF\_VOUCHER\_USRLEN='12'}
+
+   Plage de valeur~: '1-16'
+
+   Avec cette variable vous paramétrez la longueur du texte pour le ticket du compte, Dès
+   le 8 ème caractères vous pouvez placer le signe '-' comme séparateurs, vous devez toujours
+   avoir quatre caractères groupés. La valeur maximale est 16 caractères.
+
+\config{C3SURF\_VOUCHER\_USRCAP}{C3SURF\_VOUCHER\_USRCAP}{C3SURFVOUCHERUSRCAP}
+
+   Paramètre par défaut~: \var{C3SURF\_VOUCHER\_USRCAP='random'}
+
+   \begin{tabular}{rlrl}
+    -&'yes'&:&en majuscules \\
+    -&'no'&:&tout en minuscules \\
+    -&'random'&:&changement aléatoire des lettres majuscules et minuscules (recommandé) \\
+   \end{tabular}
+
+    Avec cette variable vous déterminez si vous utilisez les caractères majuscules, minuscules
+	ou aléatoires pour écrire le nom des utilisateurs. La valeur \var{'random'} (est recommandé)
+	c'est le mode aléatoire.
+
+\config{C3SURF\_VOUCHER\_PWDLEN}{C3SURF\_VOUCHER\_PWDLEN}{C3SURFVOUCHERPWDLEN}
+
+   Paramètre par défaut~: \var{C3SURF\_VOUCHER\_PWDLEN='6'}
+
+   Plage de valeur~: 1-12
+
+   Avec cette variable vous indiquez le nombre de caractères pour le mot de passe du ticket.
+
+\config{C3SURF\_VOUCHER\_PWDMOD}{C3SURF\_VOUCHER\_PWDMOD}{C3SURFVOUCHERPWDMOD}
+
+   Paramètre par défaut~: \var{C3SURF\_VOUCHER\_PWDMOD='3'}
+
+   Plage de valeur~: 1-5
+
+   Avec cette variable vous indiquez le Modulo pour les extensions aléatoires du mot de passe.
+   Max: 5 (avec les valeurs 0, 1, 2, 3, 4), Min 1 (avec la valeur 0). Le mot de passe sera généré
+   de façon aléatoire. Le résulta par défaut sera entre 6 et 8 caractaires c'est la longueur
+   du mot de passe. La longueur maximum du mot de passe est entre 12 et 16 caractères, avec
+   l'utilisation de majuscules et de minuscules cela donnera un mot de passe assez sûr.
+
+\config{C3SURF\_VOUCHER\_PWDCAP}{C3SURF\_VOUCHER\_PWDCAP}{C3SURFVOUCHERPWDCAP}
+
+   Paramètre par défaut~: \var{C3SURF\_VOUCHER\_PWDCAP='random'}
+
+   \begin{tabular}{rlrl}
+    -&'yes'&:&en majuscules \\
+    -&'no'&:&tout en minuscules \\
+    -&'random'&:&changement aléatoire des lettres majuscules et minuscules (recommandé) \\
+   \end{tabular}
+
+    Avec cette variable vous déterminez si vous utilisez les caractères majuscules, minuscules
+	ou aléatoires pour écrire le mot de passe. La valeur \var{'random'} (est recommandé)
+	c'est le mode aléatoire.
+
+\end{description}

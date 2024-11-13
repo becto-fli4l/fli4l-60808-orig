@@ -1,0 +1,34 @@
+##------------------------------------------------------------------------------
+## c3Surf - login for services                                      __FLI4LVER__
+##
+## Creation:    07.01.2008 Frank Saurbier - c3Surf@arcor.de
+## Last Update: $Id$
+##
+## Copyright (c) 2008-2010 - Frank Saurbier <c3surf@arcor.de>
+## Copyright (c) 2010-2016 - Frank Saurbier, fli4l-Team <team@fli4l.de>
+##
+## Licence and conditions look at ~/config/c3surf.txt
+##-------------------------------------------------------------------------------
+
+begin_script C3SURF 'executing c3surf shutdown-commands ...'
+. /var/run/c3surf.conf
+# 1st logout all users
+for f in $C3SURF_TMP_PATH/*.time
+do
+  # do not process the '*.time' file
+  if [ ! "$f" = "$C3SURF_TMP_PATH/*.time" ]
+  then
+    /usr/local/bin/c3surf_worker.sh "doAutoLogout" `basename $f .time`
+  fi
+done
+# 2nd save quota if requested
+if [ "$C3SURF_SAVE_QUOTA" = "yes" ]
+then
+  # save the quota
+  if [ "$C3SURF_TMP_PATH" != "$C3SURF_PERSISTENT_PATH" ]
+  then
+    mv -f "$C3SURF_TMP_PATH/"*.block "$C3SURF_PERSISTENT_PATH" 2>/dev/null
+    mv -f "$C3SURF_TMP_PATH/"*.quota "$C3SURF_PERSISTENT_PATH" 2>/dev/null
+  fi
+fi
+end_script

@@ -1,0 +1,532 @@
+#!/bin/sh
+##------------------------------------------------------------------------------
+## c3Surf - login for services                                      __FLI4LVER__
+##
+## Creation:    07.01.2008 Frank Saurbier - c3Surf@arcor.de
+## Last Update: $Id$
+##
+## Copyright (c) 2008-2010 - Frank Saurbier <c3surf@arcor.de>
+## Copyright (c) 2010-2016 - Frank Saurbier, fli4l-Team <team@fli4l.de>
+##
+## Licence and conditions look at ~/config/c3surf.txt
+##-------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------
+# c3surf kleine Funktion für Bearbeitung der html-error skeletons
+#----------------------------------------------------------------------------
+simple_html_output ()
+{
+#  htmlspecialchars | while read line
+  while read line
+  do
+    evalline=$(echo "line=\"$line\"")
+    eval "$evalline"
+    echo "$line"
+  done
+}
+
+
+#----------------------------------------------------------------------------
+# c3surf ist Aktiv
+#----------------------------------------------------------------------------
+if [ "$OPT_C3SURF" = yes ]
+then
+  # Debug-Möglichkeit
+  begin_script C3SURF "starting c3surf rc file ..."
+
+    #-------------------------------------------------------------------------
+    # mini_httpd früher IP Parameter Check, wird auch für Umleitungen genutzt
+    #-------------------------------------------------------------------------
+    if [ -n "$C3SURF_HTTPD_LISTENIP" ]
+    then
+      if translate_ip_net $C3SURF_HTTPD_LISTENIP
+      then
+        if ip addr show | grep -q "$res/"
+        then
+          C3SURF_HTTPD_HOST="$res"
+        else
+          log_error "\$C3SURF_HTTPD_LISTENIP is not a local IP."
+        fi
+      fi
+      # einen Hostnamen verwenden, wenn er da ist.
+      case $C3SURF_HTTPD_LISTENIP in
+      @*)
+        C3SURF_HTTPD_HOST_NAME=$(echo $C3SURF_HTTPD_LISTENIP | sed -e 's/^@//')
+        # kleiner Sicherheitscheck, falls beim 'sed' was schief geht -- leeres Ergebnis
+        if [ -n "$C3SURF_HTTPD_HOST_NAME" ]
+        then
+          # für den Hostnamen wollen wir die domain dazupacken.
+          if [ -n "$DOMAIN_NAME" ]
+          then
+            # C3SURF_HTTPD_HOST_NAME="$C3SURF_HTTPD_HOST_NAME.$DOMAIN_NAME"
+            # solve IE Problem with capital letters
+            C3SURF_HTTPD_HOST_NAME="$(echo "$C3SURF_HTTPD_HOST_NAME.$DOMAIN_NAME" | tr 'A-Z' 'a-z')"
+          fi
+        else # fallback to IP-address
+          C3SURF_HTTPD_HOST_NAME="$C3SURF_HTTPD_HOST"
+        fi
+      ;;
+      *) # fallback to IP-address
+        C3SURF_HTTPD_HOST_NAME="$C3SURF_HTTPD_HOST"
+      ;;
+      esac
+
+      if [ $C3SURF_HTTPD_PORT -ne 80 ]
+      then
+        C3SURF_HTTPD_HOST_NAME="$C3SURF_HTTPD_HOST_NAME:$C3SURF_HTTPD_PORT"
+      fi
+
+
+    fi
+
+    #-------------------------------------------------------------------------
+    # ohne httpd-host mache ich nichts - denn ohne kann sich keiner anmelden
+    #-------------------------------------------------------------------------
+    if [ -n "$C3SURF_HTTPD_HOST" ]
+    then
+
+      #----------------------------------------------------------------------------
+      # c3surf-Temp-Verzeichnis löschen und neu anlegen
+      #----------------------------------------------------------------------------
+      [ "$C3SURF_TMP_PATH" ] || C3SURF_TMP_PATH="/tmp/c3surf"
+      rm -Rf $C3SURF_TMP_PATH
+      mkdir -p $C3SURF_TMP_PATH
+
+      #----------------------------------------------------------------------------
+      # c3surf-Log-Verzeichnis anlegen
+      #----------------------------------------------------------------------------
+      [ "$C3SURF_LOG_PATH" ] || C3SURF_LOG_PATH="/var/log/c3surf"
+      mkdir -p $C3SURF_LOG_PATH
+
+      #----------------------------------------------------------------------------
+      # c3surf-Persistent-Data-Verzeichnis anlegen
+      #----------------------------------------------------------------------------
+      [ "$C3SURF_PERSISTENT_PATH" ] || C3SURF_PERSISTENT_PATH="/var/lib/persistent/c3surf"
+      mkdir -p $C3SURF_PERSISTENT_PATH
+
+      #----------------------------------------------------------------------------
+      # c3surf-Persistent-Data ins TMP kopieren (Platte nicht einschalten)
+      #----------------------------------------------------------------------------
+      [ "$C3SURF_WORKON_TMP" ] || C3SURF_WORKON_TMP="no"
+      if [ "$C3SURF_WORKON_TMP" = "yes" ]
+      then
+        if [ "$C3SURF_TMP_PATH" = "$C3SURF_PERSISTENT_PATH" ]
+        then
+          C3SURF_WORKON_TMP="no"
+        fi
+      fi
+
+      #----------------------------------------------------------------------------
+      # c3surf-optional parameters to default
+      #----------------------------------------------------------------------------
+      : ${C3SURF_CHECK_ARP:=yes}
+      : ${C3SURF_CHECK_CURFEW:=yes}
+      : ${C3SURF_SLOPPY_MAC:=no}
+
+      #----------------------------------------------------------------------------
+      # c3surf-Filter FORWARD und NAT PREROUTING vorbereiten
+      #----------------------------------------------------------------------------
+      fw_add_chain filter c3surf_control
+      fw_add_chain nat c3surf_nat_control
+      fw_add_chain filter c3surf_block
+      # control und block von ports mittels indirect chain, nicht direkt in INPUT
+      fw_add_chain filter c3surf_control_ports
+      fw_add_chain filter c3surf_block_ports
+
+
+      # Netzwerke in die Chains aufnehmen
+      # und Hosts in die Chains aufnehmen
+      for idx in `seq 1 $C3SURF_CONTROL_HOST_OR_NET_N`
+      do
+        eval my_var='$C3SURF_CONTROL_HOST_OR_NET_'$idx
+        fw_append_rule filter c3surf_control "prot:any $my_var any REJECT"
+        [ -f /usr/local/bin/c3surf_extrafilter_forwardloop ] && . /usr/local/bin/c3surf_extrafilter_forwardloop
+        fw_append_rule nat c3surf_nat_control "prot:tcp $my_var any:80 DNAT:$C3SURF_HTTPD_HOST:$C3SURF_HTTPD_PORT"
+        fw_append_rule filter c3surf_block "prot:tcp $my_var REJECT"
+      done
+      [ -f /usr/local/bin/c3surf_extrafilter_forward ] && . /usr/local/bin/c3surf_extrafilter_forward
+
+      #----------------------------------------------------------------------------
+      # c3surf-Firewall INPUT Chain bearbeiten
+      #----------------------------------------------------------------------------
+      # INPUT Chain: TCP Ports, die in INPUT kontrolliert werden sollen
+      #----------------------------------------------------------------------------
+      for idx in `seq 1 $C3SURF_CONTROL_PORT_N`
+      do
+        eval my_var='$C3SURF_CONTROL_PORT_'$idx
+        if [ $my_var -ne $C3SURF_HTTPD_PORT ]
+        then
+          fw_append_rule filter c3surf_control_ports "prot:tcp $my_var c3surf_control"
+        else
+          log_error "\$C3SURF_CONTROL_PORT_$idx ($my_var) control ignored - used by c3surf itself."
+        fi
+      done
+      if [ "$C3SURF_CONTROL_PORT_N" -gt "0" ]
+      then
+        fw_append_rule filter INPUT-head "prot:tcp c3surf_control_ports" "managed by c3surf; controlled ports"
+      fi
+
+
+      #----------------------------------------------------------------------------
+      # INPUT Chain: TCP Ports, die in INPUT dauerhaft gesperrt werden sollen
+      #----------------------------------------------------------------------------
+      for idx in `seq 1 $C3SURF_BLOCK_PORT_N`
+      do
+        eval my_var='$C3SURF_BLOCK_PORT_'$idx
+        if [ $my_var -ne $C3SURF_HTTPD_PORT ]
+        then
+          fw_append_rule filter c3surf_block_ports "prot:tcp $my_var c3surf_block"
+        else
+          log_error "\$C3SURF_CONTROL_PORT_$idx ($my_var) block ignored - used by c3surf itself."
+        fi
+      done
+      if [ "$C3SURF_BLOCK_PORT_N" -gt "0" ]
+      then
+        fw_append_rule filter INPUT-head "prot:tcp c3surf_block_ports" "c3surf permanent blocked ports"
+      fi
+
+      #----------------------------------------------------------------------------
+      # c3surf-Firewall FORWARD Chain bearbeiten
+      #----------------------------------------------------------------------------
+      # FORWARD Chain: alles aus dem Netz oder von Clients vor Anmeldung verwerfen
+      #----------------------------------------------------------------------------
+      fw_append_rule filter FORWARD-head "prot:any c3surf_control" "managed by c3surf; control list for packets"
+
+
+      #----------------------------------------------------------------------------
+      # c3surf-Firewall PREROUTING NAT Chain bearbeiten
+      #----------------------------------------------------------------------------
+      # PREROUTING NAT Chain: Umleitung zum eigenen httpd
+      #----------------------------------------------------------------------------
+      if [ "$C3SURF_CONTROL_SQUID" = "yes" ]
+      then
+        # =====================================================
+        # squid
+        # =====================================================
+        # Für squid Kontrolle:
+        # Einfügen der Regel am Anfang nötig, damit c3surf
+        # sich vor squid einhängen kann.
+        fw_prepend_rule nat PREROUTING-head "prot:tcp any c3surf_nat_control" "managed by c3surf; http port forwards to mini_httpd"
+      else
+        fw_append_rule nat PREROUTING-head "prot:tcp any c3surf_nat_control" "managed by c3surf; http port forwards to mini_httpd"
+      fi
+
+
+      #----------------------------------------------------------------------------
+      # c3surf-Time auf Sekunden umrechnen
+      #----------------------------------------------------------------------------
+      C3SURF_SECS=`expr $C3SURF_TIME \* 60`
+      if [ $C3SURF_BLOCKTIME -gt 0 ]
+      then
+        C3SURF_BLOCKSECS=`expr $C3SURF_BLOCKTIME \* 60`
+      else
+        C3SURF_BLOCKSECS=$C3SURF_BLOCKTIME
+      fi
+
+      #-------------------------------------------------
+      # error-handling erstellen
+      #-------------------------------------------------
+      cat /srv/www/c3surf/errors/err400.skel | simple_html_output > /srv/www/c3surf/errors/err400.html
+      rm /srv/www/c3surf/errors/err400.skel
+      cat /srv/www/c3surf/errors/err401.skel | simple_html_output > /srv/www/c3surf/errors/err401.html
+      rm /srv/www/c3surf/errors/err401.skel
+      cat /srv/www/c3surf/errors/err404.skel | simple_html_output > /srv/www/c3surf/errors/err404.html
+      rm /srv/www/c3surf/errors/err404.skel
+
+      #-------------------------------------------------
+      # httpd-Menüeinträge erstellen (add "c3surf.cgi" "c3Surf" "Opt" c3surf)
+      #-------------------------------------------------
+      #if [ "$OPT_LOGINUSR" = "yes" ]
+      #then
+      #  /usr/local/bin/httpd-menu.sh "add" "c3surf.cgi" "LoginUsr" "" "c3surf"
+      #else
+      #  /usr/local/bin/httpd-menu.sh "add" "c3surf.cgi" "FreeSurf" "" "c3surf"
+      #fi
+      /usr/local/bin/httpd-menu.sh "add" "c3surf.cgi" "c3Surf" "" "c3surf"
+
+      #-------------------------------------------------
+      # Die Option für echtes Login einrichten
+      #-------------------------------------------------
+      if [ "$OPT_LOGINUSR" = "yes" ]
+      then
+        # Delete accounts if Admin want it
+        if [ "$LOGINUSR_DELETE_PERSISTENT_DATA" = "yes" ]
+        then
+          rm -f "$C3SURF_PERSISTENT_PATH"/*.data 2>/dev/null
+          rm -f "$C3SURF_PERSISTENT_PATH"/*.quota 2>/dev/null
+          rm -f "$C3SURF_PERSISTENT_PATH"/*.block 2>/dev/null
+#          rm -f "$C3SURF_PERSISTENT_PATH"/*.stats
+        fi
+        # create Accounts
+        if [ $LOGINUSR_ACCOUNT_N -gt 0 ]
+        then
+          for idx in `seq 1 $LOGINUSR_ACCOUNT_N`
+          do
+            eval fsover='$LOGINUSR_ACCOUNT_'$idx'_OVERWRITE'
+            eval fsid='$LOGINUSR_ACCOUNT_'$idx'_USER'
+            if [ ! -f "$C3SURF_PERSISTENT_PATH/$fsid.data" -o "$fsover" = "yes" ]
+            then
+              # overwrite user.data
+              # but do not delete quota, block and stats
+              #   rm -f "$C3SURF_PERSISTENT_PATH/$fsid.quota"
+              #   rm -f "$C3SURF_PERSISTENT_PATH/$fsid.block"
+              #   rm -f "$C3SURF_PERSISTENT_PATH/$fsid.stats"
+              # build new user.data
+              eval fspw='$LOGINUSR_ACCOUNT_'$idx'_PWD'
+              eval fsname='$LOGINUSR_ACCOUNT_'$idx'_SURNAME'
+              eval fsvorname='$LOGINUSR_ACCOUNT_'$idx'_FORENAME'
+              eval fsmail='$LOGINUSR_ACCOUNT_'$idx'_EMAIL'
+              # optional quotas per user
+              eval fstime='$LOGINUSR_ACCOUNT_'$idx'_TIME'
+              eval fsblocktime='$LOGINUSR_ACCOUNT_'$idx'_BLOCKTIME'
+              eval fscounter='$LOGINUSR_ACCOUNT_'$idx'_COUNTER'
+              eval fscurfew='$LOGINUSR_ACCOUNT_'$idx'_CURFEW'
+              # now start saving the parms
+              echo "fsid=\"$fsid\"" > "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              echo "fspw=\"$(echo "$fspw" | sed 's/\$/\\\$/g')\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              if [ -n "$fsname" ]
+              then
+                fsname=$(echo "$fsname" | tr -d '\n' | tr -c 'äüöÄÜÖß\-[:alnum:]' '_')
+                echo "fsname=\"$fsname\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              else
+                echo "fsname=\"none\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+              if [ -n "$fsvorname" ]
+              then
+                fsvorname=$(echo "$fsvorname" | tr -d '\n' | tr -c 'äüöÄÜÖß\-[:alnum:]' '_')
+                echo "fsvorname=\"$fsvorname\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              else
+                echo "fsvorname=\"none\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+              if [ -n "$fsmail" ]
+              then
+                fsmail=$(echo "$fsmail" | tr -d '\n' | tr -c '@äüöÄÜÖß\-.[:alnum:]' '_')
+                echo "fsmail=\"$fsmail\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              else
+                echo "fsmail=\"none\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+              # write optional time
+              if [ -n "$fstime" ]
+              then
+                if [ $fstime -le 0 ]
+                then
+                  fssecs=$fstime
+                else
+                  fssecs=`expr $fstime \* 60`
+                fi
+                echo "fstime=\"$fstime\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+                echo "fssecs=\"$fssecs\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+              # writer optional blocktime
+              if [ -n "$fsblocktime" ]
+              then
+                if [ $fsblocktime -le 0 ]
+                then
+                  fsblocksecs=$fsblocktime
+                else
+                  fsblocksecs=`expr $fsblocktime \* 60`
+                fi
+                echo "fsblocktime=\"$fsblocktime\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+                echo "fsblocksecs=\"$fsblocksecs\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+              # write optional counter
+              if [ -n "$fscounter" ]
+              then
+                 echo "fscounter=\"$fscounter\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+              # optional curfew
+              if [ -n "$fscurfew" ]
+              then
+                fscurfew=$(echo "$fscurfew" | tr -d '\n' | tr -c '\ [:digit:]' 'X' | tr -d 'X')
+                [ -n "$fscurfew" ] && echo "fscurfew=\"$fscurfew\"" >> "$C3SURF_PERSISTENT_PATH/$fsid.data"
+              fi
+            fi  # handle overwrite
+          done
+          # ---------------------------------------------------------------
+          # vielleicht später mit link, dann kann die Datei auch auf einem permanent Mount liegen
+          #           ln -s /data/c3surf/htpasswd /srv/www/c3surf/.htpasswd
+          # ---------------------------------------------------------------
+        fi # Account Count > 0
+        # Make passwords for all users and make a TMP copy (prevents disk wakeup)
+    # -------------------------------------------------------------------------
+    # put user password to .htpasswd
+    # -------------------------------------------------------------------------
+        > /srv/www/c3surf/login/.htpasswd
+        # error on Typ B at runtime - writable needed
+        mk_writable "/srv/www/c3surf/login/.htpasswd"
+        for f in "$C3SURF_PERSISTENT_PATH"/*.data
+        do
+          # schließe den Abfrage-String aus
+          if [ "$f" != "$C3SURF_PERSISTENT_PATH/*.data" ]
+          then
+            # delete all old values
+            # unset fsid fspw fsname fsvorname fsmail fssecs fsblocksecs fscounter fstime fsblocktime fsmodule fsvalid
+            unset fsid fspw fsmodule fsvalid
+            # initialize the user vars
+            . "$f"
+            # ----- addon voucher (begin)
+            # delete all activated vouchers - they are invalid after a reboot
+            if [ -n "$fsmodule" ]
+            then
+              if [ "$fsmodule" = "voucher" ]
+              then
+                rm -f "$f"
+                [ -f "$C3SURF_PERSISTENT_PATH/$fsid.quota" ] && rm -f "$C3SURF_PERSISTENT_PATH/$fsid.quota"
+                [ -f "$C3SURF_PERSISTENT_PATH/$fsid.block" ] && rm -f "$C3SURF_PERSISTENT_PATH/$fsid.block"
+              fi
+            else
+            # ----- addon voucher (end)
+              if [ -n "$fspw" ]
+              then
+                echo "$fsid:$fspw" >> /srv/www/c3surf/login/.htpasswd
+              fi
+            fi
+          fi
+        done
+        # all passwords saved
+      fi
+
+      #-------------------------------------------------
+      # Die Option C3SURF_WORKON_TMP einrichten
+      #-------------------------------------------------
+      if [ "$C3SURF_WORKON_TMP" = "yes" ]
+      then
+        C3SURF_READ_PATH="$C3SURF_TMP_PATH"
+        C3SURF_BLACKLIST_FILE="$C3SURF_TMP_PATH/c3surf_mac.blacklist"
+        C3SURF_SYSLOCK_FILE="$C3SURF_TMP_PATH/c3surf.lock"
+        # user data
+        if [ "$OPT_LOGINUSR" = "yes" ]
+        then
+          cp -f "$C3SURF_PERSISTENT_PATH/"*.data "$C3SURF_TMP_PATH"
+        fi
+        # mac blacklist
+        if [ -f "$C3SURF_PERSISTENT_PATH/"c3surf_mac.blacklist ]
+        then
+          cp -f "$C3SURF_PERSISTENT_PATH/"c3surf_mac.blacklist "$C3SURF_BLACKLIST_FILE"
+        fi
+        if [ -f "$C3SURF_PERSISTENT_PATH/"c3surf.lock ]
+        then
+          cp -f "$C3SURF_PERSISTENT_PATH/"c3surf.lock "$C3SURF_SYSLOCK_FILE"
+        fi
+        if [ -f "$C3SURF_PERSISTENT_PATH/"c3surf-lang.overwrite ]
+        then
+          cp -f "$C3SURF_PERSISTENT_PATH/"c3surf-lang.overwrite "$C3SURF_TMP_PATH/"c3surf-lang.overwrite
+        fi
+      else
+        C3SURF_BLACKLIST_FILE="$C3SURF_PERSISTENT_PATH/c3surf_mac.blacklist"
+        C3SURF_SYSLOCK_FILE="$C3SURF_PERSISTENT_PATH/c3surf.lock"
+        C3SURF_READ_PATH="$C3SURF_PERSISTENT_PATH"
+      fi
+
+      [ "$C3SURF_PORTAL_DEFAULT_LANG" ] && echo "c3surf_login_lang=\"$C3SURF_PORTAL_DEFAULT_LANG\"" > /srv/www/c3surf/lang/default
+
+      #-------------------------------------------------------------------------
+      # start mini_httpd and restart it, if it is killed
+      #-------------------------------------------------------------------------
+      C3SURF_HTTPD_OPTION='-D -d /srv/www/c3surf/ -c **.cgi -u root -i /var/run/c3surf_httpd.pid'
+      cd /srv/www/c3surf
+      set -f
+      if [ "$C3SURF_DOLOG_HTTPD" = "yes" ]
+      then
+        service-restart.sh 0 /usr/sbin/mini_httpd $C3SURF_HTTPD_OPTION -h $C3SURF_HTTPD_HOST -p $C3SURF_HTTPD_PORT -l $C3SURF_LOG_PATH/c3surf_httpd.log &
+      else
+        service-restart.sh 0 /usr/sbin/mini_httpd $C3SURF_HTTPD_OPTION -h $C3SURF_HTTPD_HOST -p $C3SURF_HTTPD_PORT &
+      fi
+      set +f
+      cd /
+    fi
+    #-------------------------------------------------------------------------
+    # ohne httpd-host mache ich nichts - aber die .conf schreibe ich raus
+    #-------------------------------------------------------------------------
+    # c3surf-Conf Datei schreiben
+    #----------------------------------------------------------------------------
+    {
+      # kleiner header
+      #
+      echo "# -----------------------------------------"
+      echo "# this is the c3surf config - do not modify"
+      echo "# (c) 2008  Frank Saurbier, c3surf@arcor.de"
+      echo "# -----------------------------------------"
+      #
+      # values from the config/c3surf.txt that c3surf scripts need are listed here
+      #
+      if [ "$OPT_LOGINUSR" = "yes" ]
+      then
+        echo "C3SURF_VERSION='(LoginUsr v. 2.3.1)'"
+      else
+        echo "C3SURF_VERSION='(FreeSurf v. 2.3.1)'"
+      fi
+      echo "C3SURF_TMP_PATH='$C3SURF_TMP_PATH'"
+      echo "C3SURF_LOG_PATH='$C3SURF_LOG_PATH'"
+      echo "C3SURF_PERSISTENT_PATH='$C3SURF_PERSISTENT_PATH'"
+      echo "C3SURF_WORKON_TMP='$C3SURF_WORKON_TMP'"
+      echo "C3SURF_DOLOG_LOGIN='$C3SURF_DOLOG_LOGIN'"
+      echo "C3SURF_DOLOG_INVALID='$C3SURF_DOLOG_INVALID'"
+      echo "C3SURF_DOLOG_PAGE='$C3SURF_DOLOG_PAGE'"
+      echo "C3SURF_QUOTA='$C3SURF_QUOTA'"
+      echo "C3SURF_TIME='$C3SURF_TIME'"
+      echo "C3SURF_SECS='$C3SURF_SECS'"
+      echo "C3SURF_BLOCKTIME='$C3SURF_BLOCKTIME'"
+      echo "C3SURF_BLOCKSECS='$C3SURF_BLOCKSECS'"
+      echo "C3SURF_COUNTER='$C3SURF_COUNTER'"
+      echo "C3SURF_CHECK_ARP='$C3SURF_CHECK_ARP'"
+      echo "C3SURF_CHECK_CURFEW='$C3SURF_CHECK_CURFEW'"
+      echo "C3SURF_SAVE_QUOTA='$C3SURF_SAVE_QUOTA'"
+      echo "C3SURF_BLACKLIST_FILE='$C3SURF_BLACKLIST_FILE'"
+      echo "C3SURF_SYSLOCK_FILE='$C3SURF_SYSLOCK_FILE'"
+      echo "C3SURF_READ_PATH='$C3SURF_READ_PATH'"
+      echo "C3SURF_HTTPD_HOST_NAME='$C3SURF_HTTPD_HOST_NAME'"
+      echo "C3SURF_HTTPD_HOST='$C3SURF_HTTPD_HOST'"
+      echo "C3SURF_HTTPD_PORT='$C3SURF_HTTPD_PORT'"
+      echo "C3SURF_SLOPPY_MAC='$C3SURF_SLOPPY_MAC'"
+      echo "OPT_LOGINUSR='$OPT_LOGINUSR'"
+      echo "OPT_C3SURF_TRAFFIC='$OPT_C3SURF_TRAFFIC'"
+#  noch im Test, für Portalfunktion
+#      echo "LOGINUSR_SHOW_INFO='$LOGINUSR_SHOW_INFO'"
+#  noch im Test
+# ###################################
+      echo "LOGINUSR_SHOW_INFO='yes'"
+# ###################################
+    } > /var/run/c3surf.conf
+
+    #-------------------------------------------------
+    # Check C3SURF_SAVE_QUOTA
+    #-------------------------------------------------
+    if [ "$C3SURF_SAVE_QUOTA" = "yes" ]
+    then
+      if [ "$C3SURF_TMP_PATH" != "$C3SURF_PERSISTENT_PATH" ]
+      then
+        mv -f "$C3SURF_PERSISTENT_PATH/"*.block "$C3SURF_TMP_PATH" 2>/dev/null
+        mv -f "$C3SURF_PERSISTENT_PATH/"*.quota "$C3SURF_TMP_PATH" 2>/dev/null
+      fi
+    fi
+
+    #-------------------------------------------------
+    # installation B needs writable files (see above .htpasswd)
+    #-------------------------------------------------
+    mk_writable "/srv/www/c3surf/lang/default"
+
+    #----------------------------------------------------------
+    # Eintrag in crontab, c3surf_countdown läuft jede 2. Minute
+    #----------------------------------------------------------
+    add_crontab_entry "*/2 * * * *" "/usr/local/bin/c3surf_countdown.sh"
+
+    #----------------------------------------------------------
+    # Eintrag in crontab, c3surf_traffic läuft jede $C3SURF_TRAFFIC_MINUTES. Minute
+    #----------------------------------------------------------
+    if [ "$OPT_C3SURF_TRAFFIC" = "yes" ]
+    then
+      fw_add_chain filter c3surf_traffic
+      fw_prepend_rule filter FORWARD "prot:any c3surf_traffic" "managed by c3surf; count bytes and packets"
+      if [ $C3SURF_TRAFFIC_MINUTES -le 0 ]
+      then
+        C3SURF_TRAFFIC_MINUTES=1
+      fi
+      add_crontab_entry "*/$C3SURF_TRAFFIC_MINUTES * * * *" "/usr/local/bin/c3surf_traffic.sh $C3SURF_TRAFFIC_BYTES $C3SURF_TRAFFIC_BLOCKTIME"
+    fi
+
+  end_script
+fi
+# ----------------------------------------------------------------------------
+# c3surf -- ENDE ---
+# ----------------------------------------------------------------------------

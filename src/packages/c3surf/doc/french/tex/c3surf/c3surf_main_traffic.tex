@@ -1,0 +1,102 @@
+% Synchronized to r30467
+   OPT\_C3SURF\_TRAFFIC permet de réguler un "Power User" (ou un utilisateur intensif).
+   Il sera surveillé et évalue sur la quantité de données, dans un intervalle de temps
+   prédéfini. La configuration peut être personnalisée en fonction de vos besoins.
+
+\section {Configuration de OPT\_C3SURF\_TRAFFIC}
+
+\begin{description}
+
+\config{OPT\_C3SURF\_TRAFFIC}{OPT\_C3SURF\_TRAFFIC}{OPTC3SURFTRAFFIC}
+
+   Paramètre par défaut~: \var{OPT\_C3SURF\_TRAFFIC='no'}
+
+   Si vous indiquez 'yes' dans cette variable vous activez le module Traffic.
+   Les variables de configuration sont décrites ci-dessous. Les valeurs par défaut
+   ont été paramétrées avec une connexion DSL-6000, cela donne (6016 kbit/s descendant
+   et 512 kbit/s montant).
+
+   Vous devez définir les variables suivantes pour un volume de données qui ne doit pas
+   être dépassée. Aucune distinction n'est faite entre l'upload et download. La logique
+   de ce module est conçu de manière à ce que si le volume de données est dépassé deux
+   fois de suite - le délinquant sera bloqué avec une pénalité de temps défini (temps de bloquage).
+   Ces paramètres sont appliqués globalement à tous les utilisateurs C3SURF. Pour choisir
+   les bons paramètres, cela devrait dépendre de la bande passante disponible sur le site.
+   Aucun bloquage ne résultera lors d'un dépassement de téléchargement exceptionnel, vous pouvez
+   même faire normalement une mise à jour du système d'exploitation ou de télécharger une grandes
+   quantités de données. Mais si la consommation de bande passante est reconnu comme "permanente"
+   le bloquage devient actif. Il s'agit avec ce module de blâmer ceux qui utilise longs temps
+   la bande passante.
+
+   Si vous voulez, par exemple, pour permettre le télécharger occasionnel de grandes quantités de données,
+   un temps doit être calculée par rapport au montant de données autorisé et à la bande passante disponible
+   avec laquel la quantité de données peut être téléchargé.
+
+\achtung{Exemple~:}
+
+   Si vous voulez télécharger occasionnelle d'un CD de distribution de (700Mo), au meilleur des cas cela
+   prendra le temps suivant pour le terminer~:
+
+   \begin{tabular}{lrlrl}
+
+    DSL-&1000 & environ & 93 & Minutes \\
+    DSL-&2000 & environ & 47 & Minutes \\
+    DSL-&6000 & environ & 16 & Minutes \\
+    DSL-&16000 & environ & 6 & Minutes \\
+
+   \end{tabular}
+
+   Le montant autorisé de données à télécharger est ici (de 700 Mo) il doit être divisé par une valeur
+   supérieur à 1 mais inférieure à 2.
+
+\achtung{Exemple (conservative)~:} 700Mo / 1,9 = 386317473 Octets \\
+   C'est le nombre d'octets qui peut être téléchargés au maximum dans un temps, calcul ci-dessus.
+   S'il est logique de permettre un tel volume de données élevé par utilisateur pour la DSL-1000
+   et DSL-2000 cela dépend aussi du nombre d'utilisateurs.
+
+   Si vous ne souhaitez pas une telle quantités de données à télécharger, mais par exemple permettre
+   l'écoute de flux de musique mp3 ou de permettre un flux continu de données de 128 kBit/s, vous
+   devez sélectionner les valeurs suivantes~: 16220160 octets pour 15 minutes
+   (résultats pour 128kbit/s * 1024 / 8 bits = 16384 octets/s * 60 = 983040 octets/min * 15min = 14745600 octets * 1,1 = 16220160 octets (pour 15 min)).
+   Comme il s'agit d'un flux de données continu qui ne peut pas être partagée, cette charge sera toujours
+   autorisé. Ici, il est utile de calculer une marge supplémentaire de 10\% par sécurité, car, en plus
+   de la quantité pure de données d'autres informations doivent aussi être transportés. Par conséquent,
+   la valeur calculée de 14745600 octets sera multipliée par 1,1.
+
+   Dans ce qui suit, les variables sont présentés avec des valeurs par défaut, avec l'exemple donné ici pour
+   le téléchargement occasionnel d'un CD avec une connexion DSL 6000.
+
+\config{C3SURF\_TRAFFIC\_BYTES}{C3SURF\_TRAFFIC\_BYTES}{C3SURFTRAFFICBYTES}
+
+   \var{C3SURF\_TRAFFIC\_BYTES='386317473'}
+
+   Plage de valeur~: nombre entier naturel
+
+   Vous indiquez dans cette variable le nombre d'octets qui peut être téléchargé dans le temps maximum
+   \jump{C3SURFTRAFFICMINUTES}{\var{C3SURF\_TRAFFIC\_MINUTES}}. Voici par exemple la 1,9 ème
+   partie d'un CD de 700Mo. Pour l'exemple de flux de musique mp3 à 128kbit vous pouvez définir 16220160.
+
+\config{C3SURF\_TRAFFIC\_MINUTES}{C3SURF\_TRAFFIC\_MINUTES}{C3SURFTRAFFICMINUTES}
+
+   \var{C3SURF\_TRAFFIC\_BYTES='16'}
+
+   Plage de valeur~: nombre entier naturel
+
+   Vous indiquez dans cette variable le temps en minutes qui s'écoulera entre deux mesures de volume de données
+   à télécharger. S'il est constaté que le temps est dépassement, le responsable sera enregistré (ou fiché)
+   temporairement. Si se même responsable dépasse encore le temps lors de la prochaine mesure de téléchargement,
+   il sera automatiquement déconnecté et bloqué (avec \jump{C3SURFTRAFFICBLOCKTIME}{\var{C3SURF\_TRAFFIC\_BLOCKTIME}} en minute).
+   Si aucun excés n'est détectée dans la seconde mesure, l'enregistrement temporaire du responsable sera supprimé.
+
+   Pour l'exemple du mp3, vous pouvez indiquer '15'.
+
+\config{C3SURF\_TRAFFIC\_BLOCKTIME}{C3SURF\_TRAFFIC\_BLOCKTIME}{C3SURFTRAFFICBLOCKTIME}
+
+   \var{C3SURF\_TRAFFIC\_BLOCKTIME='60'}
+
+   Plage de valeur~: nombre entiers
+
+   Vous indiquez dans cette variable le temps en minutes, pendant lequel l'utilisateur aura l'accès bloqué
+   après avoir dépassé la limite du temps de téléchargement.
+
+\end{description}

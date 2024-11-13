@@ -1,0 +1,193 @@
+#!/bin/sh
+##------------------------------------------------------------------------------
+## c3Surf - login for services                                      __FLI4LVER__
+##
+## Creation:    07.01.2008 Frank Saurbier - c3Surf@arcor.de
+## Last Update: $Id$
+##
+## Copyright (c) 2008-2010 - Frank Saurbier <c3surf@arcor.de>
+## Copyright (c) 2010-2016 - Frank Saurbier, fli4l-Team <team@fli4l.de>
+##
+## Licence and conditions look at ~/config/c3surf.txt
+##-------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------
+# c3surf_voucher ist Aktiv
+#----------------------------------------------------------------------------
+#if [ "$OPT_C3SURF" = yes -a "$OPT_C3SURF_VOUCHER" = yes -a "$OPT_LOGINUSR" = yes ]
+#if [ "$OPT_C3SURF_VOUCHER" = yes ]
+if [ "$OPT_C3SURF" = yes -a "$OPT_C3SURF_VOUCHER" = yes -a "$OPT_LOGINUSR" = yes ]
+then
+  # for Debug
+  begin_script C3SURF_VOUCHER "starting c3surf_voucher rc file ..."
+
+    #----------------------------------------------------------------------------
+    # c3surf-optional parameters to default
+    #----------------------------------------------------------------------------
+    : ${C3SURF_VOUCHER_PRTUPDATE:=no}
+    : ${C3SURF_VOUCHER_USRLEN:=12}
+    : ${C3SURF_VOUCHER_USRCAP:=random}
+    : ${C3SURF_VOUCHER_PWDLEN:=6}
+    : ${C3SURF_VOUCHER_PWDMOD:=3}
+    : ${C3SURF_VOUCHER_PWDCAP:=random}
+
+    #----------------------------------------------------------------------------
+    # c3surf parameter check
+    #----------------------------------------------------------------------------
+    if [ $C3SURF_VOUCHER_USRLEN -gt 16 ]
+    then
+      C3SURF_VOUCHER_USRLEN=16
+    fi
+    if [ $C3SURF_VOUCHER_USRLEN -lt 1 ]
+    then
+      C3SURF_VOUCHER_USRLEN=1
+    fi
+
+    if [ $C3SURF_VOUCHER_PWDLEN -gt 12 ]
+    then
+      C3SURF_VOUCHER_PWDLEN=12
+    fi
+    if [ $C3SURF_VOUCHER_PWDLEN -lt 1 ]
+    then
+      C3SURF_VOUCHER_PWDLEN=1
+    fi
+
+    if [ $C3SURF_VOUCHER_PWDMOD -gt 5 ]
+    then
+      C3SURF_VOUCHER_PWDMOD=5
+    fi
+    if [ $C3SURF_VOUCHER_PWDMOD -lt 1 ]
+    then
+      C3SURF_VOUCHER_PWDMOD=1
+    fi
+
+    #-------------------------------------------------------------------------
+    # c3surf_voucher: write the config-vars - to c3surf.conf !
+    #----------------------------------------------------------------------------
+    {
+      # kleiner header
+      #
+      #echo "# -----------------------------------------"
+      #echo "# this is the c3surf config - do not modify"
+      #echo "# (c) 2008  Frank Saurbier, c3surf@arcor.de"
+      #echo "# -----------------------------------------"
+      #
+      # values from the config/c3surf.txt that c3surf scripts need are listed here
+      #
+      echo "OPT_C3SURF_VOUCHER='$OPT_C3SURF_VOUCHER'"
+      echo "C3SURF_VOUCHER_N='$C3SURF_VOUCHER_N'"
+      for idx in `seq 1 $C3SURF_VOUCHER_N`
+      do
+        eval my_var='$C3SURF_VOUCHER_'$idx'_TIME'
+        echo "C3SURF_VOUCHER_TIME_$idx='$my_var'"
+        eval my_var='$C3SURF_VOUCHER_'$idx'_DAYS'
+        echo "C3SURF_VOUCHER_DAYS_$idx='$my_var'"
+        eval my_var='$C3SURF_VOUCHER_'$idx'_COUNT'
+        echo "C3SURF_VOUCHER_COUNT_$idx='$my_var'"
+        # optional voucher live time, default=0
+        eval my_var='$C3SURF_VOUCHER_'$idx'_LIVES'
+        if [ -z "$my_var" ]
+        then
+          my_var=0
+        fi
+        echo "C3SURF_VOUCHER_LIVES_$idx='$my_var'"
+      done
+      echo "C3SURF_VOUCHER_USRLEN='$C3SURF_VOUCHER_USRLEN'"
+      echo "C3SURF_VOUCHER_USRCAP='$C3SURF_VOUCHER_USRCAP'"
+      echo "C3SURF_VOUCHER_PWDLEN='$C3SURF_VOUCHER_PWDLEN'"
+      echo "C3SURF_VOUCHER_PWDMOD='$C3SURF_VOUCHER_PWDMOD'"
+      echo "C3SURF_VOUCHER_PWDCAP='$C3SURF_VOUCHER_PWDCAP'"
+      echo "C3SURF_VOUCHER_PRINTFILE='$C3SURF_PERSISTENT_PATH/c3surf_voucher.txt'"
+      echo "C3SURF_VOUCHER_PRTUPDATE='$C3SURF_VOUCHER_PRTUPDATE'"
+    } >> /var/run/c3surf.conf
+
+
+    # -------------------------------------------------------------------------
+    # init random generator
+    # -------------------------------------------------------------------------
+#    # echo "Initializing random number generator..."
+#    random_seed=/var/run/random-seed
+#    # Carry a random seed from start-up to start-up
+#    # Load and then save the whole entropy pool
+#    if [ -f $random_seed ]; then
+#        cat $random_seed >/dev/urandom
+#    else
+#        > $random_seed
+#    fi
+#    chmod 600 $random_seed
+#    poolfile=/proc/sys/kernel/random/poolsize
+#    [ -r $poolfile ] && bytes=`cat $poolfile` || bytes=512
+#    dd if=/dev/urandom of=$random_seed count=1 bs=$bytes
+
+    # -------------------------------------------------------------------------
+    # put voucher password to .htpasswd
+    # -------------------------------------------------------------------------
+        # Make passwords for all users and make a TMP copy (prevents disk wakeup)
+        # delete expired vouchers
+        now_ts=$(/bin/date +%s)
+        for f in "$C3SURF_PERSISTENT_PATH"/*.data-voucher
+        do
+          # schließe den Abfrage-String aus
+          if [ "$f" != "$C3SURF_PERSISTENT_PATH/*.data-voucher" ]
+          then
+            # delete all old values
+            # unset fsid fspw fsname fsvorname fsmail fssecs fsblocksecs fscounter fstime fsblocktime fsmodule fsvalid
+            unset fsid fspw fsvalid
+            # initialize the user vars
+            . "$f"
+            if [ -n "$fsvalid" -a $fsvalid != 0 -a $fsvalid -lt $now_ts ]
+            then
+            #  if [ "$fsmodule" = "voucher" ]
+            #  then
+                rm -f "$f"
+            #  fi
+            else
+              if [ -n "$fspw" ]
+              then
+                echo "$fsid:$fspw" >> /srv/www/c3surf/login/.htpasswd
+              fi
+            fi
+          fi
+        done
+
+      #-------------------------------------------------
+      # Option C3SURF_WORKON_TMP for Vouchers
+      #-------------------------------------------------
+      if [ "$C3SURF_WORKON_TMP" = "yes" ]
+      then
+        # voucher data
+        if [ "$OPT_LOGINUSR" = "yes" ]
+        then
+          cp -f "$C3SURF_PERSISTENT_PATH/"*.data-voucher "$C3SURF_TMP_PATH" 2>/dev/null
+        fi
+      fi
+
+    #----------------------------------------------------------
+    # set crontab vars
+    #----------------------------------------------------------
+    if [ -z "$C3SURF_VOUCHER_DEL_CRON" ]
+    then
+      C3SURF_VOUCHER_DEL_CRON='0 4 * * *'
+    fi
+    if [ -z "$C3SURF_VOUCHER_GEN_CRON" ]
+    then
+      C3SURF_VOUCHER_GEN_CRON='15 4 * * *'
+    fi
+
+    #----------------------------------------------------------
+    # Eintrag in crontab vocher delete and voucher generate
+    #----------------------------------------------------------
+    if [ "$C3SURF_VOUCHER_DEL_CRON" != "never" ]
+    then
+      add_crontab_entry "$C3SURF_VOUCHER_DEL_CRON" "/usr/local/bin/c3surf_voucher_del.sh"
+    fi
+    if [ "$C3SURF_VOUCHER_GEN_CRON" != "never" ]
+    then
+      add_crontab_entry "$C3SURF_VOUCHER_GEN_CRON" "/usr/local/bin/c3surf_voucher_gen.sh"
+    fi
+
+  end_script
+fi
+# ----------------------------------------------------------------------------
+# c3surf -- ENDE ---
+# ----------------------------------------------------------------------------

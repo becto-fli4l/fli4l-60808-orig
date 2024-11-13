@@ -1,0 +1,20 @@
+##------------------------------------------------------------------------------
+## c3Surf - login for services
+## ~/usr/lib/c3surf/c3surf_worker.en
+## englisch language file for c3surf worker (default)
+## Creation:    05.08.2009 fs
+## Last Update: $Id$
+##-------------------------------------------------------------------------------
+## Licence and conditions look at ~/config/c3surf.txt
+##-------------------------------------------------------------------------------
+c3surf_login_msg_nouser="unknown user"
+c3surf_login_msg_multilogin="user is already logged in"
+c3surf_login_msg_noparm="fill in the form completely, please"
+c3surf_login_msg_syslock="no login possible, system locked by admin"
+c3surf_login_msg_nomac="missing mac address"
+c3surf_login_msg_macblack="you may not login"
+c3surf_login_msg_quotablock="limit is exceeded"
+c3surf_login_msg_ok="login was successfull."
+c3surf_login_msg_multiadmin="this host is already logged in"
+c3surf_login_msg_voucheroff="voucher expired"
+c3surf_login_msg_curfew="no login at this hour ($c3surf_reference_curfew)"

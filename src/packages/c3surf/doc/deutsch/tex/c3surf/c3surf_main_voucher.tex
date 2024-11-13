@@ -1,0 +1,210 @@
+% Last Update: $Id$
+Das OPT\_C3SURF\_VOUCHER ermöglicht einen anonymen Zugang in das Internet. Es werden Gutscheine
+erstellt, die in unterschiedlichen Kategorien eingerichtet werden können. Das Opt kann dann über das
+Webinterface manuell oder automatisch verwaltet werden.
+
+\section {Konfiguration von OPT\_VOUCHER}
+
+\begin{description}
+\config {OPT\_C3SURF\_VOUCHER}{OPT\_C3SURF\_VOUCHER}{OPTC3SURFVOUCHER}
+
+   \var{OPT\_C3SURF\_VOUCHER='no'}
+   
+  Das Gutscheinsystem von Opt C3SURF\_VOUCHER aktivieren ('yes'), Standard ist 'no'. Gutscheine sind
+  anonyme aber sichere Einmal-Accounts, die zur Anmeldung verwendet werden können.
+  Voraussetzung ist die Einstellung \jump{OPTLOGINUSR}{\var{OPT\_LOGINUSR='yes'}}.
+
+  Die Erzeugung und Löschung der Gutscheine übernehmen zwei nächtliche cron JOBs, welche jederzeit auch
+  manuell(Admin-Interface) gestartet werden können. Im Folgenden wird erklärt wie diese Jobs verwaltet
+  werden.
+
+  Alle neu generierten Gutscheine werden an eine Druckliste angehängt. Nur in der Druckliste ist das zum
+  Gutschein gehörende Kennwort im Klartext gespeichert. Du kannst diese Liste jederzeit Herunterladen,
+  Drucken oder Löschen. Nach dem Löschen der Liste kann das Kennwort nicht wieder ermittelt werden.
+  Normal wird die Liste zuerst gedruckt und dann gelöscht. Es darf immer nur ein gedrucktes Exemplar eines
+  Gutscheines geben. Die Druckfunktion ist in html implementiert, Seitenumbrüche werden leider nicht beachtet.
+  Gutscheine, die durch Seitenwechsel nicht gedruckt werden, sollten vernichtet werden (allerdings verfallen
+  sie sowieso durch Zeitablauf). Listen, die nicht gedruckt, sondern heruntergeladen wurden, können mit anderen
+  Programmen ein eigenes Layout erhalten, welches dann auch Seitenwechsel sauber berücksichtigt.
+
+\config {C3SURF\_VOUCHER\_N}{C3SURF\_VOUCHER\_N}{C3SURFVOUCHERN}
+
+   \var{C3SURF\_VOUCHER\_N='n'}
+    
+    Wertebereich: 0 und Natürliche Zahlen
+    
+  Wie viele verschiedene Gutscheinkategorien sollen erzeugt werden? Wichtigstes Kriterium
+  für Gutscheine ist die Laufzeit. Daneben gibt man noch die Anzahl der
+  Gutscheine und deren Gültigkeit in Tagen an. Siehe auch die folgenden Variablen.
+
+\config {C3SURF\_VOUCHER\_x\_TIME}{C3SURF\_VOUCHER\_x\_TIME}{C3SURFVOUCHERxTIME}
+   
+   \var{C3SURF\_VOUCHER\_x\_TIME='30'}
+    
+    Wertebereich: Natürliche Zahlen
+    
+  Laufzeit in Minuten (hier: 30) für einen Gutschein dieser Kategorie ('n' siehe oben).
+
+\config{C3SURF\_VOUCHER\_x\_COUNT}{C3SURF\_VOUCHER\_x\_COUNT}{C3SURFVOUCHERxCOUNT}
+
+   \var{C3SURF\_VOUCHER\_x\_COUNT='3'}
+   
+   Wertebereich: Natürliche Zahlen
+  
+  Wie viele Gutscheine dieser Kategorie (in diesm Fall 3) sollen erzeugt werden? 
+  
+\config{C3SURF\_VOUCHER\_x\_DAYS}{C3SURF\_VOUCHER\_x\_DAYS}{C3SURFVOUCHERxDAYS}
+   
+   \var{C3SURF\_VOUCHER\_x\_DAYS='90'}
+   
+   Wertebereich: 0 und Natürliche Zahlen
+   
+  Wie viele Tage soll der Gutschein ab seiner Erzeugung gültig sein (hier:90).
+  Damit wird ein Verfallsdatum für diesen Gutschein erzeugt. Die Löschung
+  erfolgt dann entweder manuell oder per cron-Job. Der Gutschein erlischt,
+  wenn er das erste Mal verwendet wird.
+  
+  \wichtig{'0' bedeutet, dass Gutscheine dieser Kategorie kein Verfallsdatum haben. Sie werden
+           erst mit Benutzung oder wenn die Zeit komplett verbraucht wurde ungültig (wird auch durch
+           C3SURF\_VOUCHER\_LIVES\_N beeinflusst). Sie können jedoch jederzeit im Admin-Interface
+	   des fli4l gelöscht werden.}
+
+\end{description}
+
+\subsection {Optionale Parameter OPT\_VOUCHER}
+  
+\begin{description}
+
+\config{C3SURF\_VOUCHER\_x\_LIVES}{C3SURF\_VOUCHER\_x\_LIVES}{C3SURFVOUCHERxLIVES}
+   
+   \var{C3SURF\_VOUCHER\_x\_LIVES='n'}
+   
+   Wertebereich(n): -1, 0, Natürliche Zahlen
+   
+  Angabe von Stunden, die der Voucher nach der ersten Anmeldung noch gültig ist.
+
+\achtung{Sonderfälle:}
+
+\begin{itemize}
+   \item{C3SURF\_VOUCHER\_x\_LIVES='-1'} 
+         
+         bis zum ursprünglich generierten Verfallsdatum aus C3SURF\_VOUCHER\_DAYS gültig
+   \item{C3SURF\_VOUCHER\_x\_LIVES='0'}
+         
+         (Standard), bedeutet Voucher wird mit erster Anmeldung ungültig.
+    \item{C3SURF\_VOUCHER\_x\_LIVES='Natürl. Zahl'}
+          
+          Anzahl der Stunden, die der Voucher nach erster Anmeldung weiter gültig ist - ggf. ein neues
+          Verfallsdatum berechnen.
+\end{itemize}
+\parskip 12pt
+
+  Diese Gutscheine werden nicht mit der ersten Anmeldung ungültig, sondern gelten 'n' Stunden
+  weiter. Sobald der Gutschein benutzt wird, wird daraus ein zeitlich limitierter LOGINUSR-Account generiert
+  oder es wird das Verfallsdatum des Vouchers neu berechnet. Dieser Account / Voucher darf sich beliebig oft
+  an und wieder abmelden. Es wird das von LOGIN\_USR gewohnte Quota-System für diesen Account verwendet. Erst
+  wenn die gesamte Zeit verbraucht ist oder wenn das Verfallsdatum (C3SURF\_VOUCHER\_DAYS\_N) erreicht wurde,
+  wird dieser Account automatisch von C3SURF gelöscht.
+
+
+\config{C3SURF\_VOUCHER\_DEL\_CRON}{C3SURF\_VOUCHER\_DEL\_CRON}{C3SURFVOUCHERDELCRON}
+
+   \var{C3SURF\_VOUCHER\_DEL\_CRON='0 4 * * *'}
+    
+   Wertebereich: 'cron-Syntax' oder 'never'
+   
+  Der oben angegebene Wert ist der Standard, wenn diese Variable in der config-Datei
+  'c3surf.txt' fehlt.
+  Standard: lösche täglich morgens um 4 Uhr alle verfallenen Guscheine.
+
+  Die cron-Syntax ist einzuhalten und wird nicht geprüft. Zusätzlich kann der Wert 'never' verwendet werden.
+  Dann wird der Job vom System überhaupt nicht eingeplant. Man kann im Admin-Interface jederzeit manuell
+  alle verfallenen Gutscheine löschen lassen.
+
+\config{C3SURF\_VOUCHER\_GEN\_CRON}{C3SURF\_VOUCHER\_GEN\_CRON}{C3SURFVOUCHERGENCRON}
+
+   \var{C3SURF\_VOUCHER\_GEN\_CRON='15 4 * * *'}
+   
+   Wertebereich: 'cron-Syntax' oder 'never'
+  
+  Der oben angegebene Wert ist der Standard, wenn diese Variable in der config-Datei
+  'c3surf.txt' fehlt.
+  Standard: generiere täglich morgens um 4:15 Uhr neue Gutscheine, falls weniger als C3SURF\_VOUCHER\_COUNT
+  vorhanden sind.
+  
+  Die cron-Syntax ist einzuhalten und wird nicht geprüft. Zusätzlich kann der Wert 'never' verwendet werden.
+  Dann wird der Job vom System überhaupt nicht eingeplant. Man kann im Admin-Interface jederzeit manuell
+  neue Gutscheine bis zur Menge\\
+  \jump{C3SURFVOUCHERxCOUNT}{\var{C3SURF\_VOUCHER\_x\_COUNT}} erzeugen lassen.
+  
+  Alle neu generierten Gutscheine werden an eine Druckliste angehängt. Nur in der Druckliste ist das zum
+  Gutschein gehörende Kennwort im Klartext gespeichert. Jeder Gutschein sollte nur einmal gedruckt werden.
+  Die Liste sollte sofort nach dem Ausdruck oder Herunterladen gelöscht werden.
+
+\config{C3SURF\_VOUCHER\_PRTUPDATE}{C3SURF\_VOUCHER\_PRTUPDATE}{C3SURFVOUCHERPRTUPDATE}
+   
+   Standard-Einstellung: \var{C3SURF\_VOUCHER\_PRTUPDATE='no'}
+   
+   Wertebereich: 'yes' oder 'no'
+   
+   Aktualisierung der Druckdatei. Meine Empfehlung: 'no'. Wer wenige Gutscheine im System hält und
+   die Druckdatei nach dem Ausdruck oder Herunterladen nicht löschen möchte, kann mit 'yes' eine
+   Aktualisierung der Druckdatei beim Verbrauch von Gutscheinen einstellen. Bei der Wahl von 'yes' werden
+   benutzte Gutscheine auch aus der Druckdatei gelöscht. Das benötigt Ressourcen auf dem Router.
+   
+\config{C3SURF\_VOUCHER\_USRLEN}{C3SURF\_VOUCHER\_USRLEN}{C3SURFVOUCHERUSRLEN}
+   
+   Standard-Einstellung: \var{C3SURF\_VOUCHER\_USRLEN='12'}
+   
+   Wertebereich: '1-16'
+   
+   Zeichenlänge für Gutscheinaccount festlegen, ab 8 Zeichen werden '-' als Trenner eingebaut,
+   die auch eingegeben werden müssen. Es werden immer vier Zeichen gruppiert. Der Maximalwert ist 16.
+   
+\config{C3SURF\_VOUCHER\_USRCAP}{C3SURF\_VOUCHER\_USRCAP}{C3SURFVOUCHERUSRCAP}
+   
+   Standard-Einstellung: \var{C3SURF\_VOUCHER\_USRCAP='random'}
+   
+   \begin{tabular}{rlrl}
+    -&'yes'&:&nur Großbuchstaben \\
+    -&'no'&:&nur Kleinbuchstaben \\
+    -&'random'&:&zufällige Wechsel von Groß- Kleinschreibung (Empfehlung) \\
+   \end{tabular}
+
+    Mit dieser Variable wird festgelegt ob Groß- oder Kleinbuchstaben im Benutzernamen verwendet
+    werden sollen. Der Wert \var{'random'} (empfohlen) bewirkt eine zufällige Auswahl. 
+
+\config{C3SURF\_VOUCHER\_PWDLEN}{C3SURF\_VOUCHER\_PWDLEN}{C3SURFVOUCHERPWDLEN}
+
+   Standard-Einstellung: \var{C3SURF\_VOUCHER\_PWDLEN='6'}
+   
+   Wertebereich: 1-12
+   
+   Zeichenlänge für das Gutschein-Password.
+   
+\config{C3SURF\_VOUCHER\_PWDMOD}{C3SURF\_VOUCHER\_PWDMOD}{C3SURFVOUCHERPWDMOD}
+
+   Standard-Einstellung: \var{C3SURF\_VOUCHER\_PWDMOD='3'}
+   
+   Wertebereich: 1-5
+   
+   Modulo für zufällige Verlängerung des Passwortes. Max: 5 (die Werte 0, 1, 2, 3, 4), 
+   Min 1 (der Wert 0). Es wird bei der Password-Generierung das Password zufällig um die
+   möglichen Werte verlängert. Damit ergeben sich per default Password-Längen zwischen 6 und 8.
+   Maximal einstellbar sind Password-Längen zwischen 12 und 16, das ist sicher genug mit zufälliger
+   Groß- und Kleinschreibung.
+
+\config{C3SURF\_VOUCHER\_PWDCAP}{C3SURF\_VOUCHER\_PWDCAP}{C3SURFVOUCHERPWDCAP}
+
+   Standard-Einstellung: \var{C3SURF\_VOUCHER\_PWDCAP='random'}
+   
+   \begin{tabular}{rlrl}
+    -&'yes'&:&nur Großbuchstaben \\
+    -&'no'&:&nur Kleinbuchstaben \\
+    -&'random'&:&zufälliger Wechsel von Groß- und Kleinschreibung (Empfehlung) \\
+   \end{tabular}
+   
+    Mit dieser Variablen wird festgelegt ob Groß- oder Kleinbuchstaben im Passwort verwendet
+    werden sollen. Der Wert \var{'random'} (empfohlen) bewirkt eine zufällige Auswahl.
+   
+\end{description}
