@@ -1,0 +1,74 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc300.bridge - configure the bridge
+#
+# Creation:     20.10.2004 babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_BRIDGE_DEV in
+yes)
+    begin_script BRIDGE "setting up bridge devices..."
+
+    if [ ! -f /var/run/wlan.dontuse ]; then > /var/run/wlan.dontuse; fi
+    [ 0"$BRIDGE_DEV_N" -eq 0 ] || for bridge_idx in `seq 1 $BRIDGE_DEV_N`
+    do
+        eval bridge_devname='$BRIDGE_DEV_'$bridge_idx'_DEVNAME'
+        eval bridge_devn='$BRIDGE_DEV_'$bridge_idx'_DEV_N'
+        {
+            echo "ip addr flush dev $bridge_devname"
+            echo "ip link set dev $bridge_devname up"
+        } >>/var/run/bridge.setup
+        for bridge_ddx in `seq 1 $bridge_devn`
+        do
+            eval bridge_dev_dev='$BRIDGE_DEV_'$bridge_idx'_DEV_'$bridge_ddx'_DEV'
+            if [ -z "`grep $bridge_dev_dev /var/run/wlan.dontuse`" ]
+            then
+                if [ -z "`brctl show | grep $bridge_dev_dev`" ]
+                then
+                    eval bridge_dev_prio='$BRIDGE_DEV_'$bridge_idx'_DEV_'$bridge_ddx'_PORT_PRIORITY'
+                    eval bridge_dev_cost='$BRIDGE_DEV_'$bridge_idx'_DEV_'$bridge_ddx'_PATHCOST'
+                    {
+                        echo "brctl addif $bridge_devname $bridge_dev_dev"
+                        echo "ip addr flush dev $bridge_dev_dev"
+                        echo "ip link set dev $bridge_dev_dev up"
+                        [ "$bridge_dev_prio" ] && echo "brctl setportprio $bridge_devname $bridge_dev_dev $bridge_dev_prio"
+                        [ "$bridge_dev_cost" ] && echo "brctl setpathcost $bridge_devname $bridge_dev_dev $bridge_dev_cost"
+                        if [ "$bridge_ddx" -eq 1 ]
+                        then
+                          mac=`ip link show $bridge_dev_dev | sed -n 'y/abcdef/ABCDEF/;s/.*\(\([0-9A-F]\{2\}:\)\{5\}[0-9A-F]\{2\}\).\+/\1/p'`
+                          if [ -n "$mac" ]
+                          then
+                            ip link set dev $bridge_devname address $mac
+                          fi
+                        fi
+                    }>>/var/run/bridge.setup
+                else
+                    echo "Skipping Device $bridge_dev_dev as already member of a bridge"
+                fi
+            else
+                log_error "skipping bridge-device $bridge_dev_dev because of previous error on wlan-setup for security reasons"
+                brctl delif $bridge_devname $bridge_dev_dev >/dev/null 2>&1
+            fi
+        done
+    done
+
+    if [ -f /var/run/bridge.setup ]
+    then
+        . /var/run/bridge.setup
+        [ -f /etc/pcmcia/config ] && cat /var/run/bridge.setup>>/etc/pcmcia/network.opts
+        rm /var/run/bridge.setup
+    fi
+
+    if [ "$BRIDGE_DEV_BOOTDELAY" != "no" -a "$BRIDGE_DEV_BOOTDELAY" != "yes" ]
+    then
+        if [ "$BRIDGE_DEV_BOOTDELAY" -gt 0 ]
+        then
+            log_info "Waiting $BRIDGE_DEV_BOOTDELAY seconds for bridge devices..."
+            sleep $BRIDGE_DEV_BOOTDELAY
+        fi
+    fi
+
+    end_script
+    ;;
+esac

@@ -1,0 +1,40 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc250.vlan - create vlan devices
+#
+# Creation:     20.10.2004 babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_VLAN_DEV" = "yes" ]
+then
+
+begin_script VLAN "setting up vlan devices..."
+
+do_modprobe 8021q
+
+devlist=$([ "$VLAN_DEV_N" -eq 0 ] || for vlan_idx in `seq 1 $VLAN_DEV_N`; \
+do \
+  eval vlan_dev='$VLAN_DEV_'$vlan_idx'_DEV'; \
+  echo "$vlan_dev"; \
+done \
+)
+
+for dev in $(list_unique $devlist)
+do
+  ip link set dev $dev up
+done
+
+# create vlan device like eth<devnum>.<vid>
+vconfig set_name_type DEV_PLUS_VID_NO_PAD
+
+[ "$VLAN_DEV_N" -eq 0 ] || for vlan_idx in `seq 1 $VLAN_DEV_N`
+do
+  eval vlan_dev='$VLAN_DEV_'$vlan_idx'_DEV'
+  eval vlan_vid='$VLAN_DEV_'$vlan_idx'_VID'
+  vconfig add $vlan_dev $vlan_vid
+done
+
+end_script
+
+fi

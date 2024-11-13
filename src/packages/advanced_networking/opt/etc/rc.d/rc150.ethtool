@@ -1,0 +1,56 @@
+#!/bin/sh
+##-----------------------------------------------------------------------------
+## /etc/rc.d/rc150.ethtool - fli4l configuration parameters        __FLI4LVER__
+##
+## Creation:     08.10.2012  sklein
+## Last Update:  $Id$
+##
+## Copyright (c) 2001 - Frank Meyer <frank@fli4l.de>
+## Copyright (c) 2001-2016 - fil4l-Team <team@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+if [ "$OPT_ETHTOOL" = "yes" ]
+then
+
+begin_script ETHTOOL "configure network adapters via ethtool..."
+
+for i in $(seq 1 0${ETHTOOL_DEV_N})
+do
+  eval eth_x=\$ETHTOOL_DEV_${i}
+  eval option_n=\$ETHTOOL_DEV_${i}_OPTION_N
+  for k in $(seq 1 0${option_n})
+  do
+    eval option=\$ETHTOOL_DEV_${i}_OPTION_${k}_NAME
+    eval value=\$ETHTOOL_DEV_${i}_OPTION_${k}_VALUE
+    case $option in
+      speed)
+        case $value in
+          *HD|*hd) duplex=half;;
+          10) duplex=half;;
+          *) duplex=full;;
+        esac
+        speed=`echo $value | sed 's/^\([0-9]\+\).*/\1/'`
+        if [ $speed -ge 1000 ]
+        then
+          duplex=full
+        fi
+        ethtool -s ${eth_x} speed $speed duplex $duplex
+        ;;
+      port|autoneg|advertise|phyad|xcvr|wol|sopass|msglvl)
+        ethtool -s ${eth_x} ${option} ${value}
+        ;;
+      rx|tx|sg|tso|ufo|gso|gro|lro|rxvlan|txvlan|ntuple|rxhash)
+        ethtool -K ${eth_x} ${option} ${value}
+        ;;
+    esac
+  done
+done
+
+end_script
+
+fi

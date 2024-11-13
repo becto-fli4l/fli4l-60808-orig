@@ -1,0 +1,62 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc140.swconfig - configure switch ports
+#
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_SWITCH" = "yes" ]
+then
+
+begin_script VLAN "setting up switch ports..."
+
+for i in $(seq 1 ${SWITCH_N:-0})
+do
+    eval dev=\$SWITCH_${i}_DEV
+
+    log_info "$dev..."
+
+    if ! swconfig list | grep -q " $dev$"
+    then
+        log_error "$dev has not been recognized as a switch, ignoring"
+        continue
+    fi
+
+    swconfig dev $dev set reset 1
+    swconfig dev $dev set enable_vlan 1
+
+    cpu_port=$(swconfig dev $dev help | sed -n 's/.*(cpu @ \([[:digit:]]\+\)).*/\1/p')
+    if [ -z "$cpu_port" ]
+    then
+        log_error "$dev: no CPU port available, ignoring"
+        continue
+    fi
+
+    eval vlan_n=\$SWITCH_${i}_VLAN_N
+    for v in $(seq 1 ${vlan_n:-0})
+    do
+        eval vid=\$SWITCH_${i}_VLAN_${v}_ID
+        eval port_n=\$SWITCH_${i}_VLAN_${v}_PORT_N
+
+        ports="${cpu_port}t"
+        for p in $(seq 1 ${port_n:-0})
+        do
+            eval pid=\$SWITCH_${i}_VLAN_${v}_PORT_${p}_ID
+            eval pmode=\$SWITCH_${i}_VLAN_${v}_PORT_${p}_MODE
+            case $pmode in
+            tagged) ports="$ports ${pid}t";;
+            *)      ports="$ports ${pid}"
+                    swconfig dev ${dev} port ${pid} set pvid ${vid}
+                    ;;
+            esac
+        done
+
+        swconfig dev $dev vlan $vid set ports "$ports"
+    done
+
+    swconfig dev $dev set apply 1
+done
+
+end_script
+
+fi

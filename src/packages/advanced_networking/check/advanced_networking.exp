@@ -1,0 +1,80 @@
+﻿#------------------------------------------------------------------------------
+# fli4l __FLI4LVER__ - configuration check for advanced_networking
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2004-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+DEV_MTU         = '(RE:IP_NET_DEV)[[:space:]]+(([1-9][0-9]{2,3})|([1-6][0-9]{4}))'
+                : 'Invalid MTU for device, please use <devicename> <mtu>'
+
+#
+# vlan definitions
+#
+VLAN_ID         = '0|[1-9][0-9]{0,2}|[1-3][0-9]{3}|40[0-8][0-9]|409[0-4]'
+                : 'vlan VID should be a value between 0 and 4094.'
+VLAN_BASE_DEV_NAME = '(RE:ETH_BASE_DEV_NAME).(RE:VLAN_ID)'
+                : 'Invalid vlan device name, vlan devices are named ethX.<vid>'
+VLAN_DEV_NAME   = '(RE:VLAN_BASE_DEV_NAME)'
+                : 'Invalid vlan device name, vlan devices are named ethX.<vid>'
+
+#
+# bonding definitions
+#
+BONDING_BASE_DEV_NAME = 'bond[1-9]?[0-9]'
+                : 'Invalid bonding device name, bonding devices are named bond0, bond1, ..., bond9'
+BONDING_DEV_NAME = '(RE:BONDING_BASE_DEV_NAME)'
+                : 'Invalid bonding device name, bonding devices are named bond0, bond1, ..., bond9'
+BONDING_MODE    = '[0-6]|balance-rr|active-backup|balance-xor|broadcast|802.3ad|balance-tlb|balance-alb'
+                : 'Invalid bonding mode. The following modes are supported: balance-rr,active-backup,balance-xor,broadcast,802.3ad,balance-tlb,balance-alb. For more information refer to the Linux kernel documentation <kernel-src>/Documentation/networking/bonding.txt.'
+BONDING_LACP_RATE = '[0-1]|slow|fast'
+                : 'no errormessage yet'
++VLAN_DEV_NAME(OPT_BONDING_DEV) = '(RE:BONDING_DEV_NAME)'
+                : ' Also bonding devices with bond<number> are allowed.'
++ETH_BASE_DEV_NAME(OPT_BONDING_DEV) = '(RE:BONDING_DEV_NAME)'
+                : ' Also bonding devices with bond<number> are allowed.'
+
+#
+# bridge definitions
+#
+BRIDGE_DEVICES  = '(RE:ETH_BASE_DEV_NAME)|(RE:VLAN_BASE_DEV_NAME)|(RE:BONDING_BASE_DEV_NAME)|(RE:DUMMY_DEV_NAME)'
+                : 'Allowed bridges devices are ethX, vlanX and bondX.'
+NUM_BRIDGE_HELLOTIME = '10|[1-9]'
+                : 'Hello Time should be a value between 1 and 10.'
+NUM_BRIDGE_MAXAGE = '4|5|6|8|9|[1-3][0-9]|40'
+                : 'Max Age should be between 6 and 40.'
+NUM_BRIDGE_FORWARD_DELAY = '4|5|6|7|8|9|[1-2][0-9]|30'
+                : 'Forward Delay must be a value between 4 and 30.'
+NUM_BRIDGE_PRIORITY = '[0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]'
+                : 'Bridge priority should be a value between 0 and 65535'
+NUM_BRIDGE_PATHCOST = '[1-9]|[1-9][0-9]{1,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]'
+                : 'Bridge path cost should be a value between 1 and 65535'
+NUM_BRIDGE_PORT_PRIORITY = '1?[0-9]?[0-9]|2[0-4][0-9]|25[0-5]'
+                : 'Port priority should be a value between 0 and 255'
+BRIDGE_BASE_DEV_NAME = 'br[1-9]?[0-9]+'
+                : 'Invalid bridge device name, bridge devices are named br0, br1, ..., br9'
+BRIDGE_DEV_NAME = '(RE:BRIDGE_BASE_DEV_NAME)'
+                : 'Invalid bridge device name, bridge devices are named br0, br1, ..., br9'
+
+ETHTOOL_OPTION = 'speed|port|autoneg|advertise|phyad|xcvr|wol|sopass|msglvl|rx|tx|sg|tso|ufo|gso|gro|lro|rxvlan|txvlan|ntuple|rxhash'
+               : 'Invalid ethtool option'
+
+#
+# switch definitions
+#
+
+SWITCH_PORT_MODE = 'tagged|untagged' : 'only "tagged" or "untagged" allowed'
+
+DSA_PORTS = 'lan[1-9]|wan' : 'only lan1, ..., lan9 and wan are allowed'
+
+#
+# extend regular expression for allowed device names
+#
++IP_NET_DEV(OPT_BONDING_DEV) = '(RE:BONDING_DEV_NAME)'
+                : ' Also bonding devices with bond<number> are allowed.'
++IP_NET_DEV(OPT_BRIDGE_DEV) = '(RE:BRIDGE_DEV_NAME)'
+                : ' Also bridge devices with br<number> are allowed.'
++IP_NET_DEV(OPT_VLAN_DEV) = '(RE:VLAN_DEV_NAME)'
+                : ' Also vlan devices with ethX.<vid> are allowed.'
+

@@ -1,0 +1,88 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc100.bridge - load bridge device driver and pre-configure it
+#
+# Creation:     06.12.2002 rresch
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_BRIDGE_DEV" = "yes" ]
+then
+
+begin_script BRIDGE "preparing bridge devices..."
+
+do_modprobe_if_exists kernel/net/atm atm
+do_modprobe bridge
+do_modprobe_if_exists kernel/net/bridge br_netfilter
+
+# TODO: this should be a separate setting, as filtering IP traffic crossing
+# a bridge by using ip(6)tables is independent of enabling or using ebtables
+if [ "$OPT_EBTABLES" != "yes" ]
+then
+  echo 0 >/proc/sys/net/bridge/bridge-nf-call-arptables
+  echo 0 >/proc/sys/net/bridge/bridge-nf-call-iptables
+  if [ -f /proc/sys/net/bridge/bridge-nf-call-ip6tables ]
+  then
+    echo 0 >/proc/sys/net/bridge/bridge-nf-call-ip6tables
+  fi
+  if [ -f /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ]
+  then
+    echo 0 >/proc/sys/net/bridge/bridge-nf-filter-vlan-tagged
+  fi
+  if [ -f /proc/sys/net/bridge/bridge-nf-filter-pppoe-tagged ]
+  then
+    echo 0 >/proc/sys/net/bridge/bridge-nf-filter-pppoe-tagged
+  fi
+fi
+
+mkdir -p /var/run/bridge
+
+: ${BRIDGE_DEV_BOOTDELAY:=yes}
+
+[ "$BRIDGE_DEV_N" -eq 0 ] || for bridge_idx in `seq 1 $BRIDGE_DEV_N`
+do
+  eval bridge_devname='$BRIDGE_DEV_'$bridge_idx'_DEVNAME'
+  eval bridge_name='$BRIDGE_DEV_'$bridge_idx'_NAME'
+  eval bridge_aging='$BRIDGE_DEV_'$bridge_idx'_AGING'
+  eval bridge_gci='$BRIDGE_DEV_'$bridge_idx'_GARBAGE_COLLECTION_INTERVAL'
+  eval bridge_stp='$BRIDGE_DEV_'$bridge_idx'_STP'
+  : ${bridge_stp:=no}
+
+  echo $bridge_devname>/var/run/bridge/$bridge_name
+  brctl addbr $bridge_devname
+
+  [ "$bridge_aging" ] && brctl setageing $bridge_devname $bridge_aging
+  [ "$bridge_gci" ] && brctl setgcint $bridge_devname $bridge_gci
+
+  if [ $bridge_stp = yes ]
+  then
+    eval bridge_prio='$BRIDGE_DEV_'$bridge_idx'_PRIORITY'
+    eval bridge_fd='$BRIDGE_DEV_'$bridge_idx'_FORWARD_DELAY'
+    eval bridge_hello='$BRIDGE_DEV_'$bridge_idx'_HELLO'
+    eval bridge_mma='$BRIDGE_DEV_'$bridge_idx'_MAX_MESSAGE_AGE'
+    : ${bridge_prio:=128}
+    : ${bridge_fd:=15}
+    : ${bridge_hello:=2}
+    : ${bridge_mma:=20}
+
+    if [ "$BRIDGE_DEV_BOOTDELAY" != "no" ]
+    then
+      bridge_bd=`expr $bridge_mma \+ \( 2 \* $bridge_fd \)`
+      [ $BRIDGE_DEV_BOOTDELAY = yes ] && BRIDGE_DEV_BOOTDELAY=$bridge_bd
+      [ $bridge_bd -gt $BRIDGE_DEV_BOOTDELAY ] && BRIDGE_DEV_BOOTDELAY=$bridge_bd
+    fi
+
+    brctl stp $bridge_devname on
+    brctl setbridgeprio $bridge_devname $bridge_prio
+    brctl setfd $bridge_devname $bridge_fd
+    brctl sethello $bridge_devname $bridge_hello
+    brctl setmaxage $bridge_devname $bridge_mma
+  else
+    brctl stp $bridge_devname off
+  fi
+
+done
+
+end_script
+
+fi

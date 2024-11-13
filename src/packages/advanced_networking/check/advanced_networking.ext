@@ -1,0 +1,594 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for advanced_networking
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2004-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_bridge_dev)
+then
+  provides bridge_dev version 4.0.0
+  depends on fli4l version 4.0
+
+# Error-Messages - for easier maintainance of the messages
+
+  set msg_needoptbridge="you need to set OPT_BRIDGE='yes' to use a bridge."
+  set msg_notallowed="is not allowed."
+  set msg_allowedvalues="allowed values:"
+  set msg_mustnotbeusedin="bridge-ports must not be used in"
+  set msg_youcanuse="you can use"
+  set msg_instead="instead."
+  set msg_notexistdev="You may not use a non-existent bridge-device!"
+  set msg_duplicateuse="duplicate use of ethernet-device in bridge!"
+  set msg_isabridge="is a Bridge - recursions are not allowed!"
+
+  if (locale == "de")
+  then
+    set msg_needoptbridge="sie muessen OPT_BRIDGE='yes' setzen um eine Bridge zu verwenden."
+    set msg_notallowed="ist nicht erlaubt."
+    set msg_allowedvalues="moegliche Werte:"
+    set msg_mustnotbeusedin="bridge-ports sind nicht erlaubt in"
+    set msg_youcanuse="sie koennen"
+    set msg_instead="anstelle verwenden."
+    set msg_notexistdev="Sie koennen kein nicht-existentes Bridge-Device verwenden!"
+    set msg_duplicateuse="doppelte Verwendung der selben Netzwerkkarte!"
+    set msg_isabridge="ist eine Bridge - Rekursionen sind nicht erlaubt!"
+  fi
+  # Copy atm.ko if available because of dep in bridge
+  stat("opt/lib/modules/${KERNEL_VERSION}/kernel/net/atm/atm.ko", tmpbridge)
+  if ( tmpbridge_res == "OK" )
+  then
+    add_to_opt "atm.ko"
+  fi
+
+  set bridgelist=""
+
+  foreach i in bridge_dev_n
+  do
+    set bridgename =bridge_dev_%_devname[i]
+    set bridgelist="${bridgelist} ${bridgename}"
+
+    if (bridge_dev_%_stp[i] ?: "no" != "yes")
+    then
+      if (defined(bridge_dev_%_hello[i]))
+      then
+        error "If BRIDGE_DEV_${i}_STP is set to 'no' or undefined you can't specify BRIDGE_DEV_${i}_HELLO, please remove this option!"
+      fi
+      if (defined(bridge_dev_%_max_message_age[i]))
+      then
+        error "If BRIDGE_DEV_${i}_STP is set to 'no' or undefined you can't specify BRIDGE_DEV_${i}_MAX_MESSAGE_AGE, please remove this option!"
+      fi
+      if (defined(bridge_dev_%_forward_delay[i]))
+      then
+        error "If BRIDGE_DEV_${i}_STP is set to 'no' or undefined you can't specify BRIDGE_DEV_${i}_FORWARD_DELAY, please remove this option!"
+      fi
+      if (defined(bridge_dev_%_priority[i]))
+      then
+        error "If BRIDGE_DEV_${i}_STP is set to 'no' or undefined you can't specify BRIDGE_DEV_${i}_PRIORITY, please remove this option!"
+      fi
+
+      set dnr=bridge_dev_%_dev_n[i]
+      foreach n in dnr
+      do
+        if (defined(bridge_dev_%_dev_%_port_priority[i][n]))
+        then
+          error "If BRIDGE_DEV_${i}_STP is set to 'no' or undefined you can't specify BRIDGE_DEV_${i}_DEV_${n}_PORT_PRIORITY, please remove this option!"
+        fi
+        if (defined(bridge_dev_%_dev_%_pathcost[i][n]))
+        then
+          error "If BRIDGE_DEV_${i}_STP is set to 'no' or undefined you can't specify BRIDGE_DEV_${i}_DEV_${n}_PATHCOST, please remove this option!"
+        fi
+      done
+
+    else
+
+      # see http://standards.ieee.org/getieee802/download/802.1D-1998.pdf
+      # page 107ff
+      if (defined(bridge_dev_%_max_message_age[i]))
+      then
+        set bridge_max_age=bridge_dev_%_max_message_age[i]
+      else
+        set bridge_max_age=20
+      fi
+      if (defined(bridge_dev_%_forward_delay[i]))
+      then
+        set Bridge_Check1=2*(bridge_dev_%_forward_delay[i]-1)
+      else
+        set Bridge_Check1=2*(15-1)
+      fi
+      if (Bridge_Check1 >= bridge_max_age)
+      then
+        set dummy="dummy"
+      else
+        error "The 802.1D standard requires that BRIDGE_DEV_${i}_MAX_MESSAGE_AGE must be smaller than 2 * (BRIDGE_DEV_${i}_FORWARD_DELAY - 1) but this is not fullfiled with your current settings!"
+      fi
+
+      if (defined(bridge_dev_%_hello[i]))
+      then
+        set Bridge_Check2=2*(bridge_dev_%_hello[i]+1)
+      else
+        set Bridge_Check2=2*(2+1)
+      fi
+      if (bridge_max_age >= Bridge_Check2)
+      then
+        set dummy="dummy"
+      else
+        error "The 802.1D standard requires that BRIDGE_DEV_${i}_MAX_MESSAGE_AGE must be greater than 2 * (BRIDGE_DEV_${i}_HELLO + 1) but this is not fullfiled with your current settings!"
+      fi
+
+    fi
+
+    # check if anyone is using our devices
+    set dnr=bridge_dev_%_dev_n[i]
+    foreach n in dnr
+    do
+      set bridgedev=bridge_dev_%_dev_%_dev[i][n]
+
+      foreach circidx in circ_n
+      do
+        if (CIRC_%_ENABLED[circidx] == "yes")
+        then
+          set type=circ_%_type[circidx]
+
+          if (type == "ppp")
+          then
+            set ppp_type=circ_%_ppp_type[circidx]
+            if (ppp_type == "pppoe")
+            then
+              if (circ_%_pppoe_dev[circidx] == bridgedev)
+              then
+                error "${msg_mustnotbeusedin} CIRC_${circidx}_PPPOE_DEV"
+                error "${msg_youcanuse} CIRC_${circidx}_PPPOE_DEV='${bridgename}' ${msg_instead}"
+              fi
+            fi
+          fi
+
+          if (type == "dhcp")
+          then
+            if (circ_%_dhcp_dev[circidx] == bridgedev)
+            then
+              error "${msg_mustnotbeusedin} CIRC_${circidx}_DHCP_DEV"
+              error "${msg_youcanuse} CIRC_${circidx}_DHCP_DEV='${bridgename}' ${msg_instead}"
+            fi
+          fi
+        fi
+      done
+
+      if (opt_dhcrelay)
+      then
+        foreach dhcrif in dhcrelay_if_n
+        do
+          if (dhcrelay_if_%[dhcrif] == bridgedev)
+          then
+            error "${msg_mustnotbeusedin} DHCRELAY_IF_${dhcrif}."
+            error "${msg_youcanuse} DHCRELAY_IF_${dhcrif}='${bridgename}' ${msg_instead}"
+          fi
+        done
+      fi
+      if (opt_ipv6)
+      then
+        foreach ipv6if in ipv6_net_n
+        do
+          if (ipv6_net_%_dev[ipv6if] == bridgedev)
+          then
+            error "${msg_mustnotbeusedin} IPV6_NET_${ipv6if}_DEV."
+            error "${msg_youcanuse} IPV6_NET_${ipv6if}_DEV='${bridgename}' ${msg_instead}"
+          fi
+        done
+      fi
+      if (opt_qos ?: "no")
+      then
+        foreach qididx in qos_internet_dev_n
+        do
+          set qiddev=qos_internet_dev_%[qididx]
+
+          if (qiddev == bridgedev)
+          then
+            error "${msg_mustnotbeusedin} QOS_INTERNET_DEV_${qididx}."
+            error "${msg_youcanuse} QOS_INTERNET_DEV_${qididx}='${bridgename}' ${msg_instead}"
+          fi
+        done
+      fi
+    done
+
+  done
+
+  foreach ipeth in ip_net_n
+  do
+    set eth=ip_net_%_dev[ipeth]
+    if (eth =~ "br[1-9]?[0-9].*")
+    then
+      split (eth,tmp_%,':')
+      set eth=tmp_%[1]
+      if (!(bridgelist =~ ".*${eth}.*"))
+      then
+        set eth=ip_net_%_dev[ipeth]
+        error "${msg_notexistdev}"
+        error "IP_NET_${ipeth}_DEV='${eth}' ${msg_notallowed}"
+      fi
+    fi
+  done
+  if (opt_ipv6)
+  then
+    foreach ip6eth in ipv6_net_n
+    do
+      set eth=ipv6_net_%_dev[ip6eth]
+      if (eth =~ "br[1-9]?[0-9].*")
+      then
+        split (eth,tmp_%,':')
+        set eth=tmp_%[1]
+        if (!(bridgelist =~ ".*${eth}.*"))
+        then
+          set eth=ipv6_net_%_dev[ip6eth]
+          error "${msg_notexistdev}"
+          error "IPV6_NET_${ip6eth}_DEV='${eth}' ${msg_notallowed}"
+        fi
+      fi
+    done
+  fi
+  foreach circidx in circ_n
+  do
+    if (CIRC_%_ENABLED[circidx] == "yes")
+    then
+      set type=circ_%_type[circidx]
+
+      if (type == "ppp")
+      then
+        set ppp_type=circ_%_ppp_type[circidx]
+        if (ppp_type == "pppoe")
+        then
+          set pppoe_dev=circ_%_pppoe_dev[circidx]
+          if (pppoe_dev =~ "br[1-9]?[0-9].*")
+          then
+            if (!(bridgelist =~ ".*${pppoe_dev}.*"))
+            then
+              error "${msg_notexistdev}"
+              error "CIRC_${circidx}_PPPOE_DEV='${pppoe_dev}' ${msg_notallowed}"
+            fi
+          fi
+        fi
+      fi
+
+      if (type == "dhcp")
+      then
+        set dhcp_dev=circ_%_dhcp_dev[circidx]
+        if (dhcp_dev =~ "br[1-9]?[0-9].*")
+        then
+          if (!(bridgelist =~ ".*${dhcp_dev}.*"))
+          then
+            error "${msg_notexistdev}"
+            error "CIRC_${circidx}_DHCP_DEV='${dhcp_dev}' ${msg_notallowed}"
+          fi
+        fi
+      fi
+    fi
+  done
+  if (opt_dhcrelay)
+  then
+    foreach dhcrif in dhcrelay_if_n
+    do
+      set eth=dhcrelay_if_%[dhcrif]
+      if (eth =~ "br[1-9]?[0-9].*")
+      then
+        if (!(bridgelist =~ ".*${eth}.*"))
+        then
+          error "${msg_notexistdev}"
+          error "DHCRELAY_IF_${dhcrif}='${eth}' ${msg_notallowed}"
+        fi
+      fi
+    done
+  fi
+  if (opt_qos ?: "no")
+  then
+    foreach qididx in qos_internet_dev_n
+    do
+      set qiddev=qos_internet_dev_%[qididx]
+
+      if (qiddev =~ "br[1-9]?[0-9].*")
+      then
+        if (!(bridgelist =~ ".*${qiddev}.*"))
+        then
+          error "${msg_notexistdev}"
+          error "QOS_INTERNET_DEV_${qididx}='${qiddev}' ${msg_notallowed}"
+        fi
+      fi
+    done
+  fi
+
+fi
+
+if (opt_bcrelay)
+then
+  provides bcrelay version 4.0.0
+  depends on fli4l version 4.0
+
+  # checking for bcrelay with less than two interfaces
+  foreach i in bcrelay_n
+  do
+     if (bcrelay_%_if_n[i] < 2)
+     then
+        error "A broadcast relay must consist of at least two interfaces! Please correct BCRELAY_${i}_IF_N"
+     fi
+     # check for the same interface occurring more than once inside a bcrelay
+     set num=bcrelay_%_if_n[i]
+     foreach j in num
+     do
+        set bcrelay_if=bcrelay_%_if_%[i][j]
+        foreach k in num
+        do
+           if (k > j)
+           then
+              set bcrelay_dupe=bcrelay_%_if_%[i][k]
+              if (bcrelay_if == bcrelay_dupe)
+              then
+                 error "Defining the same interface more than once in a broadcast relay is not allowed (BCRELAY_${i}_IF_${j} and BCRELAY_${i}_IF_${k})!"
+              fi
+           fi
+        done
+        # checking for overlapping interfaces in other bcrelays
+        foreach l in bcrelay_n
+        do
+           if (l > i)
+           then
+              set num=bcrelay_%_if_n[l]
+              foreach m in num
+              do
+                 set bcrelay_overlapif=bcrelay_%_if_%[l][m]
+                 if (bcrelay_if == bcrelay_overlapif)
+                 then
+                    error "Overlapping interfaces are not allowed! Check BCRELAY_${i}_IF_${j} and BCRELAY_${l}_IF_${m}"
+                 fi
+              done
+           fi
+        done
+     done
+
+  done
+fi
+
+if (opt_bonding_dev)
+then
+  provides bondig_dev version 4.0.0
+  depends on fli4l version 4.0
+
+  foreach o_i in bonding_dev_n
+  do
+    set o_nmax=bonding_dev_%_dev_n[o_i]
+    foreach o_n in o_nmax
+    do
+      set o_check_dev=bonding_dev_%_dev_%[o_i][o_n]
+
+      foreach i_i in bonding_dev_n
+      do
+        set i_nmax=bonding_dev_%_dev_n[i_i]
+        foreach i_n in i_nmax
+        do
+          if(o_i == i_i && o_n == i_n)
+          then
+            set dummy="dummy"
+          else
+            set i_check_dev=bonding_dev_%_dev_%[i_i][i_n]
+            if(i_check_dev == o_check_dev)
+            then
+              error "You can't use the same device twice for bonding. BONDING_DEV_${o_i}_DEV_${o_n}='$o_check_dev' and BONDING_DEV_${i_i}_DEV_${i_n}='$i_check_dev' use the same device!"
+            fi
+          fi
+        done
+      done
+
+      foreach ipeth in ip_net_n
+      do
+        set eth_org=ip_net_%_dev[ipeth]
+        split (eth_org,tmp_%,':')
+        set eth=tmp_%[1]
+
+        if (o_check_dev == eth)
+        then
+          error "Devices used for bonding should be used exlusive for bonding. Using the device $eth in IP_NET_${ipeth}_DEV='$eth_org' and BONDING_DEV_${o_i}_DEV_${o_n}='$o_check_dev' is not allowed!"
+        fi
+      done
+      if (opt_ipv6)
+      then
+        foreach ipeth in ipv6_net_n
+        do
+          set eth_org=ipv6_net_%_dev[ipeth]
+          split (eth_org,tmp_%,':')
+          set eth=tmp_%[1]
+
+          if (o_check_dev == eth)
+          then
+            error "Devices used for bonding should be used exlusive for bonding. Using the device $eth in IPV6_NET_${ipeth}_DEV='$eth_org' and BONDING_DEV_${o_i}_DEV_${o_n}='$o_check_dev' is not allowed!"
+          fi
+        done
+      fi
+      if (opt_vlan_dev)
+      then
+        foreach v in vlan_dev_n
+        do
+          set check_dev=vlan_dev_%_dev[v]
+          if (o_check_dev == check_dev)
+          then
+            error "Devices used for bonding should be used exlusive for bonding. Using the device $check_dev in VLAN_DEV_${v}_DEV='$check_dev' and BONDING_DEV_${o_i}_DEV_${o_n}='$o_check_dev' is not allowed!"
+          fi
+        done
+      fi
+
+      if (opt_bridge_dev)
+      then
+        foreach b_o in bridge_dev_n
+        do
+          set inr=bridge_dev_%_dev_n[b_o]
+          foreach b_i in inr
+          do
+            set check_dev=bridge_dev_%_dev_%_dev[b_o][b_i]
+            if (o_check_dev == check_dev)
+            then
+              error "Devices used for bonding should be used exlusive for bonding. Using the device $check_dev in BRIDGE_DEV_${b_o}_DEV_${b_i}_DEV='$check_dev' and BONDING_DEV_${o_i}_DEV_${o_n}='$o_check_dev' is not allowed!"
+            fi
+          done
+        done
+      fi
+
+      foreach circidx in circ_n
+      do
+        if (CIRC_%_ENABLED[circidx] == "yes")
+        then
+          set type=circ_%_type[circidx]
+
+          if (type == "ppp")
+          then
+            set ppp_type=circ_%_ppp_type[circidx]
+            if (ppp_type == "pppoe")
+            then
+              set pppoe_dev=circ_%_pppoe_dev[circidx]
+              if (pppoe_dev == o_check_dev)
+              then
+                error "Devices used for bonding should be used exclusively for bonding. Using CIRC_${circidx}_PPPOE_DEV='$check_dev' and BONDING_DEV_${o_i}_DEV_${o_n}='$o_check_dev' is not allowed!"
+              fi
+            fi
+          fi
+        fi
+      done
+    done
+  done
+
+fi
+
+if (opt_vlan_dev)
+then
+  provides vlan_dev version 4.0.0
+  depends on fli4l version 4.0
+
+  foreach ipeth in ip_net_n
+  do
+    set eth_org=ip_net_%_dev[ipeth]
+    split (eth_org,tmp_%,':')
+    set eth=tmp_%[1]
+
+    if (eth =~ "vlan[0-9]+")
+    then
+      set found="no"
+      foreach i in vlan_dev_n
+      do
+        set check_dev=vlan_dev_%_vid[i]
+        set check_dev="vlan$check_dev"
+
+        if (check_dev == eth)
+        then
+          set found="yes"
+        fi
+      done
+
+      if(!found)
+      then
+        error "IP_NET_${ipeth}_DEV='$eth_org' doesn't match any VLAN device!"
+      fi
+    fi
+  done
+fi
+
+if (opt_ebtables)
+then
+  provides ebtables version 4.0.0
+  depends on fli4l version 4.0
+
+  add_to_opt "br_netfilter.ko"
+
+  stat("$config_dir/etc/ebtables/ebtables.pre", ebtables_file)
+  if(ebtables_file_res == "OK")
+  then
+    add_to_opt "etc/rc.d/rc350.ebtables" "mode=555 flags=sh"
+    add_to_opt "etc/ebtables/ebtables.pre" "mode=555 flags=sh"
+  fi
+
+  stat("$config_dir/etc/ebtables/ebtables.post", ebtables_file)
+  if(ebtables_file_res == "OK")
+  then
+    add_to_opt "etc/rc.d/rc500.ebtables" "mode=555 flags=sh"
+    add_to_opt "etc/ebtables/ebtables.post" "mode=555 flags=sh"
+  fi
+
+fi
+
+if (opt_ethtool)
+then
+  provides ethtool version 4.0.0
+  depends on fli4l version 4.0
+
+  add_to_opt "usr/sbin/ethtool" "mode=555"
+fi
+
+if (opt_switch)
+then
+  provides switch version 4.0.0
+  depends on fli4l version 4.0
+  depends on vlan_dev version 4.0
+
+  foreach idx in switch_%_vlan_%_id
+  do
+    set found=0
+    foreach vid in vlan_dev_%_vid
+    do
+      if (idx == vid)
+      then
+        set found=1
+      fi
+    done
+    if (found == 0)
+    then
+      error "%idx='$idx' references an unknown VLAN"
+    fi
+  done
+
+  foreach i in switch_n
+  do
+    set untagged_ports=" "
+    set vlan_n=switch_%_vlan_n[i]
+    foreach v in vlan_n
+    do
+      set port_n=switch_%_vlan_%_port_n[i][v]
+      foreach p in port_n
+      do
+        set pid=switch_%_vlan_%_port_%_id[i][v][p]
+        set mode=switch_%_vlan_%_port_%_mode[i][v][p]
+        if (mode == "untagged")
+        then
+          if (untagged_ports =~ ".* $pid ")
+          then
+            error "SWITCH_${i}: untagged port $pid is part of multiple VLANs, this is not supported"
+          else
+            set untagged_ports="$untagged_ports$pid "
+          fi
+        fi
+      done
+    done
+  done
+fi
+
+#DSA stuff
+if (opt_dsa)
+  then
+  if( !opt_bridge_dev )
+  then
+    error "DSA: Please configure OPT_Bridge!"
+  else
+    foreach n in dsa_n
+    do
+      set found="no"
+      foreach j in bridge_dev_n
+      do
+        if (bridge_dev_%_devname[j] == dsa_%_bridge[n])
+        then
+          set found="yes"
+        fi
+      done
+      if(!found)
+      then
+        set dsa_bridge = dsa_%_bridge[n]
+        error "DSA: Can't find a bridge with the device name DSA_${n}_BRIDGE='$dsa_bridge'!"
+      fi
+    done
+  fi
+fi

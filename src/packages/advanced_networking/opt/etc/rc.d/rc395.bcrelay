@@ -1,0 +1,37 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc395.bcrelay - start layer 2 broadcast forwarding
+#
+# Creation:     06.09.2014 fl_0
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_BCRELAY" = "yes" ]
+then
+
+   begin_script BCRELAY "preparing broadcast forwarding..."
+   
+   [ "$BCRELAY_N" -eq 0 ] || for bcrelay_idx in `seq 1 $BCRELAY_N`
+   do
+      eval bcrelay_if_no=\$BCRELAY_${bcrelay_idx}_IF_N
+      if [ "$bcrelay_if_no" -ge 2 ] 
+      then
+         eval bcrelay_in=\$BCRELAY_${bcrelay_idx}_IF_1
+         for bcrelay_if_idx in `seq 2 $bcrelay_if_no`
+         do  
+            eval bcrelay_outif=\$BCRELAY_${bcrelay_idx}_IF_${bcrelay_if_idx}
+            if [ "$bcrelay_if_idx" -eq 2 ] 
+            then
+               bcrelay_out=$bcrelay_outif
+            else
+               bcrelay_out="${bcrelay_out}|${bcrelay_outif}"
+            fi
+         done
+         log_info "  relaying broadcasts between interfaces $bcrelay_in $(echo $bcrelay_out | sed -e 's/|/ /')"
+         bcrelay -d -i $bcrelay_in -o "$bcrelay_out"
+      fi  
+   done
+   
+   end_script
+
+fi

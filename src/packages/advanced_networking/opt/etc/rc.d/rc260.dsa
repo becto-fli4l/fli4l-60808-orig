@@ -1,0 +1,56 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc260.dsa - configure the bridge
+#
+# Creation:     07.10.2017 skuhne
+# Last Update:  $Id: rc260.bridge 39896 2015-06-20 14:32:11Z kristov $
+#------------------------------------------------------------------------------
+
+case $OPT_DSA in
+yes)
+    begin_script DSA "setting up devices..."
+
+    [ 0"$DSA_N" -eq 0 ] || for dsa_idx in `seq 1 $DSA_N`
+    do
+        eval dsa_dev='$DSA_'$dsa_idx'_DEV'
+        eval dsa_bridge='$DSA_'$dsa_idx'_BRIDGE'
+        eval dsa_group_n='$DSA_'$dsa_idx'_GROUP_N'
+
+	# echo "The master interface needs to be brought up before the slave ports."
+	# ip link set eth0 up
+	ip link set ${dsa_dev} up
+
+        # echo "activate VLAN filtering"
+	# ip link set dev br0 type bridge vlan_filtering 1
+	ip link set dev ${dsa_bridge} type bridge vlan_filtering 1
+
+        [ 0"${dsa_group_n}" -eq 0 ] || for dsa_group_idx in `seq 1 ${dsa_group_n}`
+        do
+	    eval dsa_vlan_dev='${dsa_dev}'.'${dsa_group_idx}'
+
+	    # echo "tag traffic on CPU port"
+	    # ip link add link eth0 name eth0.1 type vlan id 1
+	    ip link add link ${dsa_dev} name ${dsa_vlan_dev} type vlan id ${dsa_group_idx}
+
+	    # echo "The master interface needs to be brought up before the slave ports."
+	    # ip link set eth0.1 up
+	    ip link set ${dsa_vlan_dev} up
+
+            eval dsa_port_n='$DSA_'${dsa_idx}'_GROUP_'${dsa_group_idx}'_PORT_N'
+
+    	    [ 0"$dsa_port_n" -eq 0 ] || for dsa_port_idx in `seq 1 $dsa_port_n`
+    	    do
+		eval dsa_port=\$DSA_${dsa_idx}_GROUP_${dsa_group_idx}_PORT_${dsa_port_idx}_DEV
+		
+		# echo "bring up the slave interfaces"
+		ip link set ${dsa_port} up
+
+	        # echo "add ports to bridge"
+		ip link set dev ${dsa_port} master ${dsa_bridge}
+	    done
+        done
+    done
+
+    end_script
+    ;;
+esac

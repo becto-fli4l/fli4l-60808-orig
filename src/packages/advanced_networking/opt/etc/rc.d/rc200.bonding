@@ -1,0 +1,102 @@
+#!/bin/sh
+#--------------------------------------------------------------------
+# /etc/rc.d/rc200.bonding - create bonding devices
+#
+# Creation:     21.04.2006 babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_BONDING_DEV" = "yes" ]
+then
+
+begin_script BONDING "creating bonding devices..."
+
+do_modprobe bonding
+
+[ "$BONDING_DEV_N" -eq 0 ] || for bond_idx in `seq 1 $BONDING_DEV_N`
+do
+  eval bond_arp_targets='$BONDING_DEV_'$bond_idx'_ARP_IP_TARGET_N'
+  eval bond_dev_name='$BONDING_DEV_'$bond_idx'_DEVNAME'
+  eval bond_devn='$BONDING_DEV_'$bond_idx'_DEV_N'
+  eval bond_downdelay='$BONDING_DEV_'$bond_idx'_DOWNDELAY'
+  eval bond_mac='$BONDING_DEV_'$bond_idx'_MAC'
+  eval bond_miimon='$BONDING_DEV_'$bond_idx'_MIIMON'
+  eval bond_mode='$BONDING_DEV_'$bond_idx'_MODE'
+  eval bond_primary='$BONDING_DEV_'$bond_idx'_PRIMARY'
+  eval bond_updelay='$BONDING_DEV_'$bond_idx'_UPDELAY'
+  eval bond_use_carrier='$BONDING_DEV_'$bond_idx'_USE_CARRIER'
+
+  : ${bond_arp_targets:=0}
+  : ${bond_downdelay:=0}
+  : ${bond_updelay:=0}
+  : ${bond_use_carrier:=yes}
+  : ${bond_miimon:=100}
+
+  case "$bond_dev_name" in
+    bond0) ;;
+    *) echo "+$bond_dev_name" > /sys/class/net/bonding_masters;;
+  esac
+
+  cd /sys/class/net/$bond_dev_name/bonding
+  echo "$bond_mode" > mode
+
+  if [ $bond_downdelay -ne 0 ]
+  then
+    bond_downdelay=`expr $bond_downdelay \* $bond_miimon`
+    echo "$bond_downdelay" > downdelay
+  fi 
+  if [ $bond_updelay -ne 0 ]
+  then
+    bond_updelay=`expr $bond_updelay \* $bond_miimon`
+    echo "$bond_updelay" > updelay
+  fi
+  [ $bond_use_carrier = no ] && echo 0 > use_carrier
+  [ $bond_primary ] && echo "$bond_primary" > primary
+
+  if [ $bond_mode = balance-rr -o $bond_mode = 0 -o $bond_mode = balance-xor -o $bond_mode = 2 ]
+  then
+    if [ $bond_arp_targets -gt 0 ]
+    then
+      eval bond_arp_interval='$BONDING_DEV_'$bond_idx'_ARP_INTERVAL'
+      : ${bond_arp_interval:=200}
+      echo "$bond_arp_interval" > arp_interval
+      for bond_ddx in `seq 1 $bond_arp_targets`
+      do
+        eval bond_tmp_ip_target=$\{BONDING_DEV_${bond_idx}_ARP_IP_TARGET_${bond_ddx}\}
+        eval "+$bond_tmp_ip_target" > arp_ip_target
+      done
+    else
+      echo "$bond_miimon" > miimon
+    fi
+  else
+    echo "$bond_miimon" > miimon
+  fi
+
+  if [ $bond_mode = active-backup -o $bond_mode = 1 ]
+  then
+    [ $bond_primary ] && echo "$bond_primary" > primary
+  fi
+
+  if [ $bond_mode = 802.3ad -o $bond_mode = 4 ]
+  then
+    eval bond_lacp_rate='$BONDING_DEV_'$bond_idx'_LACP_RATE'
+    : ${bond_lacp_rate:=slow}
+    echo "$bond_lacp_rate" > lacp_rate
+  fi
+
+  [ $bond_mac ] && ip link set dev $bond_dev_name addr $bond_mac
+
+  ip link set dev $bond_dev_name up
+
+  eval bond_devn='$BONDING_DEV_'$bond_idx'_DEV_N'
+  for bond_ddx in `seq 1 $bond_devn`
+  do
+    eval dev='$BONDING_DEV_'$bond_idx'_DEV_'$bond_ddx
+    echo "+$dev" > slaves
+  done
+
+done
+
+end_script
+
+fi
