@@ -1,0 +1,46 @@
+#! /bin/sh
+#----------------------------------------------------------------------------
+# /opt/etc/ppp/ip-up862.ucarp                                    __FLI4LVER__
+#
+# Creation:     26.04.2009  Michael Knipping <fli4l@knibo.de>
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$is_default_route" = "yes" ]
+then
+    workdir="/var/run/ucarp"
+
+    if [ -f "$workdir/ucarp.conf" ]; then
+        . $workdir/ucarp.conf
+
+        [ 0$UCARP_N -eq 0 ] || for i in `seq 1 $UCARP_N`; do
+            eval UCARP_INTERFACE="\$UCARP_"$i"_INTERFACE"
+            eval UCARP_SRCIP="\$UCARP_"$i"_SRCIP"; UCARP_SRCIP=$(echo $UCARP_SRCIP | cut -d"/" -f1)
+            UCARP_VHID=$i
+            eval UCARP_PASS="\$UCARP_"$i"_PASS"
+            eval UCARP_PREEMPT="\$UCARP_"$i"_PREEMPT"
+            eval UCARP_ADDR="\$UCARP_"$i"_ADDR"; UCARP_ADDR=$(echo $UCARP_ADDR | cut -d"/" -f1)
+            eval UCARP_ADVSKEW="\$UCARP_"$i"_ADVSKEW"
+            : ${UCARP_ADVSKEW:=0}
+            UCARP_UPSCRIPT="$workdir/vip-up$i.sh"
+            UCARP_DOWNSCRIPT="$workdir/vip-down$i.sh"
+
+            ucarp \
+                --interface=$UCARP_INTERFACE \
+                --srcip=$UCARP_SRCIP \
+                --vhid=$UCARP_VHID \
+                --pass=$UCARP_PASS \
+                $([ $UCARP_PREEMPT = "yes" ] && echo "--preempt") \
+                --addr=$UCARP_ADDR \
+                --advskew=$UCARP_ADVSKEW \
+                --upscript=$UCARP_UPSCRIPT \
+                --downscript=$UCARP_DOWNSCRIPT \
+                --shutdown \
+                --daemonize
+
+        done
+    else
+        echo "$workdir/ucarp.conf not found"
+        exit 1
+    fi
+fi

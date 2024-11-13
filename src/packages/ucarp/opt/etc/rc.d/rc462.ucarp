@@ -1,0 +1,36 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc862.ucarp                                            __FLI4LVER__
+#
+# Creation:     26.04.2009  Michael Knipping <fli4l@knibo.de>
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_UCARP in
+yes)
+    begin_script UCARP "save ucarp vars"
+
+    workdir="/var/run/ucarp"
+    mkdir -p $workdir
+
+    set | grep ^UCARP_ > $workdir/ucarp.conf
+
+    [ 0$UCARP_N -eq 0 ] || for i in `seq 1 $UCARP_N`
+    do
+	eval UCARP_INTERFACE="\$UCARP_"$i"_INTERFACE"
+	eval UCARP_ADDR="\$UCARP_"$i"_ADDR"
+cat <<EOF > $workdir/vip-up${i}.sh
+#!/bin/sh
+ip addr add $UCARP_ADDR dev $UCARP_INTERFACE
+EOF
+cat <<EOF > $workdir/vip-down${i}.sh
+#!/bin/sh
+ip addr del $UCARP_ADDR dev $UCARP_INTERFACE
+EOF
+	chmod +x $workdir/vip-up${i}.sh
+	chmod +x $workdir/vip-down${i}.sh
+    done
+
+    end_script
+;;
+esac
