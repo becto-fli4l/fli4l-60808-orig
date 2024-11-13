@@ -1,0 +1,32 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/ppp/ip-up900.fritzbox
+#
+# Creation:     2007-08-20 lanspezi
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$is_default_route" = "yes" ] # is a default-route-interface going up?
+then
+    if [ -f /var/run/fritzbox.conf ]
+    then
+        . /var/run/fritzbox.conf
+        ping -c 2 $FRITZBOX_HOST >/dev/null
+        if [ $0 != 1 ]
+        then
+            { 
+            echo "sending signal to fritzbox: restart voipd"
+            if [ "X$FRITZBOX_PASS" != "X" ]
+            then
+                { echo "$FRITZBOX_PASS"; echo "voipd -R"; echo "exit"; } | netcat -i2 -w5 "$FRITZBOX_HOST" 23 >/dev/null
+            else
+                { echo "voipd -R"; echo "exit"; } | netcat -i2 -w5 "$FRITZBOX_HOST" 23 >/dev/null
+            fi
+            echo "sending signal to fritzbox: done"
+            }&
+        else
+            echo "sending signal to fritzbox: ERROR - fritzbox not reachable"
+        fi
+    fi
+fi
+
