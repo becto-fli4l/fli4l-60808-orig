@@ -1,0 +1,38 @@
+#!/bin/sh
+# -------------------------------------------------------------------------------------
+# rc121.ifrename: opt rc-init script
+# -------------------------------------------------------------------------------------
+# creation date: 2007/04/14 - <tobias@tb-home.de>
+# last modified: 2011/04/17 - <tobias@tb-home.de>
+# -------------------------------------------------------------------------------------
+
+
+if [ "$OPT_IFRENAME" = yes ]
+then
+    begin_script IFRENAME "starting network interface renaming ."
+
+	for idx in `seq 1 "$IFRENAME_ETH_N"`
+	do
+	    eval eth_mac='$IFRENAME_ETH_'$idx'_MAC'
+	    eval eth_name='$IFRENAME_ETH_'$idx'_NAME'
+
+	    if [ -n "$eth_mac" -a -n "$eth_name" ]
+	    then
+		echo "$eth_name mac $eth_mac" >> /var/run/ifrename.conf
+		iface="eth`expr $idx - 1`"
+		echo "... shutdown Interface $iface ."
+		ip link set dev $iface down
+	    fi
+	done
+
+	cat /var/run/ifrename.conf
+	echo "... finished ."
+
+	if [ "$IFRENAME_DEBUG" = yes ]; then
+	    /sbin/ifrename -V -c /var/run/ifrename.conf
+	else
+	    /sbin/ifrename -c /var/run/ifrename.conf
+	fi
+
+    end_script
+fi
