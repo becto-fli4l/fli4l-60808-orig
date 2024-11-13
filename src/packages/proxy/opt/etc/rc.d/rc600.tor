@@ -1,0 +1,125 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc600.tor - start tor socks4/5 proxy
+#
+# Creation:     13.12.2005 babel
+# Modification: 23.09.2006 Tiger
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_TOR in
+yes)
+    begin_script TOR "starting TOR..."
+
+    # add chain in-tor
+    fw_add_chain filter in-tor
+    fw_prepend_rule filter INPUT-tail 'in-tor' "tor access"
+
+    tordir=$TOR_DATA_DIR
+    [ -z "$tordir" ] && tordir=/etc/tor
+    [ ! -d $tordir ] && mkdir -p $tordir
+    chmod 700 $tordir
+
+    # Create config
+    {
+        bind_list=
+        for idx in `seq 1 $TOR_LISTEN_N`
+        do
+            eval addr='$TOR_LISTEN_'$idx
+            oldIFS="$IFS"
+            IFS=":"
+            set -- $addr
+            IFS="$oldIFS"
+
+            if translate_ip_net $1 TOR_LISTEN_$idx
+            then
+                echo "SocksPort $res:$2"
+                bind_list="$bind_list $res:$2"
+            fi
+        done
+
+        allow_list=
+        echo "SocksPolicy accept 127.0.0.1"
+        for idx in `seq 1 $TOR_ALLOW_N`
+        do
+            eval addr='$TOR_ALLOW_'$idx
+            if translate_ip_net $addr TOR_ALLOW_$idx
+            then
+                echo "SocksPolicy accept $res"
+                allow_list="$allow_list $res"
+            fi
+        done
+
+        for allow in $allow_list
+        do
+            for bind in $bind_list
+            do
+                fw_append_rule filter in-tor "prot:tcp $allow $bind ACCEPT"
+            done
+        done
+
+        echo "SocksPolicy reject *"
+
+        : ${TOR_LOGLEVEL:=notice}
+        if [ -n "$TOR_LOGLEVEL" ]
+        then
+            if [ -n "$TOR_LOGFILE" ]
+            then
+                map2persistent TOR_LOGFILE /tor.log
+                mkdir -p `echo $TOR_LOGFILE | sed 's#/[^/]*$##'`
+                echo "Log $TOR_LOGLEVEL file $TOR_LOGFILE"
+            else
+                echo "Log $TOR_LOGLEVEL syslog"
+            fi
+        fi
+
+        if [ -n "$TOR_CONTROL_PORT" ]
+        then
+            echo "ControlPort $TOR_CONTROL_PORT"
+            if [ -n "$TOR_CONTROL_PASSWORD" ]
+            then
+                hashedpwd=`tor --quiet --hash-password $TOR_CONTROL_PASSWORD`
+                echo "HashedControlPassword $hashedpwd"
+            fi
+        fi
+
+        if [ -n "$TOR_HTTP_PROXY" ]
+        then
+            oldIFS="$IFS"
+            IFS=":"
+            set -- $TOR_HTTP_PROXY
+            IFS="$oldIFS"
+
+            if translate_ip_net $1 TOR_HTTP_PROXY
+            then
+                echo "HttpProxy $res:$2"
+                [ -n "$TOR_HTTP_PROXY_AUTH" ] && echo "HttpProxyAuthenticator $TOR_HTTP_PROXY_AUTH"
+            fi
+        fi
+
+        if [ -n "$TOR_HTTPS_PROXY" ]
+        then
+            oldIFS="$IFS"
+            IFS=":"
+            set -- $TOR_HTTPS_PROXY
+            IFS="$oldIFS"
+
+            if translate_ip_net $1 TOR_HTTPS_PROXY
+            then
+                echo "HttpsProxy $res:$2"
+                [ -n "$TOR_HTTPS_PROXY_AUTH" ] && echo "HttpsProxyAuthenticator $TOR_HTTP_PROXY_AUTH"
+            fi
+        fi
+
+        echo "RunAsDaemon 1"
+        echo "DataDirectory $tordir"
+
+    } > $tordir/torrc
+
+    tor --hush -f $tordir/torrc PidFile /var/run/tor.pid
+
+    end_script
+;;
+esac
+
+

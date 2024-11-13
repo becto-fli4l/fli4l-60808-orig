@@ -1,0 +1,24 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/fwrules.pre050.portfw
+#
+# Creation:     2014-09-17 fl_0
+# Last Update:  $Id$
+# This script automatically set the fw filters to accept the IPTV multicast
+# streams. A manual PF filter config in config/base.txt is obsolete.
+#----------------------------------------------------------------------------
+
+pf_in_iptv_multicast () {
+    fw_append_rule filter INPUT-head "any 224.0.0.1/32 ACCEPT" "automatically added for IGMP Proxy"
+    fw_append_rule filter INPUT-head "any 224.0.0.22/32 ACCEPT" "automatically added for IGMP Proxy"
+}
+
+pf_fwd_iptv_multicast () {
+    fw_append_rule filter FORWARD-head "any 239.35.0.0/16 ACCEPT" "automatically added for IPTV streams"
+}
+
+if [ "$OPT_IGMPPROXY" = "yes" ]
+then
+    pf_in_add_default pf_in_iptv_multicast
+    pf_fwd_add_default pf_fwd_iptv_multicast
+fi

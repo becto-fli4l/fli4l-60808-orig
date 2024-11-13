@@ -1,0 +1,148 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc650.privoxy - start "Privacy Enhancing Proxy" Privoxy
+#
+# Creation:     16.09.2002 tobig
+# Modification: 23.09.2006 Tiger
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_PRIVOXY in
+yes)
+    begin_script PRIVOXY "starting Privoxy (Privacy Enhancing Proxy)..."
+
+    # If httpd is activated, add Privoxy to menu
+    if [ "$PRIVOXY_MENU" = "yes" -a -f /usr/local/bin/httpd-menu.sh ]
+    then
+      /usr/local/bin/httpd-menu.sh add "http://config.privoxy.org/" "Privoxy" '$_MT_stat' proxy
+    fi
+
+    # Create user and group
+    echo "privoxy:x:15:15:Privoxy User:/etc/privoxy:/bin/true" >> /etc/passwd
+    echo "privoxy:*:0:0:10000::::" >> /etc/shadow
+    echo "privoxy:x:15:" >> /etc/group
+
+    # change owner of action files and templates
+    chown -Rh privoxy.privoxy /etc/privoxy
+
+    for idx in `seq 1 $PRIVOXY_N`
+    do
+        # add chain in-privoxy
+        fw_add_chain filter in-privoxy-$idx
+        fw_prepend_rule filter INPUT-tail "in-privoxy-$idx" "privoxy access"
+
+        eval confdir='/$PRIVOXY_'$idx'_ACTIONDIR'
+        [ -z "$confdir" ] && confdir=/etc/privoxy
+
+        [ ! -d $confdir ] && mkdir -p $confdir
+        [ ! -f $confdir/default.action ] && cp /etc/privoxy/default.action $confdir/default.action
+        ln -s $confdir/default.action /etc/privoxy/default-$idx.action
+        [ ! -f $confdir/user.action ] && cp /etc/privoxy/user.action $confdir/user.action
+        ln -s $confdir/user.action /etc/privoxy/user-$idx.action
+        {
+            echo "confdir /etc/privoxy"
+#            echo "actionsfile standard"
+            echo "actionsfile default-$idx.action"
+            echo "actionsfile user-$idx.action"
+            echo "filterfile default.filter"
+            echo "buffer-limit 4096"
+            echo "toggle 1"
+            echo "accept-intercepted-requests 1"
+
+            map2persistent PRIVOXY_${idx}_LOGDIR /$idx
+
+            eval logdir='$PRIVOXY_'$idx'_LOGDIR'
+            if [ -n "$logdir" ]
+            then
+                mkdir -p "$logdir"
+                echo "logdir $logdir"
+                echo "logfile logfile"
+#                echo "jarfile jarfile"
+                eval debuglevel='$PRIVOXY_'$idx'_LOGLEVEL'
+                for i in $debuglevel
+                do
+                    echo "debug $i"
+                done
+            else
+                # logdir is mandatory
+                echo "logdir ."
+                echo "debug 4096"
+            fi
+
+            bind_list=
+            eval addr='$PRIVOXY_'$idx'_LISTEN'
+            oldIFS="$IFS"
+            IFS=":"
+            set -- $addr
+            IFS="$oldIFS"
+
+            if translate_ip_net $1 PRIVOXY_${idx}_LISTEN
+            then
+                echo "listen-address $res:$2"
+                bind_list="$bind_list $res:$2"
+            fi
+
+            allow_list=
+            eval allow_n='$PRIVOXY_'$idx'_ALLOW_N'
+            for i in `seq 1 $allow_n`
+            do
+                eval addr='$PRIVOXY_'$idx'_ALLOW_'$i
+
+                if translate_ip_net $addr PRIVOXY_${idx}_ALLOW_$i
+                then
+                    allow_list="$allow_list $res"
+                fi
+            done
+
+            for allow in $allow_list
+            do
+                for bind in $bind_list
+                do
+                    fw_append_rule filter in-privoxy-$idx "prot:tcp $allow $bind ACCEPT"
+                done
+            done
+
+            eval proxy='$PRIVOXY_'$idx'_HTTP_PROXY'
+            if [ -n "$proxy" ]
+            then
+                oldIFS="$IFS"
+                IFS=":"
+                set -- $proxy
+                IFS="$oldIFS"
+
+                if translate_ip_net $1 $PRIVOXY_${idx}_HTTP_PROXY
+                then
+                    echo "forward / $res:$2"
+                fi
+            fi
+
+            eval proxy='$PRIVOXY_'$idx'_SOCKS_PROXY'
+            if [ -n "$proxy" ]
+            then
+                oldIFS="$IFS"
+                IFS=":"
+                set -- $proxy
+                IFS="$oldIFS"
+
+                if translate_ip_net $1 PRIVOXY_${idx}_SOCKS_PROXY
+                then
+                    echo "forward-socks4a / $res:$2 ."
+                fi
+            fi
+
+            eval toggle=\$PRIVOXY_${idx}_TOGGLE
+	    eval config=\$PRIVOXY_${idx}_CONFIG
+	    [ "$toggle" = "yes" ] && echo "enable-remote-toggle 1"
+            [ "$config" = "yes" ] && echo "enable-edit-actions 1"
+
+        } > /etc/privoxy/config-$idx
+
+        # change owner of config file
+        chown privoxy.privoxy /etc/privoxy/config-$idx
+
+        privoxy --pidfile /var/run/privoxy-$idx.pid /etc/privoxy/config-$idx
+    done
+
+    end_script
+;;
+esac

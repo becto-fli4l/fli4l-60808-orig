@@ -1,0 +1,47 @@
+% Synchronized to r43697
+\subsection{OPT\_TRANSPROXY (EXPERIMENTAL) - Transparent HTTP Proxy}
+\configlabel{OPT\_TRANSPROXY}{OPTTRANSPROXY}
+
+Transproxy is a ,,transparent'' Proxy - a program that catches all HTTP
+requests going through the fli4l router and redirects them to a normal HTTP
+proxy i.e. Privoxy. To achieve this the packet filters has to redirect HTTP
+queries that should go to the Internet to Transproxy which will then redirect
+them to another HTTP proxy. It uses iptables's ,,REDIRECT'' function to
+accomplish this:
+
+\begin{verbatim}
+        PF_PREROUTING_1='tmpl:http IP_NET_1 REDIRECT:8081'
+\end{verbatim}
+
+This rule would redirect all HTTP packets from the first defined net (internal
+LAN normally) to Transproxy on port 8081.
+
+\begin{description}
+
+\config{TRANSPROXY\_LISTEN\_N}{TRANSPROXY\_LISTEN\_N}{TRANSPROXYLISTENN}
+\config{TRANSPROXY\_LISTEN\_x}{TRANSPROXY\_LISTEN\_x}{TRANSPROXYLISTENx}
+
+        {Specify IP addresses or symbolic names including portnumber of
+        the interface here on which Transproxy should listen to clients.
+        All interfaces have to be specified here that should redirect
+        their packets to Transproxy by the packet filter. With the default
+        setting \var{any:8081} Transproxy listens on all interfaces.}
+
+\config{TRANSPROXY\_TARGET\_IP}{TRANSPROXY\_TARGET\_IP}{TRANSPROXYTARGETIP}
+\config{TRANSPROXY\_TARGET\_PORT}{TRANSPROXY\_TARGET\_PORT}{TRANSPROXYTARGETPORT}
+
+        {With this options it is set to which service incoming HTTP queries should
+        be redirected. This can be a standard HTTP proxy (Squid, Privoxy, Apache, a.s.o.)
+        on a random PC (or fli4l itself). Please ensure that this proxy is not in the
+        range of the HTTP queries redirected by the packet filter. This would
+        cause an infinite loop otherwise.}
+
+\config{TRANSPROXY\_ALLOW\_N}{TRANSPROXY\_ALLOW\_N}{TRANSPROXYALLOWN}
+\config{TRANSPROXY\_ALLOW\_x}{TRANSPROXY\_ALLOW\_x}{TRANSPROXYALLOWx}
+
+        {List of nets and/or IP addresses for which the packet filter
+        has to be opened. It should cover the nets that should be redirected
+        by the packet filter. If you don't set any ranges here they have to
+        be entered manually in the configuration of the packet filter.}
+
+\end{description}

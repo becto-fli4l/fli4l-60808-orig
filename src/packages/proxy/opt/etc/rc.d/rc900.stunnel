@@ -1,0 +1,55 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc900.stunnel - start stunnel proxies
+#
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_STUNNEL in
+yes)
+    begin_script STUNNEL "starting stunnel daemon..."
+    . /usr/share/stunnel.api
+
+    # create PID directory
+    mkdir -p /var/run/stunnel
+    chown nobody /var/run/stunnel
+
+    stunnel_conffile=/etc/stunnel.conf
+    stunnel_create "$stunnel_conffile" stunnel "$STUNNEL_DEBUG"
+
+    n=0
+    for idx in $(seq 1 $STUNNEL_N)
+    do
+        eval name=\$STUNNEL_${idx}_NAME
+        eval client=\$STUNNEL_${idx}_CLIENT
+        eval accept=\$STUNNEL_${idx}_ACCEPT
+        eval accept_ipv4=\$STUNNEL_${idx}_ACCEPT_IPV4
+        eval accept_ipv6=\$STUNNEL_${idx}_ACCEPT_IPV6
+        eval connect=\$STUNNEL_${idx}_CONNECT
+        eval outgoing_ip=\$STUNNEL_${idx}_OUTGOING_IP
+        eval delay_dns=\$STUNNEL_${idx}_DELAY_DNS
+        eval cert_file=\$STUNNEL_${idx}_CERT_FILE
+        eval cert_ca_file=\$STUNNEL_${idx}_CERT_CA_FILE
+        eval cert_verify=\$STUNNEL_${idx}_CERT_VERIFY
+
+        errmsg=
+        if stunnel_add "$stunnel_conffile" errmsg "$name" "$client" "$accept" \
+            "$accept_ipv4" "$accept_ipv6" "$connect" "$outgoing_ip" \
+            "$delay_dns" "$cert_file" "$cert_ca_file" "$cert_verify"
+        then
+            n=$((n+1))
+        else
+            log_error "$errmsg"
+        fi
+    done
+
+    if [ $n -gt 0 ]
+    then
+        stunnel /etc/stunnel.conf
+    else
+        log_error "No tunnels created, stunnel not started"
+    fi
+
+    end_script
+;;
+esac

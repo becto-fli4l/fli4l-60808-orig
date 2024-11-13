@@ -1,0 +1,372 @@
+% Synchronized to r60625
+\subsection{OPT\_STUNNEL - Tunneling Connections Over SSL/TLS}
+\configlabel{OPT\_STUNNEL}{OPTSTUNNEL}
+
+The program ``stunnel'' allows to encapsulate connections otherwise unencrypted
+in an encrypted SSL/TLS tunnel. This allows safe data exchange over otherwise
+insecure cleartext protocols. Due to the possibilities of the SSL/TLS protocol,
+various forms of Client/server validation are possible.
+
+\subsubsection{Configuration}
+\begin{description}
+
+\config{OPT\_STUNNEL}{OPT\_STUNNEL}{}
+
+This variable activates support for SSL/TLS tunnels.
+
+Default setting: \verb+OPT_STUNNEL='no'+
+
+Example: \verb+OPT_STUNNEL='yes'+
+
+\config{STUNNEL\_DEBUG}{STUNNEL\_DEBUG}{STUNNELDEBUG}
+
+This variable can be set to configure the logging settings for ``stunnel''.
+Available settings are ``yes'' (everything is logged), ``no'' (warnings and
+errors are logged) or a value between zero and seven indicating the severity of
+messages whith zero for highest and seven for lowest severity. The setting ``yes''
+corresponds to severity seven, while ``no'' corresponds to severity four.
+
+Default setting: \verb+STUNNEL_DEBUG='no'+
+
+Example 1: \verb+STUNNEL_DEBUG='yes'+
+
+Example 2: \verb+STUNNEL_DEBUG='5'+
+
+\config{STUNNEL\_N}{STUNNEL\_N}{STUNNELN}
+This variable configures the number of tunnel instances. Each tunnel instance
+``listens'' on a network port ``A'' and connects to another network port ``B''
+when a connection is established (may as well be on a different machine), then
+forwards all traffic from ``A'' to ``B''. Whether the data, that arrives at
+``A'' encrypted via SSL/TLS will be decrypted by ``stunnel'' before forwarding
+unencrypted to ``B'' or vice versa is decided by the variable setting in
+\jump{STUNNELxCLIENT}{\var{STUNNEL\_x\_CLIENT}}.
+
+Default setting: \verb+STUNNEL_N='0'+
+
+Example: \verb+STUNNEL_N='2'+
+
+\config{STUNNEL\_x\_NAME}{STUNNEL\_x\_NAME}{STUNNELxNAME}
+
+The name of each tunnel. Must be unique for all configured tunnels.
+
+Example: \verb+STUNNEL_1_NAME='imond'+
+
+\config{STUNNEL\_x\_CLIENT}{STUNNEL\_x\_CLIENT}{STUNNELxCLIENT}
+
+This variable configures which parts of the communication are encrypted via
+SSL/TLS. There are two options:
+
+\begin{itemize}
+\item \emph{Client mode:} The tunnel expects unencrypted data from outside
+and sends it encrypted to the other end of the tunnel. This corresponds to
+the setting\\
+\verb+STUNNEL_x_CLIENT='yes'+.
+\item\emph{Server mode:} The tunnel expects data encrypted via SSL/TLS from
+outside and will send it decrypted to the other end of the tunnel. This is
+equivalent to setting \verb+STUNNEL_x_CLIENT='no'+.
+\end{itemize}
+
+Tunnels in client mode hence are particularly suitable for connections ``to
+the outside'', i.e. to the (unprotected) Internet because data is encrypted
+before leaving the local network. Of course the remote site must offer a server
+that expects data encrypted via SSL/TLS. For example an e-mail client in the LAN
+only supporting unencrypted POP3 can ``talk'' to a POP3 over SSL service on the
+Internet \footnote{see \altlink{http://en.wikipedia.org/wiki/POP3S}}
+
+Tunnels in server mode in reverse are for connections that come ``from the
+outside'', i.e. from the (unprotected) Internet providing encrypted data.
+If the actual service on the server side is not capable to understand
+SSL/TLS the data must be decrypted previously. For example the access to
+the fli4l web GUI can be accomplished via HTTP (HTTPS) encrypted via SSL/TLS
+by configuring a tunnel on the fli4l receiving HTTP traffic encrypted via
+SSL/TLS on port 443, then decrypting the data and forwarding it to the local
+web server \texttt{mini\_httpd} listening on port 80.
+
+Configurations for these use cases are presented later.
+
+Example: \verb+STUNNEL_1_CLIENT='yes'+
+
+\config{STUNNEL\_x\_ACCEPT}{STUNNEL\_x\_ACCEPT}{STUNNELxACCEPT}
+
+This determines on which port (and address) the tunnel is ``listening''
+for incoming connections. In principle two possibilities exist:
+
+\begin{itemize}
+\item The tunnel should listen on \emph{all} addresses (on all interfaces).
+Use the setting ``any'' in this case.
+\item The tunnel should only listen to defined addresses. Set this with
+a reference corresponding to the IP-subnet configured, for example
+\var{IP\_NET\_1\_IPADDR} (for IPv4) or \var{IPV6\_NET\_2\_IPADDR} (for IPv6).
+\end{itemize}
+
+At the end of the address part the port \emph{must} be added, separated
+by a colon (``:'').
+
+Example 1: \verb+STUNNEL_1_ACCEPT='any:443'+
+
+Example 2: \verb+STUNNEL_1_ACCEPT='IP_NET_1_IPADDR:443'+
+
+Example 3: \verb+STUNNEL_1_ACCEPT='IPV6_NET_2_IPADDR:443'+
+
+Please note that using \var{IP\_NET\_x\_IPADDR} resp. \var{IPV6\_NET\_x\_IPADDR}
+determines the Layer-3-Protocol (IPv4 or IPv6), the choice here \emph{must}
+match with the settings in the variables \var{STUNNEL\_x\_ACCEPT\_IPV4} and
+\var{STUNNEL\_x\_ACCEPT\_IPV6}. Hence you may not deactivate IPv6 for the tunnel
+by using \verb+STUNNEL_1_ACCEPT_IPV6='no'+ and then listen on an IPv6 address using
+\verb+STUNNEL_1_ACCEPT='IPV6_NET_2_IPADDR:443'+ or vice versa by using
+(\verb+STUNNEL_1_ACCEPT_IPV4='no'+ and \var{IP\_NET\_x\_IPADDR}).
+Furthermore, the meaning of ``any'' depends on the Layer 3 protocols activated
+(IPv4 or IPv6): of course, the tunnel only listens on addresses belonging to the
+Layer-3-Protocols activated via \var{STUNNEL\_x\_ACCEPT\_IPV4} and
+\var{STUNNEL\_x\_ACCEPT\_IPV6}.
+
+\config{STUNNEL\_x\_ACCEPT\_IPV4}{STUNNEL\_x\_ACCEPT\_IPV4}{STUNNELxACCEPTIPV4}
+
+This variable controls if the IPv4 protocol is used for \emph{incoming} connections
+to the tunnel. Typically this is the case and this variable should be set to ``yes''
+while ``no'' ensures that the tunnel only accepts incoming IPv6 connections. However,
+this requires a valid IPv6 configuration (refer to the documentation for the ipv6
+package for more information).
+
+Default setting: \verb+STUNNEL_x_ACCEPT_IPV4='yes'+
+
+Example: \verb+STUNNEL_1_ACCEPT_IPV4='no'+
+
+\config{STUNNEL\_x\_ACCEPT\_IPV6}{STUNNEL\_x\_ACCEPT\_IPV6}{STUNNELxACCEPTIPV6}
+
+Like in \var{STUNNEL\_x\_ACCEPT\_IPV4} this variable controls whether the IPv6
+protocol is used for incoming connections to the tunnel. Typically this is the case
+if you use the the general IPv6 protocol by using \verb+OPT_IPV6='yes'+. Setting
+``no'' here ensures that the tunnel only accepts incoming IPv4 connections.
+
+Default setting: \verb+STUNNEL_x_ACCEPT_IPV6=<Values from OPT_IPV6>+
+
+Example: \verb+STUNNEL_1_ACCEPT_IPV6='no'+
+
+\config{STUNNEL\_x\_CONNECT}{STUNNEL\_x\_CONNECT}{STUNNELxCONNECT}
+
+Sets the target of the SSL/TLS tunnel. There are basically three possibilities and all
+must have the port  appended, separated by a colon (``:''):
+
+\begin{itemize}
+\item A numeric IPv4- or IPv6 address
+
+Example 1: \verb+STUNNEL_1_CONNECT='192.0.2.2:443'+
+
+\item The DNS name of an internal host
+
+Example 2: \verb+STUNNEL_1_CONNECT='@webserver:443'+
+
+\item The DNS name of an external host
+
+Example 3: \verb+STUNNEL_1_CONNECT='@www.example.com:443'+
+\end{itemize}
+
+If an internal host is entered with both IPv4 and IPv6 address,
+the IPv4 address is preferred. If an external host is entered with both
+IPv4 and IPv6 address, then the Layer 3 protocol used depends on
+which address is first returned by the DNS resolver.
+
+\config{STUNNEL\_x\_OUTGOING\_IP}{STUNNEL\_x\_OUTGOING\_IP}{STUNNELxOUTGOINGIP}
+
+With this optional variable, the \emph{local} address for the
+\emph{outgoing} connection of the tunnel can be set. This is only
+useful if the target of the tunnel can be reached over multiple interfaces
+(routes), i.e. if two concurrent Internet connections are used.
+Normally, this variable must not be set.
+
+Example: \verb+STUNNEL_1_OUTGOING_IP='IP_NET_1_IPADDR'+
+
+\config{STUNNEL\_x\_DELAY\_DNS}{STUNNEL\_x\_DELAY\_DNS}{STUNNELxDELAYDNS}
+
+If this optional variable is set to ``yes'', an external DNS name used in
+\var{STUNNEL\_x\_CONNECT} will not be converted to an address until the
+\emph{outbound} tunnel is established, meaning the point when the first client
+has connected locally with the incoming side of the tunnel. This is useful if
+the target of the tunnel is a computer that can only be reached through a
+dynamic DNS name and the address behind the name changes frequently, or if
+an active dialin when starting ``stunnel'' should be prevented.
+
+Default setting: \verb+STUNNEL_x_DELAY_DNS='no'+
+
+Example: \verb+STUNNEL_1_DELAY_DNS='yes'+
+
+\config{STUNNEL\_x\_CERT\_FILE}{STUNNEL\_x\_CERT\_FILE}{STUNNELxCERTFILE}
+
+This variable contains the file name of the certificate for the tunnel to be used.
+For server mode tunnels (\verb+STUNNEL_x_CLIENT='no'+) this is the server
+certificate that the client validates against a ``Certificate Authority'' (CA)
+if necessary. For client mode tunnels (\verb+STUNNEL_x_CLIENT='yes'+)
+this is a (usually optional) client certificate that is validated by the
+server against a CA if necessary.
+
+The certificate must be provided in the so-called PEM format and must be saved below\\
+\texttt{<config-directory>/etc/ssl/stunnel/}. Only the file name must be stored
+in this variable, not the path.
+
+For a server mode tunnel the certificate is mandatory!
+
+Example: \verb+STUNNEL_1_CERT_FILE='myserver.crt'+
+
+\config{STUNNEL\_x\_CERT\_CA\_FILE}{STUNNEL\_x\_CERT\_CA\_FILE}{STUNNELxCERTCAFILE}
+
+This variable contains the file name of the CA certificate to be used for the
+validation of the certificate of the remote station. Typically clients validate
+the server's certificate, vice versa however, is also possible. For details on
+the validation please refer to the description of the variable \jump{STUNNELxCERTVERIFY}
+{\var{STUNNEL\_x\_CERT\_VERIFY}}.
+
+The certificate must be provided in the so-called PEM format and must be saved below\\
+\texttt{<config-directory>/etc/ssl/stunnel/}. Only the file name must be stored
+in this variable, not the path.
+
+Example: \verb+STUNNEL_1_CERT_CA_FILE='myca.crt'+
+
+\config{STUNNEL\_x\_CERT\_VERIFY}{STUNNEL\_x\_CERT\_VERIFY}{STUNNELxCERTVERIFY}
+
+This variable controls the validation of the certificate of the remote station.
+There are five options possible:
+
+\begin{itemize}
+\item \emph{none:} The certificate of the remote station is not validated at all.
+In this case the variable \var{STUNNEL\_x\_CERT\_CA\_FILE} is empty.
+
+\item \emph{optional:} If the remote station provides a certificate it is checked
+against the CA certificate configured using the variable \var{STUNNEL\_x\_CERT\_CA\_FILE}.
+If the remote station does \emph{not} provide a certificate this is not an error and the
+connection is still accepted. This setting is only useful for server mode tunnel because
+the client tunnel \emph{always} obtain a certificate from the server.
+
+\item \emph{onlyca:} The certificate of the remote station is validated against
+the CA certificate configured in the variable \var{STUNNEL\_x\_CERT\_CA\_FILE}.
+If the remote station does not provide a certificate or it does not match the
+configured CA, the connection is rejected. This is useful when a private CA is used,
+as then all potential peers are know.
+
+\item \emph{onlycert:} The certificate of the remote station is compared with
+the certificate configured in the variable \var{STUNNEL\_x\_CERT\_CA\_FILE}.
+It is \emph{not} checked against a CA certificate, but it will be ensured that
+the remote station sends \emph{exactly} the matching (server or client) certificate.
+The file referenced with the help of the variable \var{STUNNEL\_x\_CERT\_CA\_FILE}
+in this case does not contain a CA certificate, but a host certificate. This setting
+ensures that really only a fixed and known peer may connect (server tunnel) or
+a connection to only a known peer (client tunnel) is established. This is useful for
+peer-to-peer connections between hosts both under your control, but for which no
+own CA is used.
+
+\item \emph{both:} The certificate of the remote station is compared  with the
+certificate configured by the help of the variable \var{STUNNEL\_x\_CERT\_CA\_FILE}
+\emph{and} it is also ensured that it matches a CA certificate. The file referenced
+by the help of the variable \var{STUNNEL\_x\_CERT\_CA\_FILE} in this case contains
+\emph{both} a CA \emph{and} a host certificate. It is therefore a combination of
+the settings \emph{onlycert} and \emph{onlyca}. In comparison to the setting
+\emph{onlycert} connections with expired CA certificate will be rejected (even if the
+certificate of the peer matches).
+
+\end{itemize}
+
+Default setting: \verb+STUNNEL_x_CERT_VERIFY='none'+
+
+Example: \verb+STUNNEL_1_CERT_VERIFY='onlyca'+
+
+\end{description}
+
+\subsubsection{Use Case 1: Accessing the fli4l-WebGUI via SSL/TLS}
+
+This example enhances the fli4l-WebGUI with SSL/TLS access.
+
+\begin{example}
+\begin{verbatim}
+OPT_STUNNEL='yes'
+STUNNEL_N='1'
+
+STUNNEL_1_NAME='http'
+STUNNEL_1_CLIENT='no'
+STUNNEL_1_ACCEPT='any:443'
+STUNNEL_1_ACCEPT_IPV4='yes'
+STUNNEL_1_ACCEPT_IPV6='yes'
+STUNNEL_1_CONNECT='127.0.0.1:80'
+STUNNEL_1_CERT_FILE='server.pem'
+STUNNEL_1_CERT_CA_FILE='ca.pem'
+STUNNEL_1_CERT_VERIFY='none'
+\end{verbatim}
+\end{example}
+
+\subsubsection{Use Case 2: Controlling two remote
+fli4l routers via imonc secured by SSL/TLS}
+
+The known weaknesses of the imonc/imond protocol for WAN connections (sending
+passwords in clear text) are bypassed with this example. (The LAN connection to
+the tunnel of course is vulnerable!)\\
+
+Configuration of the local fli4l in LAN (client tunnel):
+\begin{example}
+\begin{verbatim}
+OPT_STUNNEL='yes'
+STUNNEL_N='2'
+
+STUNNEL_1_NAME='remote-imond1'
+STUNNEL_1_CLIENT='yes'
+STUNNEL_1_ACCEPT='any:50000'
+STUNNEL_1_ACCEPT_IPV4='yes'
+STUNNEL_1_ACCEPT_IPV6='yes'
+STUNNEL_1_CONNECT='@remote1:50000'
+STUNNEL_1_CERT_FILE='client.pem'
+STUNNEL_1_CERT_CA_FILE='ca+server1.pem'
+STUNNEL_1_CERT_VERIFY='both'
+
+STUNNEL_2_NAME='remote-imond2'
+STUNNEL_2_CLIENT='yes'
+STUNNEL_2_ACCEPT='any:50001'
+STUNNEL_2_ACCEPT_IPV4='yes'
+STUNNEL_2_ACCEPT_IPV6='yes'
+STUNNEL_2_CONNECT='@remote2:50000'
+STUNNEL_2_CERT_FILE='client.pem'
+STUNNEL_2_CERT_CA_FILE='ca+server2.pem'
+STUNNEL_2_CERT_VERIFY='both'
+\end{verbatim}
+\end{example}
+
+Configuration of the first remote fli4l (server tunnel):
+\begin{example}
+\begin{verbatim}
+OPT_STUNNEL='yes'
+STUNNEL_N='1'
+
+STUNNEL_1_NAME='remote-imond'
+STUNNEL_1_CLIENT='no'
+STUNNEL_1_ACCEPT='any:50000'
+STUNNEL_1_ACCEPT_IPV4='yes'
+STUNNEL_1_ACCEPT_IPV6='yes'
+STUNNEL_1_CONNECT='127.0.0.1:5000'
+STUNNEL_1_CERT_FILE='server1.pem'
+STUNNEL_1_CERT_CA_FILE='ca+client.pem'
+STUNNEL_1_CERT_VERIFY='both'
+\end{verbatim}
+\end{example}
+
+Configuration of the second remote fli4l (server tunnel):
+\begin{example}
+\begin{verbatim}
+OPT_STUNNEL='yes'
+STUNNEL_N='1'
+
+STUNNEL_1_NAME='remote-imond'
+STUNNEL_1_CLIENT='no'
+STUNNEL_1_ACCEPT='any:50000'
+STUNNEL_1_ACCEPT_IPV4='yes'
+STUNNEL_1_ACCEPT_IPV6='yes'
+STUNNEL_1_CONNECT='127.0.0.1:5000'
+STUNNEL_1_CERT_FILE='server2.pem'
+STUNNEL_1_CERT_CA_FILE='ca+client.pem'
+STUNNEL_1_CERT_VERIFY='both'
+\end{verbatim}
+\end{example}
+
+A connection to the remote ``imond'' is established by initiating a connection
+to the local fli4l on port 50000 (first remote fli4l) resp. 50001 (second remote
+fli4l). This fli4l then connects via SSL/TLS-Tunnel to each of the remote fli4l's
+which in turn forward their data over a third (host internal) connection to the
+remote ``imond'' in the end. The settings of the validation ensure that each fli4l
+only accepts the other fli4l as the connecting counterpart.
+

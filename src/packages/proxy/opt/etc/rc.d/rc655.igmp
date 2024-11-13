@@ -1,0 +1,79 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc455.igmp - template rc file
+#
+# Creation:     01.06.2013 jk
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_IGMPPROXY" = yes ]
+then
+    # Debug
+    begin_script IGMPPROXY "starting igmpproxy ..."
+
+    igmp_config_dir="/etc/igmpproxy.conf"
+    translate_net_if $IGMPPROXY_UPLOAD_DEV igmp_up
+    translate_net_if $IGMPPROXY_DOWNLOAD_DEV igmp_down
+    igmp_quick=$IGMPPROXY_QUICKLEAVE_ON
+    igmp_debug=$IGMPPROXY_DEBUG
+    igmp_debug2=$IGMPPROXY_DEBUG2
+
+    # create igmpproxy.conf
+    {
+    echo "# imgpproxy.conf for OPT_IGMPPROXY package"
+    echo "# This script is built automatically"
+
+    echo "# "
+    if [ $igmp_quick = yes ]
+    then
+        echo "quickleave"
+    fi
+
+    echo "# configure upstream"
+    echo "phyint $igmp_up upstream ratelimit 0 threshold 1"
+
+    # configure alternate address list
+    [ 0$IGMPPROXY_ALT_N -eq 0 ] || for idx in `seq 1 $IGMPPROXY_ALT_N` ; do
+        eval igmp_altnet='$IGMPPROXY_ALT_'$idx'_NET'
+        echo "         altnet $igmp_altnet"
+    done
+
+    echo "# configure downstream"
+    echo "phyint $igmp_down downstream ratelimit 0 threshold 1"
+
+    # configure whitelist address list
+    [ 0$IGMPPROXY_WLIST_N -eq 0 ] || for idx in `seq 1 $IGMPPROXY_WLIST_N` ; do
+        eval igmp_wlistnet='$IGMPPROXY_WLIST_'$idx'_NET'
+        echo "         whitelist $igmp_wlistnet"
+    done
+
+    echo "# configure disabled interface"
+    for i in `ip link show | sed -n '/^[0-9]/s/^[^[:space:]]*\([^:]*\):.*/\1/p'`; do
+        case $i in
+                $igmp_up | $igmp_down) ;;
+                *) echo "phyint $i disabled" 
+        esac
+    done
+
+   } > $igmp_config_dir;
+
+flag=" "
+if [ $igmp_debug = yes ]
+then
+# run ind verbose mode
+flag=" -v "
+fi 
+
+if [ $igmp_debug2 = yes ]
+then
+# run in debug mode
+flag=" -v -v "
+fi 
+
+
+# execute igmpproxy
+igmpproxy $flag $igmp_config_dir &
+# igmpproxy $flag /etc/igmpproxy.conf &
+
+   end_script
+fi

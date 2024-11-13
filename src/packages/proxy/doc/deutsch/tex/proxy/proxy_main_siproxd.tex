@@ -1,0 +1,140 @@
+% Last Update: $Id$
+\subsection{OPT\_SIPROXD (experimentell) -- Proxy für Session Initiation Protocol}
+\configlabel{OPT\_SIPROXD}{OPTSIPROXD}
+
+Möchte man mehrere SIP-Anwendungen (egal ob Ekiga, x-lite oder Hardware
+SIP-Telefone) hinter einem Router betreiben, so kann es vorkommen,
+dass Netzwerk-Ports speziell weitergeleitet werden müssen, da sonst
+die Verbindungen nicht so funktionieren, wie sie sollten.
+
+Um dies zu vermeiden, kann man einen speziellen SIP Proxy-Server nutzen.
+Es werden derzeit (fli4l V4.0.0) mehrere solche Proxys evaluiert.
+Sollte jemand über eine Empfehlung verfügen so darf er sich gerne
+an das Team wenden!
+
+% TODO  Den Einleitungstext an die tatsächlichen Gegebenheiten anpassen
+%       (Siproxd implementiert, Kamailio nicht).
+
+\subsubsection{Konfiguration}
+
+\begin{description}
+
+\config{SIPROXD\_N}{SIPROXD\_N}{SIPROXDN}
+
+Gibt die Anzahl der Siproxd-Instanzen an, die gestartet werden sollen.
+Mehrere Instanzen können nötig sein, wenn man SIP-Clients aus
+verschiedenen hinter dem fli4l-Router liegenden Subnetzen benutzen will.
+
+Standard-Einstellung: \verb+SIPROXD_N='0'+
+
+Beispiel: \verb+SIPROXD_N='2'+
+
+\config{SIPROXD\_x\_DEV\_IN}{SIPROXD\_x\_DEV\_IN}{SIPROXDxDEVIN}
+
+Hier ist die Netzwerk-Schnittstelle zum lokalen Netz bzw. LAN hin
+anzugeben, vom dem aus sich die VoIP-Clients mit dem SIP-Server
+verbinden.  Erlaubt sind sowohl Namen von Netzwerkinterfaces (inklusive
+VLAN-Schnittstellen) als auch fli4l-Variablen wie bspw.
+\verb+IP_NET_1_DEV+.
+
+Beispiel: \verb+SIPROXD_1_DEV_IN='br0'+
+
+\config{SIPROXD\_x\_DEV\_OUT}{SIPROXD\_x\_DEV\_OUT}{SIPROXDxDEVOUT}
+
+Die Netzwerkschnittstelle zum Internet hin, über die der SIP-Server
+erreicht wird, also beispielsweise das selbe Interface wie der default
+circuit.
+
+Beispiel: \verb+SIPROXD_1_DEV_OUT='eth0.23'+
+
+\config{SIPROXD\_x\_TRANSPARENT}{SIPROXD\_x\_TRANSPARENT}{SIPROXDxTRANSPARENT}
+
+Ist diese Option gesetzt, werden dem Paketfilter automatisch Regeln
+hinzugefügt, die den Betrieb als transparenten Proxy erlauben.  Das
+heißt die SIP-Client Software oder das VoIP-Gerät müssen nicht explizit
+die Konfiguration eines Proxy zulassen, sondern funktionieren direkt so,
+als wären sie ohne NAT mit dem SIP-Server verbunden.  Ermöglicht
+beispielsweise die Verwendung der FRITZ!App Fon, wenn der fli4l-Router
+hinter einer FRITZ!Box betrieben wird.
+
+Beispiel: \verb+SIPROXD_1_TRANSPARENT='yes'+
+
+Diese Variable ist optional. Ist sie nicht gesetzt, bleibt die Funktion
+deaktiviert.
+
+\config{SIPROXD\_x\_ALLOW\_REG\_N}{SIPROXD\_x\_ALLOW\_REG\_N}{SIPROXDxALLOWREGN}
+
+Anzahl der lokalen IP-Netze, aus denen Client-Registrierung erlaubt
+werden soll.
+
+Beispiel: \verb+SIPROXD_1_ALLOW_REG_N='2'+
+
+\config{SIPROXD\_x\_ALLOW\_REG\_x}{SIPROXD\_x\_ALLOW\_REG\_x}{SIPROXDxALLOWREGx}
+
+Ein lokales Netz, aus dem der Zugriff auf den Proxy für VoIP-Clients
+erlaubt wird.  Im Gegensatz zu \verb+SIPROXD_x_DEV_IN+ werden hier
+IP-Netze angegeben, die an das lokale Interface gebunden sind bzw. über
+dieses erreicht werden können.  Erlaubt sind neben direkten Angaben wie
+\verb+192.168.42.0/24+ auch Variablen der Form \verb+IP_NET_1+.
+
+Beispiel: \verb+SIPROXD_1_ALLOW_REG_1='IP_NET_1'+
+
+\config{SIPROXD\_x\_SIP\_PORT}{SIPROXD\_x\_SIP\_PORT}{SIPROXDxSIPPORT}
+
+Port auf dem der SIP-Proxy auf eingehende SIP-Nachrichten lauscht.  Der
+Standard-Port muss hier nur geändert werden, wenn mehr als eine Instanz
+des siproxd betrieben wird.
+
+Beispiel: \verb+SIPROXD_1_SIP_PORT='5060'+
+
+\config{SIPROXD\_x\_RTP\_PORT\_MIN}{SIPROXD\_x\_RTP\_PORT\_MIN}{SIPROXDxRTPPORTMIN}
+
+Unteres Ende des Port-Bereichs, der für eingehende
+RTP-Stream-Verbindungen benutzt wird.
+
+Beispiel: \verb+SIPROXD_1_RTP_PORT_MIN='7070'+
+
+\config{SIPROXD\_x\_RTP\_PORT\_MAX}{SIPROXD\_x\_RTP\_PORT\_MAX}{SIPROXDxRTPPORTMAX}
+
+Oberes Ende des Port-Bereichs für eingehenden RTP-Verkehr.
+
+Beispiel: \verb+SIPROXD_1_RTP_PORT_MAX='7089'+
+
+\config{SIPROXD\_x\_USER\_N}{SIPROXD\_x\_USER\_N}{SIPROXDxUSERN}
+
+Ist dieser Wert größer null, müssen sich alle Nutzer gegenüber dem
+siproxd mit Nutzername und Passwort authentifizieren.
+
+Beispiel: \verb+SIPROXD_1_USER_N='1'+
+
+Diese Variable ist optional. Ist sie nicht gesetzt, wird der Wert '0'
+angenommen.
+
+\config{SIPROXD\_x\_USER\_x\_NAME}{SIPROXD\_x\_USER\_x\_NAME}{SIPROXDxUSERxNAME}
+
+Nutzername des jeweiligen Nutzerkontos, das sich am siproxd
+authentifizieren muss.
+
+Beispiel: \verb+SIPROXD_1_USER_1_NAME='alice'+
+
+Diese Variable ist optional.
+
+\config{SIPROXD\_x\_USER\_x\_PASS}{SIPROXD\_x\_USER\_x\_PASS}{SIPROXDxUSERxPASS}
+
+Passwort des jeweiligen Nutzerkontos, das sich am siproxd
+authentifizieren muss.
+
+Beispiel: \verb+SIPROXD_1_USER_1_PASSWD='batteryhorsestaple'+
+
+Diese Variable ist optional.
+
+\end{description}
+
+\subsubsection{Beispiel}
+
+\begin{example}
+\begin{verbatim}
+OPT_SIPROXD='yes'
+…
+\end{verbatim}
+\end{example}

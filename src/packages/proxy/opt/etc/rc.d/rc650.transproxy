@@ -1,0 +1,76 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc650.transproxy - start transproxy transparent HTTP proxy
+#
+# Creation:     07.12.2007 tobig
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_TRANSPROXY in
+yes)
+    begin_script TRANSPROXY "starting transparent HTTP proxy (transproxy)..."
+
+    # add chain in-tproxy
+    fw_add_chain filter in-tproxy
+    fw_prepend_rule filter INPUT-tail 'in-tproxy' "transproxy access"
+
+    bind_list=
+    for idx in `seq 1 $TRANSPROXY_LISTEN_N`
+    do
+        eval addr='$TRANSPROXY_LISTEN_'$idx
+        oldIFS="$IFS"
+        IFS=":"
+        set -- $addr
+        IFS="$oldIFS"
+        case $1 in
+        any)
+            bind_list="$bind_list 0.0.0.0:$2"
+        ;;
+        *)
+            if translate_ip_net $1 TRANSPROXY_LISTEN_$idx
+            then
+                bind_list="$bind_list $res:$2"
+            fi
+        ;;
+        esac
+    done
+
+    allow_list=""
+    for idx in `seq 1 $TRANSPROXY_ALLOW_N`
+    do
+        eval addr='$TRANSPROXY_ALLOW_'$idx
+        if translate_ip_net $addr TRANSPROXY_ALLOW_$idx
+        then
+            allow_list="$allow_list -a $res"
+        fi
+    done
+
+    for allow in $allow_list
+    do
+        case $allow in
+        -a) ;;
+        *)
+            for bind in $bind_list
+            do
+                fw_append_rule filter in-tproxy "prot:tcp $allow $bind ACCEPT"
+            done
+        ;;
+        esac
+    done
+
+    translate_ip_net $TRANSPROXY_TARGET_IP TRANSPROXY_TARGET_IP target_host
+
+    for b in $bind_list
+    do
+        oldIFS="$IFS"
+        IFS=":"
+        set -- $b
+        IFS="$oldIFS"
+        tproxy -p -s $2 -b $1 $allow_list -r nobody $target_host $TRANSPROXY_TARGET_PORT
+    done
+
+    end_script
+;;
+esac
+
+# vim: set sts=4 sw=4 et:

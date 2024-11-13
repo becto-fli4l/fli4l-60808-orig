@@ -1,0 +1,169 @@
+#!/bin/sh
+# /etc/rc.d/rc655.siproxd - install siproxs
+#------------------------------------------------------------------------------
+#
+# Creation:     2021-03-28  Christoph Fritsch <fli4l@dechristo.net>
+# Last Update:  2021-03-29  Christoph Fritsch <fli4l@dechristo.net>
+#------------------------------------------------------------------------------
+
+SIPROX_CFG_DIR='/etc/siproxd'
+
+###############################################################################
+# Functions
+###############################################################################
+
+# joins strings with given divider
+# $(join_by ',' a b c) ---> a,b,c
+join_by ()
+{
+    local IFS="$1";
+    shift;
+    echo "$*"
+}
+
+###############################################################################
+# Start script
+###############################################################################
+
+case $OPT_SIPROXD in
+yes)
+    begin_script SIPROXD "setting up siproxd SIP Proxy..."
+    
+    log_info "creating siproxd config directory $SIPROX_CFG_DIR"
+    mkdir -p $SIPROX_CFG_DIR
+
+
+    # Prepare siproxd server config in $SIPROX_CFG_DIR 
+    for siproxd_config_idx in $(seq 1 $SIPROXD_N)
+    do
+        eval local siproxd_dev_in='$SIPROXD_'$siproxd_config_idx'_DEV_IN'
+        # translate IP_NET_1_DEV, eth0.100
+        translate_net_if $siproxd_dev_in siproxd_dev_in
+        log_info "siproxd input interface $siproxd_dev_in..."
+        
+        eval local siproxd_dev_out='$SIPROXD_'$siproxd_config_idx'_DEV_OUT'
+        # translate IP_NET_1_DEV, eth0.100
+        translate_net_if $siproxd_dev_out siproxd_dev_out
+        log_info "siproxd output interface $siproxd_dev_out..."
+
+        eval local siproxd_listen_port='$SIPROXD_'$siproxd_config_idx'_SIP_PORT'
+        eval local siproxd_rtp_port_min='$SIPROXD_'$siproxd_config_idx'_RTP_PORT_MIN'
+        eval local siproxd_rtp_port_max='$SIPROXD_'$siproxd_config_idx'_RTP_PORT_MAX'
+        
+        eval local siproxd_transparent='$SIPROXD_'$siproxd_config_idx'_TRANSPARENT'
+        
+        # concat allowed nets, translate IP_NET_x and {prefixes} to IPs and write to config file
+        siproxd_allowed_nets=''
+        eval local allowed_nets_n='$SIPROXD_'$siproxd_config_idx'_ALLOW_REG_N'
+        for allowed_nets_idx in $(seq 1 $allowed_nets_n)
+        do
+            eval local allowed_net='$SIPROXD_'$siproxd_config_idx'_ALLOW_REG_'$allowed_nets_idx
+            log_info "processing allowed_net $allowed_net..."
+            local res=$allowed_net
+            case $allowed_net in
+            IP_NET_*)
+                translate_ip_net $allowed_net SIPROXD_${siproxd_config_idx}_ALLOW_REG_${allowed_nets_idx}
+                allowed_net=$res
+                log_info "translated IP_NET_*..."
+                ;;
+            IPV6_NET_*)
+                translate_ip6_net $allowed_net SIPROXD_${siproxd_config_idx}_ALLOW_REG_${allowed_nets_idx}
+                allowed_net=$res
+                log_info "translated IPV6_NET_*..."
+                ;;
+            {*})
+                # resolve net prefix 
+                allowed_net=$(circuit_resolve_address "$allowed_net" ipv4)
+                log_info "translated PREFIX $allowed_net..."
+            esac
+            
+            log_info "siproxd allowed_net $allowed_net..."
+
+            # concatenate allowed nets
+            siproxd_allowed_nets=$(join_by ',' ${siproxd_allowed_nets} $allowed_net)
+            log_info "siproxd allowed_nets $siproxd_allowed_nets..."
+            
+            # set up redirect firewall rule if siproxd is configured as transparent proxy
+            if [ $siproxd_transparent = 'yes' -a $allowed_net != '' ]; then
+                log_info "configuring SIP transparent proxy via REDIRECT..."
+
+                local siproxd_fw_rule="prot:udp $allowed_net 5060 REDIRECT:$siproxd_listen_port"
+                local siproxd_fw_comment="transparent SIP proxy for net $allowed_net"
+                fw_append_rule nat PORTFW "$siproxd_fw_rule" "$siproxd_fw_comment" exec_prerouting_rule
+                log_info "SIP transparent proxy for net $allowed_net: '$siproxd_fw_rule'"
+            fi
+        done
+        
+        log_info "siproxd $siproxd_config_idx allowed_nets $siproxd_allowed_nets..."
+        
+        eval local siproxd_config_file=$SIPROX_CFG_DIR'/siproxd_'$siproxd_config_idx'.conf'
+        eval local siproxd_registration_file='/var/lib/siproxd_registrations-'$siproxd_config_idx
+        eval local siproxd_pid_file='/var/run/siproxd-'$siproxd_config_idx'.pid'
+
+        log_info "writing siproxd config file $siproxd_config_file..."
+        # write siproxd-x.conf
+        {
+        echo "# $siproxd_config_file for OPT_SIPROXD"
+        echo '#'
+        echo 'if_inbound  = '${siproxd_dev_in}
+        echo 'if_outbound = '${siproxd_dev_out}
+        echo 'hosts_allow_reg = '${siproxd_allowed_nets}
+        echo 'sip_listen_port = '${siproxd_listen_port}
+        echo 'daemonize = 1'
+        echo '# silence_log = 1'
+        echo 'user = nobody'
+        echo 'registration_file = '${siproxd_registration_file}
+        echo 'pid_file = '${siproxd_pid_file}
+        echo 'rtp_proxy_enable = 1'
+        echo 'rtp_port_low  = '${siproxd_rtp_port_min}
+        echo 'rtp_port_high = '${siproxd_rtp_port_max}
+        echo '# rtp_timeout = 300'
+        echo '# default_expires = 600'
+        echo '# debug_level = 0x00000015'
+        echo '# plugin_dir: MUST be terminated with /'
+        echo 'plugindir=/usr/lib/siproxd/'
+        echo '#load_plugin=plugin_logcall.so'
+
+        } > $siproxd_config_file;
+
+
+        # parse users and store to siproxd passwd file
+        eval local users_n='$SIPROXD_'$siproxd_config_idx'_USER_N'
+        if [ $users_n -gt 0 ]; then
+            eval local siproxd_password_file=$SIPROX_CFG_DIR'/siproxd_'$siproxd_config_idx'_passwd.conf'
+            {
+            echo '######################################################################'
+            echo '#'
+            echo '# Per user password file for siproxd'
+            echo '#'
+            echo '# format is:'
+            echo '# <username> <password>'
+            echo '# username and password must not contains white spaces'
+            echo '#'
+            echo '######################################################################'
+            echo ''
+            echo ${current_user} ${current_password}
+            } > $siproxd_password_file;
+
+            for user_idx in $(seq 1 $users_n)
+            do
+                eval local current_user='$SIPROXD_'$siproxd_config_idx'_USER_'$user_idx'_NAME'
+                eval local current_password='$SIPROXD_'$siproxd_config_idx'_USER_'$user_idx'_PASS'
+
+                echo ${current_user} ${current_password} >> $siproxd_password_file;
+            done
+            
+            {
+            echo 'proxy_auth_realm = siproxd@fli4l'
+            echo 'proxy_auth_pwfile = '${siproxd_password_file}
+            } >> $siproxd_config_file;
+        fi
+
+        # start siproxd
+        /usr/sbin/siproxd --config $siproxd_config_file
+        log_info "siproxd started: /usr/sbin/siproxd --config $siproxd_config_file"
+
+    done
+
+    end_script
+esac

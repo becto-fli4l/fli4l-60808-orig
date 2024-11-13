@@ -1,0 +1,67 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc650.ss5 - start ss5 socks proxy
+#
+# Creation:     09.02.2006 babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+case $OPT_SS5 in
+yes)
+    begin_script SS5 "starting ss5 socks proxy..."
+
+    # add chain in-ss5
+    fw_add_chain filter in-ss5
+    fw_prepend_rule filter INPUT-tail 'in-ss5' "ss5 access"
+    fw_add_chain nat pre-in-ss5
+
+    bind_list=
+    for idx in `seq 1 $SS5_LISTEN_N`
+    do
+        eval addr='$SS5_LISTEN_'$idx''
+        port=${addr#*:}
+        addr=${addr%:*}
+        if translate_ip_net $addr
+        then
+            bind_list="$bind_list $res:$port"
+        fi
+    done
+
+    allow_list=
+    for idx in `seq 1 $SS5_ALLOW_N`
+    do
+        eval addr='$SS5_ALLOW_'$idx''
+        if translate_ip_net $addr
+        then
+            allow_list="$allow_list $res"
+        fi
+    done
+
+    for allow in $allow_list
+    do
+        for bind in $bind_list
+        do
+            fw_append_rule filter in-ss5 "prot:tcp $allow $bind ACCEPT"
+        done
+    done
+
+    {
+        echo "auth 0.0.0.0/0 - -"
+        echo "permit - 0.0.0.0/0 - 0.0.0.0/0 - - - - -"
+    }>/etc/ss5.conf
+
+    # create empty ss5.ha file to avoid a warning
+    mkdir -p /etc/opt/ss5
+    > /etc/opt/ss5/ss5.ha
+
+    # create directory where the PID file is stored
+    mkdir -p /var/run/ss5
+
+    for b in $bind_list
+    do
+        ss5 -b $b -t -u nobody -s -m
+    done
+
+    end_script
+;;
+esac

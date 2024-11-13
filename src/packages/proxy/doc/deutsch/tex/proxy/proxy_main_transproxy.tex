@@ -1,0 +1,53 @@
+% Last Update: $Id$
+\subsection{OPT\_TRANSPROXY (EXPERIMENTELL) - Transparenter HTTP-Proxy}
+\configlabel{OPT\_TRANSPROXY}{OPTTRANSPROXY}
+
+Transproxy ist ein ,,transparenter'' Proxy, also ein Programm, dass es
+ermöglicht, alle HTTP-Abfragen, die über den Router laufen, abzufangen und an
+einen normalen HTTP-Proxy, z.B. Privoxy, weiterzuleiten. Um diese
+Funktionalität zu erreichen, muss der Paketfilter HTTP-Anfragen, die eigentlich
+ins Internet gehen sollen, an Transproxy weiterreichen, welcher diese weiter
+aufbereitet und an den anderen HTTP-Proxy weitergibt. iptables bietet zur
+Unterstützung dieser Funktion die Aktion ,,REDIRECT'':
+
+\begin{verbatim}
+        PF_PREROUTING_1='tmpl:http IP_NET_1 REDIRECT:8081'
+\end{verbatim}
+
+Diese Regel würde alle HTTP-Pakete aus dem ersten definierten Netz
+(normalerweise das interne LAN) an Transproxy auf Port 8081 weiterleiten.
+
+\begin{description}
+
+\config{TRANSPROXY\_LISTEN\_N}{TRANSPROXY\_LISTEN\_N}{TRANSPROXYLISTENN}
+\config{TRANSPROXY\_LISTEN\_x}{TRANSPROXY\_LISTEN\_x}{TRANSPROXYLISTENx}
+
+        {Hier werden die IP-Adressen oder symbolischen Namen inklusive
+        der Portnummer der Interfaces angegeben, auf denen Transproxy auf
+        Verbindungen von Clients horchen soll. Hier müssen alle Interfaces
+        angegeben werden, für die im Paketfilter Pakete auf Transproxy
+        umgelenkt werden. Mit der Vorgabeeinstellung \var{any:8081} hört
+        Transproxy auf allen Interfaces.}
+
+\config{TRANSPROXY\_TARGET\_IP}{TRANSPROXY\_TARGET\_IP}{TRANSPROXYTARGETIP}
+\config{TRANSPROXY\_TARGET\_PORT}{TRANSPROXY\_TARGET\_PORT}{TRANSPROXYTARGETPORT
+}
+
+        {Mit diesen Optionen wird festgelegt, an welchen Dienst eingehende
+        HTTP-Anfragen umgeleitet werden. Dies kann ein beliebiger
+        Standard-HTTP-Proxy (Squid, Privoxy, Apache, etc.) auf einem beliebigen
+        anderen Rechner (oder auch auf fli4l selbst) sein. Hier ist darauf zu
+achten,
+        dass der Proxy sich nicht im Bereich der durch den Paketfilter
+        umgeleiteten HTTP-Anfragen befindet, da sonst eine Schleife entsteht.}
+
+\config{TRANSPROXY\_ALLOW\_N}{TRANSPROXY\_ALLOW\_N}{TRANSPROXYALLOWN}
+\config{TRANSPROXY\_ALLOW\_x}{TRANSPROXY\_ALLOW\_x}{TRANSPROXYALLOWx}
+
+        {Die Liste der Netze und/oder IP-Adressen für die der
+        Paketfilter geöffnet wird. Dies sollte die gleichen Netze abdecken, die
+        auch im Paketfilter umgeleitet werden. Werden hier keine Bereiche
+        angegeben, müssen die Angaben von Hand in der Paketfilter-Konfiguation
+        vorgenommen werden.}
+
+\end{description}

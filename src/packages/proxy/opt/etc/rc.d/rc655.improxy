@@ -1,0 +1,60 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc455.improxy - rc file for improxy
+#
+# Creation:     01.06.2013 jk
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_IMPROXY" = yes ]
+then
+    # Debug
+    begin_script IMPROXY "starting improxy ..."
+
+    improxy_config="/etc/improxy.conf"
+    pidfile=/var/run/improxy.pid
+
+    translate_net_if $IMPROXY_UPSTREAM_DEV improxy_upstream
+    translate_net_if $IMPROXY_DOWNSTREAM_DEV improxy_downstream
+    enable_mld=$IMPROXY_ENABLE_MLD
+    igmpv3=$IMPROXY_ENABLE_IGMPV3
+
+
+    # create improxy.conf
+    {
+    echo "# improxy.conf for OPT_IMPROXY package"
+    echo ""
+
+    if [ $enable_mld = yes ]
+    then
+        echo "mld enable "
+    fi
+
+    if [ $igmpv3 = yes ]
+    then
+        echo "igmp enable version 3"
+    fi
+    echo ""
+
+    echo "# configure upstream"
+    echo "upstream $improxy_upstream"
+    echo ""
+
+    echo "# configure upstream"
+    echo "downstream $improxy_downstream"
+
+   } > $improxy_config;
+
+   if [ -d /sys/class/net/$improxy_upstream ]
+   then
+       # execute igmpproxy
+       improxy -c $improxy_config &
+   else
+       log_info "Upstream interface $improxy_upstream is not online (yet). improxy will be (re-)started later."
+   fi
+
+   # save pid
+   pidfile=/var/run/improxy.pid
+
+   end_script
+fi

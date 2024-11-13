@@ -1,0 +1,250 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for proxy
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_privoxy)
+then
+    provides privoxy version 4.0.0
+    depends on fli4l version 4.0
+
+    foreach dir in privoxy_%_actiondir
+    do
+        if (dir != "")
+        then
+            if ( dir =~ "^/*etc/privoxy/*$" )
+            then
+                error "You can't use 'etc/privoxy' as an action dir, because this would overwrite the default actions for all privoxy instances."
+            fi
+            stat ("$config_dir/$dir/default.action", res)
+            if (res_res == "OK")
+            then
+                warning "using $dir/default.action"
+                add_to_opt "$dir/default.action"
+            fi
+            stat ("$config_dir/$dir/user.action", res)
+            if (res_res == "OK")
+            then
+                warning "using $dir/user.action"
+                add_to_opt "$dir/user.action"
+            fi
+        fi
+    done
+fi
+if (opt_tor)
+then
+    provides tor version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_ss5)
+then
+    provides ss5 version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_transproxy)
+then
+    provides transproxy version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_igmpproxy)
+then
+    provides igmpproxy version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_improxy)
+then
+    provides improxy version 4.0.0
+    depends on fli4l version 4.0
+    if (improxy_enable_mld && !opt_ipv6)
+    then
+        error "IMPROXY_ENABLE_MLD needs IPv6. Either enable IPv6 or disable MLD"
+    fi
+fi
+if (opt_igmpproxy && opt_improxy)
+then
+    error "You cannot enable igmpproxy and improxy at the same time. Please activate only on of these packages"
+fi
+if (opt_stunnel)
+then
+    provides stunnel version 4.0.0
+    depends on fli4l version 4.0
+
+    if (stunnel_n == 0)
+    then
+        error "STUNNEL_N must be greater than zero if OPT_STUNNEL='yes'"
+    fi
+
+    foreach idx in stunnel_n
+    do
+        set name=stunnel_%_name[idx]
+        set accept=stunnel_%_accept[idx]
+
+        if (accept =~ "^(.*):(.*)$")
+        then
+            set address=match_%[1]
+            set port=match_%[2]
+        fi
+
+        foreach j in stunnel_n
+        do
+            if (j < idx)
+            then
+                set othername=stunnel_%_name[j]
+                if (name == othername)
+                then
+                    error "STUNNEL_${j}_NAME='$othername' clashes with STUNNEL_${idx}_NAME, please use unique names"
+                fi
+
+                set otheraccept=stunnel_%_accept[j]
+                if (otheraccept =~ "^(.*):(.*)$")
+                then
+                    set otheraddress=match_%[1]
+                    set otherport=match_%[2]
+                    if (port == otherport && (address == otheraddress || address == "any" || otheraddress == "any"))
+                    then
+                        error "STUNNEL_${j}_ACCEPT='$otheraccept' clashes with STUNNEL_${idx}_ACCEPT='$accept', please use unique address/port combinations"
+                    fi
+                fi
+            fi
+        done
+
+        set client=stunnel_%_client[idx]
+        set cert_ca_file=stunnel_%_cert_ca_file[idx] ?: ""
+        set cert_file=stunnel_%_cert_file[idx] ?: ""
+        set cert_verify=stunnel_%_cert_verify[idx] ?: ""
+
+        if (cert_verify == "" || cert_verify == "none")
+        then
+            if (cert_ca_file != "")
+            then
+                warning "STUNNEL_${idx}_CERT_CA_FILE='$cert_ca_file' is ignored as STUNNEL_${idx}_CERT_VERIFY does not require verification against a CA"
+            fi
+        else
+            if (cert_ca_file != "")
+            then
+                add_to_opt "etc/ssl/stunnel/$cert_ca_file"
+            else
+                if (cert_verify == "onlycert" || cert_verify == "both")
+                then
+                    error "STUNNEL_${idx}_CERT_CA_FILE must not be empty if STUNNEL_${idx}_CERT_VERIFY='$cert_verify'"
+                else
+                    # import certificates from wget
+                    depends on wget version 4.0
+                fi
+            fi
+        fi
+
+        if (cert_file != "")
+        then
+            add_to_opt "etc/ssl/stunnel/$cert_file" "mode=600"
+        else
+            if (client == "no")
+            then
+                error "STUNNEL_${idx}_CERT_FILE must not be empty if STUNNEL_${idx}_CLIENT='no'"
+            fi
+        fi
+
+        set connect=stunnel_%_connect[idx]
+        set outgoing_ip=stunnel_%_outgoing_ip[idx] ?: ""
+        set accept_ipv4=stunnel_%_accept_ipv4[idx] ?: ""
+        set accept_ipv6=stunnel_%_accept_ipv6[idx] ?: ""
+
+        if (accept_ipv4 == "yes" && !opt_ipv4)
+        then
+            error "STUNNEL_${idx}_ACCEPT_IPV4='yes' requires OPT_IPV4='yes'"
+        fi
+        if (accept_ipv6 == "yes" && !opt_ipv6)
+        then
+            error "STUNNEL_${idx}_ACCEPT_IPV6='yes' requires OPT_IPV6='yes'"
+        fi
+        if (accept_ipv4 != "yes")
+        then
+            if (accept =~ "^(RE:FW_NET_IP):(RE:NUM_INT)$")
+            then
+                error "STUNNEL_${idx}_ACCEPT='$accept' requires STUNNEL_${idx}_ACCEPT_IPV4='yes'"
+            fi
+        fi
+        if (accept_ipv6 != "yes")
+        then
+            if (accept =~ "^(RE:FW_NET_IP6):(RE:NUM_INT)$")
+            then
+                error "STUNNEL_${idx}_ACCEPT='$accept' requires STUNNEL_${idx}_ACCEPT_IPV6='yes'"
+            fi
+        fi
+        if (!opt_ipv4)
+        then
+            if (connect =~ "^((RE:IPADDR)|(RE:IPADDR):(RE:NUM_INT))$")
+            then
+                error "STUNNEL_${idx}_CONNECT='$connect' requires OPT_IPV4='yes'"
+            fi
+            if (outgoing_ip != "" && outgoing_ip =~ "^(RE:FW_NET_IP4)$")
+            then
+                error "STUNNEL_${idx}_OUTGOING_IP='$outgoing_ip' requires OPT_IPV4='yes'"
+            fi
+        fi
+        if (!opt_ipv6)
+        then
+            if (connect =~ "^((RE:IPADDR6)|(RE:IPADDR6):(RE:NUM_INT))$")
+            then
+                error "STUNNEL_${idx}_CONNECT='$connect' requires OPT_IPV6='yes'"
+            fi
+            if (outgoing_ip != "" && outgoing_ip =~ "^(RE:FW_NET_IP6)$")
+            then
+                error "STUNNEL_${idx}_OUTGOING_IP='$outgoing_ip' requires OPT_IPV6='yes'"
+            fi
+        fi
+    done
+fi
+
+
+if (opt_siproxd)
+then
+    provides opt_siproxd version 4.0.0
+    depends on fli4l version 4.0
+	
+    foreach n in SIPROXD_N
+    do
+        set siproxd_listen_port=SIPROXD_%_SIP_PORT[n]
+        set siproxd_min_rtp_port=SIPROXD_%_RTP_PORT_MIN[n]
+        set siproxd_max_rtp_port=SIPROXD_%_RTP_PORT_MAX[n]
+        set siproxd_transparent_proxy=SIPROXD_%_TRANSPARENT[n]
+		set siproxd_num_users=SIPROXD_%_USER_N[n] ?: 0
+
+		# min port must be smaller than max port
+        if ( siproxd_min_rtp_port > siproxd_max_rtp_port ) then
+            error "siproxd: SIPROXD_${n}_RTP_PORT_MIN='$siproxd_min_rtp_port' needs to be smaller than SIPROXD_${n}_RTP_PORT_MAX='$siproxd_max_rtp_port'."
+        fi
+
+		# user/password with transparent proxy does not really make sense
+        if ( siproxd_transparent_proxy == "yes" && siproxd_num_users > 0 ) then
+            error "siproxd: configuring access control (user/password) for a transparent SIP proxy will complicate things..."
+        fi
+		
+		foreach m in SIPROXD_N
+        do        
+            if (m > n) then
+                set siproxd_listen_port_b=SIPROXD_%_SIP_PORT[m]
+				set siproxd_min_rtp_port_b=SIPROXD_%_RTP_PORT_MIN[m]
+				set siproxd_max_rtp_port_b=SIPROXD_%_RTP_PORT_MAX[m]
+
+                # siproxd UDP port must only be used once
+                if( siproxd_listen_port == siproxd_listen_port_b ) then
+                    error "siproxd: You can't use the same siproxd UDP port twice. SIPROXD_${n}_SIP_PORT='$siproxd_listen_port' and SIPROXD_${m}_SIP_PORT='$siproxd_listen_port_b' are the same."
+                fi
+
+                # rtp port ranges must not overlap
+                if( siproxd_min_rtp_port >= siproxd_min_rtp_port_b && siproxd_min_rtp_port <= siproxd_max_rtp_port_b ) then
+                    error "siproxd: RTP port ranges must not overlap. SIPROXD_${n}_RTP_PORT_MIN='$siproxd_min_rtp_port' overlaps with range SIPROXD_${m}_RTP_PORT_MIN='$siproxd_min_rtp_port_b' - SIPROXD_${m}_RTP_PORT_MAX='$siproxd_max_rtp_port_b'."
+                fi
+                if( siproxd_max_rtp_port >= siproxd_min_rtp_port_b && siproxd_max_rtp_port <= siproxd_max_rtp_port_b ) then
+                    error "siproxd: RTP port ranges must not overlap. SIPROXD_${n}_RTP_PORT_MAX='$siproxd_max_rtp_port' overlaps with range SIPROXD_${m}_RTP_PORT_MIN='$siproxd_min_rtp_port_b' - SIPROXD_${m}_RTP_PORT_MAX='$siproxd_max_rtp_port_b'."
+                fi
+			fi
+		done
+	done
+fi
+

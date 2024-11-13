@@ -1,0 +1,302 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /usr/share/stunnel.api - public API for OPT_STUNNEL
+#
+# Last Update: $Id$
+#------------------------------------------------------------------------------
+
+if [ -z "$stunnel_api" ]
+then
+stunnel_api=yes
+
+# lookup layer-3 protocol configuration
+eval $(grep '^OPT_IPV[46]=' /etc/rc.cfg)
+
+# name of INPUT filter chain for stunnel instances
+stunnel_input_filter_chain=in-stunnel-ports
+
+# name of OUTPUT filter chain for stunnel instances
+stunnel_output_filter_chain=out-stunnel-ports
+
+# ********************************************
+# *** Functions being part of the public API *
+# ********************************************
+
+# Creates the basic configuration file for an stunnel instance.
+#
+# $1 = configuration file to be created (e.g. /etc/stunnel.conf)
+# $2 = name of PID file (without a path or suffix)
+# $3 = debug setting ("yes", "no" or a value between 0 and 7)
+stunnel_create()
+{
+    local conffile=$1 pidname=$2 debug=${3:-no}
+
+    case $debug in
+    yes)  debug="debug=7";;
+    no)   debug="debug=4";;
+    esac
+
+    cat <<EOF >$conffile
+$debug
+setgid=nogroup
+setuid=nobody
+foreground=no
+pid=/var/run/stunnel/$pidname.pid
+socket = a:IPV6_V6ONLY=yes
+EOF
+}
+
+# Destroys the configuration file for an stunnel instance.
+#
+# $1 = configuration file to be destroyed (e.g. /etc/stunnel.conf)
+# $2 = name of PID file (without a path or suffix)
+stunnel_destroy()
+{
+    local conffile=$1 pidname=$2
+    rm -f $conffile $pidname
+}
+
+# Creates an stunnel instance.
+#
+# $1 = configuration file to be appended to (e.g. /etc/stunnel.conf)
+# $2 = name of variable receiving an error message if a non-zero exit code is
+#      returned
+# $3 = name of stunnel instance
+# $4 = mode of operation ("yes" = client mode, "no" = server mode)
+# $5 = address the stunnel instance shall listen to
+# $6 = (optional) shall IPv4 be used for listening? defaults to $OPT_IPV4
+# $7 = (optional) shall IPv6 be used for listening? defaults to $OPT_IPV6
+# $8 = address the stunnel instance shall connect to
+# $9 = (optional) address to be used at our side for outgoing connection
+# ${10} = (optional) shall DNS resolution be delayed until connection time?
+#         defaults to "no"
+# ${11} = client certificate to be used
+# ${12} = CA certificate to be used
+# ${13} = how to verify server certificate? defaults to "none"
+#
+# Exit code: 0 if successful, a non-zero value otherwise
+stunnel_add()
+{
+    local _conffile=$1 _errvar=$2 _name=$3 _client=$4 \
+        _accept=$5 _accept_ipv4=$6 _accept_ipv6=$7 _connect=$8 _outgoing_ip=$9 \
+        _delay_dns=${10:-no} \
+        _cert_file=${11} _cert_ca_file=${12} _cert_verify=${13:-none}
+
+    : ${_accept_ipv4:=${OPT_IPV4:-no}}
+    : ${_accept_ipv6:=${OPT_IPV6:-no}}
+
+    # process local address for incoming connections
+    local _incoming_ip _incoming_port
+    _incoming_ip=${_accept%:*}
+    _incoming_ip=${_incoming_ip#\[}
+    _incoming_ip=${_incoming_ip%\]}
+    _incoming_port=${_accept##*:}
+
+    local _incoming_ip4= _incoming_ip4_fw= _incoming_ip6= _incoming_ip6_fw=
+    case "$_incoming_ip" in
+    any)
+        case $_accept_ipv4 in
+        yes) _incoming_ip4="0.0.0.0";;
+        esac
+        case $_accept_ipv6 in
+        yes) _incoming_ip6="::";;
+        esac
+        ;;
+    *)
+        if [ "$_accept_ipv4" = "yes" ] &&
+            translate_ip_net "$_incoming_ip" "stunnel(name=$_name)/accept" \
+                _incoming_ip4 1
+        then
+            _incoming_ip4=$(list_foreach "echo \${1%/*}" $_incoming_ip4)
+        fi
+        if [ "$_accept_ipv6" = "yes" ] &&
+            translate_ip6_net "$_incoming_ip" "stunnel(name=$_name)/accept" \
+                _incoming_ip6 1
+        then
+            _incoming_ip6=$(list_foreach "echo \${1%/*}" $_incoming_ip6)
+        fi
+        ;;
+    esac
+
+    if [ "$_incoming_ip4" = "0.0.0.0" ]
+    then
+        _incoming_ip4_fw="$_incoming_ip4/0"
+    else
+        _incoming_ip4_fw=$_incoming_ip4
+    fi
+    if [ "$_incoming_ip6" = "::" ]
+    then
+        _incoming_ip6_fw="$_incoming_ip6/0"
+    else
+        _incoming_ip6_fw=$_incoming_ip6
+    fi
+
+    # process remote address for outgoing connections
+    local _outgoing_remote_ip _outgoing_remote_port
+    case $_connect in
+    \[*\]:*)
+        _outgoing_remote_ip=${_connect%:*}
+        _outgoing_remote_ip=${_outgoing_remote_ip#\[}
+        _outgoing_remote_ip=${_outgoing_remote_ip%\]}
+        _outgoing_remote_port=${_connect##*:}
+        ;;
+    *.*.*.*:*|@*:*)
+        _outgoing_remote_ip=${_connect%:*}
+        _outgoing_remote_port=${_connect##*:}
+        ;;
+    *)
+        _outgoing_remote_ip=$_connect
+        _outgoing_remote_port=$_incoming_port
+        ;;
+    esac
+
+    local _outgoing_remote_ip4= _outgoing_remote_ip6=
+    if [ "$OPT_IPV4" = "yes" ]
+    then
+        translate_ip_net "$_outgoing_remote_ip" "stunnel(name=$_name)/connect" \
+            _outgoing_remote_ip4 1
+    fi
+    if [ "$OPT_IPV6" = "yes" ]
+    then
+        translate_ip6_net "$_outgoing_remote_ip" "stunnel(name=$_name)/connect" \
+            _outgoing_remote_ip6 1
+    fi
+
+    if [ -z "$_outgoing_remote_ip4" -a -z "$_outgoing_remote_ip6" -a \
+            "${_outgoing_remote_ip#@}" != "$_outgoing_remote_ip" ]
+    then
+        _outgoing_remote_ip4=$_outgoing_remote_ip
+        _outgoing_remote_ip6=$_outgoing_remote_ip
+    fi
+
+    # process local address for outgoing connections
+    if [ -n "$_outgoing_ip" ]
+    then
+        if [ "$OPT_IPV4" = "yes" ] && translate_ip_net $_outgoing_ip \
+                "stunnel(name=$_name)/outgoing-ip" _outgoing_ip 1
+        then
+            _outgoing_remote_ip6=
+        elif [ "$OPT_IPV6" = "yes" ] && translate_ip6_net $_outgoing_ip \
+                "stunnel(name=$_name)/outgoing-ip" _outgoing_ip 1
+        then
+            _outgoing_remote_ip4=
+        else
+            eval $_errvar="\"Outgoing address \$_outgoing_ip could not be translated\""
+            return 1
+        fi
+    fi
+
+    if [ -z "$_outgoing_remote_ip4" -a -z "$_outgoing_remote_ip6" ]
+    then
+        eval $_errvar="\"Remote address \$_outgoing_remote_ip could not be translated or it does not match the outgoing address \$_outgoing_ip\""
+        return 1
+    fi
+
+    # process remaining options
+    case $_cert_file in
+    '') _cert_file="";;
+    *)  _cert_file="cert=/etc/ssl/stunnel/$_cert_file";;
+    esac
+
+    case $_cert_ca_file in
+    '') _cert_ca_file="CApath=/etc/ssl/certs";;
+    *)  _cert_ca_file="CAfile=/etc/ssl/stunnel/$_cert_ca_file";;
+    esac
+
+    case $_cert_verify in
+    none)      _cert_verify="verify=0";;
+    optional)  _cert_verify="verify=1";;
+    onlyca)    _cert_verify="verify=2";;
+    onlycert)  _cert_verify="verify=4";;
+    both)      _cert_verify="verify=3";;
+    esac
+
+    # write configuration entries
+    if [ -n "$_incoming_ip4" ]
+    then
+        stunnel_private_write_conf_entry "$_conffile" "$_name" "$_client" \
+            "$_incoming_ip4" "$_incoming_port" \
+            "$_outgoing_remote_ip4" "$_outgoing_remote_ip6" \
+            "$_outgoing_remote_port" "$_outgoing_ip" "$_delay_dns" \
+            "$_cert_file" "$_cert_ca_file" "$_cert_verify"
+    fi
+    if [ -n "$_incoming_ip6" ]
+    then
+        stunnel_private_write_conf_entry "$_conffile" "$_name" "$_client" \
+            "$_incoming_ip6" "$_incoming_port" \
+            "$_outgoing_remote_ip4" "$_outgoing_remote_ip6" \
+            "$_outgoing_remote_port" "$_outgoing_ip" "$_delay_dns" \
+            "$_cert_file" "$_cert_ca_file" "$_cert_verify"
+    fi
+
+    # configure firewall
+    if [ -n "$_incoming_ip4" ]
+    then
+        fw_append_rule filter $stunnel_input_filter_chain "prot:tcp $_incoming_ip4_fw:$_incoming_port ACCEPT"
+    fi
+    if [ -n "$_incoming_ip6" ]
+    then
+        fw_append_rule6 filter $stunnel_input_filter_chain "prot:tcp [$_incoming_ip6_fw]:$_incoming_port ACCEPT"
+    fi
+    if [ -n "$_outgoing_remote_ip4" ]
+    then
+        fw_append_rule filter $stunnel_output_filter_chain "prot:tcp $_outgoing_remote_ip4:$_outgoing_remote_port ACCEPT"
+    fi
+    if [ -n "$_outgoing_remote_ip6" ]
+    then
+        fw_append_rule6 filter $stunnel_output_filter_chain "prot:tcp [$_outgoing_remote_ip6]:$_outgoing_remote_port ACCEPT"
+    fi
+
+    return 0
+}
+
+# ****************************************************************
+# *** Functions not being part of the public API -- Don't use! ***
+# ****************************************************************
+
+# Creates a configuration entry for a stunnel instance.
+#
+# $1 = configuration file
+# $2 = name of stunnel instance
+# $3 = mode of operation ("yes" = client mode, "no" = server mode)
+# $4 = address the stunnel instance shall listen to
+# $5 = port the stunnel instance shall listen to
+# $6 = IPv4 address the stunnel instance shall connect to
+# $7 = IPv6 address the stunnel instance shall connect to
+# $8 = port the stunnel instance shall connect to
+# $9 = (optional) address to be used at our side for outgoing connection
+# ${10} = (optional) shall DNS resolution be delayed until connection time?
+# ${11} = client certificate to be used
+# ${12} = CA certificate to be used
+# ${13} = how to verify server certificate? defaults to "none"
+stunnel_private_write_conf_entry()
+{
+    local conffile=$1 name=$2 client=$3 incoming_ip=$4 incoming_port=$5 \
+        outgoing_remote_ip4=$6 outgoing_remote_ip6=$7 outgoing_remote_port=$8 \
+        outgoing_ip=$9 delay_dns=${10} \
+        cert_file=${11} cert_ca_file=${12} cert_verify=${13}
+
+    {
+        cat <<EOF
+[$name]
+client=$client
+accept=$incoming_ip:$incoming_port
+${outgoing_ip:+local=$outgoing_ip}
+delay=$delay_dns
+$cert_file
+$cert_ca_file
+$cert_verify
+EOF
+
+        if [ -n "$outgoing_remote_ip4" ]
+        then
+            echo "connect=${outgoing_remote_ip4#@}:$outgoing_remote_port"
+        fi
+        if [ -n "$outgoing_remote_ip6" -a "$outgoing_remote_ip4" != "$outgoing_remote_ip6" ]
+        then
+            echo "connect=${outgoing_remote_ip6#@}:$outgoing_remote_port"
+        fi
+    } >>$conffile
+}
+
+fi # stunnel_api
