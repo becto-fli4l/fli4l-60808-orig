@@ -1,0 +1,158 @@
+% Last Update: $Id$
+\marklabel{sec:opt-chrony}
+{
+\section {CHRONY - Network Time Protocol Server/Client}
+}
+
+OPT\_CHRONY erweitert fli4l um das \jump{url:chronyntporg}{Network Time
+Protocol} (NTP). Dies ist nicht mit dem \emph{normalen} Time Protokoll zu
+verwechseln, welches das alte OPT\_TIME bereitstellt. Die Protokolle sind nicht
+kompatibel und somit werden gegebenenfalls neue Client-Programme, die NTP
+beherrschen, benötigt. Falls man nicht auf das einfache Time Protokoll
+verzichten kann, so läßt sich dieses Protokoll zusätzlich aktivieren.\\
+OPT\_CHRONY arbeitet sowohl im  Server, als auch im Client Modus. In der
+Funktion des Client gleicht es die Zeit des fli4l mit Zeitreferenzen (Time
+Server) im Internet ab. In der Grundeinstellung nutzt OPT\_CHRONY bis zu drei
+verschiedene Time Server aus dem Fundus von
+\jump{url:chronypoolntporg}{pool.ntp.org}. Es ist jedoch auch möglich, über die
+Konfigurationsdatei eine andere Auswahl an Time Servern zu treffen.
+So ist es beispielsweise sinvoll Server aus Europa zu wählen. Möglich ist das,
+indem man als Server de.pool.ntp.org angibt, wenn der Router bzw. der Provider 
+in Deutschland ist. Weitere Informationen dazu auf der Webseite von 
+\jump{url:chronypoolntporg}{pool.ntp.org}.\\
+
+In der Funktion des Server dient OPT\_CHRONY als Zeitreferenz für das lokale
+Netzwerk (LAN). NTP arbeitet auf Port 123.
+
+Chrony zeichnet sich dadurch aus, dass es keine fortlaufende Verbindung zum
+Internet benötigt. Sobald die Verbindung getrennt wird (offline), erhält
+chrony hiervon Kenntnis und stellt den Zeitabgleich mit den Internet Time
+Servern ein. Somit löst chrony keinen neuen Verbindungsaufbau aus. Weiterhin
+verhindert chrony nicht die automatische Verbindungsunterbrechung, falls die
+\var{HUP\_TIMEOUT}, also die Zeit, in der keine Daten mit dem Internet
+ausgetauscht werden, erreicht wurde.
+
+Damit der Zeitabgleich reibungslos funktioniert, sollte folgendes beachtet
+werden:
+\begin{itemize}
+  \item Chrony erwartet, dass die BIOS-Uhr in der Zeitzone UTC läuft. \\
+        UTC = Deutsche Zeit minus 1 (Winter) bzw. 2 (Sommer) Stunde(n)
+  \item Seit der Version 2.1.12 setzt Chrony die Uhrzeit mit der ersten
+        Verbindung zum Internet korrekt, auch wenn der Zeitunterschied 
+	sehr groß sein sollte (beispielsweise bei defekter Mainboardbatterie).
+  \item Sollte das BIOS Jahreszahlen nach 1999 nicht richtig darstellen können 
+        (Year 2000 Bug) bzw. die Implementation der BIOS Uhr fehlerhaft sein,
+	so muß \jump{OPTY2K}{\var{OPT\_Y2K='yes'}} aktiviert werden!
+\end{itemize}
+
+Es können nur Time Server im Internet über die Default Route (\var{0.0.0.0/0})
+erreicht werden, da nur die Default Route Chrony in den online Zustand
+versetzt. Ist der Router als LAN-Router konfiguriert, also keine DSL oder
+ISDN Circuits definiert, ist Chrony permanent im online Zustand.
+
+\textbf{Disclaimer: }\emph{Der Autor gibt weder eine Garantie auf die
+Funktionsfähigkeit des OPT\_\-CHRONY, noch haftet er für Schäden, z.B.
+Datenverlust, die durch den Einsatz von OPT\_\-CHRONY entstehen.}
+
+
+\marklabel{sec:konfigchrony}{
+\subsection {Konfiguration des OPT\_CHRONY}
+}
+
+Die Konfiguration erfolgt, wie bei allen fli4l Opts, durch Anpassung der Datei\\
+\var{Pfad/fli4l-\version/$<$config$>$/chrony.txt} an die eigenen Anforderungen.
+Jedoch sind fast alle Variablen des OPT\_\-CHRONY optional. Optional heißt, die
+Variablen können, müssen aber nicht in der Konfigurationsdatei auftauchen.
+Somit ist die chrony Konfigurationsdatei im Auslieferungszustand fast leer und
+die optionalen Variablen sind sinnvoll vorbelegt. Möchte man dennoch eine
+anderen Konfiguration, müssen die Variablen von Hand eingefügt werden. Im
+weiteren erfolgt nun die Beschreibung der einzelnen Variablen: 
+
+
+\begin{description}
+
+\config {OPT\_CHRONY}{OPT\_CHRONY}{OPTCHRONY}
+
+  Default: \var{OPT\_CHRONY='no'}
+
+  Die Einstellung \var{'no'} deaktiviert das OPT\_CHRONY vollständig. Es werden
+  keine Änderungen an dem fli4l Bootmedium bzw. dem Archiv \var{opt.img}
+  vorgenommen. Weiter überschreibt das OPT\_CHRONY grundsätzlich keine anderen
+  Teile der fli4l Installation, mit einer Ausnahme. Es wird die Filterdatei
+  ausgetauscht, die dafür sorgt, das Anfragen von außen nicht als Traffic
+  gewertet werden (fli4l legt sicher nach erreichen der Hangup Time auf). Die
+  neue Filterdatei legt fest, dass der chrony-Traffic ebenfalls nicht mitgezählt
+  wird, somit legt der Router weiterhin sicher auf.\\
+  Um OPT\_CHRONY zu aktivieren, ist die Variable \var{OPT\_CHRONY} auf 
+  \var{'yes'} zu setzen. 
+
+  
+\config {CHRONY\_TIMESERVICE}{CHRONY\_TIMESERVICE}{CHRONYTIMESERVICE}
+
+  Default: \var{CHRONY\_TIMESERVICE='no'}
+
+  Mit \var{CHRONY\_TIMESERVICE} kann ein weiteres Protokoll zur Zeitübermittlung
+  aktiviert werden. Dieses ist nur dann nötig, wenn die lokalen Rechner nicht
+  mit NTP arbeiten können. Das zusätzliche Protokoll ist RFC 868 konform und
+  arbeitet auf Port 37. Wenn immer möglich, sollte NTP vorgezogen werden.
+
+  Einen herzlichen Dank an Christoph Schulz, der das Programm \texttt{srv868}
+  beigesteuert hat.
+
+
+\config {CHRONY\_TIMESERVER\_N}{CHRONY\_TIMESERVER\_N}{CHRONYTIMESERVERN}
+
+  Default: \var{CHRONY\_TIMESERVER\_N='3'}
+
+  \var{CHRONY\_TIMESERVER\_N} legt die Anzahl der als Referenz benutzten Time
+  Server fest.  Der Anzahl entsprechend sind \var{CHRONY\_TIMESERVER\_x}
+  Variablen anzulegen. Der Index \var{x} muß fortlaufend bis zur Gesamtanzahl
+  heraufgezählt werden.\\
+  In der Grundeinstellung nutzt chrony drei Internet Time Server aus dem
+  Fundus von \jump{url:chronypoolntporg}{pool.ntp.org}.
+  
+
+\config {CHRONY\_TIMESERVER\_x}{CHRONY\_TIMESERVER\_x}{CHRONYTIMESERVERx}
+
+  Default: \var{CHRONY\_TIMESERVER\_x='pool.ntp.org'}
+  
+  Mit \var{CHRONY\_TIMESERVER\_x} kann eine eigene Liste von Internet Time
+  Servern angelegt werden. Die Time Server können sowohl durch ihre IP als
+  auch über ihren DNS Namen spezifiziert werden.
+
+\config {CHRONY\_LOG}{CHRONY\_LOG}{CHRONYLOG}
+
+  Default: \var{CHRONY\_LOG='/var/log/chrony'}
+
+  \var{CHRONY\_LOG} bezeichnet das Verzeichnis, in dem chrony NTP-Messwerte
+  und Informationen über vorgenommene Zeitkorrekturen ablegt.
+
+\end{description}
+  
+\marklabel{sec:chronysupport}{
+\subsection{Support}
+}
+Support wird nur im Rahmen der \jump{url:chronyfli4lnews}{fli4l
+Newsgroups} geleistet. 
+\subsection{Literatur}
+
+\marklabel{url:chronysource}{
+ Homepage von chrony: \altlink{http://chrony.tuxfamily.org/}
+ }
+
+\marklabel{url:chronyntporg}{
+ NTP: The Network Time Protocol: \altlink{http://www.ntp.org/}
+ }
+
+\marklabel{url:chronypoolntporg}{
+ pool.ntp.org: public ntp time server for everyone: \altlink{http://www.pool.ntp.org/de/}
+ }
+
+\marklabel{url:rfc1305}{
+ RFC 1305 - Network Time Protocol (Version 3) Specification, Implementation:\\
+ \indent\altlink{http://www.faqs.org/rfcs/rfc1305.html}
+ }
+
+\marklabel{url:chronyfli4lnews}{
+ fli4l Newsgroups und ihre Spielregeln: \altlink{http://www.fli4l.de/hilfe/newsgruppen/}
+}

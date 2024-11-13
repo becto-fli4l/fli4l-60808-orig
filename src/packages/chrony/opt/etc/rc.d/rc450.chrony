@@ -1,0 +1,101 @@
+#! /bin/sh
+#----------------------------------------------------------------------------
+# rc450.chrony - configure and start chrony
+#
+# Creation:	2004-06-06  abe
+# Last Update:  $Id$
+#
+#----------------------------------------------------------------------------
+
+case $OPT_CHRONY in
+yes)
+    begin_script CHRONY "starting chrony NTP-Service"
+
+    # When running inside a Xen DomU, make sure we are actually doing something.
+    if [ -f /proc/sys/xen/independent_wallclock ]
+    then
+        echo 1 > /proc/sys/xen/independent_wallclock
+        echo 1 > /var/run/broken_rtc
+    fi
+
+    chrony_conf="/etc/chrony.conf"
+    chrony_log="/var/log/chrony"
+    chrony_default_server="pool.ntp.org"
+    chrony_serverlist="/etc/chrony_server.conf"
+    chrony_dir=$SAVEPATH/chrony
+    mkdir -p $chrony_dir/dumps
+
+    [ -n "$CHRONY_LOG" ] && chrony_log=`echo $CHRONY_LOG | sed -e 's#/$##'`
+    [ ! -d $chrony_log ] && mkdir -p $chrony_log
+
+    # create file etc/chrony_server.conf
+    if [ ! -f $chrony_serverlist ]      # already existing?
+    then                                # yes, don't overwrite
+        [ ${CHRONY_TIMESERVER_N:=3} -eq 0 ] || {
+            prefix=0
+            for idx in `seq 1 $CHRONY_TIMESERVER_N`
+            do
+                eval chrony_server='$CHRONY_TIMESERVER_'$idx
+                chrony_server=${chrony_server:-$prefix.$chrony_default_server}
+                echo "server $chrony_server maxpoll 14 offline"
+                serverlist="$serverlist$chrony_server "
+                [ $prefix -lt 2 ] && prefix=`expr $prefix + 1` || prefix=0
+            done
+        } >> $chrony_serverlist
+    fi
+
+    # create file etc/chrony.conf
+    if [ ! -f $chrony_conf ]             # already existing?
+    then                                 # yes, don't overwrite
+        cat <<-EOF > $chrony_conf
+	#----------------------------------------------------------------------
+	# /etc/chrony.conf
+	# Automatically created by rc450.chrony
+	#----------------------------------------------------------------------
+	driftfile $chrony_dir/chrony.drift
+	dumpdir $chrony_dir/dumps
+	rtcsync
+	rtconutc
+	allow
+	cmdallow localhost
+	cmdallow 127.0.0.1
+	maxupdateskew 100
+	local stratum 8
+	logdir $chrony_log
+	log measurements statistics tracking
+	initstepslew 30 $serverlist
+EOF
+        cat $chrony_serverlist >> $chrony_conf
+    fi
+
+    CHRONYDOPTIONS="-s -r"
+    if [ "$OPT_IPV6" != "yes" ]
+    then
+        CHRONYDOPTIONS="$CHRONYDOPTIONS -4"
+        > /var/run/chronyd_ipv4.only
+    fi
+    echo "$CHRONYDOPTIONS" >> /var/run/chronyd.options
+
+    # use initstepslew to correct time difference grater than 30sec. at once
+    # only during first ip-up event (see chrony ip-up and ip-down scripts)
+    # start chrony in first ip-up event
+    > /var/run/chrony.first
+    CHRONYDOPTIONS="$CHRONYDOPTIONS -R"
+    log_info "start of chronyd with '$CHRONYDOPTIONS' as options - chronyd will be restarted by ip-up"
+    chronyd $CHRONYDOPTIONS
+
+    case $CHRONY_TIMESERVICE in
+        yes)
+            srv868
+            log_info "    timeservice on port 37 is now activated"
+            ;;
+    esac
+
+    if [ "$OPT_HTTPD" = "yes" ]
+    then
+        httpd-menu.sh add -p 109 status_chrony.cgi '$_MP_timesync' '$_MT_stat' status
+    fi
+
+    end_script
+;;
+esac

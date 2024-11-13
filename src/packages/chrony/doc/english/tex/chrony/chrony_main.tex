@@ -1,0 +1,139 @@
+% Synchronized to r29817
+
+\section {CHRONY - Network Time Protocol Server/Client}
+
+OPT\_CHRONY extends fli4l with the \jump{url:chronyntporg}{Network Time
+Protocol} (NTP). Don't mix it up with the \emph{normal} Time Protocol,
+the old OPT\_TIME provides. The protocols aren't compatible wich possibly raises the need 
+of new client-side programs, which understand NTP. If you can't abandon the
+simple time protocol, chrony can provide it as well.
+OPT\_CHRONY works both as a server and client. Working as a client, OPT\_CHRONY
+adjusts the time of the fli4l according to time referencies (time servers) in
+the internet. The basic setting uses up to three time servers from 
+\jump{url:chronypoolntporg}{pool.ntp.org}. However it's possible to use a different 
+selection of time servers in the configuration file. Thus it's possible to use time servers
+near you, if you choose de.pool.ntp.org if the router or your provider sits in Germany.
+For more details, look at the website of \jump{url:chronypoolntporg}{pool.ntp.org}.\\
+
+Working as a client, OPT\_CHRONY acts as a time reference for the local network (LAN). 
+NTP uses port 123.
+
+Chrony doesn't need a permanent connection to the internet. When the connection drops,
+chrony get's a notice and ceases the adjustion with the internet time servers. Neither 
+does chrony dial to raise the connection nor prevent the automatic hangup, if
+\var{HUP\_TIMEOUT}, the duration where no data is routet to the internet, is reached.
+
+In order to do time adjustments smoothly, the following should be in mind:
+\begin{itemize}
+  \item Chrony expects the BIOS-clock to be in UTC timezone. \\
+        UTC = German time minus 1 (winter) or 2 (summer) hour(s)
+  \item Since version 2.1.12 chrony sets the time during the first connection
+        to the internet correct even if the time difference is huge (caused by an 
+	empty mainboard battery for example). 
+  \item If the BIOS isn't capable of handling years after 1999 (Year 2000 Bug) or
+        if the BIOS clock is faulty, activate \jump{OPTY2K}{\var{OPT\_Y2K='yes'}}!
+\end{itemize}
+
+Only time servers in the internet which are reachable by the default route (\var{0.0.0.0/0})
+can be used, because only the default route changes chrony into online mode.
+As an ethernet router with no DSL or ISDN circuits configured, chrony acts permanently
+in online mode.
+
+\textbf{Disclaimer: }\emph{The author gives neither a guarantee of functionality nor is he liable 
+for any damage or the loss of data when using OPT\_\-CHRONY.}
+
+
+\marklabel{sec:konfigchrony}{
+\subsection {Configuration of OPT\_CHRONY}
+}
+
+The configuration is made, as for all fli4l packages, by adjusting the file\\
+\var{path/fli4l-\version/$<$config$>$/chrony.txt} to meet the own demands.
+However almost all variables of OPT\_\-CHRONY are optional. Optional means, the
+variables could, but need not be in the config file.
+Thus the chrony config file is almost empty and all optional 
+variables have a usefull setting by default.
+To use different settings, the variables must be inserted into the config file 
+by hand. Furthermore the description of every variable follows:
+
+
+\begin{description}
+
+\config {OPT\_CHRONY}{OPT\_CHRONY}{OPTCHRONY}
+
+  Default: \var{OPT\_CHRONY='no'}
+
+  The setting \var{'no'} deactivates OPT\_CHRONY completely. There will be no changes
+  made on the fli4l boot medium or the archive \var{opt.img}.
+  Further OPT\_CHRONY basically does not overwrite other parts of the fli4l installation
+  with one exception. The paket filter file which is responsible for not counting the 
+  traffic coming from the outside (to make sure fli4l will drop the line for sure, 
+  when reaching the hangup time), will be exchanged. The new paket filter file ensures, 
+  that chrony-traffic doesn't count for the hangup time.\\
+  To activate OPT\_CHRONY, the variable \var{OPT\_CHRONY} has to be set to \var{'yes'}. 
+
+  
+\config {CHRONY\_TIMESERVICE}{CHRONY\_TIMESERVICE}{CHRONYTIMESERVICE}
+
+  Default: \var{CHRONY\_TIMESERVICE='no'}
+
+  With \var{CHRONY\_TIMESERVICE} an additional protocol to transfer time informations
+  can be invoked. It's only neccesary when the local hosts can't deal with NTP. It is
+  conform to RFC 868 and uses port 37. If possible, prefer NTP.
+
+  Many thanks to Christoph Schulz, who provided the program \texttt{srv868}.
+
+
+\config {CHRONY\_TIMESERVER\_N}{CHRONY\_TIMESERVER\_N}{CHRONYTIMESERVERN}
+
+  Default: \var{CHRONY\_TIMESERVER\_N='3'}
+
+  \var{CHRONY\_TIMESERVER\_N} sets the number of reference time servers chrony uses.
+  Add the same number of \var{CHRONY\_TIMESERVER\_x} variables. The index \var{x} 
+  must be increased up to the total number.\\
+  The basic setting uses up to three time servers from
+  \jump{url:chronypoolntporg}{pool.ntp.org}.
+  
+
+\config {CHRONY\_TIMESERVER\_x}{CHRONY\_TIMESERVER\_x}{CHRONYTIMESERVERx}
+
+  Default: \var{CHRONY\_TIMESERVER\_x='pool.ntp.org'}
+  
+  With \var{CHRONY\_TIMESERVER\_x} an own list of internet time servers can be
+  made. Either IP or DNS hostnames are possible.
+
+\config {CHRONY\_LOG}{CHRONY\_LOG}{CHRONYLOG}
+
+  Default: \var{CHRONY\_LOG='/var/log/chrony'}
+
+  \var{CHRONY\_LOG} is the folder where chrony stores NTP measurements and
+  information about applied time adjustments.
+
+\end{description}
+  
+\marklabel{sec:chronysupport}{
+\subsection{Support}
+}
+Support is only given in the \jump{url:chronyfli4lnews}{fli4l Newsgroups}. 
+\subsection{Literature}
+
+\marklabel{url:chronysource}{
+ Homepage of chrony: \altlink{http://chrony.tuxfamily.org/}
+ }
+
+\marklabel{url:chronyntporg}{
+ NTP: The Network Time Protocol: \altlink{http://www.ntp.org/}
+ }
+
+\marklabel{url:chronypoolntporg}{
+ pool.ntp.org: public ntp time server for everyone: \altlink{http://www.pool.ntp.org/en/}
+ }
+
+\marklabel{url:rfc1305}{
+ RFC 1305 - Network Time Protocol (Version 3) Specification, Implementation:\\
+ \indent\altlink{http://www.faqs.org/rfcs/rfc1305.html}
+ }
+
+\marklabel{url:chronyfli4lnews}{
+ fli4l Newsgroups and the rules: \altlink{http://www.fli4l.de/hilfe/newsgruppen/}
+}

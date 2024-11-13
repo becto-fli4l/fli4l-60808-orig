@@ -1,0 +1,105 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for chrony
+#
+# Creation:     2004-06-06  abe
+# Last Update:  $Id$
+#
+# Copyright (c) 2004-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_chrony)
+then
+  provides TIME version 4.0.0
+  depends on fli4l version 4.0
+
+  if (rtc_sync == "hwclock")
+  then
+    error "OPT_CHRONY='yes' and RTC_SYNC='hwclock' collide as the kernel"
+    error "and hwclock would compete for control over the hardware clock."
+    error "Please use RTC_SYNC='kernel'."
+  fi
+
+  foreach i in circ_n
+  do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+      set type=circ_%_type[i]
+      set timeout=circ_%_hup_timeout[i]
+      if (type == "ppp" && timeout != "" && timeout > 0)
+      then
+        set filter=circ_%_ppp_filter[i]
+        if (!filter)
+        then
+          error "CHRONY: to ensure secure hangup while chrony is running, the PPP active filter needs to be enabled with CIRC_${i}_PPP_FILTER='yes'. To run CHRONY without any active filter set CIRC_${i}_HUP_TIMEOUT='0'"
+        fi
+      fi
+    fi
+  done
+
+  if (opt_isdn)
+  then
+    foreach i in isdn_circ_n
+    do
+      set ir=isdn_circ_%_route_n[i]
+      foreach n in ir
+      do
+        set i_route=isdn_circ_%_route_%[i][n]
+        if (i_route == "0.0.0.0")
+        then
+          set ippp_used
+        fi
+      done
+    done
+
+    if(!isdn_filter && ippp_used)
+    then
+      error "CHRONY: to ensure secure hangup while chrony is running active filter has to be enabled. Set ISDN_FILTER='yes' in <config>/isdn.txt."
+    fi
+  fi
+
+  if (opt_modem)
+  then
+    warning "CHRONY: automatic hangup isn't guaranteed, especially while chrony is running. Please disconnect manually."
+  fi
+
+  stat("$config_dir/etc/chrony.conf", chronyconf)
+  if(chronyconf_res == "OK")
+  then
+    add_to_opt "etc/chrony.conf" "flags=utxt"
+  fi
+
+  if (opt_httpd)
+  then
+        depends on httpd version 4.0
+
+        add_to_opt "srv/www/admin/status_chrony.cgi" "mode=555 flags=sh"
+
+        set files="status_chrony"
+
+        if ( httpd_gui_lang == "auto" )
+        then
+            set gui_lang=locale
+        else
+            set gui_lang=httpd_gui_lang
+        fi
+
+        split (gui_lang, lang_tmp_%, ' ')
+        foreach lang in lang_tmp_%
+        do
+            split (files, files_tmp_%, ' ')
+            foreach file in files_tmp_%
+            do
+                stat("opt/srv/www/lang/$file.$lang", langfile)
+                if( langfile_res == "OK" )
+                then
+                    add_to_opt "srv/www/lang/$file.$lang" "mode=444 flags=sh"
+                else
+                    warning "could not find 'srv/www/lang/$file.$lang', perhaps this file isn't translated yet. Falling back to English."
+                    add_to_opt "srv/www/lang/$file.en" "mode=444 flags=sh"
+                fi
+            done
+        done
+  fi
+
+fi

@@ -1,0 +1,54 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ip-up500.chrony - allow chronyd access time servers
+#                            if default route is going up
+#
+# Creation:     2004-06-06  abe
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+case $is_default_route in
+yes)
+    chrony_conf="/etc/chrony.conf"
+    if [ -f $chrony_conf ]
+    then
+        if [ -f /var/run/chrony.first ]
+        then
+            kill `cat /var/run/chronyd.pid`
+            echo -n "restarting chronyd "
+            terminated=
+            for i in `seq 1 10`; do
+                if  [ ! -f /var/run/chronyd.pid ]; then
+                    terminated=yes
+                    break
+                fi
+                echo -n .
+                sleep 1
+            done
+            echo
+            if  [ "$terminated" != yes ]; then
+                echo "failed to terminate chronyd ..."
+            fi
+            rm -f /var/run/chrony.first
+            read CHRONYDOPTIONS < /var/run/chronyd.options
+            echo "now restart chronyd with '$CHRONYDOPTIONS' as options"
+            chronyd $CHRONYDOPTIONS
+            started="true"
+        fi
+    fi
+    {
+    case $started in
+        true) sleep 5 ;;
+    esac
+    if ps | grep -q [c]hronyd
+    then
+        /usr/bin/chronyc >/dev/null <<-EOF
+	online
+EOF
+        echo "chronyd is now 'online'"
+    else
+        echo "error: chronyd is not running, skipping chronyc commands"
+    fi
+    }&
+;;
+esac
