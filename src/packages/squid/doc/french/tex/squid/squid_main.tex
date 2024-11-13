@@ -1,0 +1,359 @@
+% Do not remove the next line
+% Synchronized to r43133
+
+\section {SQUID~- Serveur proxy HTTP}
+
+\subsection{Description~:}
+
+Squid est un proxy HTTP qui permet de mettre en cache les pages Web sur le
+disque dur local, si vous ouvrez à nouveau la page Web, vous ouvrez la copie de
+la page qui est enregistrée dans le cache, plutôt que de la retéléchargée à
+chaque fois sur le site Internet. De ce fait, la connexion Internet sera
+libérée et la structure de la page sera affiché plus rapidement. L'utilisation
+de ce serveur proxy est particulièrement recommandée, si plusieurs personnes
+souhaitent surfer en même temps, et si vous avez seulement à votre disposition
+une connexion Internet à faible débit.
+
+\subsection{Conditions~:}
+
+Voici les besoins nécessaires pour faire fonctionner le proxy sur un système de
+base fli4l (www.fli4l.de). Il faut aussi que fli4l soit installé sur un disque dur.
+
+Les conditions minimum sont les suivantes~:
+CPU~: 100 MHz
+RAM~:  32 Mo
+HD~:  100 Mo
+
+\wichtig{Squid est un processus à par entière sur le routeur fli4l~! Donc chaque système
+est automatique, la nouvelle configuration du filtrage de paquets dans la liste
+Input à pour effet d'avoir un accés sur le routeur sans restriction et aussi
+un accés Internet via Squid sans restriction. Cela affectera les protocoles
+HTTP, HTTPS et FTP~!}
+
+
+
+\section{Les variables du fichier squid.txt~:}
+
+\begin{description}
+\config{SQUID\_MANAGER}{SQUID\_MANAGER}{SQUIDMANAGER}
+
+                Vous indiquez ici l'adresse \mbox{E-Mail} de l'administrateur
+                local du proxy. Cette adresse est également utilisée lorsque
+                les messages d'erreur doivent être adressées à l'administrateur.
+                En outre, l'adresse \mbox{E-Mail} est utilisée comme login
+                pour le gestionnaire de cache.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_MANAGER='squid@fli4l'
+\end{verbatim}
+
+
+\config{SQUID\_PASSWORD}{SQUID\_PASSWORD}{SQUIDPASSWORD}
+
+                Dans cette variable vous indiquez le mot de passe pour
+                le gestionnaire de cache.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_PASSWORD='fli4l'
+\end{verbatim}
+
+
+\config{SQUID\_TRANSPARENT\_CACHING}{SQUID\_TRANSPARENT\_CACHING}{SQUIDTRANSPARENTCACHING}
+\config{SQUID\_TRANSPARENT\_FORWARDING}{SQUID\_TRANSPARENT\_FORWARDING}{SQUIDTRANSPARENTFORWARDING}
+
+                Si vous activez ces fonctions, Squid filtrera toutes les "demandes
+				de surf" à partir du réseau interne vers Internet et les mettra en
+				cache. Cela peut être utile si vous souhaitez mettre en cache les
+				clients qui n'ont pas explicitement configuré le proxy dans leur
+				navigateur. Le client internaute ne remarquera pas la présense du
+				proxy. Les avantages~:
+\begin{enumerate}
+	\item{ Vous pouvez également mettre en cache la connexion
+           Internet si vous ne pouvez pas configurer les
+           clients dans les règles ou si les clients ne
+           peuvent/veulent pas sans occupés.}
+
+	\item{ Les programmes qui ne sont pas pris en charge par
+           le proxy seront interceptés, ils profiterons
+           eux aussi d'une "connexion plus rapide".}
+\end{enumerate}
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_TRANSPARENT_CACHING='no'
+  SQUID_TRANSPARENT_FORWARDING='no'
+\end{verbatim}
+
+                 \wichtig{ Si ces options sont définies sur 'yes', on ne pourra
+                                plus utiliser la redirection de port sur
+                                le port 80. Si c'est le cas, cela conduirait à
+                                un conflit et Squid s'arrêtera de fonctionner.}
+
+                 \emph{Si ces options sont définies sur 'yes', les accés
+                                aux adresses IP individuelles seront bloquets
+                                et inefficace dans le fichier base.txt. Enfin
+                                fli4l pourra toujours accèder à Internet.}
+
+                 \emph{Si vous avez activé le cache transparent, un autre port
+                         sera ouvert pour que Squid affiche certaines pages web
+                         (par exemple, les pages d'erreur) pour pouvoir corriger
+                         les erreurs. Vous indiquez une valeur dans la variable
+                         \var{SQUID\_HTTP\_PORT} (ci-dessous), le port suppérieur
+                         sera automatiquement ouvert. Si vous spécifiez le port
+                         \var{SQUID\_HTTP\_PORT='3128'} le port 3129 sera
+                         également ouvert et donc ne peut être utilisé pour
+                         une autre application sur fli4l.}
+
+
+\config{SQUID\_HTTP\_PORT}{SQUID\_HTTP\_PORT}{SQUIDHTTPPORT}
+
+                Dans cette variable vous indiquez le port TCP sur lequel Squid
+                attendra les connexions Internet.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_HTTP_PORT='3128'
+\end{verbatim}
+
+                \achtung{Si le cache transparent est activé avec
+                (\var{SQUID\_TRANSPARENT\_CACHING='yes'} (voir ci-dessus), un
+                autre port sera ouvert, à savoir un port dans \var{SQUID\_HTTP\_PORT}
+                plus un autre port. Ce port ne doit pas être attribué à une
+                autre application~!}
+
+
+\config{SQUID\_MEM\_CACHE\_SIZE}{SQUID\_MEM\_CACHE\_SIZE}{SQUIDMEMCACHESIZE}
+
+                Dans cette variable vous allez déterminer la quantité d'espace
+                maximum autorisé à prendre dans la RAM pour le cache. La taille
+                est en Mo.
+
+                La quantité recommandée est de 1/4 de la mémoire principale
+                disponible du routeur.
+
+
+\config{SQUID\_DISK\_CACHE\_SIZE}{SQUID\_DISK\_CACHE\_SIZE}{SQUIDDISKCACHESIZE}
+
+                Dans cette variable vous allez déterminer la quantité d'espace
+                maximum autorisé à prendre dans le disque dur pour le cache. La
+                taille est en Mo. Si la mémoire du cache est plus grand que celle
+                indiquée, Squid supprimera automatiquement les anciens fichiers,
+                de sorte à ne pas dépasser la taille maximale. Vous devez au moins
+                laissez 25 % d'espace libre sur le disque dur, car si le disque
+                est plein, Squid fonctionnera très lentement. Si Squid n'a pas
+                de place sur le disque pour les écriture des fichiers, il se
+                produira une erreur.
+
+                En outre, il faut noter que Squid a besoin d'environ 6 Mo de
+                mémoire principale pour les processus + une quantitée de mémoire
+                RAM dans SQUID\_MEM\_CACHE\_SIZE pour la mise en cache + 6 Mo
+                de mémoire par Go de disque pour le cache. Les processus Squid
+                ne peuvent être sous-traités, il doit y avoir une quantité de
+                mémoire physique correspondant au disque dur~!
+
+                Donc, pour ne pas avoir de problème avec SQUID\_DISK\_CACHE\_SIZE
+                choisissez, un Squid avec un cache plus petit il sera plus rapide
+                qu'un Squid avec un grand cache et avec pas assez de mémoire
+                principale.
+
+
+\config{SQUID\_MAX\_OBJECT\_SIZE}{SQUID\_MAX\_OBJECT\_SIZE}{SQUIDMAXOBJECTSIZE}
+
+                Dans cette variable vous indiquez une valeur exprimée en
+                kilo-octets. Les objets qui seront plus grands que la valeur
+                indiquée ne seront pas stockées sur le disque. Si vous voulez
+                gagner en trafic sur Internet au détriment de la vitesse, vous
+                devez définir cette valeur avec un taux élevée. Si vous voulez
+                avoir une plus grande vitesse au détriment du trafic, vous devez
+                définir cette valeur à 10000 ko et même moins que cela.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_MAX_CACHE_SIZE='65536'
+\end{verbatim}
+
+
+\config{SQUID\_WORK\_DIR}{SQUID\_WORK\_DIR}{SQUIDWORKDIR}
+
+                Dans cette variable vous indiquez le répertoire Squid pour stocker
+                les données du cache, les fichiers Log (ou journal) et d'autres
+                fichiers pertinents pour les opérations.
+
+                Le cache sera alors dans~:
+                                SQUID\_WORK\_DIR/cache
+
+                De même, les fichiers log seront dans~:
+                                SQUID\_WORK\_DIR/logs
+
+                La variable SQUID\_WORK\_DIR doit donc se référer à un disque
+                dur d'une capacité suffisante. Il est important que le disque
+                est un accés en lecture/écriture et doit être formaté avec le
+                système de fichiers ext3. En faite vous avez besoin d'un accès
+                au disque et que celui-ci soit formaté. Vous pouvez trouver plus
+                d'information sur la préparation du disque et son utilisation
+                dans le paquetage HD de fli4l.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_WORK_DIR='/data/squid'
+\end{verbatim}
+
+                Vous pouvez aussi spécifié dans la variable 'auto', ainsi le
+                chemin pour les fichiers système sera utilisé pour les fichiers
+                persistente. Mais vous devez vous assurer que le média soit
+                configuré avec \var{FLI4L\_UUID} et qu'il soit suffisamment
+                grand, si non /boot ne sera pas accessible en écriture même si
+                le disque Ram est utilisé.
+
+
+\config{SQUID\_CYCLE\_LOG\_N}{SQUID\_CYCLE\_LOG\_N}{SQUIDCYCLELOGN}
+
+                Dans cette variable vous indiquez le nombre de rotations des
+                fichiers log (ou journal). Si vous indiquez la valeur "0", les
+                fichiers log ne seront pas fermées et peuvent être ouvert. Cela
+                vous permet de renommer les fichiers log.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_CYCLE_LOG_N='10'
+\end{verbatim}
+
+                Cela correspond à une rotation de 10 fichiers logs.
+
+
+\config{SQUID\_CYCLE\_LOG\_TIME}{SQUID\_CYCLE\_LOG\_TIME}{SQUIDCYCLELOGTIME}
+
+                Une fois que Squid est exécuté, on l'oublie parfois, il est alors
+                très pratique d'effacer les fichiers LOG régulièrement et
+                automatiquement. Cela évite que le disque soit rempli de
+                ces fichiers. La valeur qui sera indiquée dans cette variable
+                est exprimée en secondes. 1 heure correspond à 3600 secondes.
+
+                Configuration par défaut~:
+\begin{verbatim}
+  SQUID_CYCLE_LOG_TIME='172800'
+\end{verbatim}
+
+                Cela correspond à 48 heures.
+
+\section{Variables pour la configuration du réseau en dehors de base.txt}
+
+\config{SQUID\_AUTO\_CONFIG}{SQUID\_AUTO\_CONFIG}{SQUIDAUTOCONFIG}
+
+                Dans cette variable vous indiquez, si les réseaux connectés à
+                fli4l sont automatiquement récupérées à partir du fichier
+                base.txt ou si les réseaux sont configurés manuellement en
+                utilisant les champs suivants.
+
+                Vous pouvez utiliser les variables suivantes pour des réseaux
+                importants, avec plusieurs plages d'adresses IP et avec d'autres
+                routeurs, cela peut être combiné automatiquement.
+
+
+\config{SQUID\_ACCESS\_NET\_N}{SQUID\_ACCESS\_NET\_N}{SQUIDACCESSNETN}
+
+                Vous indiquez dans cette variable le nombre de réseaux qui seront
+                autorisés à accéder au service Squid. Normalement, la valeur est
+                sur '0' parce que tous les droit de configuration des réseaux
+                sont déjà couverts avec la variable SQUID\_AUTO\_CONFIG.
+
+
+\config{SQUID\_ACCESS\_NET\_x}{SQUID\_ACCESS\_NET\_x}{SQUIDACCESSNETx}
+
+                Vous indiquez dans cette variable les réseaux pouvant accéder
+                au service Squid. Ce paramètre sera utilisé en interne par Squid,
+				il contrôlera ainsi des requètes de l'utilisateur pour accèder
+				au page web. Vous pouvez si nécessaire ajouter des règles de filtrage
+				de paquets avec la variable (\var{PF\_INPUT\_x} dans base.txt, ou avec
+				\var{PF6\_INPUT\_x} dans ipv6.txt).
+
+                Par exemple~:
+\begin{verbatim}
+  SQUID_ACCESS_NET_1='192.168.0.0/24'
+\end{verbatim}
+
+                Maintenant tous les PCs avec les adresses IP 192.168.0.XXX
+                peuvent utilisés Squid.
+
+
+\section{Variables optionnelles elles ne sont pas nécessaire pour le fonctionnement}
+
+\config{SQUID\_CONNECT\_TIMEOUT}{SQUID\_CONNECT\_TIMEOUT}{SQUIDCONNECTTIMEOUT}
+
+                Vous indiquez dans cette variable un temps de connexion pour
+                que Squid puisse se connecter au réseau TCP du serveur. Durant
+                cette période (par défaut 120 secondes) la connexion doit être
+                établie avec le serveur.
+
+\config{SQUID\_CACHE\_N}{SQUID\_CACHE\_N}{SQUIDCACHEN}
+
+                Dans cette variable vous pouvez activer l'accés au cache sur
+                plusieurs disque. En outre, vous peuvez spécifier plusieurs
+                répertoires supplémentaires pour le cache. Pour ce faire, vous
+                devez indiquer ici le nombre souhaité pour les accés au cache.
+
+                Maintenant, vous pouvez configurer les variables
+\config{SQUID\_CACHE\_1\_DIR}{SQUID\_CACHE\_1\_DIR}{SQUIDCACHE1DIR}
+\config{SQUID\_CACHE\_1\_SIZE}{SQUID\_CACHE\_1\_SIZE}{SQUIDCACHE1SIZE}
+                avec les valeurs souhaitées. Voici un exemple, vous devez monter
+                un deuxième disque dur /disk2, avec une capacité de 4 Go~:
+
+\begin{verbatim}
+  SQUID_CACHE_1_DIR='/disk2'
+  SQUID_CACHE_1_SIZE='3000'
+\end{verbatim}
+                Ce disque dur devrait désormais être utilisé pour le cache
+                de Squid.
+
+                Configuration par défaut~: pas d'autre disque pour le cache\_dir.
+
+
+\config{SQUID\_NEXT\_PROXY}{SQUID\_NEXT\_PROXY}{SQUIDNEXTPROXY}
+
+                Si l'accès à Internet n'est possible que via un proxy, ou pour
+                des raisons de performances, l'accés sera accessible depuis un
+                proxy amont, vous devez indiquer le proxy avec le format suivant
+                'name.domain', par exemple.
+\begin{verbatim}
+  SQUID_NEXT_PROXY='www-proxy.t-online.de'
+\end{verbatim}
+                En cas échec du proxy, Squid essaira de rechercher
+                directement la page web.
+
+                Configuration par défaut~: pas de proxy amont
+
+
+\config{SQUID\_NEXT\_PROXY\_PORT}{SQUID\_NEXT\_PROXY\_PORT}{SQUIDNEXTPROXYPORT}
+
+                Dans cette variable vous indiquez le port du proxy amont.\\
+                Uniquement si la variable SQUID\_NEXT\_PROXY est configurée,
+                par exemple.
+\begin{verbatim}
+  SQUID_NEXT_PROXY_PORT='80'
+\end{verbatim}
+
+                Configuration par défaut~: variable vide
+
+
+\section{Seulement pour les experts~!}
+
+Le fichier opt/etc/rc.d/rc455.squid contient toutes les variable de squid.conf.
+Pour ceux qu'ils veulent faire des changements dans squid.conf, vous pouvez les
+faire à cette emplacement. Au démarrage de fli4l les modifications apportées
+seront prises en charge dans le squid.conf généré dynamiquement.
+
+\section{Liens}
+
+Pour d'autres questions, je vous recommande le site du projet Squid avec en
+connexe les FAQs~: \altlink{http://wiki.squid-cache.org/SquidFaq} ou aussi
+\altlink{http://www.Squid-handbuch.de/hb/}.
+
+\section{Remerciment}
+
+Auteur à origine~: Hermann Strassner (hermann.strassner@web.de)
+
+Extension et modification par~: Ingo Winiarski (iwiniarski@gmx.de)
+
+\end{description}

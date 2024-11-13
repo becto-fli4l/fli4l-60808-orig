@@ -1,0 +1,443 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc.squid - start proxy-server squid                    __FLI4LVER__
+#
+# OPT basiert auf - OPT_SQUID 2.1.7 - 1.1
+#                   von Hermann Strassner (hermann.strassner@web.de)
+#
+#                 - OPT_NEWSQUID 2.0
+#                   von Dominik Egert (fli4l@killus.net)
+#
+# Bearbeitet von: - Ingo Winiarski (iwiniarski@gmx.de)
+#
+# Last Update:  $Id$
+#
+#------------------------------------------------------------------------------
+
+# --------------
+# - Funktionen -
+# --------------
+
+write_acl ()
+{
+    set $1
+    case $1 in
+        '' | 0.0.0.0 | 0.0.0.0/0) ;;
+        *)
+        network=`netcalc network $1`
+        netmask=`netcalc netmaskbits $1`
+        echo "acl from_intranet src $network/$netmask"
+        echo "acl to_intranet dst $network/$netmask"
+        ;;
+    esac
+}
+
+# squid_iterate function variable1 variable2 ...
+squid_iterate ()
+{
+    if [ $# -lt 2 ]
+    then
+        log_error "squid_iterate: not enough parameters"
+        return
+    fi
+    func=$1
+    shift
+    for var in $*
+    do
+        eval var_n='$'${var}_N;
+        [ 0$var_n -eq 0 ] || for index in `seq 1 $var_n`
+        do
+            eval val='$'${var}_$index
+            case "$val" in
+            {*}*) ;;
+            *)    $func "$val";;
+            esac
+        done
+    done
+}
+
+case $OPT_SQUID in
+yes)
+    begin_script SQUID "setting up squid ..."
+
+    initcache=no
+    startsquid=yes
+
+    # -----------------------------
+    # - Verzeichnisse vorbereiten -
+    # -----------------------------
+    map2persistent SQUID_WORK_DIR
+    if [ ! -d $SQUID_WORK_DIR ]			# already existing?
+    then					# yes, don't mkdir
+        mkdir -p $SQUID_WORK_DIR/cache
+        mkdir -p $SQUID_WORK_DIR/logs
+
+        chmod -R +w $SQUID_WORK_DIR
+        chown -R nobody $SQUID_WORK_DIR
+    fi
+
+    if [ ! -d $SQUID_WORK_DIR/cache/01 ]	# no cache?
+    then					# then create it..
+        initcache=yes
+    fi
+
+    echo "$SQUID_WORK_DIR" > /etc/squid/workdir	# used for cgi's and log rotating
+
+    ln -s /usr/libexec/cachemgr.cgi /srv/www/admin/cachemgr.cgi
+
+    # ---------------------------------------
+    # - Sprache der Error-Seiten einstellen -
+    # ---------------------------------------
+# Squid sollte das selber rausbekommen
+    case $LOCALE in
+        de|en|fr|nl) SQUID_LANGUAGE=$LOCALE ;;
+        *) SQUID_LANGUAGE=en ;;
+    esac
+
+    # -----------------------
+    # - squid.conf erzeugen -
+    # -----------------------
+
+    # NETWORK OPTIONS
+    # ---------------
+    if [ "$SQUID_TRANSPARENT_CACHING" = "yes" ]
+    then
+        echo "http_port $SQUID_HTTP_PORT transparent" >> /etc/squid/squid.conf
+        # kristov: see http://www.squid-cache.org/mail-archive/squid-users/201111/0284.html for details
+        echo "http_port $((SQUID_HTTP_PORT + 1))" >> /etc/squid/squid.conf
+    else
+        echo "http_port $SQUID_HTTP_PORT" >> /etc/squid/squid.conf
+    fi
+    {
+        echo "icp_port 0"
+    } >> /etc/squid/squid.conf
+
+    # OPTIONS WHICH AFFECT THE NEIGHBOR SELECTION ALGORITHM
+    # -----------------------------------------------------
+    if [ "$SQUID_NEXT_PROXY" = "yes" ]
+    then
+        echo "cache_peer $SQUID_NEXT_PROXY_URL parent $SQUID_NEXT_PROXY_PORT 0 no-query" >> /etc/squid/squid.conf
+        echo "prefer_direct off" >> /etc/squid/squid.conf
+    fi
+
+    # OPTIONS WHICH AFFECT THE CACHE SIZE
+    # -----------------------------------
+    {
+        echo "cache_mem $SQUID_MEM_CACHE_SIZE MB"
+        echo "cache_swap_low 90"
+        echo "cache_swap_high 95"
+        echo "maximum_object_size $SQUID_MAX_OBJECT_SIZE KB"
+        echo "minimum_object_size 0"
+        echo "maximum_object_size_in_memory 8 KB"
+        echo "ipcache_size 1024"
+        echo "ipcache_low 90"
+        echo "ipcache_high 95"
+        echo "fqdncache_size 1024"
+    } >> /etc/squid/squid.conf
+
+    # LOGFILE PATHNAMES AND CACHE DIRECTORIES
+    # ---------------------------------------
+    {
+        echo "cache_dir ufs $SQUID_WORK_DIR/cache $SQUID_DISK_CACHE_SIZE 16 256"
+    } >> /etc/squid/squid.conf
+    if [ "$SQUID_ACCESS_LOG" = "yes" ]
+    then
+        echo "access_log stdio:$SQUID_WORK_DIR/logs/access.log" >> /etc/squid/squid.conf
+    else
+        echo "access_log none" >> /etc/squid/squid.conf
+    fi
+    {
+        #echo "logfile_daemon /usr/local/squid/libexec/logfile-daemon"
+        echo "cache_log $SQUID_WORK_DIR/logs/cache.log"
+        echo "cache_store_log none"
+    } >> /etc/squid/squid.conf
+    {
+        echo "mime_table /etc/squid/mime.conf"
+        echo "log_mime_hdrs off"
+        echo "pid_filename /var/run/squid.pid"
+        echo "debug_options ALL,1"
+        echo "client_netmask 255.255.255.255"
+    } >> /etc/squid/squid.conf
+
+    # OPTIONS FOR EXTERNAL SUPPORT PROGRAMS
+    # -------------------------------------
+    {
+        echo "ftp_user squid@$DOMAIN_NAME"
+        echo "ftp_passive on"
+        echo "ftp_sanitycheck on"
+        echo "dns_retransmit_interval 5 seconds"
+        echo "dns_timeout 2 minutes"
+        echo "hosts_file /etc/hosts"
+        echo "unlinkd_program /usr/libexec/unlinkd"
+    } >> /etc/squid/squid.conf
+
+    # OPTIONS FOR TUNING THE CACHE
+    # ----------------------------
+    {
+        echo "request_header_max_size 20 KB"
+        echo "request_body_max_size 0"
+        echo "quick_abort_min 16 KB"
+        echo "quick_abort_max 16 KB"
+        echo "quick_abort_pct 95"
+        echo "negative_ttl 30 seconds"
+        echo "positive_dns_ttl 360 minutes"
+        echo "negative_dns_ttl 30 seconds"
+        echo "range_offset_limit 0"
+    } >> /etc/squid/squid.conf
+
+    # TIMEOUTS
+    # --------
+    {
+        echo "connect_timeout $SQUID_CONNECT_TIMEOUT seconds"
+        echo "peer_connect_timeout 30 seconds"
+        echo "read_timeout 15 minutes"
+        echo "request_timeout 5 minutes"
+        echo "persistent_request_timeout 1 minutes"
+        echo "client_lifetime 1440 minutes"
+        echo "half_closed_clients off"
+        echo "pconn_timeout 120 seconds"
+        echo "ident_timeout 10 seconds"
+        echo "shutdown_lifetime 2 seconds"
+    } >> /etc/squid/squid.conf
+
+    # ADMINISTRATIVE PARAMETERS
+    # -------------------------
+    {
+        echo "cache_mgr $SQUID_MANAGER"
+        echo "cachemgr_passwd $SQUID_PASSWORD config shutdown"
+        echo "cachemgr_passwd none all"
+        echo "cache_effective_user nobody"
+        echo "cache_effective_group nogroup"
+        echo "visible_hostname $HOSTNAME.$DOMAIN_NAME"
+    } >> /etc/squid/squid.conf
+
+    # OPTIONS FOR THE CACHE REGISTRATION SERVICE
+    # ------------------------------------------
+    {
+        echo "announce_period 0"
+        echo "announce_host tracker.ircache.net"
+        echo "announce_port 3131"
+    } >> /etc/squid/squid.conf
+
+    # MISCELLANEOUS
+    # -------------
+    {
+        echo "logfile_rotate $SQUID_CYCLE_LOG_N"
+        echo "append_domain .$DOMAIN_NAME"
+        echo "tcp_recv_bufsize 0"
+        echo "memory_pools on"
+        echo "memory_pools_limit none"
+        echo "forwarded_for off"
+        echo "log_icp_queries on"
+        echo "icp_hit_stale off"
+        echo "minimum_direct_hops 4"
+        echo "minimum_direct_rtt 400"
+        echo "store_avg_object_size 13 KB"
+        echo "store_objects_per_bucket 50"
+        echo "client_db on"
+        echo "netdb_low 900"
+        echo "netdb_high 1000"
+        echo "netdb_ping_period 5 minutes"
+        echo "query_icmp off"
+        echo "test_reachability off"
+        echo "buffered_logs off"
+        echo "reload_into_ims off"
+        echo "icon_directory /usr/share/icons"
+        echo "error_directory /usr/share/errors/$SQUID_LANGUAGE"
+        echo "connect_retries 3"
+        #echo "snmp_port 3401"
+        #echo "snmp_access deny all"
+        #echo "snmp_incoming_address 0.0.0.0"
+        #echo "snmp_outgoing_address 255.255.255.255"
+        echo "as_whois_server whois.ra.net"
+        echo "wccp_router 0.0.0.0"
+        echo "wccp_version 4"
+    } >> /etc/squid/squid.conf
+
+    # xxx
+    # ---
+    {
+        echo "incoming_icp_average 6"
+        echo "incoming_http_average 4"
+        echo "incoming_dns_average 4"
+        echo "min_icp_poll_cnt 8"
+        echo "min_dns_poll_cnt 8"
+        echo "min_http_poll_cnt 8"
+        echo "max_open_disk_fds 0"
+        echo "offline_mode off"
+        echo "uri_whitespace strip"
+        echo "nonhierarchical_direct on"
+        echo "prefer_direct off"
+        echo "strip_query_terms on"
+        echo "redirector_bypass off"
+        echo "ignore_unknown_nameservers on"
+        echo "client_persistent_connections on"
+        echo "server_persistent_connections on"
+        echo "pipeline_prefetch off"
+        echo "high_response_time_warning 0"
+        echo "high_page_fault_warning 0"
+        echo "high_memory_warning 0"
+        echo "store_dir_select_algorithm least-load"
+        echo "ie_refresh on"
+        echo "vary_ignore_expire off"
+        echo "sleep_after_fork 0"
+    } >> /etc/squid/squid.conf
+
+
+    # -------------------
+    # - ACCESS CONTROLS -
+    # -------------------
+    {
+        # echo "acl all src 0.0.0.0/0"
+        echo "acl manager url_regex -i ^cache_object://"
+        echo "acl SSL_ports port 443 563"
+        echo "acl Safe_ports port 80         # http"
+        echo "acl Safe_ports port 21         # ftp"
+        echo "acl Safe_ports port 443 563    # https, snews"
+        echo "acl Safe_ports port 70         # gopher"
+        echo "acl Safe_ports port 210        # wais"
+        echo "acl Safe_ports port 1025-65535 # unregistered ports"
+        echo "acl Safe_ports port 280        # http-mgmt"
+        echo "acl Safe_ports port 488        # gss-http"
+        echo "acl Safe_ports port 591        # filemaker"
+        echo "acl Safe_ports port 777        # multiling http"
+        echo "acl CONNECT method CONNECT"
+
+        squid_iterate write_acl SQUID_ACCESS_NET
+
+        case $SQUID_AUTO_CONFIG in
+            yes) squid_iterate write_acl IP_NET IP_ROUTE ;;
+        esac
+
+        case $SQUID_TRANSPARENT_CACHING in
+            yes) write_acl 127.0.0.1/32 ;;
+        esac
+
+        echo "http_access allow manager localhost"
+        echo "http_access allow manager from_intranet"
+        echo "http_access deny manager"
+        echo "http_access deny !Safe_ports"
+        echo "http_access deny CONNECT !SSL_ports"
+        echo "http_access allow from_intranet"
+        echo "http_access deny !from_intranet"
+        echo "http_access deny all"
+        echo "http_reply_access allow all"
+        echo "icp_access deny all"
+        echo "ident_lookup_access deny all"
+        echo "reply_header_max_size 20 KB"
+        #echo "reply_body_max_size 0 all"
+        echo "no_cache deny to_intranet"
+        echo "always_direct allow from_intranet to_intranet"
+    } >> /etc/squid/squid.conf
+
+
+    # ---------------------------------------------------------------------------------
+    # - Cache-Strategien anpassen                                                     -
+    # - http://www.tecchannel.de/server/linux/402346/index4.html                      -
+    # - Achtung: squid muss mit --enable-removal-policies=heap,lru compiliert werden! -
+    # - Kontrolle: squid -v                                                           -
+    # ---------------------------------------------------------------------------------
+    #echo cache_replacement_policy heap LFUDA >> /etc/squid/squid.conf
+    #echo memory_replacement_policy heap GDSF >> /etc/squid/squid.conf
+
+
+    # ---------------------------
+    # - Weitere Cache Directory -
+    # ---------------------------
+    [ 0$SQUID_CACHE_N -eq 0 ] || for idx in `seq 1 $SQUID_CACHE_N`
+    do
+        eval cachedir='$SQUID_CACHE_'$idx'_DIR'
+        eval cachesize='$SQUID_CACHE_'$idx'_SIZE'
+        echo "cache_dir ufs $cachedir $cachesize 16 256" >> /etc/squid/squid.conf
+
+        if [ ! -d $cachedir ]
+        then
+            mkdir -p $cachedir
+        fi
+
+        if [ ! -d $cachedir/01 ]		# no cache?
+        then					# then create it..
+            initcache=yes
+        fi
+
+        chmod +w $cachedir
+    done
+
+
+    # ----------------------------------------------------------------
+    # - Squid als transparenten Proxy einrichten                     -
+    # - http://www.christian-gerner.de/computer/linux/squidtrans.htm -
+    # ----------------------------------------------------------------
+    if [ "$SQUID_TRANSPARENT_CACHING" = "yes" ]
+    then
+        if [ "$SQUID_TRANSPARENT_FORWARDING" = "yes" ]
+        then
+            log_info "setting up transparent caching (REDIRECT Port 80 to $SQUID_HTTP_PORT) .."
+
+            # Portforwarding for all used eth0...ethx
+            for idx in `seq 1 $IP_NET_N`
+            do
+                ethdevice="IP_NET_${idx}_DEV"
+                ipaddress="IP_NET_${idx}_IPADDR"
+
+                # if no ip address or no device, skip configuration
+                if translate_net_if "$ethdevice" ethdevice 1
+                then
+                    if translate_ip_net "$ipaddress" "$ipaddress" ipaddress 1
+                    then
+                        log_info "  ..for $ethdevice"
+                        fw_append_rule nat PREROUTING-head "if:$ethdevice:any prot:tcp any !$ipaddress:80 REDIRECT:$SQUID_HTTP_PORT" "OPT_SQUID"
+                    else
+                        log_error "$ethdevice has no IP address!"
+                        log_error "SQUID isn't active for this interface!"
+                    fi
+                else
+                    log_error "$ethdevice cannot be mapped to a network interface!"
+                    log_error "SQUID isn't active for this interface!"
+                fi
+            done
+        fi
+    fi
+
+
+    # ----------------------------------
+    # - Cache Directory initialisieren -
+    # ----------------------------------
+    if [ "$initcache" = "yes" ]			# cache build required?
+    then					# yes, let's do it
+        log_info "setting up squid's cache ..."
+        squid -f /etc/squid/squid.conf -s -z
+    else
+        log_info "NOTICE:  found cache .. leaving it untouched .."
+        log_info "         you can manually rebuild cache by executing:"
+        log_info "         /usr/squid -s -z -f /etc/squid/squid.conf"
+    fi
+
+
+    # -----------------
+    # - Squid starten -
+    # -----------------
+    log_info "starting squid ..."
+    echo 0 > /proc/sys/net/ipv4/tcp_ecn
+    squid -f /etc/squid/squid.conf -s 2> /etc/squid/squid.out
+
+
+    # ----------------------
+    # - log_rotate starten -
+    # ----------------------
+    echo SQUID_CYCLE_LOG_TIME=$SQUID_CYCLE_LOG_TIME > /var/run/squid_log_rotate.conf
+    log_info "starting squid's log cycle ..."
+    squid_log_rotate &
+
+
+    # --------------------------
+    # - Link im httpd einfügen -
+    # --------------------------
+    if [ -f /srv/www/admin/main_squid.cgi -a -f /usr/local/bin/httpd-menu.sh ]
+    then
+        httpd-menu.sh add "main_squid.cgi" "Squid"
+    fi
+
+    end_script
+;;
+esac
