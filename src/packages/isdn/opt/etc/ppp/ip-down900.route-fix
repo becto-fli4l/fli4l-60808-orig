@@ -1,0 +1,28 @@
+if [ -f /var/run/$interface.route-fix -a -f /var/run/$interface.conf ]
+then
+    # get configuration from file, format:
+    # local remote netmask {network real_netmask}*
+    conf=`cat /var/run/$interface.conf`
+    set $conf
+
+    # restore original device configuration
+    ip link set dev $interface down
+    ip addr flush dev $interface
+    ip addr add $1 peer $2 dev $interface
+    ip link set dev $interface up
+    shift 2
+
+    # setup routes again
+    while [ "$1" != "" ]
+    do
+        ip route add $1 dev $interface
+        shift
+    done
+
+    #setup default route if our interface is the default routes interface
+    if [ "$is_default_route" = "yes" -a -f /etc/default-route-interface ]
+    then
+        ip route add default dev $interface
+    fi
+fi
+

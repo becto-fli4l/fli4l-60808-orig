@@ -1,0 +1,228 @@
+% Last Update: $Id$
+\section{ISDN}
+\marklabel{sec:route-details}
+{
+  \subsection{Technische Details zu Einwahl und Routing bei ISDN}
+}
+
+Dieses Kapitel ist nur für Leute interessant, die ein wenig verstehen
+wollen, was intern passiert, die spezielle Konfigurationswünsche haben
+oder die nach der Lösung für Probleme suchen. Andere sollten dieses
+Kapitel bitte \emph{ nicht} lesen.
+
+Nach dem Herstellen einer Verbindung zum Provider konfiguriert der
+ipppd-Daemon, der diese Verbindung hergestellt hat, das Interface neu,
+um die ausgehandelten IP-Adressen zu setzen. Dabei werden vom
+Linux-Kern automatisch auch Routen gesetzt, die der Remote-IP und der
+Netzmaske entsprechen und vorhandene, spezielle Routen werden
+gelöscht. Wird keine Netzmaske vorgegeben, leitet der ipppd aus der
+Remote-IP die Netzmaske ab (er benutzt dazu die Überholte Einteilung
+in Class A,B und C Subnetze). Das Verschwinden der Routen und die
+automatisch gesetzten neuen Routen haben immer wieder für Probleme
+gesorgt:
+\begin{itemize}
+\item Firmennetze waren nicht mehr erreichbar, weil die Routen
+  verschwunden waren oder von den gesetzten neuen Routen überlagert
+  wurden
+\item Interfaces wählten sich scheinbar ohne Grund ein, da ein Paket
+  statt über die default Route über die vom Kern generierte Route auf
+  ein anderes Interface ging
+\item ...
+\end{itemize}
+
+Daher wird nunmehr versucht, diese unerwünschten Routen zu verhindern.
+
+
+Dazu werden folgende Dinge geändert:
+\begin{itemize}
+
+\item remote ip wird auf 0.0.0.0 gesetzt, wenn nichts anderes spezifiert
+  ist. Dadurch verschwinden die Routen, die beim Konfigurieren des
+  Interfaces vom Kern eingerichtet werden.
+
+\item zusätzlich angegebene Routen über den Circuit werden in einer Datei
+  zwischengespeichert
+
+\item wird eine Netzwerkmaske für den Circuit angegeben, wird diese an den
+  ipppd weitergereicht, damit der sie nach Aushandeln der IP für die
+  Konfiguration des Interfaces (und damit für die Generierung von
+  Routen) nutzt.
+
+\item nach dem Einwählen werden die zwischengespeicherten Routen des
+  Circuits ausgelesen und wieder gesetzt (sie wurden vom Kern beim
+  Neukonfigurieren des Interfaces durch ipppd gelöscht)
+
+\item nach dem Auflegen wird das Interface wieder neu konfiguriert und die
+  Routen werden neu gesetzt um die Ausgangssituation wieder
+  herzustellen.
+\end{itemize}
+
+Die Konfiguration der Circuits sieht dann wie folgt aus:
+
+\begin{itemize}
+\item 
+  item default route
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_ROUTE='0.0.0.0'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  Ist der Circuit ein lcr circuit und gerade ``aktiv'', wird eine
+  default route auf diesen Circuit (bzw. das dazugehörige Interface)
+  gesetzt.  Nach dem Einwählen erscheint eine Host-Route zum Provider,
+  die nach dem Auflegen wieder verschwindet.
+
+
+  \item spezielle Routen
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_ROUTE='network/netmaskbits'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  Es werden die angegeben Routen auf den Circuit (bzw. das
+  dazugehörige Interface) eingerichtet.  Nach dem Einwählen werden die
+  von Kern gelöschten Routen wieder hergestellt und es gibt eine
+  Host-Route zum Einwahlknoten. Nach dem Auflegen wird der
+  Originalzustand wieder hergestellt.
+
+
+
+  \item remote ip
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_REMOTE='ip address/netmaskbits'
+    ISDN_CIRC_%_ROUTE='network/netmaskbits'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  Beim Konfigurieren des Interfaces erscheinen Routen in das Zielnetz
+  (entsprechend ip-adress AND netmask).  Wird die spezifizierte IP
+  nach dem Einwählen beibehalten (dass heißt, es wird keine andere ip
+  während des Verbindungsaufbaus ausgehandelt), bleibt die Route
+  bestehen.
+  
+  Wird allerdings beim Einwählen eine andere IP ausgehandelt, ändert
+  sich die Route entsprechend (new ip AND netmask).
+  
+  Für die zusätzlichen Routen gilt das oben gesagte.
+
+
+\end{itemize}
+
+Das löst hoffentlich vorläufig \emph{alle} Probleme, die mit speziellen
+Routen auftraten. Die Form der Korrektur mag sich in Zukunft noch
+ändern, an dem Prinzip ändert sich hoffentlich nichts mehr.
+
+\marklabel{sec:isdn-cause}
+{
+  \subsection{Fehlermeldungen des ISDN-Subsystems (englisch, i4l-Dokumentation)}
+}
+
+Im folgenden ein Auszug aus der Isdn4Linux Dokumentation (man 7
+isdn\_cause). 
+
+Cause messages are 2-byte information elements, describing the state
+transitions of an ISDN line. Each cause message describes its
+origination (location) in one byte, while the cause code is described
+in the other byte. Internally, when EDSS1 is used, the first byte
+contains the location while the second byte contains the cause code.
+When using 1TR6, the first byte contains the cause code while the
+location is coded in the second byte. In the Linux ISDN subsystem, the
+cause messages visible to the user are unified to avoid confusion. All
+user visible cause messages are displayed as hexadecimal strings.
+These strings always have the location coded in the first byte,
+regardless if using 1TR6 or EDSS1. When using EDSS1, these strings are
+preceeded by the character 'E'.
+
+
+\begin{description}
+\item [LOCATION] 
+ 
+  The following location codes are defined when using EDSS1:
+
+  \begin{small}
+  \begin{longtable}{lp{12cm}}
+
+  00 &   Message generated by user. \\
+  01 &   Message generated by private network serving the local user. \\
+  02 &   Message generated by public network serving the local user. \\
+  03 &   Message generated by transit network. \\
+  04 &   Message generated by public network serving the remote user. \\
+  05 &   Message generated by private network serving the remote
+  user. \\
+  07 &   Message generated by international network. \\
+  0A &   Message generated by network beyond inter-working point. \\
+  \end{longtable}
+  \end{small}
+
+\item  [CAUSE]
+
+  The following cause codes are defined when using EDSS1:
+
+  \begin{small}
+  \begin{longtable}{lp{12cm}}
+
+  01 &   Unallocated (unassigned) number. \\
+  02 &   No route to specified transit network. \\
+  03 &   No route to destination. \\
+  06 &   Channel unacceptable. \\
+  07 &   Call awarded and being delivered in an established channel. \\
+  10 &   Normal call clearing. \\
+  11 &   User busy. \\
+  12 &   No user responding. \\
+  13 &   No answer from user (user alerted). \\
+  15 &   Call rejected. \\
+  16 &   Number changed. \\
+  1A &   Non-selected user clearing. \\
+  1B &   Destination out of order. \\
+  1C &   Invalid number format. \\
+  1D &   Facility rejected. \\
+  1E &   Response to status enquiry. \\
+  1F &   Normal, unspecified. \\
+  22 &   No circuit or channel available. \\
+  26 &   Network out of order. \\
+  29 &   Temporary failure. \\
+  2A &   Switching equipment congestion. \\
+  2B &   Access information discarded. \\
+  2C &   Requested circuit or channel not available. \\
+  2F &   Resources unavailable, unspecified. \\
+  31 &   Quality of service unavailable. \\
+  32 &   Requested facility not subscribed. \\
+  39 &   Bearer capability not authorised. \\
+  3A &   Bearer capability not presently available. \\
+  3F &   Service or option not available, unspecified. \\
+  41 &   Bearer capability not implemented. \\
+  42 &   Channel type not implemented. \\
+  45 &   Requested facility not implemented. \\
+  46 &   Only restricted digital information bearer. \\
+  4F &   Service or option not implemented, unspecified. \\
+  51 &   Invalid call reference value. \\
+  52 &   Identified channel does not exist. \\
+  53 &   A suspended call exists, but this call identity does not. \\
+  54 &   Call identity in use. \\
+  55 &   No call suspended. \\
+  56 &   Call having the requested call identity. \\
+  58 &   Incompatible destination. \\
+  5B &   Invalid transit network selection. \\
+  5F &   Invalid message, unspecified. \\
+  60 &   Mandatory information element is missing. \\
+  61 &   Message type non-existent or not implemented. \\
+  62 &   Message not compatible with call state or message 
+        or message type non existent or not implemented. \\
+  63 &   Information element non-existent or not implemented. \\
+  64 &   Invalid information element content. \\
+  65 &   Message not compatible. \\
+  66 &   Recovery on timer expiry. \\
+  6F &   Protocol error, unspecified. \\
+  7F &   Inter working, unspecified. \\
+  \end{longtable}
+  \end{small}
+\end{description}

@@ -1,0 +1,45 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-capi - PPP over CAPI (client side)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /usr/share/circuits/isdn/ppp-isdn
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_isdn_circuit_add()
+{
+    # by default, wait at most 15 seconds until the ISDN line is connected
+    local circ_ppp_isdn_timeout=${circ_ppp_isdn_timeout:-15}
+
+    do_modprobe ppp_async
+
+    # A/C compression _must_ be prohibited as the ISDN subsystem needs
+    # these fields to work correctly
+    #
+    # "sync" is not activated to not risk lost frames due to unwanted merging
+    cat >> $2 <<EOF
+plugin capiplugin.so
+/dev/null
+local
+noaccomp
+protocol hdlc
+number ${circ_ppp_isdn_dialout// /,}
+dialtimeout ${circ_ppp_isdn_timeout}
+EOF
+
+    if [ -n "$circ_ppp_isdn_msn" ]
+    then
+        echo "msn $circ_ppp_isdn_msn" >> $2
+    fi
+
+    cat >> $1 <<EOF
+circ_ppp_isdn_msn="$circ_ppp_isdn_msn"
+circ_ppp_isdn_dialout="$circ_ppp_isdn_dialout"
+EOF
+
+    return 0
+}

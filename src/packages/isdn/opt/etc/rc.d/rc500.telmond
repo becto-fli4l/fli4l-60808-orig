@@ -1,0 +1,65 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc400.telmond - configuration/startup of telmond
+# was file /etc/rc.d/telmond
+#
+# Creation:     10.10.2000  fm
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+case $OPT_TELMOND in
+yes)
+    begin_script TELMOND "starting telmond ..."
+
+    if [ ! -f /etc/telmond.conf ]       # already existing?
+    then                                # yes, don't overwrite
+        case $TELMOND_LOG in
+        yes)
+            [ 0$TELMOND_MSN_N -eq 0 ] || for idx in `seq 1 $TELMOND_MSN_N`
+            do
+                eval telmond_msn='$TELMOND_MSN_'$idx
+                echo "log $telmond_msn"
+            done >/etc/telmond.conf
+        ;;
+        esac
+
+        [ 0$TELMOND_CMD_N -eq 0 ] || for idx in `seq 1 $TELMOND_CMD_N`
+        do
+            eval telmond_cmd='$TELMOND_CMD_'$idx
+            echo "exec $telmond_cmd"
+        done >>/etc/telmond.conf
+    fi
+
+    ctrl_opt=
+    [ 0$TELMOND_CAPI_CTRL_N -eq 0 ] || for idx in `seq 1 $TELMOND_CAPI_CTRL_N`
+    do
+        eval index=\$TELMOND_CAPI_CTRL_$idx
+        ctrl_opt="$ctrl_opt -capi-ctrl $index"
+    done
+
+    echo $TELMOND_PORT >/var/run/telmond.port
+    ln -s /usr/local/bin/imond-stat /usr/local/bin/telmond-send
+
+    syslog_opt=
+    if [ "$OPT_SYSLOGD" = "yes" ]
+    then
+        syslog_opt='-log-to-syslog'
+        if [ "$OPT_KLOGD" = "yes" ]
+        then
+            syslog_opt="$syslog_opt -syslog-fifo /var/run/kernel-info"
+        fi
+    fi
+
+    map2persistent TELMOND_LOGDIR
+
+    if [ ! -d $TELMOND_LOGDIR ]
+    then
+        mkdir -p $TELMOND_LOGDIR
+    fi
+    echo "telmond_logdir=\"$TELMOND_LOGDIR\"" >>/etc/telmond_logdir.conf
+
+    /usr/local/bin/telmond -port $TELMOND_PORT $ctrl_opt $syslog_opt $TELMOND_LOGDIR
+
+    end_script
+    ;;
+esac

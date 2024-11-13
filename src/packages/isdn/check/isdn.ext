@@ -1,0 +1,204 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for isdisdn
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2002-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_isdn)
+then
+    provides isdn version 4.0.0
+    depends on fli4l version 4.0
+
+    set isdn_class=""
+    foreach isdn_type in isdn_%_type
+    do
+        if (isdn_type < 200)
+        then
+            if (isdn_class != "" && isdn_class != "remote")
+            then
+                error "Cannot load '$isdn_class' and 'remote' (type $isdn_type) drivers together"
+            else
+            if (isdn_class == "remote")
+            then
+                error "Cannot load multiple 'remote' (type $isdn_type) drivers together"
+            else
+                set isdn_class="remote"
+            fi
+            fi
+        else
+        if (isdn_type < 300)
+        then
+            if (isdn_class != "" && isdn_class != "icn")
+            then
+                error "Cannot load '$isdn_class' and 'icn' (type $isdn_type) drivers together"
+            else
+                set isdn_class="icn"
+            fi
+        else
+            if (isdn_class != "" && isdn_class != "misdn")
+            then
+                error "Cannot load '$isdn_class' and 'misdn' (type $isdn_type) drivers together"
+            else
+                set isdn_class="misdn"
+            fi
+        fi
+        fi
+
+        if (copy_pending("%{isdn_type}") && isdn_type != 100)
+        then
+            if (isdn_type < 100 || isdn_type >= 150)
+            then
+                error "No ISDN driver found for %isdn_type='$isdn_type', check config/isdn.txt"
+            else
+                error "Unfortunately, due to licence issues, the AVM driver for %isdn_type='$isdn_type' is not supported by fli4l anymore."
+            fi
+        fi
+        if ((isdn_type == 303) && !opt_usb)
+        then
+            error "For %isdn_type='$isdn_type' you must also install and activate OPT_USB."
+        fi
+    done
+
+    foreach circ in isdn_circ_n
+    do
+        set defaultroute="no"
+        set isdn_routes=isdn_circ_%_route_n[circ]
+        foreach n in isdn_routes
+        do
+            set checknet=isdn_circ_%_route_%[circ][n]
+            if(checknet == "0.0.0.0/0")
+            then
+            set defaultroute="yes"
+            fi
+        done
+        if(defaultroute == "yes" && n > 1)
+        then
+            error "If you specify a default route for an ISDN circuit, no other routes are allowed. Please check the routing configuration for ISDN circuit $circ"
+        fi
+        if (isdn_circ_%_callback[circ] == "cbcp3" && isdn_circ_%_cbnumber[circ] == "")
+        then
+            error "For ISDN_CIRC_${circ}_CALLBACK='cbcp3' you must specify a telephone number in ISDN_CIRC_${circ}_CBNUMBER for callback."
+        fi
+    done
+
+fi
+
+if (opt_telmond && isdn_verbose_level < 2)
+then
+    error "If you want to use telmond you have to set ISDN_VERBOSE to 2 or higher"
+fi
+
+if (opt_telmond)
+then
+    provides telmond version 4.0.0
+    depends on fli4l version 4.0
+fi
+
+if (opt_rcapid)
+then
+    provides rcapid version 4.0.0
+    depends on fli4l version 4.0
+fi
+
+if (opt_ppp_isdn)
+then
+﻿    provides ppp_isdn version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_ISDN='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+if (opt_ppp_isdn_server)
+then
+﻿    provides ppp_isdn_server version 4.0.0
+    depends on ppp version 4.0
+    depends on fli4l version 4.0
+
+    if (!opt_ppp)
+    then
+        error "OPT_PPP_ISDN_SERVER='yes' requires OPT_PPP='yes'"
+    fi
+fi
+
+#
+# Circuits
+#
+
+set isdn_client="no"
+set isdn_server="no"
+
+foreach i in CIRC_N
+do
+    if (CIRC_%_ENABLED[i] == "yes")
+    then
+        set type=CIRC_%_TYPE[i]
+        if (type == "ppp")
+        then
+            depends on ppp version 4.0
+            set ppptype=CIRC_%_PPP_TYPE[i]
+            if (ppptype == "isdn")
+            then
+                if (!opt_isdn)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_ISDN='yes'"
+                fi
+                if (!opt_ppp)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP='yes'"
+                fi
+                if (!opt_ppp_isdn)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP_ISDN='yes'"
+                fi
+                if (CIRC_%_PPP_ISDN_DIALOUT[i] == "")
+                then
+                    error "CIRC_${i}_PPP_ISDN_DIALOUT must be set for CIRC_${i}_TYPE='$type' and CIRC_${i}_PPP_TYPE='$ppptype'"
+                fi
+
+                set isdn_client="yes"
+            fi
+            if (ppptype == "isdn-server")
+            then
+                if (!opt_isdn)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_ISDN='yes'"
+                fi
+                if (!opt_ppp)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP='yes'"
+                fi
+                if (!opt_ppp_isdn_server)
+                then
+                    error "CIRC_${i}_TYPE='${type}' and CIRC_${i}_PPP_TYPE='$ppptype' require OPT_PPP_ISDN_SERVER='yes'"
+                fi
+
+                set isdn_server="yes"
+            fi
+        fi
+    fi
+done
+
+if (opt_isdn)
+then
+    if (isdn_class =~ "^(remote|misdn)$")
+    then
+        add_to_opt "usr/lib/pppd/${PPPD_VERSION}/capiplugin.so"
+        add_to_opt "ppp_async.ko"
+
+        if (isdn_client == "yes")
+        then
+            add_to_opt "usr/share/circuits/type/ppp-isdn-client" "mode=555 flags=sh"
+        fi
+        if (isdn_server == "yes")
+        then
+            add_to_opt "usr/share/circuits/type/ppp-isdn-server" "mode=555 flags=sh"
+        fi
+    fi
+fi

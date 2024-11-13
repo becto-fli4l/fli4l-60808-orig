@@ -1,0 +1,1271 @@
+% Do not remove the next line
+% Synchronized to r29817
+
+\section {ISDN~- Communication avec les cartes ISDN (ou Numéris) actives et passives}
+\configlabel{OPT\_ISDN}{OPTISDN}
+
+fli4l a été pensé principalement pour l'application ISDN (ou Numéris)
+et/ou pour un routeur DSL. Avec le paramétrage de la variable 
+\var{OPT\_\-ISDN='yes'} le programme ISDN devient actif. A condition
+que la carte ISDN soit supporté par fli4l.
+
+Si vous n'utilisé pas d'ISDN, le paramètre de la variable sera alors
+\var{OPT\_\-ISDN}='no' aucune carte ISDN ne sera installée. Vous
+pouvez alors ignorer la suite de ce chapitre.
+
+Configuration par défaut~: \var{OPT\_\-ISDN='no'}
+
+\subsection {Établir une connexion par ISDN}
+\begin{sloppypar}
+La sélection du comportement de fli4l est déterminé par trois variables
+différentes, \mbox{\var{DIALMODE},} \var{ISDN\_\-CIRC\_\-X\_\-ROUTE\_X},
+\var{ISDN\_\-CIRC\_\-X\_\-TIMES}. Lorsqu'un paquet arrive sur le circuit 
+\jump{DIALMODE}{\var{DIALMODE}} actif (dans le fichier $<$config$>$/base.txt),
+une connexion doit se construire automatiquement ou pas. La variable
+\var{DIALMODE} peut accepter les valeurs suivantes~:
+\end{sloppypar}
+
+\begin{description}
+\item[auto] Si un paquet arrive sur le circuit ISDN (il traverse
+l'interface ISDN puis il est changé en ippp*) il ouvre automatiquement une connexion.
+Quand le paquet arrive sur le circuit ISDN les deux variables sont utilisées
+\var{ISDN\_\-CIRC\_\-X\_\-ROUTE\_X} et \var{ISDN\_\-CIRC\_\-X\_\-TIMES}.
+
+\item[manual] En mode manuel, la connexion doit être déclenchés avec
+le client imonc/imond. La documentation se trouve dans la section imonc/imond.
+
+\item[off] Aucune connexion ISDN n'est établie.
+\end{description}
+
+Les paquets qui arrivent sur le réseau, sont défini dans la variable
+\var{ISDN\_\-CIRC\_\-X\_\-ROUTE\_X} qui est prés configuré. Avec le réglage
+'0.0.0.0/0', on appelle ce réglage 'default route' (ou route par défaut) avec
+pondération. Cela signifie aussi que tous les paquets qui quittent le réseau
+local passent par ce réseau, s'il est actif. Quand le réseau est actif, la
+variable \var{ISDN\_\-CIRC\_\-X\_\-TIMES} est analysée, puis fli4l li la variable
+\emph{least cost routing} "moindre coût de routage" (voir la section
+\jump{sec:leastcostrouting}{Least-Cost-Routing~- Mode de fonctionnement}
+dans la documentation du paquetage base). Si l'on ne veut pas que les paquets
+passent par tous les réseaux, mais uniquement sur certains réseaux (par ex. le
+réseau d'entreprise), on pourra indiquer ici un ou plusieurs réseaux différent.
+fli4l gère l'interface ISDN qui est en permanence actif et le réseau informatique
+qui lui est assigné. Maintenant si un paquet est envoyé par un PC du réseau local,
+une connexion automatiquement se crée.
+
+Comme déjà mentionné, la variable \var{ISDN\_\-CIRC\_\-X\_\-TIMES} sert à
+activer le côut des connexions pour le circuit ISDN, lorsque le réseau
+'default route' (ou routage par défaut) est activé le tableau des
+frais de connexion peut être déclenchés. 'Si' dans la variable on a
+spécifié la date, les deux premiers paramètres de time-info
+(par ex. Mo-Fr:09-18), et 'si' le quatrième paramètre de
+lc-default-route est sur (y/n). fli4l (par le démon imond) s'occupe
+alors des paquets qui quittent le réseau local, passent toujours par
+le réseau actif puis par l'interface ISDN et établi une connexion avec
+le fournisseur d'accès Internet à la date/heure indiqué.
+
+En résumé selon l'utilisation par défaut on peut dire suivant les cas~:
+
+\begin{itemize}
+\item Si on veut uniquement Internet, on met auto dans \var{DIALMODE},
+on définit 1-n circuit, comme le premier route '0.0.0.0/0' et comme temps
+(avec lc-default-route = Y) pour toute la semaine.
+
+\begin{small}
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_%_ROUTE_N='1'
+        ISDN_CIRC_%_ROUTE_1='0.0.0.0/0'
+        ISDN_CIRC_%_TIMES='Mo-Su:00-24:0.0148:Y'
+\end{verbatim}
+\end{example}
+\end{small}
+
+\item Si on veut utiliser une connexion spécial pour un réseau
+d'entreprise, on définit le réseau (ou plusieurs réseaux)
+avec une route différente de '0.0.0.0/0', ainsi vous avez en
+permanence un accès actif pour un réseau d'entreprise spécifique.
+\begin{small}
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_%_ROUTE_N='1'
+        ISDN_CIRC_%_ROUTE_1='network/netmaskbits'
+        ISDN_CIRC_%_TIMES='Mo-Su:00-24:0.0148:Y'
+\end{verbatim}
+\end{example}
+\end{small}
+\end{itemize}
+
+\subsection{Carte ISDN}
+
+Le routeur fli4l supporte l'utilisation simultanée de plusieurs cartes ISDN.
+Cependant, cela nécessite que toutes les cartes ISDN requièrent \emph{le même
+type de pilote}. Le type de pilote est choisi dans le tableau ci-dessous, vous pouvez
+trouver tous les pilotes correspondant aux cartes définis. Par exemple, vous pouvez utilisation
+plusieurs cartes avec un pilote mISDN ou plusieurs cartes avec un pilote HiSax
+(s'il y a suffisamment de ressources disponibles) cela ne pose pas de problème, mais
+il n'est pas possible d'utiliser simultanément des cartes alimentés par mISDN et HiSax.
+
+\begin{description}
+\configlabel{ISDN\_\%\_IO}{ISDNxIO}
+\configlabel{ISDN\_\%\_IO0}{ISDNxIO0}
+\configlabel{ISDN\_\%\_IO1}{ISDNxIO1}
+\configlabel{ISDN\_\%\_MEM}{ISDNxMEM}
+\config{ISDN\_\%\_TYPE ISDN\_\%\_IO ISDN\_\%\_IO0 ISDN\_\%\_IO1 ISDN\_\%\_MEM ISDN\_\%\_IRQ} {ISDN\_\%\_TYPE} {ISDNxTYPE}
+
+  On mentionne ici les données techniques pour la carte ISDN (ou RNIS).
+
+  Les valeurs mentionnées dans l'exemple fonctionnent avec une carte
+  TELES 16.3, elle est réglée sur l'Adresse IO 0xd80 (en utilisant les Switches Dip).
+  Si vous changez le réglage de la carte, l'adresse doit être modifiée.
+
+  \achtung{Erreur fréquemment faite (exemple)~:}
+  \begin{example}
+  \begin{verbatim}
+          ISDN_1_IO='240' -- au lieu de~: ISDN_1_IO='0x240'
+  \end{verbatim}
+  \end{example}
+
+  Si vous utilisez l'IRQ 12 vous devez couper la souris PS/2 qui
+  est éventuellement disponible dans le BIOS. Mieux vaut choisir
+  un autre IRQ! \flqq{}Les bons\frqq{} IRQ sont généralement 5, 10 et 11.
+
+  \var{ISDN\_\%\_\-TYPE} par principe le type correspond au numéro de
+  pilote HiSax. Excepté~: les cartes non HiSax comme par exemple AVM-B1,
+  la numérotation de ces types de cartes a été élargie. La liste de tous
+  des types HiSax sont indiquées dans \\
+  \var{linux-2.x.y/Documentation/isdn/README.HiSax}.
+
+\begin{small}
+  \begin{longtable}{|r|p{60mm}|p{62mm}|}
+    \hline
+    \multicolumn{1}{|c}{\textbf{Type}} & \multicolumn{1}{|c}{\textbf{Carte}} &
+    \multicolumn{1}{|c|}{\textbf{Paramètres nécessaires}} \\
+    \hline\hline
+    \endhead
+
+    \multicolumn{3}{|l|}{Numéro du type pour pilote factice~:} \\
+    \hline
+      0 &  no driver (dummy)             & none \\
+
+    \hline\hline
+    \multicolumn{3}{|l|}{Numéro du type pour pilote Remote-CAPI~:} \\
+    \hline
+
+    160 & AVM Fritz!Box Remote CAPI   & ip,port \\
+    161 & Melware Remote CAPI (rcapi) & ip,port \\
+
+    \hline\hline
+    \multicolumn{3}{|l|}{Numéro du type pour pilote mISDN~:} \\
+    \hline
+
+    301 & HFC-4S/8S/E1 multiport cards         & no parameter \\
+    302 & HFC-PCI based cards                  & no parameter \\
+    303 & HFCS-USB Adapters                    & no parameter \\
+    304 & AVM FritZ!Card PCI (v1 and v2) cards & no parameter \\
+    305 & cards based on Infineon (former Siemens) chips: \newline
+          - Dialogic Diva 2.0 \newline
+          - Dialogic Diva 2.0U \newline
+          - Dialogic Diva 2.01 \newline
+          - Dialogic Diva 2.02 \newline
+          - Sedlbauer Speedwin \newline
+          - HST Saphir3 \newline
+          - Develo (former ELSA) Microlink PCI (Quickstep 1000) \newline
+          - Develo (former ELSA) Quickstep 3000 \newline
+          - Berkom Scitel BRIX Quadro \newline
+          - Dr.Neuhaus (Sagem) Niccy           & no parameter \\
+    306 & NetJet TJ 300 and TJ320 cards        & no parameter \\
+    307 & Sedlbauer Speedfax+ cards            & no parameter \\
+    308 & Winbond 6692 based cards             & no parameter \\
+    \hline
+  \end{longtable}
+\end{small}
+
+  Ma carte est une Teles 16.3 NON-PNP ISA, elle est donc du Type=3.
+
+  Par exemple pour une carte ICN-2B les paramètres IO et MEM doivent être,
+  \var{ISDN\_1\_\-IO}='0x320', \var{ISDN\_1\_\-MEM}='0xd0000'.
+
+  Les nouvelles cartes Teles-PCI doivent être indiqués avec le type=20 (au lieu de 21).
+  Au sujet des paramètres ils sont indiqués avec la commande "cat /proc/pci" avec "tiger"
+  ou semblable. Si vous ne trouvez pas cette valeur, je ne peux rien faire pour vous, désolé.
+
+  Pour la configuration des types ISDN 105 à 114, il est nécessaire au préalable de télécharger
+  les pilotes ici \altlink{http://www.fli4l.de/fr/telechargement/version-stable/pilote-avm/}
+  et de décompresser les fichiers dans le répertoire fli4l. malheureusement ces
+  pilotes ne sont pas sous licence GPL, c'est pour cela qu'il ne sont pas fournis
+  avec le paquetage ISDN.\\
+
+  Pour l'utilisation des type ISDN 303 il est nécessaire d'installer et
+  d'activer le support USB. Voir la section
+  \jump{sec:opt-usb }{USB~- Gestion des périphériques USB}.
+
+  Quelques conseils sont disponibles sur fi4l FAQ ou sur Mailing-liste au sujet
+  des numéros de type pour les pilotes de cartes ISDN, si vous ne savait pas exactement
+  quel Type de carte est dans votre PC.
+
+  Certains types de cartes sont identifiés avec la fonction \flqq{}from isapnp setup\frqq{}
+  ils doivent être initialisés avec l'outil PnP Tool isapnp~- S'il s'agit réellement
+  d'une carte PnP. Voir la documentation dans le chapitre
+  \jump{OPTPNP}{OPT\_PNP~- Outil d'installation pour isapnp}.
+
+  Le Type ISDN 0 est nécessaire, si l'on veut installer le paquetage ISDN \textbf{sans}
+  carte ISDN dans votre PC, pour pouvoir par exemple utiliser imond sur le routeur
+  et le client imonc sur le réseau local.
+
+\configlabel{ISDN\_\%\_IP}{ISDNxIP}
+\configlabel{ISDN\_\%\_PORT}{ISDNxPORT}
+\config{ISDN\_\%\_IP ISDN\_\%\_PORT} {ISDN\_\%\_IP} {ISDNxIP}
+
+  Pour l'utilisation des types ISDN 160 et 161, vous devez définir dans la variable
+  (\var{ISDN\_\%\_IP}) l'adresse IP et dans \var{ISDN\_\%\_PORT}) le port du périphérique
+  offrant une interface avec le démon CAPI distant. L'adresse IP est obligatoire, mais le numéro
+  de port peut être omis~: selon le type sélectionné, un port standard sera alors défini, pour
+  le (type 160: 5031, type 161: 2662).
+
+  Exemple~:
+  \begin{example}
+  \begin{verbatim}
+          ISDN_1_TYPE='160' # AVM Fritz!Box
+          ISDN_1_IP='192.168.177.1'
+  \end{verbatim}
+  \end{example}
+
+\config{ISDN\_DEBUG\_LEVEL}{ISDN\_DEBUG\_LEVEL}{ISDNDEBUGLEVEL}
+
+  Pour activer Debug-Level avec les cartes HiSaX. Pour vous aidez, Debug-Level
+  (ou niveau de débogage) se compose de valeurs suivantes (documentation original)~:\\
+
+  \begin{tabular}[h!]{r|l}
+   \multicolumn{1}{c|}{\textbf{Number}} & \multicolumn{1}{c}{\textbf{Debug-Information}} \\
+   \hline
+      1 & Link-level $<$--$>$ hardware-level communication \\
+      2 & Top state machine \\
+      4 & D-Channel Q.931 (call control messages) \\
+      8 & D-Channel Q.921 \\
+     16 & B-Channel X.75 \\
+     32 & D-Channel l2 \\
+     64 & B-Channel l2 \\
+    128 & D-Channel link state debugging \\
+    256 & B-Channel link state debugging \\
+    512 & TEI debug \\
+   1024 & LOCK debug in callc.c \\
+   2048 & More debug in callc.c (not for normal use) \\
+  \end{tabular}\latex{\\}
+
+  Valeur par défaut (\var{ISDN\_DEBUG\_LEVEL}='32') devrait être la plus adaptée.
+
+\config{ISDN\_VERBOSE\_LEVEL}{ISDN\_VERBOSE\_LEVEL}{ISDNVERBOSELEVEL}
+
+  Avec cette variable on peut régler "divers" fonction dans le sous système ISDN
+  du Kernel fli4l. Dans Verbose-Level chaque numéro correspond à un niveau du
+  plus bas au plus haut. Voici les Verbose-Level~:
+
+  \begin{tabular}[h!]{lp{10cm}}
+    '0' & Enregistrement d'aucune information supplémentaire \\
+    '1' & Enregistrement à la moindre connexion ISDN\\
+    '2' et '3' & Les appels Tél. son enregistrés dans un journal\\
+    '4' et plus & enregistrement régulier du taux de transfert de données. \\
+        % Beim letzten bin ich mir nicht ganz sicher, siehe
+        % linux-kernel-source/drivers/isdn/isdn_net.c, suche nach "dev->net_verbose > 3"
+  \end{tabular}
+
+  Pour visualiser les messages du Kernel-Logging-Interface, il faut
+  activer la variable \jump{OPTSYSLOGD}{\var{OPT\_SYSLOGD}}.
+
+  \wichtig{si les appels Tél. sont activer avec telmond, le réglage pour
+  l'enregistrement des appel Tél. ne doit pas être inférieur à 2 autrement
+  aucun appel ne sera enregistré.}
+
+  Configuration par défaut~: \var{ISDN\_VERBOSE\_LEVEL}='2'
+
+\begin{sloppypar}
+\config{ISDN\_FILTER}{ISDN\_FILTER}{ISDNFILTER}
+
+Active le mécanisme de filtrage du Kernel, afin d'assurer le bon fonctionnement
+du Hangup-Timeout. Voir pour de plus amples informations
+\altlink{http://www.fli4l.de/hilfe/howtos/basteleien/hangup-problem-loesen/}
+\end{sloppypar}
+\end{description}
+
+\subsection{OPT\_ISDN\_COMP (Expérimantal)}
+\configlabel{OPT\_ISDN\_COMP}{OPTISDNCOMP}
+
+Si vous avez activez la variable \var{OPT\_\-ISDN\_\-COMP}='yes'
+la compression de LZS et de BSD sera possible. Les paquets seront compressés
+lorsque la connexion sera établie. Merci à Arwin Vosselman 
+(\email{arwin(at)xs4all(dot)nl}). Cette variable supplémentaire à un statut expérimental.
+
+Configuration par défaut~: \var{OPT\_\-ISDN\_\-COMP}='no'
+
+Détail des paramètres pour DEBUG, nécessaires avec la compression LZS~:
+
+\begin{description}
+\config{ISDN\_LZS\_DEBUG (Expérimental)}{ISDN\_LZS\_DEBUG}{ISDNLZSDEBUG}
+
+  Réglage-Debug-Level~:
+
+  \begin{tabular}[h!]{ll}
+    '0' & aucune Information de Debogage \\
+    '1' & Information normale de Debogage \\
+    '2' & Information élargie de Debogage \\
+    '3' & Information total de Debogage  (incl. dumping des paquets de
+    données)\\
+  \end{tabular}
+
+  Configuration par défaut~: \var{ISDN\_\-LZS\_\-DEBUG}='1'
+
+  en cas de problèmes de compression, pour avoir plus détail sur des messages
+de débogage, mettais la variable sur '2'.
+
+\config{ISDN\_LZS\_COMP (EXPERIMENTAL)}{ISDN\_LZS\_COMP}{ISDNLZSCOMP}
+
+  Puissance de compression (pas de la décompression!). Restez sur la valeur '8'.
+  Les valeurs possibles sont de 0 à 9
+
+  Plus le nombre est grand meilleure est la compression, cependant '9'
+  est excessif, le CPU est trop sollicité.
+
+  Configuration par défaut~: \var{ISDN\_\-LZS\_\-COMP}='8'
+
+\config{ISDN\_LZS\_TWEAK (EXPERIMENTAL)}{ISDN\_LZS\_TWEAK}{ISDNLZSTWEAK}
+
+  Dans cette variable vous pouvez laisser la valeur sur '7'.
+
+  Configuration par défaut~: \var{ISDN\_\-LZS\_\-TWEAK}='7'
+
+  En plus de la configuration des 3 dernières variables, la variable
+  \var{ISDN\_\-CIRC\_\-x\_\-FRAMECOMP} doit être configurée,
+  voir le chapitre suivant.
+\end{description}
+
+\subsection{Circuits ISDN}
+
+  Dans la configuration de fli4l on peut définir plusieurs connexions via ISDN.
+  Au maximum 2 connexions égal sont possibles sur une mêmes carte ISDN.
+
+  La définition de ces connexions, se nomme circuit dans la configuration de fli4l.
+  Un Circuit est utilisé par connexion.
+
+  Dans notre fichier d'exemple config.txt on a définis deux Circuits~:
+
+\begin{itemize}
+\item Circuit 1~: Dialout sur Internet-By-Call-Provider Microsoft Network, Sync-PPP
+
+\item Circuit 2~: Dialin/Dialout sur le routeur ISDN (par exemple on pourrait
+également indiquer, fli4l)
+
+  Avec Raw IP (ce fonctionnement interne, utilise uniquement les numéros de
+  téléphone pour établir une connexion), par exemple pour accèder au réseau
+  d'entreprise de n'importe où. Concrètement chez moi, c'est un Linux-Box avec
+  isdn4linux comme "adversaire".
+\end{itemize}
+
+  Si le routeur fli4l sert uniquement de gateway (ou passerelle) Internet, un seul
+  circuit est nécessaire. Exception~: si vous utilisez le routeur fli4l avec
+  Least-Cost-Router-Features (ou calcul des coûts des connexions téléphoniques).
+  Tous les circuits autorisés sont à définir dans des domaines différent,
+  voir ci-dessous.
+
+\begin{description}
+\config{ISDN\_CIRC\_N}{ISDN\_CIRC\_N}{ISDNCIRCN}
+
+  Dans cette variable on indique le nombre de circuit ISDN à utiliser.
+  Si vous utilisez uniquement fli4l comme écran d'affichage pour des appels
+  Tél. avec ISDN vous pouvez paramétrer la variable~:
+
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_N='0'
+\end{verbatim}
+\end{example}
+
+  Si le routeur fli4l sert uniquement de gateway (ou passerelle) Internet,
+  un seul circuit est nécessaire. exception~: pour le LC-Routing (ou calcul des coûts
+  des connexions téléphoniques), voir ci-dessous.
+
+\config{ISDN\_CIRC\_x\_NAME}{ISDN\_CIRC\_x\_NAME}{ISDNCIRCxNAME}
+
+  Dans cette variable on indique le nom du circuit maximum 15 caractères. Le nom
+  sera visible sur le client imonc \texttt{imonc.exe} au lieu du numéro de téléphone.
+  Les caractère autorisés sont de 'A' à 'Z' (minuscule et majuscule), et les chiffre
+  de '0' à '9' et aussi le trait d'union '-', par exemple.
+
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_x_NAME='msn'
+\end{verbatim}
+\end{example}
+
+  Le nom de circuit peut être utilisé pour configurer le filtrage de paquet ou
+  OpenVPN. par ex. lorsque l'on configure le filtrage de paquet pour le circuit ISDN,
+  il faut indiquer d'abord le prémis 'circuit\_' puis le nom de circuit. Si le
+  circuit s'appelle 'willi', on peut écrire dans le filtrage de paquet~:
+
+\begin{example}
+\begin{verbatim}
+PF_INPUT_3='if:circuit_willi:any prot:udp 192.168.200.226 192.168.200.254:53 ACCEPT'
+\end{verbatim}
+\end{example}
+
+\config{ISDN\_CIRC\_x\_USEPEERDNS}{ISDN\_CIRC\_x\_USEPEERDNS}{ISDNCIRCxUSEPEERDNS}
+
+  Il est établi que les fournisseurs d'accès Internet utilise un serveur de
+  nom (ou DNS) et nous devons enregistrer ce serveur de nom dans notre réseau
+  local pour la durée de connexion. Rationnellement cette option est seulement
+  utiliser pour la connexion au fournisseur d'accès d'Internet. En même temps,
+  presque tous les fournisseurs supporte ce type de transfert.
+
+  Vous devez enregistrer les adresses IP du serveur de nom donné par votre FAI
+  dans le fichier base.txt à la variable \emph{\var{DNS\_\-FORWARDERS}} et vous
+  devez supprimer le serveur de nom qui est configuré sur votre PC du réseau
+  local. Ensuite vous devez mettre à la place l'adresse IP de votre routeur. Avec
+  se réglage la résolution des noms ne se perd pas dans le cache du serveur de nom.
+
+  Cette option offre l'avantage de toujours pouvoir travailler avec un serveur de
+  nom le plus proche, dans la mesure où le fournisseur d'accès à une adresse IP
+  correcte~- Ainsi, la résolution de nom sera plus rapide.
+
+  En cas d'une défaillance d'un serveur de DNS du fournisseur d'accès, on pourra
+  en régle général corriger plus rapidement les adresses des serveurs DNS du
+  fournisseur d'accès.
+
+  Malgré tout, il est nécessaire d'indiquer un serveur de nom valide dans la
+  variable \emph{\var{DNS\_\-FORWARDERS}} du fichier base.txt pour se connecter,
+  autrement lors de la première connexion Internet la demande ne pourra pas être
+  résolue correctement. En outre, la configuration originale du serveur de nom
+  local est restaurée à la fin de la connexion.
+
+  Configuration par défaut~: \var{ISDN\_\-CIRC\_\-x\_\-USEPEERDNS}='yes'
+
+\config{ISDN\_CIRC\_x\_TYPE}{ISDN\_CIRC\_x\_TYPE}{ISDNCIRCxTYPE}
+
+  Dans cette variable \var{ISDN\_\-CIRC\_\-x\_\-TYPE} on indique le type de
+  connexion IP. Les valeurs possibles sont les suivantes~:
+
+  \begin{tabular}[h!]{ll}
+        'raw' &           RAW-IP\\
+        'ppp' &           Sync-PPP\\
+  \end{tabular}
+
+  Dans la plus par des cas on utilise PPP, mais Raw IP est un peu plus efficace,
+  étant donné que PPP-Overhead est supprimé. Cependant une authentification de
+  Raw IP n'est pas possible, toutefois, on peut indiquer dans la variable
+  \var{ISDN\_\-CIRC\_\-x\_\-DIALIN} un accès limité à un numéro ISDN (mot-clé "Clip").
+  Si on paramètre la variable \var{ISDN\_\-CIRC\_\-x\_\-TYPE} avec 'raw' on peut
+  créer un script analogique PPP up/down et un script raw up/down dans le dossier /etc/ppp.
+
+\config{ISDN\_CIRC\_x\_BUNDLING}{ISDN\_CIRC\_x\_BUNDLING}{ISDNCIRCxBUNDLING}
+
+  Dans cette variable avec le protocole MPPP (Multilink Protocol) RFC 1717, on
+  permet l'agrégation des canaux ISDN. Dans la pratique plupart du temps elle ne
+  sont pas pertinentes, pour que ces restrictions soient applicables il faut~:
+  \begin{itemize}
+  \item que se la soit possible uniquement avec la liaison PPP et non avec un circuits Raw
+  \item que l'agrégation des canaux avec la nouvelle RFC 1990 (MLPPP) est pas possible
+  \end{itemize}
+
+  Le 2ème canal peut est activé manuellement avec le client imonc ou activé
+  automatiquement par rapport à la bande passante, pour cela voir la variable
+  \var{ISDN\_\-CIRC\_\-x\_\-BANDWIDTH}.
+
+  Configuration par défaut~: \var{ISDN\_\-CIRC\_\-x\_\-BUNDLING}='no'
+
+  Attention~: lors de l'utilisation des canaux, associer à la compression cela
+  peut occasionner des problèmes, voir aussi la description de la variable
+  \var{ISDN\_\-CIRC\_\-x\_\-FRAMECOMP}.
+
+\config{ISDN\_CIRC\_x\_BANDWIDTH}{ISDN\_CIRC\_x\_BANDWIDTH}{ISDNCIRCxBANDWIDTH}
+
+  Si l'agrégation des canaux-ISDN est activer dans\linebreak
+  \var{ISDN\_\-CIRC\_\-x\_\-BUNDLING}='yes', vous pouvez paramètrer cette variable
+  pour automatiser le 2ème canal-ISDN. Il y a 2 paramètres numériques à respecter~:
+  \begin{enumerate}
+  \item  La valeur du seuil en Octet/Seconde (S)
+  \item  Interval temps en Seconde (Z)
+  \end{enumerate}
+
+  Si la valeur du seuil (S) est dépassé pendant un interval temps (Z) en seconde,
+ Imond active le processus de commutation du 2ème canal automatiquement. Si la
+ valeur du seuil (S) est inférieur pendant un interval temps (Z) le 2ème canal se
+ déactive automatiquement. Pour ne pas activer la bande passante automatiquement,
+ il ne faut rien indiquer dans la variable \var{ISDN\_\-CIRC\_\-1\_\-BANDWIDTH}='',
+ si vous voulez activer le 2ème canal il faut le faire manuellement avec
+ le client imonc.
+
+  Exemple~:
+  \begin{itemize}
+  \item \var{ISDN\_\-CIRC\_\-1\_\-BANDWIDTH}='6144 30'
+
+   Si la valeur de transfert dépasse 6 Kilo-octets/seconde pendant 30
+   secondes le 2ème canal s'active.
+
+  \item \var{ISDN\_\-CIRC\_\-1\_\-BANDWIDTH}='0 0'
+
+    Le deuxième canal ISDN sera immédiatement activé après 10 secondes
+    au plus tard, sur une connexion Internet et restera active jusqu'à
+    la coupure de la connexion.
+
+  \item \var{ISDN\_\-CIRC\_\-1\_\-BANDWIDTH}=''
+
+    Le deuxième canal ISDN peut être uniquement activé manuellement, à
+    condition que la variable \var{ISDN\_\-CIRC\_\-1\_\-BUNDLING}='yes'
+    soit configurée.
+
+  \item \var{ISDN\_\-CIRC\_\-1\_\-BANDWIDTH}='10000 30'
+
+    Normalement le deuxième canal sera activé lorsque la valeur de transfert
+    atteint les 10 Ko/s pendant 30 secondes. Mais le deuxième canal ne s'activera
+    jamais, car le maximun de transfert par canal est de 8 Ko/s.
+  \end{itemize}
+
+  Si la variable est sur \var{ISDN\_\-CIRC\_\-x\_\-BUNDLING}='no', la valeur de
+  la variable \linebreak \var{ISDN\_\-CIRC\_\-x\_\-BANDWIDTH} est sans intérêts.
+
+  Configuration par défaut~: \var{ISDN\_\-CIRC\_\-x\_\-BANDWIDTH}=''
+
+\config{ISDN\_CIRC\_x\_LOCAL}{ISDN\_CIRC\_x\_LOCAL}{ISDNCIRCxLOCAL}
+
+  On enregistre dans cette variable l'adresse IP du fournisseur d'accés Internet
+  pour la partie ISDN. la variable n'est pas dans le fichier de configuration elle
+  est à rajouter.
+
+  Si l'\-assi\-gna\-tion de adresse IP est dynamique, le paramètre doit être
+  \textbf{vide}. C'est au moment de la connexion, que l'adresse IP est négocier.
+  Dans la plus par des cas les fournisseurs d'accès Internet donne une adresse IP
+  dynamique. Cependant, si l'on doit attribuer une adresse IP, c'est ici que
+  l'on doit l'inscrire. Cette variable est optionnelle et doit être configuré
+  qu'en cas de besoin.
+
+\config{ISDN\_CIRC\_x\_REMOTE}{ISDN\_CIRC\_x\_REMOTE}{ISDNCIRCxREMOTE}
+
+  On enregistre dans cette variable le l'adresse IP distant (renvoyer vers) et
+  le masque de sous réseau pour la partie ISDN. le masque doit être écrit sous
+  la forme CIDR (Classles Inter-Domain Routing). Vous trouverez plus d'information
+  sur \jump{IPNETx}{CIDR} dans la documentation du paquetage Base à IP\_NET\_x.
+
+  Si l'\-assi\-gna\-tion de adresse IP est dynamique, le paramètre doit être
+  \textbf{vide}. C'est au moment de la connexion, que l'adresse IP est négocier.
+  Dans la plus par des cas les fournisseurs d'accès Internet donne une adresse IP
+  dynamique. Cependant, si l'on doit attribuer une adresse IP, c'est ici que
+  l'on doit l'inscrire. Cette variable est optionnelle et doit être configuré
+  qu'en cas de besoin.
+
+  Le numéro utilisé pour le masque de sous réseau est indiqué dans la configuration
+  de l'interface. Il sera utilisé pour configurer les réseaux vers des hôtes, pour
+  se connecter. En règle générale nous n'avons pas besoin de ce circuit, il est plus
+  favorable, de créer uniquement un circuit directement à l'ordinateur de connexion.
+  On place le masque de sous réseau sur /32, ici 32 est le nombre de bits du masque
+  de sous réseau. Pour plus de détails, voir
+  \jump{sec:route-details}{chapitre~: Détails techniques sur la Connexion}.
+
+\configlabel{ISDN\_CIRC\_x\_MTU}{ISDNCIRCxMTU}
+\config{ISDN\_CIRC\_x\_MTU ISDN\_CIRC\_x\_MRU}{ISDN\_CIRC\_x\_MRU}{ISDNCIRCxMRU}
+
+  Ces variables sont optionnelles, ont paramètres avec celles-ci le \textbf{MTU}
+  (maximum transmission unit) et le \textbf{MRU} (maximum receive unit).
+  Optionnelle signifie que les variables ne sont pas dans le fichier de configuration,
+  Elles sont à insérer par l'utilisateur si besoin! \\
+  Normalement le réglage est~: MTU 1500 et MRU 1524. Ce réglage doit être
+  modifier uniquement dans des cas exceptionnels!
+
+\config{ISDN\_CIRC\_x\_CLAMP\_MSS}{ISDN\_CIRC\_x\_CLAMP\_MSS}{ISDNCIRCxCLAMPMSS}
+
+  On devrais mettre cette variable sur 'yes' si on utilise la synchronisation PPP
+  (\var{ISDN\_CIRC\_x\_TYPE}='ppp') et si l'un des symptômes suivants se produit~:
+\begin{itemize}
+\item Si le navigateur du PC se connecte à un serveur web et qu'il n'y pas la page
+  qui s'affichée et aucun message d'erreur, plus simplement il ne se passe rien.
+\item Lorsque vous envoyez de petits courriels cela fonctionne, mais si vous avez des
+  problèmes pour envoyer des courriels plus important.
+\item Avec la fonction ssh, réinitialisation du scp après avoir établi une connexion.
+\end{itemize}
+
+  Avec certain FAI, ces problèmes peuvent se produire par exemple Compuserve et
+  aussi Mediaways (FAI Allemand).
+
+  Configuration par défaut~: \var{ISDN\_\-CIRC\_\-x\_\-CLAMP\_MSS}='no'
+
+\config{ISDN\_CIRC\_x\_HEADERCOMP}{ISDN\_CIRC\_x\_HEADERCOMP}{ISDNCIRCxHEADERCOMP}
+
+  SI vous paramétrez cette variable sur \var{ISDN\_\-CIRC\_\-x\_\-HEADERCOMP}='yes'
+  vous compressez les en-têtes proposé par (Van Jacobson TCP/IP Header Compression).
+  Certain FAI ne supporte pas cette fonction. Si vous avez des problèmes avec la
+  compression des en-têtes vous devez paramétrer la variable sur
+  \var{ISDN\_\-CIRC\_\-x\_\-HEADERCOMP}='no'.
+
+  Configuration par défaut~: \var{ISDN\_\-CIRC\_\-x\_\-HEADERCOMP}='yes'
+
+\config{ISDN\_CIRC\_x\_FRAMECOMP (EXPERIMENTAL)}{ISDN\_CIRC\_x\_FRAMECOMP}{ISDNCIRCxFRAMECOMP}
+
+  Cette variable est uniquement pris en compte, que si la variable
+  \var{OPT\_\-ISDN\_\-COMP}='yes' est activée. Cette variable réglemente
+  les Frame-Com\-pres\-sion (compression des en-têtes).
+
+  Les paramètres suivants sont possibles~:
+
+  \begin{tabular}[h!]{ll}
+        'no' &                    Aucune Compression de Frame (ou Trame)\\
+        'default' &               LZS according RFC1974(std) and
+        BSDCOMP 12 \\
+        'all' &                   Negotiate lzs and bsdcomp \\
+        'lzs' &                   Negotiate lzs only \\
+        'lzsstd' &                LZS according RFC1974 Standard Mode
+                                (``Sequential Mode'') \\
+        'lzsext' &                LZS according RFC1974 Extended Mode \\
+        'bsdcomp' &               Negotiate bsdcomp only \\
+        'lzsstd-mh' &             LZS Multihistory according RFC1974
+                                  Standard Mode (``Sequential Mode``)
+  \end{tabular}
+
+  Quelle son les paramètres que l'on doit utilisé pour chaque fournisseur, on doit
+  essayées. Avec le plus connu T-Online (FAI Allemand) on paramètre uniquement 'lzsext'.
+  Dans la plupart des cas, on peut se débrouiller avec le paramètre par défaut
+  'default' pour tous les autres fournisseurs d'accès.
+
+  Attention~: lors de l'utilisation de l'agrégation des canaux en relation avec
+  'lzsext' il peut en résulter des problèmes. Ces problèmes sont largement connues,
+  à la connexion au serveur spécifique, et plus particulièrement à des FAI spécifique.
+  cependant les problèmes ne provient pas uniquement des fournisseurs d'accès, mais
+  peuvent provenir des différents noeuds de connexion.
+
+  le paramètre 'lzsstd-mh' a été pensé pour la communication de routeur à routeur.
+  cette procédure n'est pas utilisé par les FAI mais lors de l'utilisation de deux
+  routeurs fli4l amélioration considérable sur le transfert simultané de plusieurs
+  fichiers. La compression des en-têtes est nécessaire et sera donc automatiquement activé.
+
+\config {ISDN\_CIRC\_x\_REMOTENAME}{ISDN\_CIRC\_x\_REMOTENAME}{ISDNCIRCxREMOTENAME}
+
+  Cette variable est importante, uniquement pour la configuration de fli4l comme
+  routeur de connexion distant. Vous pouvez enregistrer ici un nom hôte distant,
+  normalement nous n'en avons pas besoin.
+
+  Configuration par défaut~: \var{ISDN\_\-CIRC\_\-x\_\-REMOTENAME}=''
+
+\configlabel{ISDN\_CIRC\_x\_USER}{ISDNCIRCxUSER}
+\config {ISDN\_CIRC\_x\_PASS}{ISDN\_CIRC\_x\_PASS}{ISDNCIRCxPASS}
+
+  Dans ces variables on indique les données du fournisseur d'accès. Il s'agit
+  Dans l'exemple ci-dessous, des données du fournisseur de Microsoft Network.
+
+  \var{ISDN\_\-CIRC\_\-x\_\-USER} l'identification de l'utilisateur,
+  \var{ISDN\_\-CIRC\_\-x\_\-PASS} le mot de passe.
+
+  ATTENTION~: pour un accès au FAI T-Online (pour l'Allemagne) il est à noter~:
+
+  Le nom d'utilisateur AAAAAAAAAAAATTTTTT\#MMMM est composé, du numéro
+  co-utilisateur, puis du numéro T-online de 12 chiffres et de
+  l'identification. Le dernier chiffre du numéro T-Online doit se terminer
+  par '\#' si le numéro de T-Online ne comporte pas les 12 chiffres.
+
+  Avec ca si cela ne fonctionne pas! (évidemment cela peut provenir du centrale
+  téléphonique), le caractère '\#' doit être placé entre le numéro T-Online
+  et l'identification.
+
+  Evidemment si le (numéro T-Online comporte les 12 chiffres) il n'y a pas
+  besoin de mettre le caractère '\#'.
+
+  Exemple~: \var{ISDN\_\-CIRC\_\-1\_\-USER}='123456\#123'
+
+  Avec le type de Circuit-Raw-IP ces variables n'ont aucune signification.
+
+\config {ISDN\_CIRC\_x\_ROUTE\_N}{ISDN\_CIRC\_x\_ROUTE\_N}{ISDNCIRCxROUTEN}
+
+  Dans cette variable on configure le nombre de réseau a utiliser pour le
+  circuit ISDN. Si vous avez qu'un routage par Défaut vous devez placez '1'.
+
+\config {ISDN\_CIRC\_x\_ROUTE\_X}{ISDN\_CIRC\_x\_ROUTE\_X}{ISDNCIRCxROUTEx}
+
+  Dans cette variable vous indiquez le réseau ou les réseaux de routages pour
+  le circuit ISDN. ici est enregistré pour la première variable tous les réseaux
+  0.0.0.0/0 (default route) ou (routage par défaut). le format est toujours
+  'network/netmaskbits' par exemple pour un réseau on écrira~: '192.168.199.1/32'.
+  Une société ou une université qui à plusieurs réseaux et veulent se connecter
+  au routeur par exemple pour un accès Internet on configurera la variable~:
+
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_%_ROUTE_N='2'
+        ISDN_CIRC_%_ROUTE_1='192.168.8.0/24'
+        ISDN_CIRC_%_ROUTE_2='192.168.9.0/24'
+\end{verbatim}
+\end{example}
+
+  Lorsque vous avez plusieurs réseaux, vous devez paramétrer chaque réseau dans
+  une variable ISDN\_CIRC\_x\_ROUTE\_y='' une ligne par réseau.
+
+  Si vous voulez utiliser LC-Routing-Features de fli4l, on peut configurer
+  *plusieurs* réseaux comme Default-Route (ou routage par défaut). On pourra
+  paramétrer un des circuits à utiliser pour le LC- dans la variable 
+  \var{ISDN\_\-CIRC\_\-x\_\-TIMES} voir ci-dessous.
+
+\config {ISDN\_CIRC\_x\_DIALOUT}{ISDN\_CIRC\_x\_DIALOUT}{ISDNCIRCxDIALOUT}
+
+  Dans cette variable \var{ISDN\_\-CIRC\_\-x\_\-DIALOUT} on indique ici le numéro
+  de téléphone par exemple celui du FAI. Il est possible d'indiquer plusieurs
+  Numéros de Tél. (au cas où si l'un est occupé)~- On sépare les numéros par un
+  espace. Selon un rapport des newsgroup il est possible d'indiquer un maximun
+  de cinq numéros de Tél.
+
+\config {ISDN\_CIRC\_x\_DIALIN}{ISDN\_CIRC\_x\_DIALIN}{ISDNCIRCxDIALIN}
+
+  Dans cette variable \var{ISDN\_\-CIRC\_\-x\_\-DIALIN} on indique le numéro
+  de Tél. personnel, si le circuit-ISDN est utilisé pour les appels Tél. -
+  avec son indicatif, mais *sans* le premier 0. Par rapport au raccordement
+  téléphonique derrière l'installation cela ne peut en être autrement,
+  éventuellement si le premier voire le deuxième sont des numéros principaux.
+
+  Si le circuit le permet vous pouvez indiquer plusieurs numéros de correspondant
+  ces numéros seront séparés par un espace. Le mieux est de rajouter un circuit
+  par correspondant. Autrement cela pourrait à la connexion appeler les deux
+  correspondants et créer des collisions bzgl sur le même circuit (mais c'est
+  tout à fait possible avec l'ouverture des 2 canaux ISDN). C'est comme les
+  adresses IP.
+
+  Si vous n'arrivez pas à avoir votre correspondant, vous pouvez essayer de mettre
+  le '0' avant le numéro. Mais prudence~: c'est permis uniquement, si le numéro
+  d'appel ne peut pas être transmis!
+
+  Si on voulait réaliser une connexion indépendamment de MSN (ou Multiple numéros
+  d'abonnés) et du correspondant, vous pouvez placer comme paramètre le caractère '*'.
+
+  Dans les deux derniers cas, une procédure d'authentification est indispensable
+  (voir \var{ISDN\_CIRC\_x\_AUTH})
+
+\config {ISDN\_CIRC\_x\_CALLBACK}{ISDN\_CIRC\_x\_CALLBACK}{ISDNCIRCxCALLBACK}
+
+  Réglage et processus Callback (ou rappel Téléphonique), valeurs possibles~:
+
+  \begin{tabular}[h!]{ll}
+        'in' &     fli4l appel et rappel Tél.\\
+        'out' &    fli4l appel, puis raccoche, attent et rappel de nouveau\\
+        'off' &    pas de Callback (rappel Tél.)\\
+        'cbcp' &   CallBack Control Protocol\\
+        'cbcp0' &  CallBack Control Protocol 0\\
+        'cbcp3' &  CallBack Control Protocol 3\\
+        'cbcp6' &  CallBack Control Protocol 6\\
+  \end{tabular}
+
+  Les protocoles de Contrôles CallBack (aussi appelé 'Microsoft CallBack'),
+  le plus souvent utilisé est le protocole cbcp6.
+
+  Paramètre par défaut~: 'off'
+
+\config {ISDN\_CIRC\_x\_CBNUMBER}{ISDN\_CIRC\_x\_CBNUMBER}{ISDNCIRCxCBNUMBER}
+
+  Ici, on peut placer un numéro de rappel pour utilisation les protocoles
+  cbcp, cbcp3 et cbcp6 (si on utilise cbcp3 le numéro est obligatoire).
+
+\config {ISDN\_CIRC\_x\_CBDELAY}{ISDN\_CIRC\_x\_CBDELAY}{ISDNCIRCxCBDELAY}
+
+  Dans cette variable on paramètre le délais en seconde du Callback (ou rappel Tél.).
+  Selon le paramètre du rappel Tél. qui doit résulter, cette variable a une
+  autre signification~:
+
+  \begin{itemize}
+  \item  \var{ISDN\_\-CIRC\_\-x\_\-CALLBACK}='in'~:
+
+    fli4l appel et rappel le numéro si occupé, on indique ici
+    \var{ISDN\_\-CIRC\_\-x\_\-CBDELAY} le temps en seconde entre les deux
+    appels Tél. La bonne valeur est \linebreak \var{ISDN\_\-CIRC\_\-x\_\-CBDELAY}='3'
+    pour rappeler le correspondant. Avec un valeur plus petite cela peu aussi
+    fonctionner, la connexion téléphonique sera accélérer.
+
+  \item \var{ISDN\_\-CIRC\_\-x\_\-CALLBACK}='out'~:
+
+    Dans ce cas fli4l appel et raccroche si occupé, on indique ici
+    \var{ISDN\_\-CIRC\_\-x\_\-CBDELAY} le temps attente en seconde pour appeler
+    de nouveau. Là encore, \var{ISDN\_\-CIRC\_\-x\_\-CBDELAY}='3' est une bonne
+    valeur. Ce qui ma étonné~: a l'appel Téléphonique, il suffit de 3 secondes
+    pour "faire sonner", et avant que la serveur téléphonique réponde a la connexion
+    Tél. en ville. Cette valeur ne doit jamais être plus basse. En cas de doute~: Testez!
+  \end{itemize}
+
+  Si vous paramétrez cette variable sur \var{ISDN\_\-CIRC\_\-x\_\-CALLBACK}='off',
+  la variable \linebreak \var{ISDN\_\-CIRC\_\-x\_\-CBDELAY} sera ignoré. De même,
+  la variable Callback Control Protocol, n'aura pas d'importance.
+
+\config {ISDN\_CIRC\_x\_EAZ}{ISDN\_CIRC\_x\_EAZ}{ISDNCIRCxEAZ}
+
+  Dans cette variable on paramètre l'indicatif régional, dans notre exemple MSN
+  (l'appel du EAZ) est le 81330. Avec votre configuration MSN (ou Multiple numéros
+  d'abonnés), vous avez peut être *pas* besoin d'indicatif à paramétrer.
+
+  Seul une ligne direct est configurer le plus souvent derrière une installation
+  téléphonique sans indicatif régional. Cependant indiquer un '0' comme valeur peut
+  aider, si vous avez des problèmes avec votre installation téléphonique. Avoir des
+  remarques sur cette variable serais appréciable.
+
+\config {ISDN\_CIRC\_x\_SLAVE\_EAZ}{ISDN\_CIRC\_x\_SLAVE\_EAZ}{ISDNCIRCxSLAVEEAZ}
+
+  Si le routeur fli4l est équipé d'un Bus-S0 interne pour un deuxième numéro de
+  téléphone et si l'on utiliser l'agrégation des canaux, le deuxième numéros est
+  a indiquer ici. Numéro du Tél. de diffusion sur le canal esclave.
+
+  Donc normalement cette variable peut rester vide.
+
+\config {ISDN\_CIRC\_x\_DEBUG}{ISDN\_CIRC\_x\_DEBUG}{ISDNCIRCxDEBUG}
+
+  Pour avoir des informations débogage supplémentaire par exemple sur ipppd, vous devez
+  activez la variable \var{ISDN\_\-CIRC\_\-x\_\-DEBUG} régler celle-ci sur 'yes'.
+  Ces informations supplémentaire sur ipppd seront enregistrées avec interface syslogd
+
+  IMPORTANT~: pour que le démon syslogd fonctionne, il faut activer la variable
+  \var{OPT\_\-SYSLOGD} régler celle-ci sur 'yes'
+  (Voir \jump{OPTSYSLOGD}{OPT\_SYSLOGD~- Enregistrement des messages erreur système}).\\
+  Il faut aussi activer klog pour déboguer certains messages par exemple sur ISDN,
+  il faut activer la variable \var{OPT\_\-KLOGD} régler celle-ci sur 'yes'
+  (Voir \jump{OPTKLOGD}{OPT\_KLOGD~- Kernel-Message-Logger}).
+
+  Avec le Circuit-Raw-IP la variable \var{ISDN\_\-CIRC\_\-x\_\-DEBUG} n'a pas d'importance.
+
+\config {ISDN\_CIRC\_x\_AUTH}{ISDN\_CIRC\_x\_AUTH}{ISDNCIRCxAUTH}
+
+  Avec cette variable vous pouvez avoir une authentification PAP ou CHAP lors de la
+  connexion et la communication avec votre correspondant, pour cela paramétrer
+  \var{ISDN\_\-CIRC\_\-x\_AUTH} sur 'pap' ou 'chap'~- Et ensuite *nur*. Dans la
+  plus par des cas vous pouvez laisser cette variable vide!
+
+  La raison~: les fournisseurs accès internet refuse souvent l'authentification,
+  là rejette même! L'exceptions confirment la règle, j'ai récemment lu dans
+  le i4l-Mailingliste ...
+
+  Bien sur, il faut entrer le nom d'utilisateur et mot de passe, dans les variables
+  \var{ISDN\_\-CIRC\_\-x\_USER} et \var{ISDN\_\-CIRC\_\-x\_PASS} 
+  pour l'utilisation.
+
+  Avec le circuits-Raw-IP, cette variable n'a aucune importance.
+
+\config {ISDN\_CIRC\_x\_HUP\_TIMEOUT}{ISDN\_CIRC\_x\_HUP\_TIMEOUT}{ISDNCIRCxHUPTIMEOUT}
+
+  Avec cette variable \var{ISDN\_\-CIRC\_\-x\_\-HUP\_\-TIMEOUT} on paramètre
+  le temps après lequel ordinateur fli4l doit se déconnecter du fournisseur
+  d'accès, s'il n'y a aucune transmission sur le réseau. Dans notre exemple
+  la déconnexion Idle-Time se fait après 40 secondes, pour économiser de l'argent.
+  S'il y a de nouveau une transmission sur le réseau la connexion se rétablira
+  en une fraction de seconde. Il faut aussi que le FAI calcul à la seconde près!
+
+  Il faudrait, au moins dans la phase de test de choisir/la déconnexion
+  automatique du routeur fli4l (soit sur la console ou soit avec le client
+  imonc pour Windows), et de vérifier, si vous avez pas une configuration
+  défectueuse du raccordement ISDN.
+
+  Si vous avez paramétré la valeur '0' aucun temps Idle-Time n'est pris en
+  compte, c.-à-d. que fli4l ne se déconnectera plus de lui-même. S'il vous
+  plaît appliquer cette valeur avec prudence.
+
+\config {ISDN\_CIRC\_x\_CHARGEINT}{ISDN\_CIRC\_x\_CHARGEINT}{ISDNCIRCxCHARGEINT}
+
+  On utilise cette variable pour placez un espace temps~: on paramètre ici le
+  coût par unité téléphonique en seconde. Pour avoir le prix total des communications.
+
+  En Allemagne les plus grands FAI facture l'unité Tél. exactement à la minute, le
+  paramètre correct dans la variable est donc '60'. Compuserve facture l'unité
+  toute les 3 minutes (juin 2000), on paramètre alors la variable
+  \linebreak \var{ISDN\_\-CIRC\_\-x\_\-CHARGEINT}='180'. Certain FAI facture l'unité
+  exactement à la seconde (par ex. Planet-Interkom) dans ce cas la variable
+  \var{ISDN\_\-CIRC\_\-x\_\-CHARGEINT} sera de '1'.
+
+  La variable est à \var{ISDN\_\-CIRC\_\-x\_\-CHARGEINT} $>$= 60 Secondes~:
+
+  Cette variable \var{ISDN\_\-CIRC\_\-x\_\-HUP\_\-TIMEOUT} se paramètre en seconde
+  pour la coupure de la connexion si aucun trafic. Raccroche 2 secondes avant la fin
+  de la pulsation téléphonique. Le calcul du temps d'accès sera donc presque entièrement
+  exploités. Une fonctionnalité vraiment fantastique de isdn4linux!
+
+  Si la facturation de l'unité est calculé à la seconde, bien sûr cette variable n'a pas
+  de sens~- Donc cette règle ne s'applique qu'à partir de 60 secondes par unité de Tél.
+
+\config {ISDN\_CIRC\_x\_TIMES}{ISDN\_CIRC\_x\_TIMES}{ISDNCIRCxTIMES}
+
+  Dans cette variable on paramètre temps activation et l'arrêt de la connexion,
+  aussi le prix de l'unité Tél. Il est possible d'activer des circuits 'Default-Route'
+  différents et aussi l'utilisation de (Least-Cost-Routing). contrôle la route
+  affectation avec le démon (ou programme) imond.
+
+  Structure de la variable~:
+
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_x_TIMES='times-1-info [times-2-info] ...'
+\end{verbatim}
+\end{example}
+
+
+  Il y a dans chaque times-?-info 4 sous-paramètres~- Cet sous-paramètres sont séparés
+  par deux points (':').
+  \begin{enumerate}
+  \item Sous-paramètre~: W1-W2
+
+    On indique ici les périodes des jours ouvrables, par ex. Mo-Fr ou Sa-Su, il est
+    possible décrire les jours en Anglais ou en Allemand. Si l'on paramètre un seul
+    jour, il sera écrit W1-W1 par ex. Su-Su.
+
+  \item Sous-paramètre~: hh-hh
+
+    On indique ici la période horaire, par ex. 09-18 ou 18-09. De 18-09 est synonyme
+    à 18-24 plus 00-09. de 00-24 correspond à toute une journée.
+
+  \item  Sous-paramètre~: Charge
+
+    On indique ici le prix par minute de connexion ou par unité téléphonique en euro,
+    par ex. 0.032 correspond à 3.2 Centimes par minute. Les unités téléphonique, sont
+    calculées en tenant compte du temps de conversion pour un coût réel, et seront
+    alors affiché dans le client-imonc.
+
+  \item  Sous-paramètre~: LC-Default-Route
+
+    Le contenu de ce sous-paramètre peut être Y ou N. cela signifie~:
+
+    \begin{itemize}
+    \item Y~: autorise la plage horaire et LC-Routing (ou calcul des frais)
+      avec Default-Route (ou routage par défaut). Important~: Dans ce cas,
+      il faut aussi que la variable soit réglée \var{ISDN\_\-CIRC\_\-x\_\-ROUTE}='0.0.0.0/0'
+      comme ceci!
+
+    \item N~: autorise la plage horaire et le calcul des frais Tél automatiquement
+      avec LC-Routing, il n'est pas utilisé pour autre chose.
+    \end{itemize}
+  \end{enumerate}
+
+    Exemple~:
+
+\begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_1_TIMES='Mo-Fr:09-18:0.049:N Mo-Fr:18-09:0.044:Y Sa-Su:00-24:0.044:Y'
+    ISDN_CIRC_2_TIMES='Mo-Fr:09-18:0.019:Y Mo-Fr:18-09:0.044:N Sa-Su:00-24:0.044:N'
+\end{verbatim}
+\end{example}
+\end{small}
+
+    Interprétation de l'exemple ci-dessus~: Circuit 1 (FAI Planet-Interkom) est utilisé
+    le soir des jours ouvrables et toute la journée en fin de semaine, mais durant la
+    journée les jours ouvrables de la Circuit 2 (Provider Compuserve) est utilisé.
+
+    \begin{description}
+    \item \wichtig{les paramètres de la variable \var{ISDN\_CIRC\_x\_TIMES} doit
+     couvrir toute la semaine. si ce n'est pas le cas, aucune connexion valide ne
+     peut se produire.}
+
+     \emph{Si vous avez placé le paramètre ("Y") pour LC-Default-Route-Circuits et que vous
+     n'avez pas réglé la semaine complète, il y aura des interruptions dans la période
+     de la semaine avec Default-Route. Alors il sera impossible de surfer sur Internet
+     pendant cet périodes!}
+
+    \item Exemple~:
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_1_TIMES='Sa-Su:00-24:0.044:Y Mo-Fr:09-18:0.049:N Mo-Fr:18-09:0.044:N'
+    ISDN_CIRC_2_TIMES='Sa-Su:00-24:0.044:N Mo-Fr:09-18:0.019:Y Mo-Fr:18-09:0.044:N'
+\end{verbatim}
+\end{example}
+
+     Dans cette exemple les jours ouvrables de 18-09 Heure son paramétrés sur "N".
+     Il n'y a pas de défaut route pour Internet~: le surf est interdit!
+
+    \item Encore un exemple simple~:
+
+\begin{example}
+\begin{verbatim}
+      ISDN_CIRC_1_TIMES='Mo-Su:00-24:0.0:Y'        
+\end{verbatim}
+\end{example}
+
+      Cette exemple est pour ceux qui utilise un Flatrate (ou forfait d'accès
+      internet illimité).
+
+    \item Encore une derrière remarque pour le LC-Routing~:
+
+      Les jours fériés allemands sont traités comme un dimanche.
+    \end{description}
+
+\end{description}
+
+\subsection {OPT\_TELMOND~- Configuration telmond}
+\configlabel{OPT\_TELMOND}{OPTTELMOND}
+
+On utilise la variable \var{OPT\_\-TELMOND} pour activer le serveur-telmond.
+Il écoute via le port TCP 5001 les appels téléphonique entrant et enregistre
+les informations, numéro de Tél. et le nom du correspondant. Ces informations
+pourront être visualisées avec le client imonc sous Windows et Unix/Linux
+(voir le chapitre "Client-/Interface-Serveur imond").
+
+Condition impérative~: avoir installé une carte ISDN (carte numéris), et
+avoir configuré les variables du paquetage \var{OPT\_\-ISDN}.
+
+On peut vérifier le fonctionnement en cours de telmond sous Linux/Unix/Windows
+avec la commande~:
+
+\begin{example}
+\begin{verbatim}
+        telnet fli4l 5001
+\end{verbatim}
+\end{example}
+
+Vous devez voir le dernier appel Tél. puis vous verrez la liaison-telnet se fermer.
+
+Le port 5001 est uniquement accessible depuis le LAN (réseau local). Par défaut
+la configuration du Firewall bloque l'accés de ce port de l'extérieur. Si vous
+voulez modifier accés du port pour le réseau LAN, cela est possible utilisé la
+variable de configuration de telmonc, voir ci-dessous.
+
+Configuration par défaut~: \var{START\_\-TELMOND}='yes'
+
+\begin{description}
+\config {TELMOND\_PORT}{TELMOND\_PORT}{TELMONDPORT}
+
+  Telmond écoute via le Port-TCP/IP. La valeur par défaut est '5001' et devrait
+  être modifié seulement dans certains cas exceptionnels.
+
+\config {TELMOND\_LOG}{TELMOND\_LOG}{TELMONDLOG}
+
+  Si on paramètre la variable sur \var{TELMOND\_\-LOG}='yes' l'ensemble des appels
+  téléphonique seront sauvegardés dans le fichier /var/log/telmond.log. Le contenu
+  du fichier d'imond peut être disponible avec le Client-imonc sous Unix/Linux
+  et Windows.
+
+  Vous pouvez configurez des chemin différent pour le fichier log, voir ci-dessous.
+
+  Configuration par défaut~: \var{TELMOND\_\-LOG}='no'
+
+\config {TELMOND\_LOGDIR}{TELMOND\_LOGDIR}{TELMONDLOGDIR}
+
+  Si vous avez activé les sauvegarde-log, vous pouvez paramétrer cette variable
+  \var{TELMOND\_\-LOGDIR} et configurer un autre répertoire d'origine /var/log, Par ex.
+  '/boot'. Alors, les fichiers LOG de telmond.log serons sauvegardés sur un
+  support de boot, il faut qu'il soit "monté" et paramétré en Read/Write.
+  Si vous indiquez 'auto', le fichier log sera enregistré en fonction de la
+  configuration dans /boot/persistant/isdn ou un autre chemin d'accès spécifique
+  avec la variable \var{FLI4L\_UUID}. Si le chemin /boot n'est pas monté en
+  lecture/écriture, le fichier log sera créé dans le répertoire /var/run.
+
+\config {TELMOND\_MSN\_N}{TELMOND\_MSN\_N}{TELMONDMSNN}
+
+  Ici on peut filtrer les appels téléphonique uniquement pour certain PC client
+  il seront visibles dans imonc, pour chaque appel spécial, le MSN (ou le numéros
+  de téléphones internes) sera suivi du protocole PC client.
+
+  Si c'est nécessaire, Par ex. une collocation du Bat, vous pouvez paramétrer le
+  nombre de filtre MSN dans la variable \var{TELMONS\_\-MSN\_\-N}.
+
+  Configuration par défaut~: \var{TELMOND\_\-MSN\_\-N}='0'
+
+\config {TELMOND\_MSN\_x}{TELMOND\_MSN\_x}{TELMONDMSNx}
+
+  Vous devez indiquer pour chaque Filtre-MSN (ou le numéros de téléphones internes)
+  une adresse IP, les appels seront ainsi enregistrés et visibles.
+
+  Si la variable \var{TELMOND\_\-MSN\_\-N} est configurée avec le nombre de filtre MSN.
+
+  Stucture de la variable~:
+\begin{example}
+\begin{verbatim}
+        TELMOND_MSN_x='MSN IP-ADDR-1 IP-ADDR-2 ...'
+\end{verbatim}
+\end{example}
+
+  Exemple simple~:
+
+\begin{example}
+\begin{verbatim}
+        TELMOND_MSN_1='123456789 192.168.6.2'
+\end{verbatim}
+\end{example}
+
+  Si vous voulez un appel MSN (ou Tél. interne) sur plusieurs ordinateurs visible,
+  par ex. envoyer un Fax sur plusieurs PCs, écrire les adresses-IP et les séparer
+  par un espace, exemple~:
+
+\begin{example}
+\begin{verbatim}
+        TELMOND_MSN_1='123456789 192.168.6.2 192.168.6.3'
+\end{verbatim}
+\end{example}
+
+\config {TELMOND\_CMD\_N}{TELMOND\_CMD\_N}{TELMONDCMDN}
+
+  Dès qu'un appel téléphonique MSN entre, certaines commandes facultatif peuvent
+  être exécutées sur le routeur fli4l. On configure ici le nombre de commande dans
+  la variable \var{TELMOND\_\-CMD\_\-N}.
+
+\config {TELMOND\_CMD\_x}{TELMOND\_CMD\_x}{TELMONDCMDx}
+
+  Avec la variable \var{TELMOND\_\-CMD\_\-1} bis \var{TELMOND\_\-CMD\_\-n} on peut
+  configurer les commandes, elles seront exécutées si un appel téléphonique entre.
+
+  Si la variable \var{TELMOND\_\-CMD\_\-N} est configurée avec le nombre de commande.
+
+  Stucture de la variable~:
+
+\begin{example}
+\begin{verbatim}
+        MSN CALLER-NUMBER COMMAND ...
+\end{verbatim}
+\end{example}
+
+  Le numéro MSN doit être paramétré sans séparé l'indicatif. A la place de
+  CALLER-NUMBER on indique le numéro de Tél. complet~- C'est-à-dire le numéro de
+  téléphone avec l'indicatif. Si on écrit à la place de CALLER-NUMBER le caractère
+  astérisque (*), telmond n'exploite aucun numéro de téléphone du correspondant.
+
+  Voir l'exemple~:
+
+\begin{example}
+\begin{verbatim}
+        TELMOND_CMD_1='1234567 0987654321 sleep 5; imonc dial'
+        TELMOND_CMD_2='1234568 * switch-on-coffee-machine'
+\end{verbatim}
+\end{example}
+
+  Dans le premier cas, la commande "sleep 5; imonc dial" est exécuté si le
+  correspondant avec numéro de Tél 0987654321 appel numéro MSN 1234567.
+  \-En \-fait il y a 2 commandes. Tout d'abord, on attend 5 secondes, de sorte à
+  libérer canal ISDN, sur lequel l'appel Téléphonique entrera. Ensuite, le Client imonc
+  de fli4l démarre avec l'argument "dial". Imonc transmet la commande 1:1 sur le
+  serveur imond lequel produit une connexion réseau par défaut, par ex. sur Internet.
+  Quelles sont les autres commandes que le programme Client imonc peut envoyer
+  vers le serveur imond, elles sont décrient dans le chapitre "Interface
+  Client-/Serveur imond". Pour que cette option fonctionne, il faut installer
+  \var{OPT\_IMONC} dans le paquetage "tools".
+
+  Dans le deuxième cas la commande "switch-on-coffee-machine" est exécuté, si un appel
+  MSN 1234568 entre, quel que soit, d'où l'appel provient. Na\-turelle\-ment
+  la commande "switch-on-coffee-machine" ne fonctionne pas encore avec fli4l!
+
+  lors d'une commande vous pouvez utiliser les jokers suivants~:
+
+  \begin{tabular}[h!]{cll}
+  \hline
+            \%d   &   date    &    Date \\
+            \%t   &   time    &    Heure \\
+            \%p   &   phone   &    Numéro de Tél du correspondant \\
+            \%m   &   msn     &    MSN spécifique \\
+            \%\%  &   percent &    Pourcentage \\
+  \end{tabular}
+
+  Ces données peuvent ensuite être utilisées par un programme, par exemple
+  envoyer par \mbox{E-Mail}.
+
+\config {TELMOND\_CAPI\_CTRL\_N}{TELMOND\_CAPI\_CTRL\_N}{TELMONDCAPICTRLN}
+
+  Si vous utilisez un adaptateur ISDN sous CAPI ou un CAPI distant du
+  (type 160 ou 161), il sera peut être nécessaire de configurer le contrôleur
+  CAPI pour que telmond écoute des appels de façon plus explicite. Par exemple,
+  la Fritz!Box offre un accès avec un maximum de cinq contrôleurs différents
+  qui ne peuvent même pas être différenciés (voir les informations sur
+  \altlink{http://www.wehavemorefun.de/fritzbox/CAPI-over-TCP\#Virtuelle_Controller}).
+  Pour limiter le nombre de contrôleurs à utiliser vous pouvez définir la quantité,
+  dans le tableau les variables suivantes \var{TELMOND\_CAPI\_CTRL\_\%} vous
+  pouvez réglé les contrôleurs qui doivent être utilisés.
+
+  Si vous n'utilisez pas la variable telmond pour écouter sur \emph{tous} les
+  contrôleurs CAPI disponible.
+
+\config {TELMOND\_CAPI\_CTRL\_x}{TELMOND\_CAPI\_CTRL\_x}{TELMONDCAPICTRLx}
+
+  Si la variable \var{TELMOND\_CAPI\_CTRL\_N} est égal à zéro, l'indice pour
+  les contrôleurs CAPI doit être spécifié pour que telmond surveiller les
+  appels entrants.
+
+   Exemple pour un CAPI distant et avec une Fritz!Box pour une "réel" connexion ISDN~:
+
+\begin{example}
+\begin{verbatim}
+        TELMOND_CAPI_CTRL_N='2'
+        TELMOND_CAPI_CTRL_1='1' # listen to incoming ISDN calls
+        TELMOND_CAPI_CTRL_2='3' # listen to calls on the internal S0-Bus
+\end{verbatim}
+\end{example}
+
+  Exemple pour un CAPI distant avec une Fritz!Box pour une connexion analogique
+  et SIP-Forwarding~:
+
+\begin{example}
+\begin{verbatim}
+        TELMOND_CAPI_CTRL_N='2'
+        TELMOND_CAPI_CTRL_1='4' # listen to incoming analog calls
+        TELMOND_CAPI_CTRL_2='5' # listen to incoming SIP-calls
+\end{verbatim}
+\end{example}
+\end{description}
+
+\subsection{OPT\_RCAPID~- Le démon CAPI distant}
+\configlabel{OPT\_RCAPID}{OPTRCAPID}
+
+  Avec cette OPT vous pouvez configurer le programme rcapid sur le routeur fli4l
+  qui offre un accès à Interface par le ISDN sous CAPI via des routeurs sur
+  le réseau. Les outils appropriés peuvent accéder sur la carte ISDN du routeur
+  via le réseau comme s'il était installé localement. Ceci est similaire au
+  paquetage "mtgcapri". La différence est que les systèmes Windows peuvent
+  utiliser "mtgcapri" comme un client alors que l'interface réseau de rcapid
+  supporte seulement les systèmes Linux au moment de l'écriture. Ainsi, les
+  deux paquetages sont complémentaires idéaux dans les environnements mixtes
+  Windows et Linux.
+
+\subsubsection{Configuration du routeur}
+
+\begin{description}
+\config{OPT\_RCAPID}{OPT\_RCAPID}{OPTRCAPID}{
+  Cette variable permet d'activer un ISDN sous CAPI sur le routeur pour les
+  clients distants. Les valeurs possibles sont "yes" et "no". Si la valeur est
+  sur "yes", si le démon inetd sur Internet est configuré, si les demandes de
+  requêtes rcapid sur le port 6000 fonctionne, alors le démon rcapid démarre
+  (peut être modifié en utilisant la variable \var{RCAPID\_PORT}).
+
+Exemple~:
+}
+\verb*?OPT_RCAPID='yes'?
+
+\config{RCAPID\_PORT}{RCAPID\_PORT}{RCAPIDPORT}{
+  Cette variable contient le port TCP qui est utilisé par le démon rcapid.
+
+Configuration par défaut~:
+}
+\verb*?RCAPID_PORT='6000'?
+\end{description}
+
+\subsubsection{Configuration du client Linux}
+
+  Pour utiliser l'interface CAPI distant sur un PC Linux vous devez utiliser 
+  le module de bibliothèque libcapi20. Une telle bibliothèque CAPI se touve
+  dans les derrières distributions Linux (par ex. Debian Wheezy). Sinon vous
+  devez télécharger les sources à partir du lien 
+  \altlink{http://ftp.de.debian.org/debian/pool/main/i/isdnutils/isdnutils_3.25+dfsg1.orig.tar.bz2}.
+  Après le dépaquetage et le chargement dans le répertoire "capi20" de la
+  bibliothèque CAPI, il peut être compilé après les trois étapes "configure"
+  "make" et "sudo make install" comme d'habitude. Lorque la bibliothèque est
+  installé le fichier de configuration \texttt{/etc/capi20.conf} doit être paramétré
+  pour spécifier le client sur lequel rcapid tourne. Par exemple si le routeur est
+  accessible par le nom "fli4l" le fichier conf se présentera comme ceci~:
+
+\begin{example}
+\begin{verbatim}
+REMOTE fli4l 6000
+\end{verbatim}
+\end{example}
+
+C'est tout~! Pour le client Linux, le programme "capiinfo" est installé (fait
+parte du paquetage capi4k-utils de nombreuses distributions), vous pouvez tester
+immédiatement l'interface CAPI distant~:
+
+\begin{example}
+\begin{verbatim}
+kristov@peacock ~ $ capiinfo 
+Number of Controllers : 1
+Controller 1:
+Manufacturer: AVM Berlin
+CAPI Version: 1073741824.1229996355
+Manufacturer Version: 2.2-00  (808333856.1377840928)
+Serial Number: 0004711
+BChannels: 2
+[...]
+\end{verbatim}
+\end{example}
+
+Dans "Number of Controllers" la quantité de cartes RNIS est affiché qui peuvent
+être utilisés par le client. Si vous lisez "0" la connexion au programme rcapid
+fonctionne mais la carte RNIS n'est pas reconnu sur le routeur. Si la connexion
+au programme rcapid ne fonctionne pas du tout (peut-être la variable
+\var{OPT\_RCAPID} est sur "no"), un message d'erreur "capi not installed~-
+Connection refused (111)" sera affiché. Dans ce cas, recontrôler votre configuration.
+

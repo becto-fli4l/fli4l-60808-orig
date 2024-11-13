@@ -1,0 +1,217 @@
+% Synchronized to r29817
+\section{ISDN}
+\marklabel{sec:route-details}
+{
+  \subsection{Technical Details About Dial-In And Routing With ISDN}
+}
+
+This chapter is interesting for those who want to know what is happening 
+'under the hood', having special wishes for configuration or simply 
+looking for solutions to their problems. All others are \emph{ not} 
+encouraged to read this chapter.
+
+After establishing a connection to the provider the ipppd daemon 
+that has made the connection newly configures the interface to 
+set the negotiated IP addresses. The linux kernel automatically sets 
+corresponding routes for remote IP address and netmask. Existing 
+special routes will be deleted. If no netmask is given the ipppd 
+derives it from the remote IP netmask (Class A, B and C subnets 
+will be used here). The vanishing of existing and appearing of new 
+routes has raised problems time and time again:
+
+\begin{itemize}
+\item Company networks were unaccessible because of routes vanishing 
+  or being overlayed by newly set ones
+\item Interfaces were dialing in apparently without cause because a 
+  packet was routed by the kernel to another interface instead of 
+  the default route 
+\item ...
+\end{itemize}
+
+Because of that it is tried to avoid unwanted routes.
+
+The following things will be changed to achieve this:
+\begin{itemize}
+
+\item remote IP will be set to 0.0.0.0 if nothing else is specified. 
+  Hence the routes configured by the kernel while initializing the 
+  interface will vanish.
+  
+\item additionally set routes will be saved in a file
+
+\item if a netmask is given for the circuit it will be transferred to 
+  the ipppd in order to use it for the configuration of the interface 
+  (and therefore route generation) after negotiation of an IP.
+
+\item after dial-in the saved routes of the circuit will be reloaded 
+  from the file and set again (they were deleted by the kernel while 
+  ipppd was reconfiguring the interface)
+  
+\item after hangup the interface will be reconfigured and routes are 
+  set anew to restore the initial situation.
+\end{itemize}
+
+Configuration of a circuits looks like this in that case:
+
+\begin{itemize}
+\item 
+  item default route
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_ROUTE='0.0.0.0'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  If the circuit is a lcr circuit and ``active'' in the moment a default 
+  route will be set towards the circuit (res. the according interface).
+  After dial-in a host-route to the provider appears that vanishes after 
+  hanging up.
+
+  \item special routes
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_ROUTE='network/netmaskbits'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  The given routes for the circuit (res. the according interface) will 
+  be set. After dial-in the routes deleted by the kernel will be restored 
+  and a host-route to the dial-in node exists. After hangup the initial 
+  state will be restored.
+
+
+  \item remote ip
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_REMOTE='ip address/netmaskbits'
+    ISDN_CIRC_%_ROUTE='network/netmaskbits'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  While configurating the interface routes to the target net appear 
+  (according to IP address AND netmask). If the specified IP is kept 
+  after dial-in (meaning no other IP is negotiated during connection 
+  establishment) the route will be kept as well. 
+  
+  If another IP was negotiated during dial-in the route will change 
+  accordingly (new IP AND netmask).
+  
+  For additional routes see above.
+
+
+\end{itemize}
+
+This will hopefully solve \emph{all} problems raised by special routes. 
+The way of correction may change in the future but the principle won't.
+
+\marklabel{sec:isdn-cause}
+{
+  \subsection{Error Messages Of The ISDN-Subsystem (i4l-Documentation)}
+}
+
+Following is an excerpt from the Isdn4Linux Documentation (man 7
+isdn\_cause). 
+
+Cause messages are 2-byte information elements, describing the state
+transitions of an ISDN line. Each cause message describes its
+origination (location) in one byte, while the cause code is described
+in the other byte. Internally, when EDSS1 is used, the first byte
+contains the location while the second byte contains the cause code.
+When using 1TR6, the first byte contains the cause code while the
+location is coded in the second byte. In the Linux ISDN subsystem, the
+cause messages visible to the user are unified to avoid confusion. All
+user visible cause messages are displayed as hexadecimal strings.
+These strings always have the location coded in the first byte,
+regardless if using 1TR6 or EDSS1. When using EDSS1, these strings are
+preceeded by the character 'E'.
+
+
+\begin{description}
+\item [LOCATION] 
+ 
+  The following location codes are defined when using EDSS1:
+
+  \begin{small}
+  \begin{longtable}{lp{12cm}}
+
+  00 &   Message generated by user. \\
+  01 &   Message generated by private network serving the local user. \\
+  02 &   Message generated by public network serving the local user. \\
+  03 &   Message generated by transit network. \\
+  04 &   Message generated by public network serving the remote user. \\
+  05 &   Message generated by private network serving the remote
+  user. \\
+  07 &   Message generated by international network. \\
+  0A &   Message generated by network beyond inter-working point. \\
+  \end{longtable}
+  \end{small}
+
+\item  [CAUSE]
+
+  The following cause codes are defined when using EDSS1:
+
+  \begin{small}
+  \begin{longtable}{lp{12cm}}
+
+  01 &   Unallocated (unassigned) number. \\
+  02 &   No route to specified transit network. \\
+  03 &   No route to destination. \\
+  06 &   Channel unacceptable. \\
+  07 &   Call awarded and being delivered in an established channel. \\
+  10 &   Normal call clearing. \\
+  11 &   User busy. \\
+  12 &   No user responding. \\
+  13 &   No answer from user (user alerted). \\
+  15 &   Call rejected. \\
+  16 &   Number changed. \\
+  1A &   Non-selected user clearing. \\
+  1B &   Destination out of order. \\
+  1C &   Invalid number format. \\
+  1D &   Facility rejected. \\
+  1E &   Response to status enquiry. \\
+  1F &   Normal, unspecified. \\
+  22 &   No circuit or channel available. \\
+  26 &   Network out of order. \\
+  29 &   Temporary failure. \\
+  2A &   Switching equipment congestion. \\
+  2B &   Access information discarded. \\
+  2C &   Requested circuit or channel not available. \\
+  2F &   Resources unavailable, unspecified. \\
+  31 &   Quality of service unavailable. \\
+  32 &   Requested facility not subscribed. \\
+  39 &   Bearer capability not authorised. \\
+  3A &   Bearer capability not presently available. \\
+  3F &   Service or option not available, unspecified. \\
+  41 &   Bearer capability not implemented. \\
+  42 &   Channel type not implemented. \\
+  45 &   Requested facility not implemented. \\
+  46 &   Only restricted digital information bearer. \\
+  4F &   Service or option not implemented, unspecified. \\
+  51 &   Invalid call reference value. \\
+  52 &   Identified channel does not exist. \\
+  53 &   A suspended call exists, but this call identity does not. \\
+  54 &   Call identity in use. \\
+  55 &   No call suspended. \\
+  56 &   Call having the requested call identity. \\
+  58 &   Incompatible destination. \\
+  5B &   Invalid transit network selection. \\
+  5F &   Invalid message, unspecified. \\
+  60 &   Mandatory information element is missing. \\
+  61 &   Message type non-existent or not implemented. \\
+  62 &   Message not compatible with call state or message 
+        or message type non existent or not implemented. \\
+  63 &   Information element non-existent or not implemented. \\
+  64 &   Invalid information element content. \\
+  65 &   Message not compatible. \\
+  66 &   Recovery on timer expiry. \\
+  6F &   Protocol error, unspecified. \\
+  7F &   Inter working, unspecified. \\
+  \end{longtable}
+  \end{small}
+\end{description}

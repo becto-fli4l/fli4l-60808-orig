@@ -1,0 +1,51 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/ppp-capi-server - PPP over CAPI (server side)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /usr/share/circuits/isdn/ppp-isdn
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_isdn_server_circuit_add()
+{
+    do_modprobe ppp_async
+
+    cat >> $1 <<EOF
+circ_ppp_isdn_server_msn="$circ_ppp_isdn_server_msn"
+circ_ppp_isdn_server_dialin="$circ_ppp_isdn_server_dialin"
+EOF
+
+    return 0
+}
+
+# $1 = circuit information file
+# $2 = PPP peer file
+# $3 = variable receiving an error message (if any)
+ppp_isdn_server_instance_circuit_add()
+{
+    # A/C compression _must_ be prohibited as the ISDN subsystem needs
+    # these fields to work correctly
+    #
+    # "sync" is not activated to not risk lost frames due to unwanted merging
+    cat >> $2 <<EOF
+plugin capiplugin.so
+/dev/null
+local
+noaccomp
+protocol hdlc
+inmsn $circ_ppp_isdn_server_msn
+cli ${circ_ppp_isdn_server_dialin// /,}
+silent
+EOF
+
+    cat >> $1 <<EOF
+circ_ppp_isdn_server_instance_msn="$circ_ppp_isdn_server_msn"
+circ_ppp_isdn_server_instance_dialin="$circ_ppp_isdn_server_dialin"
+EOF
+
+    return 0
+}

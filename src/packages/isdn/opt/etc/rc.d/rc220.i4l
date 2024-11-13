@@ -1,0 +1,114 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc220.i4l - load isdn drivers
+#
+# Creation:         29.03.2000  fm
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+CAPI20_CONF=/etc/capi20.conf
+
+init_capi ()
+{
+    if [ ! -f /var/run/capi_loaded ]
+    then
+        do_modprobe_if_exists kernel/drivers/isdn/capi capi
+
+        echo "TRACELEVEL 0" > $CAPI20_CONF
+
+        > /var/run/capi_loaded
+    fi
+}
+
+# $1 = index of driver
+# $2 = remote driver
+# $3 = IP address for remote CAPI
+# $4 = TCP port for remote CAPI
+process_remote_capi()
+{
+    local index=$1 driver=$2 addr=$3 port=$4
+    if [ -n "$addr" ]
+    then
+        init_capi
+        echo "REMOTE $driver $addr $port" >> $CAPI20_CONF
+    else
+        log_error "Remote CAPI type $ISDN_TYPE not initialized as ISDN_${index}_IP is not set"
+    fi
+}
+
+process_misdn_driver()
+{
+    local options="debug=1"
+
+    case $ISDN_TYPE
+    in
+        301) module="hfcmulti";;               # PCI HFC E1, 4S, 8S
+        302) module="hfcpci";;                 # PCI HFC-PCI
+        303) module="hfcsusb";;                # USB HFCS-USB
+        304) module="avmfritz";;               # PCI AVM Fritz!Card
+        305) module="mISDNinfineon";;          # PCI Infineon-Chip-Based
+        306) module="netjet";;                 # PCI NetJet TJ300/320
+        307) module="speedfax";;               # PCI Sedlbauer Speedfax+
+        308) module="w6692";;                  # PCI Winbond 6692
+        *)
+            log_error "Unknown mISDN driver type $ISDN_TYPE"
+            return 1
+            ;;
+    esac
+
+    do_modprobe $module $options
+
+    # configure CAPI
+    init_capi
+    echo "mISDN $misdn" >> $CAPI20_CONF
+    misdn=$((misdn+1))
+}
+
+configure_misdn()
+{
+    # configure mISDN
+    if [ $misdn -gt 0 ]
+    then
+        # for mISDN mdev rule and mISDNcapid below
+        group_add dialout
+        # re-read mdev.conf as it refers to dialout group
+        killall -HUP mdev
+        # load mISDN DSP module (used for G3 fax)
+        do_modprobe mISDN_dsp
+        # start CAPI daemon
+        mISDNcapid -D /var/log/mISDNcapid.log
+    fi
+}
+
+case $OPT_ISDN in
+yes)
+    begin_script I4L "configuring isdn ..."
+
+    do_modprobe ppp_generic
+
+    misdn=0
+
+    for i in $(seq 1 ${ISDN_N:-0})
+    do
+        eval ISDN_TYPE=\$ISDN_${i}_TYPE
+        eval ISDN_IP=\$ISDN_${i}_IP
+        eval ISDN_PORT=\$ISDN_${i}_PORT
+
+        case "$ISDN_TYPE"
+        in
+            0)           ;; # for backwards compatibility
+            160)         process_remote_capi ${i} fritzbox "${ISDN_IP}" ${ISDN_PORT:-5031};;
+            161)         process_remote_capi ${i} rcapi "${ISDN_IP}" ${ISDN_PORT:-2662};;
+            3[0-9][0-9]) process_misdn_driver;;
+        esac
+    done
+
+    configure_misdn
+
+    end_script
+    ;;
+*)
+    ISDN_N=0
+    ISDN_CIRCUIT_N='0'
+    ;;
+esac

@@ -1,0 +1,546 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc340.circuits.isdn - setup isdn circuits
+#
+# Creation:         01.04.2003  fm
+# Last Update:      $Id$
+#------------------------------------------------------------------------------
+
+case x$ISDN_CIRC_N in
+x|x0) ;;
+*)
+    begin_script CIRCUITS "setting up ISDN-circuits ..."
+
+    do_tcpmss ()
+    {
+        if [ "$1" = yes ]
+        then
+            echo "/sbin/iptables -I FORWARD -o $2 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu" >> /etc/rc.d/fwrules.pre.isdn
+        fi
+    }
+
+    #------------------------------------------------------------------------------
+    # first step: write secrets
+    #------------------------------------------------------------------------------
+    {
+        [ 0"$ISDN_CIRC_N" -eq 0 ] || for idx in `seq 1 $ISDN_CIRC_N`
+        do
+            eval type='$ISDN_CIRC_'$idx'_TYPE'
+            if [ "$type" = ppp ]
+            then
+                eval user='$ISDN_CIRC_'$idx'_USER'
+                eval pass='$ISDN_CIRC_'$idx'_PASS'
+                eval server='$ISDN_CIRC_'$idx'_REMOTENAME'
+                if [ -n "$server" ]
+                then
+                    echo "\"$user\"  \"$server\"  \"$pass\"  *"
+                else
+                    echo "\"$user\"  *  \"$pass\"  *"
+                fi
+            fi
+        done
+    } >> /etc/ppp/pap-secrets
+
+    #------------------------------------------------------------------------------
+    # second step: activate all PPP devices:
+    #------------------------------------------------------------------------------
+    ippp_idx=0
+    ip_cnt=1                                # for dummy ip addresses
+
+    >/etc/isdn-devices                      # here we write a list of isdn devices
+
+    active_filter=
+    case "$ISDN_FILTER" in
+    yes)
+        case "$ISDN_FILTER_EXPR" in
+        '')
+            # hold the connection if there are
+            # - outgoing packets
+            # - which are neither TCP RST packets
+            # - nor ICMP echo replies
+            active_filter='outbound and not tcp[13] & 4 != 0 and not icmp[0] != 8'
+            ;;
+        *)
+            # trust the user
+            active_filter="$ISDN_FILTER_EXPR"
+            ;;
+        esac
+        active_filter="$active_filter$(ppp_filter_get)"
+        ;;
+    esac
+    [ -n "$active_filter" ] && active_filter="active-filter \"$active_filter\""
+
+    if [ 0$DNS_LISTEN_N -gt 0 ]
+    then
+        ms_dns=$DNS_LISTEN_1
+    else
+        ms_dns=IP_NET_1_IPADDR
+    fi
+    
+    if translate_ip_net $ms_dns
+    then
+        ms_dns="ms-dns $res"
+    else
+        clear_error
+        log_error "can't extract IP informations for ipppd MS-DNS support"
+        ms_dns=
+    fi
+
+    [ 0"$ISDN_CIRC_N" -eq 0 ] || for idx in `seq 1 $ISDN_CIRC_N`
+    do
+        eval type='$ISDN_CIRC_'$idx'_TYPE'
+
+        if [ "$type" = ppp ]
+        then
+            dev=ippp$ippp_idx
+
+            eval name='$ISDN_CIRC_'$idx'_NAME'
+            eval usepeerdns='$ISDN_CIRC_'$idx'_USEPEERDNS'
+            eval bundling='$ISDN_CIRC_'$idx'_BUNDLING'
+            eval tmp_bandwidth='$ISDN_CIRC_'$idx'_BANDWIDTH'
+            eval dialout='$ISDN_CIRC_'$idx'_DIALOUT'
+            eval dialin='$ISDN_CIRC_'$idx'_DIALIN'
+            eval callback='$ISDN_CIRC_'$idx'_CALLBACK'
+            eval eaz='$ISDN_CIRC_'$idx'_EAZ'
+            eval slave_eaz='$ISDN_CIRC_'$idx'_SLAVE_EAZ'
+            eval hup_timeout='$ISDN_CIRC_'$idx'_HUP_TIMEOUT'
+            eval cbdelay='$ISDN_CIRC_'$idx'_CBDELAY'
+            eval chargeint='$ISDN_CIRC_'$idx'_CHARGEINT'
+            eval times='$ISDN_CIRC_'$idx'_TIMES'
+            eval local='$ISDN_CIRC_'$idx'_LOCAL'
+            eval remote='$ISDN_CIRC_'$idx'_REMOTE'
+            eval mtu='$ISDN_CIRC_'$idx'_MTU'
+            eval mru='$ISDN_CIRC_'$idx'_MRU'
+            eval compression='$ISDN_CIRC_'$idx'_HEADERCOMP'
+            eval framecomp='$ISDN_CIRC_'$idx'_FRAMECOMP'
+            eval user='$ISDN_CIRC_'$idx'_USER'
+            eval remotename='$ISDN_CIRC_'$idx'_REMOTENAME'
+            eval debug='$ISDN_CIRC_'$idx'_DEBUG'
+            eval auth='$ISDN_CIRC_'$idx'_AUTH'
+            eval tcpmss='$ISDN_CIRC_'$idx'_CLAMP_MSS'
+            eval cbnumber='$ISDN_CIRC_'$idx'_CBNUMBER'
+
+            : ${mtu:=1500}
+            : ${mru:=1524}
+
+            useifip=
+
+             cbcp=""
+             case "$callback"
+             in
+                 "cbcp")
+                         cbcp='callback '$cbnumber
+                         callback='off'
+                         ;;
+
+                 "cbcp0")
+                         cbcp='callback 0'
+                         callback='off'
+                         ;;
+
+                 "cbcp3")
+                         cbcp='callback 3,'$cbnumber
+                         callback='off'
+                         ;;
+
+                 "cbcp6")
+                         if [ "$cbnumber" = "" ]
+                         then
+                             cbcp='callback 6'
+                         else
+                             cbcp='callback 6,'$cbnumber
+                         fi
+                         callback='off'
+                         ;;
+             esac
+
+            mp=
+            [ "$bundling" = yes ] && mp="+mp"
+
+            if [ -z "$local" ]
+            then
+                local=192.168.222.$ip_cnt
+                ip_cnt=`expr $ip_cnt + 1`
+            else
+                useifip=useifip
+            fi
+
+            case $remote in
+                */*) netmask_opt=`netcalc netmask $remote` ;;
+                *)   netmask_opt=255.255.255.255 ;;
+            esac
+
+            if [ -z "$remote" -o "$remote" = "0.0.0.0" ]
+            then
+                remote=0.0.0.0
+            else
+                useifip=useifip
+            fi
+
+            [ -n "$remotename" ] && remotename="remotename $remotename"
+
+            if [ "$compression" = 'no' ]
+            then
+                compression='-vj -vjccomp'  # disable header compression
+            else
+                compression=''              # enable header compression
+            fi
+
+            if [ "$OPT_ISDN_COMP" = yes ]     # frame compression
+            then
+                case "$framecomp"
+                in
+                    "default")      framecomp="lzs 1:3 bsdcomp 12";;
+                    "all")          framecomp="";;
+                    "lzs")          framecomp="-bsdcomp";;
+                    "lzsstd")       framecomp="lzs 1:3 -bsdcomp";;
+                     "lzsstd-mh")
+                                     framecomp='lzs 17:3 -bsdcomp'
+                                     compression=''
+                                     ;;
+                    "lzsext")       framecomp="lzs 1:4 -bsdcomp";;
+                    "bsdcomp")      framecomp="-lzs";;
+                    *)              framecomp="-lzs -bsdcomp noccp";;
+                esac
+            else
+                framecomp="-lzs -bsdcomp noccp"
+            fi
+
+            if [ "$debug" = yes ]
+            then
+                debug='debug'
+            else
+                debug=''
+            fi
+
+            case "$auth"
+            in
+                pap | PAP)   auth='+pap';;
+                chap | CHAP) auth='+chap';;
+                *)           auth='';;
+            esac
+
+            log isdnctrl addif $dev
+            net_alias_add $name $dev
+
+            # The SyncPPP layer of the ISDN4Linux subsystem does not support
+            # IPv6. If you want to use IPv6, you have to switch to the
+            # FFL-506 branch where the generic PPP layer is used.
+            if [ -d /proc/sys/net/ipv6 ]
+            then
+                echo 1 > /proc/sys/net/ipv6/conf/$dev/disable_ipv6
+            fi
+
+            for j in $dialout
+            do
+                log isdnctrl addphone $dev out $j
+            done
+
+            if [ "$dialin" = "*" ]      # special meaning
+            then
+                log isdnctrl addphone $dev in "*"
+            else
+                for j in $dialin
+                do
+                    log isdnctrl addphone $dev in $j
+                done
+            fi
+
+            do=`echo "$dialout" | sed 's/  */,/g'`
+            di=`echo "$dialin"  | sed 's/  */,/g'`
+            phone="$do:$di"
+
+            if [ -n "$eaz" ]
+            then
+                log isdnctrl eaz $dev $eaz
+            fi
+
+            log isdnctrl l2_prot $dev hdlc
+            log isdnctrl l3_prot $dev trans
+            log isdnctrl encap $dev syncppp
+            log isdnctrl huptimeout $dev $hup_timeout
+
+            [ "$chargeint" -ge 60 ] && log isdnctrl chargeint $dev $chargeint
+
+            log isdnctrl chargehup $dev off
+            log isdnctrl secure $dev on
+            log isdnctrl pppbind $dev $ippp_idx
+            log isdnctrl dialmode $dev $DIALMODE
+
+            case "$callback"
+            in
+                "in")
+                    log isdnctrl callback $dev in
+                    log isdnctrl cbhup $dev on
+                    log isdnctrl cbdelay $dev $cbdelay
+                    ;;
+
+                "out")
+                    log isdnctrl callback $dev out
+                    log isdnctrl cbdelay $dev $cbdelay
+                    ;;
+            esac
+
+            if [ "$bundling" = yes ]
+            then
+                ippp_idx=`expr $ippp_idx + 1`
+                slave=ippp$ippp_idx
+
+                log isdnctrl addslave $dev $slave
+
+                for j in $dialout
+                do
+                    log isdnctrl addphone $slave out $j
+                done
+
+                if [ "$dialin" = "*" ]          # special meaning
+                then
+                    log isdnctrl addphone $slave in "$dialin"
+                else
+                    for j in $dialin
+                    do
+                        log isdnctrl addphone $slave in $j
+                    done
+                fi
+
+                [ -z "$slave_eaz" ] && slave_eaz="$eaz"
+                [ -n "$slave_eaz" ] && log isdnctrl eaz $slave $slave_eaz
+
+                log isdnctrl l2_prot $slave hdlc
+                log isdnctrl l3_prot $slave trans
+                log isdnctrl encap $slave syncppp
+                log isdnctrl huptimeout $slave $hup_timeout
+
+                [ "$chargeint" -ge 60 ] && log isdnctrl chargeint $slave $chargeint
+
+                log isdnctrl chargehup $slave off
+                log isdnctrl secure $slave on
+                log isdnctrl pppbind $slave $ippp_idx
+                log isdnctrl dialmode $slave auto
+
+                case "$callback"
+                in
+                    "in")
+                        log isdnctrl callback $slave in
+                        log isdnctrl cbhup $slave on
+                        log isdnctrl cbdelay $slave $cbdelay
+                        ;;
+
+                    "out")
+                        log isdnctrl callback $slave out
+                        log isdnctrl cbdelay $slave $cbdelay
+                        ;;
+                esac
+            else
+                slave=
+            fi
+
+            ip addr add $local peer $remote dev $dev
+            ip link set dev $dev up
+
+            echo $local >/var/run/$dev.conf
+            echo $remote >>/var/run/$dev.conf
+            echo $usepeerdns >/var/run/$dev.usepeerdns
+
+            if [ "$usepeerdns" = "yes" ]
+            then
+                usepeerdns='usepeerdns'
+            else
+                usepeerdns=''
+            fi
+
+            eval ipppd   $active_filter     \
+                    \$usepeerdns            \
+                    ipcp-accept-local       \
+                    ipcp-accept-remote      \
+                    \$compression           \
+                    \$cbcp                  \
+                    \$framecomp             \
+                    \$ms_dns                \
+                    -ac                     \
+                    -pc                     \
+                    mtu \$mtu               \
+                    mru \$mru               \
+                    \$mp                    \
+                    noipdefault             \
+                    \$useifip               \
+                    netmask \$netmask_opt   \
+                    \$debug                 \
+                    \$remotename            \
+                    \$auth                  \
+                    name \"\$user\"         \
+                    user \"\$user\"         \
+                    \$dev \$slave
+
+            sleep 1
+
+            route='non_default'
+            eval rnum='$ISDN_CIRC_'$idx'_ROUTE_N'
+            [ 0$rnum -eq 0 ] || for rdx in `seq 1 $rnum`
+            do
+              eval tmp='$ISDN_CIRC_'$idx'_ROUTE_'$rdx
+              if [ "$tmp" != "0.0.0.0/0" ]
+              then
+                  echo $tmp >>/var/run/$dev.conf
+                  ip route add $tmp dev $dev
+              else
+                  route='0.0.0.0/0'
+                  ip_up_events='yes'
+              fi
+            done
+
+            tmp_dev=$dev
+            bandwidth=-1:-1
+            if [ "$bundling" = yes ]
+            then
+                dev=$dev/$slave
+                if [ -n "$tmp_bandwidth" ]
+                then
+                    set - $tmp_bandwidth
+                    bandwidth=$1:$2
+                fi
+            fi
+
+            add_imond_entry
+            dev=$tmp_dev
+
+            net_alias_add $name $dev
+
+            echo $dev >>/etc/isdn-devices
+            echo $dev >/var/run/circuit-$idx
+            ln -s /var/run/circuit-$idx /var/run/circuit-$name
+            > /var/run/$dev.route-fix
+
+            do_tcpmss $tcpmss $dev
+
+            ippp_idx=`expr $ippp_idx + 1`
+        fi
+    done
+
+    #------------------------------------------------------------------------------
+    # third step: activate all raw isdn devices:
+    #------------------------------------------------------------------------------
+
+    isdn_idx=$ippp_idx
+
+    [ 0"$ISDN_CIRC_N" -eq 0 ] || for idx in `seq 1 $ISDN_CIRC_N`
+    do
+        eval type='$ISDN_CIRC_'$idx'_TYPE'
+
+        if [ "$type" = raw ]
+        then
+            dev=isdn$isdn_idx
+
+            eval name='$ISDN_CIRC_'$idx'_NAME'
+            eval dialout='$ISDN_CIRC_'$idx'_DIALOUT'
+            eval dialin='$ISDN_CIRC_'$idx'_DIALIN'
+            eval callback='$ISDN_CIRC_'$idx'_CALLBACK'
+            eval eaz='$ISDN_CIRC_'$idx'_EAZ'
+            eval slave_eaz='$ISDN_CIRC_'$idx'_SLAVE_EAZ'
+            eval hup_timeout='$ISDN_CIRC_'$idx'_HUP_TIMEOUT'
+            eval cbdelay='$ISDN_CIRC_'$idx'_CBDELAY'
+            eval chargeint='$ISDN_CIRC_'$idx'_CHARGEINT'
+            eval times='$ISDN_CIRC_'$idx'_TIMES'
+            eval local='$ISDN_CIRC_'$idx'_LOCAL'
+            eval remote='$ISDN_CIRC_'$idx'_REMOTE'
+            eval netmask='$ISDN_CIRC_'$idx'_NETMASKBITS'
+            eval user='$ISDN_CIRC_'$idx'_USER'
+
+            log isdnctrl addif $dev
+            net_alias_add $name $dev
+
+            # Disable IPv6 for now in order to prevent dialling due to
+            # IPv6 MLDv2 broadcasts.
+            if [ -d /proc/sys/net/ipv6 ]
+            then
+                echo 1 > /proc/sys/net/ipv6/conf/$dev/disable_ipv6
+            fi
+
+            for j in $dialout
+            do
+                log isdnctrl addphone $dev out $j
+            done
+
+            if [ "$dialin" = "*" ]      # special meaning
+            then
+                log isdnctrl addphone $dev in "*"
+            else
+                for j in $dialin
+                do
+                    log isdnctrl addphone $dev in $j
+                done
+            fi
+
+            do=`echo "$dialout" | sed 's/  */,/g'`
+            di=`echo "$dialin"  | sed 's/  */,/g'`
+            phone="$do:$di"
+
+            [ -n "$eaz" ] && log isdnctrl eaz $dev $eaz
+
+            log isdnctrl l2_prot $dev hdlc
+            log isdnctrl l3_prot $dev trans
+            log isdnctrl encap $dev rawip
+            log isdnctrl huptimeout $dev $hup_timeout
+
+            [ "$chargeint" -ge 60 ] && log isdnctrl chargeint $dev $chargeint
+
+            log isdnctrl chargehup $dev off
+            log isdnctrl secure $dev on
+            log isdnctrl dialmode $dev $DIALMODE
+
+            case "$callback"
+            in
+                "in")
+                    log isdnctrl callback $dev in
+                    log isdnctrl cbhup $dev on
+                    log isdnctrl cbdelay $dev $cbdelay
+                    ;;
+
+                "out")
+                    log isdnctrl callback $dev out
+                    log isdnctrl cbdelay $dev $cbdelay
+                    ;;
+            esac
+
+            case $remote in
+                */*) netmask_opt=`netcalc netmask $remote` ;;
+                *)   netmask_opt=255.255.255.255 ;;
+            esac
+
+            ip addr add $local peer $remote dev $dev
+            ip link set dev $dev up
+
+            echo $local >/var/run/$dev.conf
+            echo $remote >>/var/run/$dev.conf
+
+            route='non_default'
+            eval rnum='$ISDN_CIRC_'$idx'_ROUTE_N'
+            [ 0$rnum -eq 0 ] || for rdx in `seq 1 $rnum`
+            do
+                eval tmp='$ISDN_CIRC_'$idx'_ROUTE_'$rdx
+                if [ "$tmp" != "0.0.0.0/0" ]
+                then
+                    ip route add $tmp dev $dev
+                else
+                  route='0.0.0.0/0'
+                fi
+            done
+
+            bandwidth=-1:-1                     # no channel bundling here
+            add_imond_entry
+
+            net_alias_add $name $dev
+
+            echo $dev >>/etc/isdn-devices
+            echo $dev >/var/run/circuit-$idx
+            ln -s /var/run/circuit-$idx /var/run/circuit-$name
+
+            isdn_idx=`expr $isdn_idx + 1`
+        fi
+    done
+
+    echo $idx > /var/run/next_circuit_id
+
+    end_script
+;;
+esac

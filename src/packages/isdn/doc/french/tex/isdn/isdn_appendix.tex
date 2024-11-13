@@ -1,0 +1,220 @@
+% Do not remove the next line
+% Synchronized to r29817
+
+\section{ISDN}
+\marklabel{sec:route-details}
+{
+  \subsection{Détails techniques sur la connexion et le routage ISDN}
+}
+
+Ce chapitre concerne uniquement les personnes qui veulent comprendre se 
+qui se passe en interne du routeur ou qu'ils désirs faire une configuration 
+spécifique ou encore de rechercher une solution à certain problème. Vous 
+n'êtes \emph{pas} obligé de lire ce chapitre, si cela ne vous intéresse pas.
+
+Aprés avoir établis la connexion à votre FAI, qui a créé cette connexion avec 
+le démon ipppd et avec l'interface qui a créée une nouvelle adresse IP. Le 
+routage est produit automatiquement par le Kernel-Linux, pour accéder au 
+Remote-IP (IP par défaut) et le masque de sous réseau, Le routage spécifique 
+sera annulé si le masque de sous réseau est absent de la configuration. ipppd 
+transmet à l'adresse Remote-IP à partir du masque sous réseau (Il utilise les 
+différentes classe d'adresse A,B et C de masque de sous réseau). nous avons 
+toujours eux des problème sur la disparition d'adresse et l'ajout automatique 
+de nouvelle avec le routage~:
+\begin{itemize}
+\item Les réseaux d'entreprise n'étaient plus accessibles, parce que le routage 
+  avait disparu ou avait été masqué par un nouveau routage installé.
+\item Une Interface était choisi apparemment sans raison, au lieu que le paquet 
+  aille sur la Routage par défaut le Kernel généré une nouvelle interface et le 
+  paquet se dirigé vers celle-ci.
+\item ...
+\end{itemize}
+
+On essaie maintenant d'empêcher ces routages indésirables.
+
+
+Pour cela nous avons modifié quelques paramètres~:
+\begin{itemize}
+
+\item Remote-Ip a été placé sur 0.0.0.0,  si rien d'autre n'est spécifié. 
+  Ainsi disparaît les problèmes de routages, lors de la configuration de 
+  l'interface mis en place par le Kernel.
+
+\item En plus le routage du circuit est sauvegardé dans un fichier cache
+
+\item Si un masque de sous réseau est paramétré pour le circuit, celui-ci 
+  passe par ipppd, pour que l'adresse IP utilise l'interface configurée 
+  (afin de créer le routage).
+
+\item Après la connexion, le fichier cache du circuit est lu et les nouveaux 
+  paramètres enregistrés (Le Kernel efface le fichier et réenregistre avec 
+  les nouveaux paramètres de l'interface et de ipppd).
+
+\item Puis l'interface sera de nouveau reconfigurée et le routage fonctionne 
+  à nouveau indépendamment de la configuration d'origine.
+\end{itemize}
+
+La configuration du circuit sera paramétré comme ci-dessous~:
+
+\begin{itemize}
+\item Default route (ou routage par défaut)
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_ROUTE='0.0.0.0'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  le circuit du lcr circuit est réglé il est "actif", un routage par défaut 
+  est installé sur son circuit (ou l'interface correspondant). A la 
+  connexion au FAI le routage de l'hôte apparaît, après la déconnexion 
+  l'état d'origine est reconstitué. 
+
+
+  \item Routage spécifique
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_ROUTE='network/netmaskbits'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  On paramètre manuellement le routage du circuit (ou l'interface 
+  correspondant). A la connexion le Kernel efface et réenregistre le 
+  routage de l'hôte pour se connecté. Après la déconnexion l'état 
+  d'origine est reconstitué.
+
+
+  \item remote ip (ou IP distant)
+  \begin{small}
+\begin{example}
+\begin{verbatim}
+    ISDN_CIRC_%_REMOTE='ip address/netmaskbits'
+    ISDN_CIRC_%_ROUTE='network/netmaskbits'
+\end{verbatim}
+\end{example}
+  \end{small}
+  
+  Pour cette configuration de l'interface le routage est utilisé pour un 
+  autre réseau distant (vous devez indiquer l'adresse IP et le masque de sous 
+  réseau). il se connecte à l'adresse IP spécifier (C'est-à-dire qu'il n'y a 
+  pas d'autres IP mise en place lors de la connexion) le routage reste valide.
+  
+  Si toutefois vous appelez une autre IP, Le routage varie 
+  ( nouvelle IP et masque de sous réseau)
+  
+  Pour de nouveaux routage tous est dit plus haut.
+
+
+\end{itemize}
+
+Normalement cela doit résoudre provisoirement \emph{tous} les problèmes qui se 
+produisaient avec le routage spécial. Dans l'avenir la forme peut encore changer, 
+mais rien ne changera dans le principe.
+
+\marklabel{sec:isdn-cause}
+{
+  \subsection{Messages d'erreur du sous-système ISDN (Documentation-i4l en Anglais)}
+}
+
+Vous trouverez ci-dessous un extrait de la documentation Isdn4Linux (man 7 isdn\_cause).
+
+Cause messages are 2-byte information elements, describing the state
+transitions of an ISDN line. Each cause message describes its
+origination (location) in one byte, while the cause code is described
+in the other byte. Internally, when EDSS1 is used, the first byte
+contains the location while the second byte contains the cause code.
+When using 1TR6, the first byte contains the cause code while the
+location is coded in the second byte. In the Linux ISDN subsystem, the
+cause messages visible to the user are unified to avoid confusion. All
+user visible cause messages are displayed as hexadecimal strings.
+These strings always have the location coded in the first byte,
+regardless if using 1TR6 or EDSS1. When using EDSS1, these strings are
+preceeded by the character 'E'.
+
+
+\begin{description}
+\item [LOCATION] 
+ 
+  The following location codes are defined when using EDSS1:
+
+  \begin{small}
+  \begin{longtable}{lp{12cm}}
+
+  00 &   Message generated by user. \\
+  01 &   Message generated by private network serving the local user. \\
+  02 &   Message generated by public network serving the local user. \\
+  03 &   Message generated by transit network. \\
+  04 &   Message generated by public network serving the remote user. \\
+  05 &   Message generated by private network serving the remote
+  user. \\
+  07 &   Message generated by international network. \\
+  0A &   Message generated by network beyond inter-working point. \\
+  \end{longtable}
+  \end{small}
+
+\item  [CAUSE]
+
+  The following cause codes are defined when using EDSS1:
+
+  \begin{small}
+  \begin{longtable}{lp{12cm}}
+
+  01 &   Unallocated (unassigned) number. \\
+  02 &   No route to specified transit network. \\
+  03 &   No route to destination. \\
+  06 &   Channel unacceptable. \\
+  07 &   Call awarded and being delivered in an established channel. \\
+  10 &   Normal call clearing. \\
+  11 &   User busy. \\
+  12 &   No user responding. \\
+  13 &   No answer from user (user alerted). \\
+  15 &   Call rejected. \\
+  16 &   Number changed. \\
+  1A &   Non-selected user clearing. \\
+  1B &   Destination out of order. \\
+  1C &   Invalid number format. \\
+  1D &   Facility rejected. \\
+  1E &   Response to status enquiry. \\
+  1F &   Normal, unspecified. \\
+  22 &   No circuit or channel available. \\
+  26 &   Network out of order. \\
+  29 &   Temporary failure. \\
+  2A &   Switching equipment congestion. \\
+  2B &   Access information discarded. \\
+  2C &   Requested circuit or channel not available. \\
+  2F &   Resources unavailable, unspecified. \\
+  31 &   Quality of service unavailable. \\
+  32 &   Requested facility not subscribed. \\
+  39 &   Bearer capability not authorised. \\
+  3A &   Bearer capability not presently available. \\
+  3F &   Service or option not available, unspecified. \\
+  41 &   Bearer capability not implemented. \\
+  42 &   Channel type not implemented. \\
+  45 &   Requested facility not implemented. \\
+  46 &   Only restricted digital information bearer. \\
+  4F &   Service or option not implemented, unspecified. \\
+  51 &   Invalid call reference value. \\
+  52 &   Identified channel does not exist. \\
+  53 &   A suspended call exists, but this call identity does not. \\
+  54 &   Call identity in use. \\
+  55 &   No call suspended. \\
+  56 &   Call having the requested call identity. \\
+  58 &   Incompatible destination. \\
+  5B &   Invalid transit network selection. \\
+  5F &   Invalid message, unspecified. \\
+  60 &   Mandatory information element is missing. \\
+  61 &   Message type non-existent or not implemented. \\
+  62 &   Message not compatible with call state or message 
+        or message type non existent or not implemented. \\
+  63 &   Information element non-existent or not implemented. \\
+  64 &   Invalid information element content. \\
+  65 &   Message not compatible. \\
+  66 &   Recovery on timer expiry. \\
+  6F &   Protocol error, unspecified. \\
+  7F &   Inter working, unspecified. \\
+  \end{longtable}
+  \end{small}
+\end{description}
