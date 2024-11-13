@@ -1,0 +1,98 @@
+#!/bin/sh
+network_id=0x02
+
+pci_ids=' '
+detect_hw_script="hardware detection"
+
+check_class ()
+{
+    [ ! -f $1 ] && return 0
+    [ "$2" = any ] || grep -q $2 $1
+}
+
+get_devices ()
+{
+    class=$1
+    eval local class_id=\$${class}_id
+
+    local i=
+    files=
+
+    for i in  /sys/bus/*/devices/*; do
+	check_class $i/class $class || continue
+	id=${i##*/}
+	echo "$pci_ids" | grep -q " $id " && continue
+	files="$files $i/modalias"
+    done
+}
+
+detect_hardware ()
+{
+    echo '#'
+    echo "# PCI Devices and drivers"
+    echo '#'
+    lspci -D > /tmp/lspci.$$
+    while read id text; do
+	pci_ids="${pci_ids}$id "
+	echo "$text"
+	alias=/sys/bus/pci/devices/$id/modalias
+	drv=
+	if [ -f $alias  ]; then
+	    drv=`sed -n -f /usr/share/hw_detect.sed.pci $alias | sed 's/[^ ]\+ //' |sed '$!d'`
+	fi
+	[ "$drv" ] || drv=unknown
+	echo "    Driver: '$drv'"
+    done < /tmp/lspci.$$
+    rm -f /tmp/lspci.$$
+
+    for class in any; do
+	echo '#'
+	echo "# Drivers for non pci devices, class $class:"
+	echo '#'
+
+	get_devices $class
+	if [ "$files" ]; then
+	    for i in $files; do
+		if [ -f $i ]; then
+		    echo -n "`cat $i` "
+		    j=`sed -n -f /usr/share/hw_detect.sed.usb $i | sed 's/[^ ]\+ //' | sed '$!d' | sed 's/usbcore usbcore/usbcore/'`
+		    if [ -n "$j" ]
+		    then
+		      echo $j
+		    else
+		      j=`sed -n -f /usr/share/hw_detect.sed.other $i | sed 's/[^ ]\+ //' | sed '$!d'`
+		      if [ -n "$j" ]
+		      then
+		        echo $j
+		      else
+		        echo
+		      fi
+		    fi
+		fi
+	    done
+	else
+	    echo none
+	fi
+    done
+}
+
+detect_hw () {
+    detect_hardware > /tmp/detect_hw.$$
+    log_prefix=
+    log_boot=yes
+    log_col=gn
+    script="$detect_hw_script"
+    do_log < /tmp/detect_hw.$$ 
+    rm /tmp/detect_hw.$$
+}
+
+if [ "$OPT_HW_DETECT" ]; then
+    begin_script HW_DETECT "setting up hardware detection ..."
+    if [ "$HW_DETECT_AT_BOOTTIME" = yes ]; then
+	log_info "executing hardware detection in background, adding results to /bootmsg.txt"
+	httpd_add_bootmsg_filter "$detect_hw_script"
+	detect_hw &
+    fi
+    [ "$OPT_HTTPD" = yes ] && httpd-menu.sh add -p 100 help_hw.cgi 'Hardware-Info' '$_MT_hlp' support
+    end_script
+fi
