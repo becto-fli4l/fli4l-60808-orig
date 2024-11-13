@@ -1,0 +1,79 @@
+#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for lcd4linux
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if(opt_lcd4linux)
+then
+    depends on fli4l version 4.0
+    provides lcd4linux version 1.0.4
+
+    if (locale == "de")
+    then
+      set msg_notbothopts="Sie können nur ein LCD Paket auswählen! Bitte entweder das OPT_LCD oder das OPT_LCD4Linux, nicht beide!"
+      set msg_expertmode="Sie haben den LCD4Linux Experten Modus ausgewählt, aber keine lcd4linux.conf nach config/etc/lcd4linux kopiert!"
+    else
+      set msg_notbothopts="You can only select one lcd package! Either the OPT_LCD or the OPT_LCD4Linux, not both!"
+      set msg_expertmode="You have selected the LCD4LINUX_EXPERT_MODE, but not copied the lcd4linux.conf to the config/etc/lcd4linux directory."
+    fi
+
+    if (opt_lcd4linux && opt_lcd)
+    then
+	if (lcd_address != "null")
+	then
+	    if ( lcd4linux_hd44780_driver == "yes" )
+	    then
+		error "${msg_notbothopts}"
+	    fi
+	fi
+    fi
+
+    if (lcd4linux_drv != "GLCD2USB" && lcd4linux_drv != "LCD2USB")
+    then
+        add_to_opt "rootfs:etc/boot.d/rc050.ppdev" "mode=555 flags=sh"
+
+        add_to_opt "rootfs:parport_serial.ko"
+        add_to_opt "rootfs:parport_pc.ko"
+        add_to_opt "rootfs:ppdev.ko"
+    fi
+
+    if (lcd4linux_expert_mode == "yes")
+    then
+       stat("$config_dir/etc/lcd4linux/lcd4linux.conf", lcd4linux_file)
+       if(lcd4linux_file_res == "OK")
+       then
+           add_to_opt "etc/lcd4linux/lcd4linux.conf" "mode=600 flags=utxt"
+       else
+           error "${msg_expertmode}"
+       fi
+    else
+        if (lcd4linux_fw8888_driver)
+        then
+            error "Please use LCD4LINUX_DRV='FW8888'"
+        fi
+        if (lcd4linux_ctinclud_driver)
+        then
+            error "Please use LCD4LINUX_DRV='CTINCLUD'"
+        fi
+        if (lcd4linux_glcd2usb_driver)
+        then
+            error "Please use LCD4LINUX_DRV='GLCD2USB'"
+        fi
+        if (lcd4linux_hp12542r_driver)
+        then
+            error "Please use LCD4LINUX_DRV='HP12542R'"
+        fi
+        if (lcd4linux_lcd2usb_driver)
+        then
+            error "Please use LCD4LINUX_DRV='LCD2USB'"
+        fi
+        if (lcd4linux_hd44780_driver)
+        then
+            error "Please use LCD4LINUX_DRV='HD44780'"
+        fi
+    fi
+fi

@@ -1,0 +1,95 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/rc.d/rc495.lcd4linux - configuration of your lcd-devices  __FLI4LVER__
+#
+# Creation:     09.09.2005  Christian Brueggemann
+# Update:       $Id$
+#----------------------------------------------------------------------------
+
+if [ "$OPT_LCD4LINUX" = "yes" ]
+then
+    begin_script LCD4Linux "starting LCD4Linux..."
+
+    if [ "$LCD4LINUX_EXPERT_MODE" = "no" ]
+    then
+        (
+            echo "Display 'configured'"
+            echo "Display configured {"
+
+            # setup driver specifiy sections
+            . /etc/rc.d/lcd4linux.driver
+            if [ "0$LCD4LINUX_DRV_OPTION_N" -gt 0 ]
+            then
+                for i in `seq 1 $LCD4LINUX_DRV_OPTION_N`
+                do
+                    eval echo \"    \$LCD4LINUX_DRV_OPTION_${i}   \'\$LCD4LINUX_DRV_OPTION_${i}_VALUE\'\"
+                done
+            fi
+            echo "    Icons '$LCD4LINUX_ICONS'"
+            echo "    Size '$LCD4LINUX_DISPLAY_SIZE'"
+            echo "}"
+            echo ""
+
+            echo "Layout 'L$LCD4LINUX_DISPLAY_SIZE'"
+            echo "Layout L$LCD4LINUX_DISPLAY_SIZE {"
+
+            [ 0$LCD4LINUX_LAYOUT_N -eq 0 ] || for i in `seq 1 $LCD4LINUX_LAYOUT_N`
+            do
+               eval layout='$LCD4LINUX_LAYOUT_'$i
+               layoutrow=`echo $layout | sed s/:/\'/g`
+               echo "   $layoutrow"
+            done
+
+            echo "}"
+            echo ""
+        ) > /etc/lcd4linux/lcd4linux.conf
+        cat /etc/lcd4linux/lcd4linux.conf.tmpl >> /etc/lcd4linux/lcd4linux.conf
+        sed -i "s/LCD4LINUX_DSL_SPEED_IN/$LCD4LINUX_DSL_SPEED_IN/" /etc/lcd4linux/lcd4linux.conf
+        sed -i "s/LCD4LINUX_DSL_SPEED_OUT/$LCD4LINUX_DSL_SPEED_OUT/" /etc/lcd4linux/lcd4linux.conf
+        rm /etc/lcd4linux.conf.tmpl
+        chmod 0600 /etc/lcd4linux/lcd4linux.conf
+    fi
+
+    if [ "$LCD4LINUX_TEST" != "no" ]
+    then
+        logmsg lcd4linux local0.info 'LCD4Linux in TestMode!'
+        logmsg lcd4linux local0.info "Start LCD4Linux with 'lcd4linux -f /etc/lcd4linux/lcd4linux.conf -Fvv'"
+    else
+        if [ "$LCD4LINUX_START_STOP_MSG" = "yes" ]
+        then
+            logmsg lcd4linux local0.info 'stopping lcd4linux Startup layout'
+            kill `cat /var/run/lcd4linux.startup.pid`
+            rm -f /var/run/lcd4linux.startup.pid
+        fi
+        logger -t lcd4linux -p local0.info "starting lcd4linux-daemon on $HOSTNAME ..."
+        log_info "starting lcd4linux-daemon on $HOSTNAME ..."
+        service-restart.sh 5 /usr/bin/lcd4linux -F -f /etc/lcd4linux/lcd4linux.conf -q >/dev/null 2>&1 &
+        if [ "$?" != "0" ]
+        then
+            logmsg lcd4linux local0.err '*** ERROR: cannot start lcd4linux! ***'
+            logmsg lcd4linux local0.err '*** ERROR: check OPT_LCD4LINUX and your lcd4linux.conf! ***'
+        fi
+    fi
+
+    if [ "$LCD4LINUX_START_STOP_MSG" = "yes" ]
+    then
+        # wrap halt & poweroff
+        mkdir /sbin/real
+        mv /sbin/halt /sbin/real
+        { echo "#!/bin/sh"
+          echo "> /haltflag"
+          echo "/sbin/real/halt"
+        } >/sbin/halt
+        chmod 555 /sbin/halt
+        mv /sbin/poweroff /sbin/real
+        { echo "#!/bin/sh"
+          echo "> /poweroffflag"
+          echo "/sbin/real/poweroff"
+        } >/sbin/poweroff
+        chmod 555 /sbin/poweroff
+        rm -f /haltflag
+        rm -f /poweroffflag
+    fi
+    
+    end_script
+fi

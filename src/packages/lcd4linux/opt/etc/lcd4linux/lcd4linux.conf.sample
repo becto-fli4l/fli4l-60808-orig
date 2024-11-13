@@ -1,0 +1,579 @@
+# See http://ssl.bulix.org/projects/lcd4linux/
+
+##--------------------------------------------------------------------------------------------------------------------------
+## Ich habe zwar ein Display von Kernelconcepts, aber scheinbar ist es entweder ein älteres oder ein Vorserien-Modell
+## da bei mir nicht die weiter unten aufgeführte 'Kernelconcepts'-Beschaltung funktioniert, sondern die 'normale'.
+## Wobei es wohl eine 'normale' Beschaltung nicht gibt, jeder Hersteller backt da seine eigene Brötchen.
+## Daher ist etwas Ausprobieren angesagt...
+##--------------------------------------------------------------------------------------------------------------------------
+
+##----------------------------------------------------
+## -- die Konfiguration für das eigentliche Display --
+##----------------------------------------------------
+
+# generic HD44780 display (LCD4Linux wiring) - wohl das bei weitem am häufigsten verbaute Display
+Display HD44780-generic {
+    Driver 'HD44780'
+    Model 'HD66712'             # generic, Noritake, Soekris, HD66712, LCM-162
+#    UseBusy 1                  # die Kombination von dieser Option und 'RW' auf 'GND' funktioniert nicht
+#    Bus 'parport'              # parport oder i2c - Default 'parport'
+#    Device <string>            # nur bei i2c
+#    Controllers '1'            # <1|2|3|4>     default '1'
+#    Bits '8'                   # <4|8>         default '8'
+    Port '/dev/parport0'        # Das 'parport'-Device ('0' für den ersten, '1' für den zweiten) oder die Hex-Adresse (nicht empfohlen!!)
+    asc255bug '1'               # wenn in den Balken ein 'y' mit Doppelpunkten darüber auftaucht, dann diese Option einschalten
+    Icons '1'                   # pro benutztem Icon wird ein Buffer benötigt, der hiermit bereitgestellt wird. Es sind max. 8 Icons möglich.
+#    GPOs <number>              # wenn an dem Parport noch LED's hängen könnten diese hierüber mitgesteuert werden - die Funktion ist z.Z. 'broken'
+#    Backlight <0|1>            # einige Display's / Controller bieten die Möglichkeit die Hintergrundbeleuchtung zu steuern
+#    Brightness <number>        # beim Modell 'Noritake' kann man wohl diese Option noch setzen
+    Size '20x4'
+                                # Da es keine Standardbeschaltung gibt, benutzt lcd4linux ein sog. 'SoftWiring', d.h. ab hier kann eingestellt werden
+                                # welche Steuerleitung wo geschaltet ist. Weitere Informationen auf der Homepage des Projektes (URL: siehe erste Zeile)
+    Wire {
+        RW        'GND'
+        RS        'AUTOFD'
+        ENABLE    'STROBE'
+        ENABLE2   'GND'
+#        ENABLE3   'GND'
+#        ENABLE4   'GND'
+        BACKLIGHT 'GND'         # BACKLIGHT auf 'GND' schaltet die Funktion auch aus (gleiche Bedeutung wie weiter oben auf '0')
+#        GPO       'GND'
+    }
+}
+
+# generic HD44780 display (WinAmp wiring)
+Display HD44780-winamp {
+    Driver 'HD44780'
+    Model 'generic'
+    UseBusy 1
+    Port '/dev/parport0'
+    Size '20x4'
+    Wire {
+        RW        'AUTOFD'
+        RS        'INIT'
+        ENABLE    'STROBE'
+        ENABLE2   'GND'
+        BACKLIGHT 'GND'
+        GPO       'GND'
+    }
+}
+
+# HD44780 display from kernelconcepts.de
+Display HD44780-kernelconcepts {
+    Driver 'HD44780'
+    Model 'HD66712'
+    UseBusy 1
+    Port '/dev/parport0'
+    Size '20x4'
+    Wire {
+        RW        'AUTOFD'
+        RS        'INIT'
+        ENABLE    'STROBE'
+        ENABLE2   'GND'
+        BACKLIGHT 'GND'
+        GPO       'GND'
+    }
+}
+
+# 16x4 and 20x2 HD44780 on one bus
+Display HD44780-dual {
+    Driver 'HD44780'
+    Model 'generic'
+    Port '/dev/parport0'
+    Controllers 2
+    Size '20x6'
+    Size1 '16x4'
+    Size2 '20x2'
+    Wire {
+        RW        'GND'
+        RS        'AUTOFD'
+        ENABLE    'STROBE'
+        ENABLE2   'SLCTIN'
+        BACKLIGHT 'GND'
+        GPO       'GND'
+    }
+}
+
+# http://serdisplib.sourceforge.net/ser/hp12542r.html - Display is sold by Pollin
+Display HYUNDAI-HP12542R  {
+    Driver    'serdisplib'
+    Model     'HP12542R'
+    Port      'PAR:/dev/parport0'
+    Options   ''
+#    Font      '5x8'
+#    Contrast  <number>
+#    Backlight <0|1>
+#    Reverse   <0|1>
+#    Rotate    <0..3>
+}
+
+
+##------------------------------------------------------------------------------------
+## -- hier wird bestimmt in welche Zeile, welche Position, was hinein soll          --
+## -- (die möglichen Inhaltswerte für das 'hinein' werden weiter unten beschrieben) --
+##------------------------------------------------------------------------------------
+
+Layout Default {
+    Row1 {
+        Col1  'OS'
+    }
+    Row2 {
+        Col1  'CPU'
+        Col10 'RAM'
+    }
+    Row3 {
+        Col1  'Busy'
+#       Col10 'Rain'
+        Col11 'BusyBar'
+    }
+    Row4 {
+        Col1 'Load'
+        Col11 'LoadBar'
+    }
+    Row5 {
+        Col1  'Disk'
+        Col11 'DiskBar'
+    }
+    Row6 {
+        Col1  'Eth0'
+        Col11 'Eth0Bar'
+    }
+}
+
+Layout L20x4 {
+    Row1 {
+        Col1  'Info'
+    }
+    Row2 {
+        Col1 'Heart'
+        Col2 'Busy'
+        Col11 'BusyBar'
+    }
+    Row3 {
+        Col1  'ImonDSLQuantity_In'
+        Col12 'ImonDSLQuantity_Out'
+    }
+    Row4 {
+        Col1  'ImonDSLRate_Bar'
+#        Col1  'ImonDSLRate_In'
+#        Col11 'ImonDSLRate_Out'
+    }
+}
+
+Layout Graphic {
+    Row1 {
+        Col1  'Info'
+    }
+    Row2 {
+        Col1 'Heart'
+        Col2 'Busy'
+        Col11 'BusyBar'
+    }
+    Row3 {
+        Col1  'ImonDSLQuantity_In'
+        Col12 'ImonDSLQuantity_Out'
+    }
+    Row4 {
+        Col1  'ImonDSLRate_Bar'
+#        Col1  'ImonDSLRate_In'
+#        Col11 'ImonDSLRate_Out'
+    }
+}
+
+##-------------------------------------------------------------
+## -- welches Display soll genutzt werden und welches Layout --
+##-------------------------------------------------------------
+
+Display 'HD44780-generic'
+#Display 'HD44780-winamp'
+#Display 'HD44780-kernelconcepts'
+#Display 'HD44780-dual'
+#Display 'HYUNDAI-HP12542R'
+
+#Layout  'Default'
+Layout 'L20x4'
+#Layout 'Graphic'
+
+
+##-----------------------------------------------------------------------------------------------------------
+## -- ab hier folgen die möglichen darstellbaren Funktionen(Widgets), Icons und Plugins(nicht vollständig) --
+##-----------------------------------------------------------------------------------------------------------
+
+# einige Plugins benötigen zusätzliche Konfigurationsinformationen:
+Plugin Telmon {
+ class 'plugin'
+ Host '127.0.0.1'
+ Port 5001
+ Phonebook '/etc/phonebook'
+}
+
+Plugin Imon {
+ class 'plugin'
+ Host '127.0.0.1'
+ Port 5000
+}
+
+Plugin Pop3 {
+   server1 'localhost'
+   port1 110
+   user1 'michael'
+   password1 'secret'
+}
+
+# Benötigte Variablen für einige Funktionen
+Variables {
+   tick 500
+   tack 100
+   halfminute 30000
+   minute 60000
+}
+
+#Widget 'name' {
+#   class      'Text'
+#   expression <expr1>          #expression     :       this expression will be evaluated and its result will be displayed.
+#   prefix     <expr2>          #prefix, postfix:       the result of these expressions will be displayd before/after the actual value
+#   postfix    <expr3>          #width          :       length of the whole widget (including prefix and postfix!)
+#   width      <number>         #precision      :       (maximum) number of decimal places
+#   align      <char>           #align          :       either of 'L' (left, the default), 'C' (center), 'R' (right) or 'M' (marquee)
+#   speed      <number>         #speed          :       marquee scroller interval (msec), default 500msec
+#   update     <number>         #update         :       update interval (msec), default: 1000 msec (1 sec), 0 (zero) means never (for static text)
+#}
+
+#Widget <name> {
+#    class       'Bar'
+#    expression  <expr>         #expression     :       its result is used for the length of the (upper half) bar
+#    expression2 <expr>         #expression2    :       its result is used for the length of the lower half bar
+#    length      <number>       #length         :       size of the whole bar widget
+#    min         <number>       #min            :       scale: value where the bar starts
+#    max         <number>       #max            :       scale: value where the bar ends
+#    direction   <char>         #direction      :       'E' (east: from left to right, default), 'W' (west: right to left), 'N' (north: bottom-up) or 'S' (south, top-down)
+#    style       <char>         #style          :       'H' (hollow: with a frame) default: none
+#    update      <number>       #update         :       update interval (msec) default: 1000 msec (1 sec)
+#}
+
+Widget Info {
+    class 'Text'
+# die folgende Funktion zeigt auch den verfügbaren Platz auf der '/' (=Root) Partition an - da dabei über alle verbundenen Laufwerke Informationen
+# geholt werden, werden auch 'schlafen gelegte' Platten wieder 'aufgeweckt'
+#    expression '*** '.uname('nodename').' - DSL-IP: '.imon('ip pppoe').' - '.(statfs('/', 'bavail')*statfs('/', 'bsize')/1024/1024).' MB Ram on / free ***'
+    expression '*** '.uname('nodename').' - DSL-IP: '.imon('ip pppoe').' ***'
+    width 20
+    align 'M'
+    speed 300
+    update halfminute
+}
+
+Widget ImonDSLQuantity_In {
+    class      'Text'
+    expression  imon::quantity('pppoe','in')/1024/1024
+    prefix     'In: '
+    width       10
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLQuantity_Out {
+    class      'Text'
+    expression  imon::quantity('pppoe','out')/1024/1024
+    prefix     'Out: '
+    width       9
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLRate_In {
+    class      'Text'
+    expression  imon::rate('pppoe','in')/1024
+    prefix     'In: '
+    width       9
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLRate_Out {
+    class      'Text'
+    expression  imon::rates('pppoe','out')/1024
+    prefix     'Out: '
+    width       9
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLRate_Bar {
+    class       'Bar'
+    expression   imon::rates('pppoe','in')/10240        # die Werte für die Balken werden hier ein wenig 'geschönt', ohne das Dividieren wären die Werte für
+    expression2  imon::rates('pppoe','out')/1280        # 'in' immer am Ende der Skala, würde der gleiche Wert für 'out' benutzt, würde sich 'out' kaum bewegen
+    length       20
+    direction   'E'
+    style       'H'
+    update       tack
+}
+
+Widget OS {
+    class 'Text'
+    expression '*** '.uname('sysname').' '.uname('release').' ***'
+    width 20
+    align 'M'
+    speed 100
+    update tick
+}
+
+Widget CPU {
+    class  'Text'
+    expression  uname('machine')
+    prefix 'CPU '
+    width  9
+    align  'L'
+    update tick
+}
+
+Widget RAM {
+    class  'Text'
+    expression meminfo('MemTotal')/1024
+    postfix ' MB RAM'
+    width  11
+    precision 0
+    align  'R'
+    update tick
+}
+
+Widget Busy {
+    class 'Text'
+    expression proc_stat::cpu('busy', 500)
+    prefix  'CPU'
+    postfix '%'
+    width 9
+    precision 1
+    align 'R'
+    update tick
+}
+
+Widget BusyBar {
+    class 'Bar'
+    expression  proc_stat::cpu('busy',   500)
+    expression2 proc_stat::cpu('system', 500)
+    length 10
+    direction 'E'
+    update tack
+}
+
+Widget Load {
+    class 'Text'
+    expression loadavg(1)
+    prefix 'Load'
+    postfix loadavg(1)>1.0?'!':' '
+    width 10
+    precision 1
+    align 'R'
+    update tick
+}
+
+Widget LoadBar {
+    class 'Bar'
+    expression  loadavg(1)
+    max 2.0
+    length 10
+    direction 'E'
+    update tack
+}
+
+Widget Eth0 {
+    class 'Text'
+    expression (netdev('eth0', 'Rx_bytes', 500)+netdev('eth0', 'Tx_bytes', 500))/1024
+    prefix 'eth0'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth0Bar {
+    class 'Bar'
+    expression  netdev('eth0', 'Rx_bytes', 500)
+    expression2 netdev('eth0', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget PPP {
+    class 'Text'
+    expression (ppp('Rx:0', 500)+ppp('Tx:0', 500))
+    prefix 'PPP'
+    width 9
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Uptime {
+    class 'Text'
+    expression uptime('%d days %H:%M:%S')
+    width 20
+    align 'R'
+    prefix 'Up '
+    update 1000
+}
+
+Widget Lightning {
+    class 'icon'
+    speed 100
+    visible proc_stat::cpu('busy', 500)-50              # das ist auch eine nette Funktion - das Widget wird erst ab einem bestimmten Schwellenwert sichtbar
+    bitmap {
+        row1 '...***'
+        row2 '..***.'
+        row3 '.***..'
+        row4 '.****.'
+        row5 '..**..'
+        row6 '.**...'
+        row7 '**....'
+        row8 '*.....'
+    }
+}
+
+Widget Heartbeat {
+    class 'Icon'
+    speed 800
+    Bitmap {
+        Row1 '.....|.....'
+        Row2 '.*.*.|.*.*.'
+        Row3 '*****|*.*.*'
+        Row4 '*****|*...*'
+        Row5 '.***.|.*.*.'
+        Row6 '.***.|.*.*.'
+        Row7 '..*..|..*..'
+        Row8 '.....|.....'
+    }
+}
+
+Widget Heart {
+    class 'Icon'
+    speed 250
+    Bitmap {
+        Row1 '.....|.....|.....|.....|.....|.....'
+        Row2 '.*.*.|.....|.*.*.|.....|.....|.....'
+        Row3 '*****|.*.*.|*****|.*.*.|.*.*.|.*.*.'
+        Row4 '*****|.***.|*****|.***.|.***.|.***.'
+        Row5 '.***.|.***.|.***.|.***.|.***.|.***.'
+        Row6 '.***.|..*..|.***.|..*..|..*..|..*..'
+        Row7 '..*..|.....|..*..|.....|.....|.....'
+        Row8 '.....|.....|.....|.....|.....|.....'
+    }
+}
+
+Widget Blob {
+    class 'Icon'
+    speed 250
+    Bitmap {
+        Row1 '.....|.....|.....'
+        Row2 '.....|.....|.***.'
+        Row3 '.....|.***.|*...*'
+        Row4 '..*..|.*.*.|*...*'
+        Row5 '.....|.***.|*...*'
+        Row6 '.....|.....|.***.'
+        Row7 '.....|.....|.....'
+        Row8 '.....|.....|.....'
+    }
+}
+
+Widget Wave {
+    class 'Icon'
+    speed 100
+    Bitmap {
+        Row1 '..**.|.**..|**...|*....|.....|.....|.....|.....|....*|...**'
+        Row2 '.*..*|*..*.|..*..|.*...|*....|.....|.....|....*|...*.|..*..'
+        Row3 '*....|....*|...*.|..*..|.*...|*....|....*|...*.|..*..|.*...'
+        Row4 '*....|....*|...*.|..*..|.*...|*....|....*|...*.|..*..|.*...'
+        Row5 '*....|....*|...*.|..*..|.*...|*....|....*|...*.|..*..|.*...'
+        Row6 '.....|.....|....*|...*.|..*..|.*..*|*..*.|..*..|.*...|*....'
+        Row7 '.....|.....|.....|....*|...**|..**.|.**..|**...|*....|.....'
+        Row8 '.....|.....|.....|.....|.....|.....|.....|.....|.....|.....'
+    }
+}
+
+Widget Squirrel {
+    class 'Icon'
+    speed 100
+    Bitmap {
+        Row1 '.....|.....|.....|.....|.....|.....'
+        Row2 '.....|.....|.....|.....|.....|.....'
+        Row3 '.....|.....|.....|.....|.....|.....'
+        Row4 '**...|.**..|..**.|...**|....*|.....'
+        Row5 '*****|*****|*****|*****|*****|*****'
+        Row6 '...**|..**.|.**..|**...|*....|.....'
+        Row7 '.....|.....|.....|.....|.....|.....'
+        Row8 '.....|.....|.....|.....|.....|.....'
+    }
+}
+
+Widget Rain {
+    class 'icon'
+    speed 200
+    bitmap {
+        row1 '...*.|.....|.....|.*...|....*|..*..|.....|*....'
+        row2 '*....|...*.|.....|.....|.*...|....*|..*..|.....'
+        row3 '.....|*....|...*.|.....|.....|.*...|....*|..*..'
+        row4 '..*..|.....|*....|...*.|.....|.....|.*...|....*'
+        row5 '....*|..*..|.....|*....|...*.|.....|.....|.*...'
+        row6 '.*...|....*|..*..|.....|*....|...*.|.....|.....'
+        row7 '.....|.*...|....*|..*..|.....|*....|...*.|.....'
+        row8 '.....|.....|.*...|....*|..*..|.....|*....|...*.'
+    }
+}
+
+Layout Startup {
+   Row1 {
+      Col1 'Msg-Startup'
+   }
+}
+
+Widget Msg-Startup {
+   class 'Text'
+   expression 'STARTUP'
+   align 'L'
+   width 10
+}
+
+Layout Halt {
+   Row1 {
+      Col1 'Msg-Halt'
+   }
+}
+
+Widget Msg-Halt {
+   class 'Text'
+   expression 'HALT'
+   align 'L'
+   width 10
+}
+
+Layout Poweroff {
+   Row1 {
+      Col1 'Msg-Poweroff'
+   }
+}
+
+Widget Msg-Poweroff {
+   class 'Text'
+   expression 'POWEROFF'
+   align 'L'
+   width 10
+}
+
+Layout Reboot {
+   Row1 {
+      Col1 'Msg-Reboot'
+   }
+}
+
+Widget Msg-Reboot {
+   class 'Text'
+   expression 'REBOOT'
+   align 'L'
+   width 10
+}

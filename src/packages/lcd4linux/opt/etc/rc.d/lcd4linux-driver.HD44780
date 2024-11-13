@@ -1,0 +1,76 @@
+#!/bin/sh
+: ${LCD4LINUX_DRV_BUS:='parport'}
+: ${LCD4LINUX_DRV_PORT:='parports/0'}
+: ${LCD4LINUX_DRV_WIRE_TYPE:='generic'}
+: ${LCD4LINUX_DRV_MODEL:='generic'}
+
+echo "    Driver 'HD44780'"
+echo "    Model '$LCD4LINUX_DRV_MODEL'"
+echo "    Bus '$LCD4LINUX_DRV_BUS'"
+
+case "$LCD4LINUX_DRV_PORT"
+in
+  0x*)
+    echo "    Port '$LCD4LINUX_DRV_PORT'"
+    ;;
+  *)
+    echo "    Port '/dev/$LCD4LINUX_DRV_PORT'"
+    ;;
+esac
+
+case "$LCD4LINUX_DRV_BUS"
+in
+    i2c)
+        echo "    Port '$LCD4LINUX_DRV_DEVICE'"
+        ;;
+esac
+
+case "$LCD4LINUX_DRV_WIRE_TYPE"
+in
+    winamp)
+        echo "    UseBusy 1"
+        echo "    Wire {"
+        echo "        RW        'AUTOFD'"
+        echo "        RS        'INIT'"
+        echo "        ENABLE    'STROBE'"
+        [ $LCD4LINUX_DRV_CONTROLLERS = "2" ] && echo "        ENABLE2   'SLCTIN'" || echo "        ENABLE2   'GND'"
+        echo "        BACKLIGHT 'GND'"
+        echo "        GPO       'GND'"
+        echo "    }"
+        ;;
+    soekris)
+        echo "    UseBusy 1"
+        echo "    GPOs 0"
+        echo "    Bits 4"
+        echo "    Wire {"
+        echo "        RS        'DB4'"
+        echo "        RW        'DB5'"
+        echo "        ENABLE    'DB6'"
+        [ $LCD4LINUX_DRV_CONTROLLERS = "2" ] && echo "        ENABLE2   'SLCTIN'" || echo "        ENABLE2   'GND'"
+        echo "        BACKLIGHT 'GND'"
+        echo "        GPO       'GND'"
+        echo "    }"
+        ;;
+    *)
+        if [ "$LCD4LINUX_DRV_USEBUSY" = "yes" ]
+        then
+          echo "    UseBusy '1'"
+        else
+          echo "    UseBusy '0'"
+        fi
+        echo "    Wire {"
+        echo "        RW        'GND'"
+        echo "        RS        'AUTOFD'"
+        echo "        ENABLE    'STROBE'"
+        [ $LCD4LINUX_DRV_CONTROLLERS = "2" ] && echo "        ENABLE2   'SLCTIN'" ||  echo "        ENABLE2   'GND'"
+        echo "        BACKLIGHT 'GND'"
+        echo "    }"
+        ;;
+esac
+
+[ "$LCD4LINUX_DRV_ASC255BUG" = "yes" ] && echo "    asc255bug '1'"
+[ "$LCD4LINUX_DRV_CONTROLLERS" = "2" ] && echo "    Controllers '2'"
+[ -n "$LCD4LINUX_DRV_CONTRAST" ] && echo "    Contrast '$LCD4LINUX_DRV_CONTRAST'"
+[ "$LCD4LINUX_DRV_BACKLIGHT" = "yes" ] && echo "    Backlight '1'"
+[ -n "$LCD4LINUX_DRV_BRIGHTNESS" ] && echo "    Brightness '$LCD4LINUX_DRV_BRIGHTNESS'"
+[ -n "$LCD4LINUX_DRV_BITS" ] && echo "    Bits '$LCD4LINUX_DRV_BITS'"

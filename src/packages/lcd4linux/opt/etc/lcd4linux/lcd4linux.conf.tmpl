@@ -1,0 +1,821 @@
+Plugin FIFO {
+    fifopath '/tmp/lcd4lnx.fifo'
+    }
+
+Variables {
+   tick 500
+   tack 100
+   halfminute 30000
+   minute 60000
+}
+
+Plugin Imon {
+   class 'plugin'
+   Host '127.0.0.1'
+   Port 5000
+}
+
+Plugin Telmon {
+   class 'plugin'
+   Host '127.0.0.1'
+   Port 5001
+   Phonebook '/etc/phonebook'
+}
+
+Widget fifo {
+    class 'Text'
+    expression fifo::read()
+    width 16
+    align 'L'
+    speed scroller
+    update 500
+}
+
+Widget Info {
+    class 'Text'
+    expression '*** '.uname('nodename').' - DSL-IP: '.imon('ip pppoe').' ***'
+    width 20
+    align 'M'
+    speed 300
+    update halfminute
+}
+
+Widget Info2 {
+    class 'Text'
+    expression  '*** '.(uname('nodename')).' *** '.(uname('sysname')).' '.(uname('release')).' *** RAM(Free): '.(meminfo('MemFree')/1024). ' MB *** CPU '.(proc_stat::cpu('busy', 500)).'% *** '
+    width 20
+    align 'M'
+    speed 400
+    update minute
+}
+
+Widget ImonDSL_IP {
+    class 'Text'
+    expression 'IP: '.imon('ip pppoe').'   Offline'
+    align 'L'
+    width 19
+    update tick
+}
+
+Widget ImonDSL_IP_2 {
+    class 'Text'
+    expression imon('ip pppoe') != '' ? 'IP: '.imon('ip pppoe').'' : ''.strftime('%d.%m.%Y  %H:%M:%S',time()).''
+    align 'C'
+    width 20
+    update tick
+}
+
+Widget ImonDSLQuantity_In {
+    class      'Text'
+    expression  imon::quantity('pppoe','in')/1024/1024
+    prefix     'In: '
+    width       10
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLQuantity_Out {
+    class      'Text'
+    expression  imon::quantity('pppoe','out')/1024/1024
+    prefix     'Out: '
+    width       9
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLRate_In {
+    class      'Text'
+    expression  imon::rates('pppoe','in')/1024
+    prefix     'In: '
+    width       9
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLRate_Out {
+    class      'Text'
+    expression  imon::rates('pppoe','out')/1024
+    prefix     'Out: '
+    width       9
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLRate_Bar {
+    class       'Bar'
+    expression   imon::rates('pppoe','in')/LCD4LINUX_DSL_SPEED_IN
+    expression2  imon::rates('pppoe','out')/LCD4LINUX_DSL_SPEED_OUT
+    min          0   # Scaling min 0%
+    max          100 # Scaling max 100%
+    length       20
+    direction   'E'
+    style       'H'
+    update       tack
+}
+
+Widget ImonDSLOnline_Time {
+    class      'Text'
+    expression imon('online-time pppoe')
+    prefix     'DSL Online: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget Date_dd_mm_yyyy {
+    class 'Text'
+    expression strftime('%d.%m.%Y',time())
+    width 10
+    align 'L'
+    update 1000
+}
+
+Widget Date_dd_mm_yy {
+    class 'Text'
+    expression strftime('%d.%m.%y',time())
+    width 8
+    align 'L'
+    update 1000
+}
+
+Widget Time_hh_mm_ss {
+    class 'Text'
+    expression strftime('%H:%M:%S',time())
+    width 8
+    align 'L'
+    update 1000
+}
+
+Widget Time_hh_mm {
+    class 'Text'
+    expression strftime('%H:%M',time())
+    width 5
+    align 'L'
+    update 1000
+}
+
+Widget Info_Tel_1 {
+    class       'Text'
+    expression imon::telmon('number') < 1 ? '*** Kein Anruf! ***' : '*** Letzter Anruf: '.imon::telmon('number').' am '.imon::telmon('date').' um '.imon::telmon('time').' *** '
+    width       20
+    align       'M'
+    speed       300
+    update halfminute
+}
+
+Widget Info_Tel_2 {
+    class       'Text'
+    expression imon::telmon('number') < 1 ? 'Kein Anruf! - DSL Online: '.imon('online-time pppoe').'' : 'Letzter Anruf: '.(imon::telmon('number')).' am '.(imon::telmon('date')).' um '.(imon::telmon('time')).' - DSL Online. '.imon('online-time pppoe').''
+    width       20
+    align       'M'
+    speed       300
+    update halfminute
+}
+
+Widget Info_Tel_3 {
+    class       'Text'
+    expression imon::telmon('number') < 1 ? 'DSL Online: '.imon('online-time pppoe').'' : 'Tel:'.(imon::telmon('number')).' am '.(imon::telmon('date')).''
+    width       20
+    align       'L'
+    update tick
+}
+
+Widget TelNr {
+    class       'Text'
+    expression  imon::telmon('number')
+    prefix      'Tel:'
+    postfix     ''
+    width        20
+    align       'L'
+    speed        300
+    update       tick
+}
+
+Widget TelDate {
+    class       'Text'
+    expression  imon::telmon('date')
+    prefix      ''
+    postfix     ''
+    width        8
+    align       'L'
+    update       tick
+}
+
+Widget TelTime {
+    class       'Text'
+    expression  imon::telmon('time')
+    prefix      ''
+    postfix     ''
+    width        8
+    align       'L'
+    update       tack
+}
+
+Widget OS {
+    class 'Text'
+    expression '*** '.uname('sysname').' '.uname('release').' ***'
+    width 20
+    align 'M'
+    speed 100
+    update tick
+}
+
+Widget CPU {
+    class  'Text'
+    expression  uname('machine')
+    prefix 'CPU '
+    width  9
+    align  'L'
+    update tick
+}
+
+Widget RAM {
+    class  'Text'
+    expression meminfo('MemTotal')/1024
+    postfix ' MB RAM'
+    width  11
+    precision 0
+    align  'R'
+    update tick
+}
+
+Widget RAM_FREE {
+    class  'Text'
+    expression meminfo('MemFree')/1024
+    postfix ' MB RAM Free'
+    width  16
+    precision 0
+    align  'R'
+    update tick
+}
+
+Widget Busy {
+    class 'Text'
+    expression proc_stat::cpu('busy', 500)
+    prefix  'CPU'
+    postfix '%'
+    width 9
+    precision 1
+    align 'R'
+    update tick
+}
+
+Widget BusyBar {
+    class 'Bar'
+    expression  proc_stat::cpu('busy',   500)
+    expression2 proc_stat::cpu('system', 500)
+    length 10
+    direction 'E'
+    update tack
+}
+
+Widget Load {
+    class 'Text'
+    expression loadavg(1)
+    prefix 'Load'
+    postfix loadavg(1)>1.0?'!':' '
+    width 10
+    precision 1
+    align 'R'
+    update tick
+}
+
+Widget LoadBar {
+    class 'Bar'
+    expression loadavg(1)
+    max 2.0
+    length 10
+    direction 'E'
+    update tack
+}
+
+Widget Eth0 {
+    class 'Text'
+    expression (netdev('eth0', 'Rx_bytes', 500)+netdev('eth0', 'Tx_bytes', 500))/1024
+    prefix 'eth0'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth0Bar {
+    class 'Bar'
+    expression netdev('eth0', 'Rx_bytes', 500)
+    expression2 netdev('eth0', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Eth1 {
+    class 'Text'
+    expression (netdev('eth1', 'Rx_bytes', 500)+netdev('eth1', 'Tx_bytes', 500))/1024
+    prefix 'eth1'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth1Bar {
+    class 'Bar'
+    expression netdev('eth1', 'Rx_bytes', 500)
+    expression2 netdev('eth1', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Eth2 {
+    class 'Text'
+    expression (netdev('eth2', 'Rx_bytes', 500)+netdev('eth2', 'Tx_bytes', 500))/1024
+    prefix 'eth2'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth2Bar {
+    class 'Bar'
+    expression netdev('eth2', 'Rx_bytes', 500)
+    expression2 netdev('eth2', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Eth3 {
+    class 'Text'
+    expression (netdev('eth3', 'Rx_bytes', 500)+netdev('eth3', 'Tx_bytes', 500))/1024
+    prefix 'eth3'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth3Bar {
+    class 'Bar'
+    expression netdev('eth3', 'Rx_bytes', 500)
+    expression2 netdev('eth3', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Eth4 {
+    class 'Text'
+    expression (netdev('eth4', 'Rx_bytes', 500)+netdev('eth4', 'Tx_bytes', 500))/1024
+    prefix 'eth4'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth4Bar {
+    class 'Bar'
+    expression netdev('eth4', 'Rx_bytes', 500)
+    expression2 netdev('eth4', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Eth5 {
+    class 'Text'
+    expression (netdev('eth5', 'Rx_bytes', 500)+netdev('eth5', 'Tx_bytes', 500))/1024
+    prefix 'eth5'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Eth5Bar {
+    class 'Bar'
+    expression netdev('eth5', 'Rx_bytes', 500)
+    expression2 netdev('eth5', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Wlan0 {
+    class 'Text'
+    expression (netdev('wlan0', 'Rx_bytes', 500)+netdev('wlan0', 'Tx_bytes', 500))/1024
+    prefix 'wlan0'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Wlan0Bar {
+    class 'Bar'
+    expression netdev('wlan0', 'Rx_bytes', 500)
+    expression2 netdev('wlan0', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget Wlan1 {
+    class 'Text'
+    expression (netdev('wlan1', 'Rx_bytes', 500)+netdev('wlan1', 'Tx_bytes', 500))/1024
+    prefix 'wlan1'
+    postfix ' '
+    width 10
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Wlan1Bar {
+    class 'Bar'
+    expression netdev('wlan1', 'Rx_bytes', 500)
+    expression2 netdev('wlan1', 'Tx_bytes', 500)
+    length 14
+    direction 'E'
+    update tack
+}
+
+Widget PPP {
+    class 'Text'
+    expression (ppp('Rx:0', 500)+ppp('Tx:0', 500))
+    prefix 'PPP'
+    width 9
+    precision 0
+    align 'R'
+    update tick
+}
+
+Widget Uptime {
+    class 'Text'
+    expression uptime('%d days %H:%M:%S')
+    width 20
+    align 'R'
+    prefix 'Up '
+    update 1000
+}
+
+Widget VarText1 {
+    class 'Text'
+    expression file::readline('/etc/lcd_text1.txt', 1)
+    width 16
+    align 'R'
+    update 1000
+}
+
+Widget VarText2 {
+    class 'Text'
+    expression file::readline('/etc/lcd_text2.txt', 1)
+    width 16
+    align 'R'
+    update 1000
+}
+
+Widget VarText3 {
+    class 'Text'
+    expression file::readline('/etc/lcd_text3.txt', 1)
+    width 16
+    align 'R'
+    update 1000
+}
+
+Widget VarText4 {
+    class 'Text'
+    expression file::readline('/etc/lcd_text4.txt', 1)
+    width 16
+    align 'R'
+    update 1000
+}
+
+Widget ImonISDN1Status {
+    class      'Text'
+    expression imon('status 1')
+    prefix     'ISDN1 Status: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN2Status {
+    class      'Text'
+    expression imon('status 2')
+    prefix     'ISDN2 Status: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN1Name {
+    class      'Text'
+    expression imon('circuit 1')
+    prefix     'ISDN1 Name: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN2Name {
+    class      'Text'
+    expression imon('circuit 2')
+    prefix     'ISDN2 Name: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN1Rate_Bar {
+    class       'Bar'
+    expression   imon::rates('1','in')/64
+    expression2  imon::rates('1','out')/64
+    min          0   # Scaling min 0%
+    max          100 # Scaling max 100%
+    length       20
+    direction   'E'
+    style       'H'
+    update       tack
+}
+
+Widget ImonISDN2Rate_Bar {
+    class       'Bar'
+    expression   imon::rates('2','in')/64
+    expression2  imon::rates('2','out')/64
+    min          0   # Scaling min 0%
+    max          100 # Scaling max 100%
+    length       20
+    direction   'E'
+    style       'H'
+    update       tack
+}
+
+Widget ImonISDN1Rate_In {
+    class      'Text'
+    expression  imon::rates('1','in')/1024
+    prefix     'ISDN1 In: '
+    width       20
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN2Rate_In {
+    class      'Text'
+    expression  imon::rates('2','in')/1024
+    prefix     'ISDN2 In: '
+    width       20
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN1Rate_Out {
+    class      'Text'
+    expression  imon::rates('1','out')/1024
+    prefix     'ISDN1 Out: '
+    width       20
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN2Rate_Out {
+    class      'Text'
+    expression  imon::rates('2','out')/1024
+    prefix     'ISDN2 Out: '
+    width       20
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN1Charge {
+    class      'Text'
+    expression imon('charge 1')
+    prefix     'ISDN1 Charge: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN2Charge {
+    class      'Text'
+    expression imon('charge 2')
+    prefix     'ISDN2 Charge: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN1_IP {
+    class 'Text'
+    expression 'IP: '.imon('ip 1').'   Offline'
+    align 'L'
+    width 19
+    update tick
+}
+
+Widget ImonISDN2_IP {
+    class 'Text'
+    expression 'IP: '.imon('ip 2').'   Offline'
+    align 'L'
+    width 19
+    update tick
+}
+
+Widget ImonISDN1Online_Time {
+    class      'Text'
+    expression imon('online-time 1')
+    prefix     'ISDN1 Online: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN2Online_Time {
+    class      'Text'
+    expression imon('online-time 2')
+    prefix     'ISDN2 Online: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonISDN1Quantity_In {
+    class      'Text'
+    expression  imon::quantity('1','in')/1024/1024
+    prefix     'ISDN1 In: '
+    width       15
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN2Quantity_In {
+    class      'Text'
+    expression  imon::quantity('2','in')/1024/1024
+    prefix     'ISDN2 In: '
+    width       15
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN1Quantity_Out {
+    class      'Text'
+    expression  imon::quantity('1','out')/1024/1024
+    prefix     'ISDN1 Out: '
+    width       15
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonISDN2Quantity_Out {
+    class      'Text'
+    expression  imon::quantity('2','out')/1024/1024
+    prefix     'ISDN2 Out: '
+    width       15
+    precision   1
+    align      'R'
+    update      tack
+}
+
+Widget ImonDSLName {
+    class      'Text'
+    expression imon('circuit pppoe')
+    prefix     'DSL Name: '
+    width       20
+    align      'L'
+    update      tick
+}
+
+Widget ImonDSLCharge {
+    class      'Text'
+    expression imon('charge pppoe')
+    prefix     'DSL Charge: '
+    width       17
+    align      'L'
+    update      tick
+}
+
+Widget Lightning {
+    class 'icon'
+    speed 100
+    visible proc_stat::cpu('busy', 500)-50
+    bitmap {
+        row1 '...***'
+        row2 '..***.'
+        row3 '.***..'
+        row4 '.****.'
+        row5 '..**..'
+        row6 '.**...'
+        row7 '**....'
+        row8 '*.....'
+    }
+}
+
+Widget Heartbeat {
+    class 'Icon'
+    speed 800
+    Bitmap {
+        Row1 '.....|.....'
+        Row2 '.*.*.|.*.*.'
+        Row3 '*****|*.*.*'
+        Row4 '*****|*...*'
+        Row5 '.***.|.*.*.'
+        Row6 '.***.|.*.*.'
+        Row7 '..*..|..*..'
+        Row8 '.....|.....'
+    }
+}
+
+Widget Heart {
+    class 'Icon'
+    speed 250
+    Bitmap {
+        Row1 '.....|.....|.....|.....|.....|.....'
+        Row2 '.*.*.|.....|.*.*.|.....|.....|.....'
+        Row3 '*****|.*.*.|*****|.*.*.|.*.*.|.*.*.'
+        Row4 '*****|.***.|*****|.***.|.***.|.***.'
+        Row5 '.***.|.***.|.***.|.***.|.***.|.***.'
+        Row6 '.***.|..*..|.***.|..*..|..*..|..*..'
+        Row7 '..*..|.....|..*..|.....|.....|.....'
+        Row8 '.....|.....|.....|.....|.....|.....'
+    }
+}
+
+Widget Blob {
+    class 'Icon'
+    speed 250
+    Bitmap {
+        Row1 '.....|.....|.....'
+        Row2 '.....|.....|.***.'
+        Row3 '.....|.***.|*...*'
+        Row4 '..*..|.*.*.|*...*'
+        Row5 '.....|.***.|*...*'
+        Row6 '.....|.....|.***.'
+        Row7 '.....|.....|.....'
+        Row8 '.....|.....|.....'
+    }
+}
+
+Widget Wave {
+    class 'Icon'
+    speed 100
+    Bitmap {
+        Row1 '..**.|.**..|**...|*....|.....|.....|.....|.....|....*|...**'
+        Row2 '.*..*|*..*.|..*..|.*...|*....|.....|.....|....*|...*.|..*..'
+        Row3 '*....|....*|...*.|..*..|.*...|*....|....*|...*.|..*..|.*...'
+        Row4 '*....|....*|...*.|..*..|.*...|*....|....*|...*.|..*..|.*...'
+        Row5 '*....|....*|...*.|..*..|.*...|*....|....*|...*.|..*..|.*...'
+        Row6 '.....|.....|....*|...*.|..*..|.*..*|*..*.|..*..|.*...|*....'
+        Row7 '.....|.....|.....|....*|...**|..**.|.**..|**...|*....|.....'
+        Row8 '.....|.....|.....|.....|.....|.....|.....|.....|.....|.....'
+    }
+}
+
+Widget Squirrel {
+    class 'Icon'
+    speed 100
+    Bitmap {
+        Row1 '.....|.....|.....|.....|.....|.....'
+        Row2 '.....|.....|.....|.....|.....|.....'
+        Row3 '.....|.....|.....|.....|.....|.....'
+        Row4 '**...|.**..|..**.|...**|....*|.....'
+        Row5 '*****|*****|*****|*****|*****|*****'
+        Row6 '...**|..**.|.**..|**...|*....|.....'
+        Row7 '.....|.....|.....|.....|.....|.....'
+        Row8 '.....|.....|.....|.....|.....|.....'
+    }
+}
+
+Widget Rain {
+    class 'icon'
+    speed 200
+    bitmap {
+        row1 '...*.|.....|.....|.*...|....*|..*..|.....|*....'
+        row2 '*....|...*.|.....|.....|.*...|....*|..*..|.....'
+        row3 '.....|*....|...*.|.....|.....|.*...|....*|..*..'
+        row4 '..*..|.....|*....|...*.|.....|.....|.*...|....*'
+        row5 '....*|..*..|.....|*....|...*.|.....|.....|.*...'
+        row6 '.*...|....*|..*..|.....|*....|...*.|.....|.....'
+        row7 '.....|.*...|....*|..*..|.....|*....|...*.|.....'
+        row8 '.....|.....|.*...|....*|..*..|.....|*....|...*.'
+    }
+}

@@ -1,0 +1,603 @@
+% Last Update: $Id$
+\marklabel{sec:opt-lcd4linux }
+{
+  \section {LCD4Linux - Anzeige von Statusinformationen über LC-Display}
+}
+
+\subsection{Einleitung}
+
+    Mit diesem Paket ist es möglich, ein LCD-Modul über verschiedene 
+    Schnittstellen an den fli4l Rechner anzuschließen 
+    (parallel und USB sind direkt über die fli4l-Konfiguration möglich, 
+    seriell muss über den 'Experten'-Modus konfiguriert werden, siehe 
+    entsprechenden Abschnitt weiter unten).
+
+    Auf diesem Display werden Informationen wie Datum, externe IP-Adresse, 
+    die aktuellen Loadwerte und natürlich auch der ISDN- oder DSL-Durchsatz 
+    für Up- und Download in kb/s und ein Balken angegeben.
+
+    Es können durch den Benutzer Icon's frei definiert werden, die animiert sein 
+    können, oder auch erst bei erreichen von definierbaren Schwellenwerten 
+    erscheinen (z.B. ein Blitz bei hoher CPU Auslastung).
+
+    Es ist möglich Balken darzustellen (auch zwei Balken in einer Zeile), die 
+    sich in jegliche Richtung bewegen können (links, rechts, von oben oder unten).
+
+    Den Gestaltungsmöglichkeiten sind kaum Grenzen gesetzt - die meisten Grenzen 
+    setzt die Größe des Display's ;-)
+
+    Zudem können die Anzeigemöglichkeiten durch Plugins nahezu grenzenlos 
+    erweitert werden.
+
+    Es ist auch ein IMON-Plugin vorhanden, mit dem Statusinformationen abgefragt 
+    werden können - d.h. Dauer Onlineverbindung, Übertragungsrate und Menge, usw.
+
+    Zum Einsatz kommt dabei eine Software namens lcd4linux in der 
+    Version 0.10.1-CVS (vom 21.02.2007).
+
+    Auf der Homepage des Projektes
+    	(\altlink{https://ssl.bulix.org/projects/lcd4linux})
+    sind einige Bilder der unterstützten Displays und detailierte Informationen
+    zu den jeweiligen Konfigurationsmöglichkeiten im 'Experten'-Modus.
+
+
+\subsection{Konfiguration des Displaytreibers}
+\configlabel{OPT\_LCD4LINUX}{OPTLCD4LINUX}
+
+    Möchte man das LCD4Linux-Paket einsetzen, sind noch folgende Variablen zu
+    setzen:
+
+\begin{example}
+\begin{verbatim}
+        OPT_LCD4LINUX='yes'  (Standard-Einstellung: OPT_LCD4LINUX='no')
+\end{verbatim}
+\end{example}
+
+    Zuerst wird das gewünschte Display mit seinen jeweiligen möglichen Zusatzoptionen
+    und, sofern möglich, die Anschlussart konfiguriert. Danach dann, was wo auf
+    dem Display erscheinen soll.
+
+    Sollten Sie ein Display haben welches nicht vordefiniert ist und es wird von
+    lcd4linux unterstützt (siehe dazu obige WebSeite des Projektes), so können
+    Sie den 'Experten'-Modus aktivieren und direkt selbst an der eigentlichen
+    lcd4linux-Konfiguration die gewünschten Änderungen vornehmen.
+
+
+
+\begin{description}
+\config{LCD4LINUX\_DRV}{LCD4LINUX\_DRV}{LCD4LINUXDRV}
+
+  Wählt den gewünschten Treiber aus.
+
+\begin{example}
+\begin{verbatim}
+  Mögliche Treiber sind:
+    HD44780      - Hitachi HD44780 basierte Displays und kompatible
+    LCD2USB      - LCD2USB - http://www.harbaum.org/till/lcd2usb/
+    GLCD2USB     - GLCD2USB - http://www.harbaum.org/till/glcd2usb/
+    HP12542R     - Hyunday HP12542R-DYO
+    CTINCLUD     - http://www.ct-maeusekino.de/
+    FW8888       - Allnet FW8888 internal Display
+    DPF          - Patched Digital Photo Frame http://geekparadise.de/tag/ax206/
+    EA232Graphic - Some RS232 Graphic Displays made by Electronic Assembly
+    M50530       - Mitsubishi M50530 mit z.B. 24x8 Zeichen
+\end{verbatim}
+\end{example}
+
+
+\config{LCD4LINUX\_DRV\_MODEL}{LCD4LINUX\_DRV\_MODEL}{LCD4LINUXDRVMODEL}
+
+  Welches Display-Modell liegt vor.
+
+\begin{example}
+\begin{verbatim}
+  Für den Treiber HD44780 gibt es folgende Modelle zur Auswahl:
+
+  generic	- Standard HD44780 Display (standard)
+  Noritake	- Wie generic aber mit software-einstellbarem backlight
+  Soekris	- Spezielles Interface für Soekris-Rechner mit Busy-Check im 4-Bit Modus
+  HD66712	- ähnlich HD44780 aber mit einem leicht anderen Ram-Layout. Auch für KS0073
+  LCM-162	- Spezielles Interface in Nexcom Blade Servern
+\end{verbatim}
+\end{example}
+
+\begin{example}
+\begin{verbatim}
+  Für den Treiber EA232Graphic gibt es folgende Modelle:
+
+  GE120-5NV24	120x32
+  GE128-6N9V24	128x64
+  GE128-6N3V24	128x64
+  GE128-7KV24	128x128
+  GE240-6KV24	240x64
+  GE240-6KCV24	240x64
+  GE240-7KV24	240x128
+  GE240-7KLWV24	240x128
+  GE240-6KLWV24	240x64
+  KIT120-5	120x32
+  KIT129-6	128x64
+  KIT160-6	160x80
+  KIT160-7	160x128
+  KIT240-6	240x64
+  KIT240-7	240x128
+  KIT320-8	320x240
+\end{verbatim}
+\end{example}
+
+\config{LCD4LINUX\_DRV\_PORT}{LCD4LINUX\_DRV\_PORT}{LCD4LINUXDRVPORT}
+
+  Wählt den zu verwendenden Port aus.
+
+\begin{example}
+\begin{verbatim}
+  Für den Treiber HD44780 gibt es folgende Ports:
+
+  parport0 bis parport2 um den Parallel-Port über die Linux-Parport-API anzusprechen.
+  0x278, 0x378, 0x3BC um den Parallel-Port direkt anzusprechen
+  i2c-0 bis i2x-9 für I2C Bus gesteuerte Displays.
+
+  Um i2c Nutzen zu können, muß LCD4LINUX\_DRV\_BUS='i2c' gesetzt werden.
+\end{verbatim}
+\end{example}
+
+\begin{example}
+\begin{verbatim}
+  Die Treiber EA232Graphic, FW8888, HP12542R kennen folgende Port Einstellungen:
+
+  ttyS0 usw. für lokale serielle Ports (Legacy, PCI)
+  ttyUSB0 usw. für USB-angebundene serielle Ports.
+\end{verbatim}
+\end{example}
+
+\config{LCD4LINUX\_DRV\_SPEED}{LCD4LINUX\_DRV\_SPEED}{LCD4LINUXDRVSPEED}
+
+  Gibt die Geschwindigkeit der seriellen Schnittstelle an.
+
+\begin{example}
+\begin{verbatim}
+  Mögliche Werte:
+
+  1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200
+
+  EA232Graphic hat als Default 115200 Baud.
+\end{verbatim}
+\end{example}
+
+\config{LCD4LINUX\_DRV\_WIRE\_TYPE}{LCD4LINUX\_DRV\_WIRE\_TYPE}{LCD4LINUXDRVWIRETYPE}
+
+  Legt die Verdrahtung von HD44780 und M50530 Displays fest.
+
+\begin{example}
+\begin{verbatim}
+  Mögliche Werte für HD44780:
+
+  generic	# auch LCD4Linux Wiring genannt (sehr häufig)
+  winamp	# ebenfalls eine sehr häufige Beschaltung
+  soekris	# spezielle Beschaltung für die Soekris-Boards
+\end{verbatim}
+\end{example}
+
+\begin{example}
+\begin{verbatim}
+  Mögliche Werte für M50530:
+
+  simple	# Wie im Beispiel auf: http://ssl.bulix.org/projects/lcd4linux/wiki/M50530
+  rw		# das selbe aber mit RW auf INIT (default)
+  usebusy	# wie 'rw' aber mit Busy-Flag Check. Sehr langsam
+\end{verbatim}
+\end{example}
+
+\config{LCD4LINUX\_DRV\_BUS}{LCD4LINUX\_DRV\_BUS}{LCD4LINUXDRVBUS}
+
+  Bus-Typ für HD44780 Displays
+  
+\begin{example}
+\begin{verbatim}
+  Mögliche Werte:
+
+  parport	# Parallel-Port (default)
+  i2c		# I2C
+\end{verbatim}
+\end{example}
+
+  Bei Auswahl von I2C muß der I2C Bus vor dem Start von lcd4linux bereits von einem anderen opt initialisiert worden sein.
+
+\config{LCD4LINUX\_DRV\_DEVICE}{LCD4LINUX\_DRV\_DEVICE}{LCD4LINUXDRVDEVICE}
+
+  Device auf dem I2C Bus für HD44780 Displays
+
+  Dies ist eine Bus-ID, die auf der Hardware eingestellt werden muß.
+
+
+\config{LCD4LINUX\_DRV\_ROTATE}{LCD4LINUX\_DRV\_ROTATE}{LCD4LINUXDRVROTATE}
+  - die 'serdisplib' hat noch ein interessantes Feature, nämlich die Möglichkeit
+  die Anzeige auf dem Display zu drehen.
+  Diese wird zur Zeit von den Displays CTINCLUD und HP12542R genutzt.
+
+\config{LCD4LINUX\_DRV\_CONTRAST}{LCD4LINUX\_DRV\_CONTAST}{LCD4LINUXDRVCONTRAST}
+
+  Gibt den Kontrastpegel an. Mögliche Werte gehen von 0 bis 255. Manche Displays auch weniger.
+
+  Aktuell unterstützt von LCD2USB, HP12542R und einigen EA232Graphic sowie HD44780.
+
+\config{LCD4LINUX\_DRV\_BRIGHTNESS}{LCD4LINUX\_DRV\_BRIGHTNESS}{LCD4LINUXDRVBRIGHTNESS}
+
+  Gibt den Helligkeitspegel an. Mögliche Werte gehen von 0 bis 255. Manche Displays auch weniger.
+
+  Aktuell verwendet von LCD2USB, GLCD2USB und manchen HD44780.
+
+\config{LCD4LINUX\_DRV\_BACKLIGHT}{LCD4LINUX\_DRV\_BACKLIGHT}{LCD4LINUXDRVBACKLIGHT}
+
+  Aktiviert das Backlight. Mögliche Werte: 'yes' oder 'no'.
+
+  Aktuell verwendet von HP12542R sowie einigen HD44780.
+
+\config{LCD4LINUX\_DRV\_ASC255BUG}{LCD4LINUX\_DRV\_ASC255BUG}{LCD4LINUXDRVASC255BUG}
+
+  Manche HD44780 kompatiblen Displays haben einen Bug und zeigen anstelle eines massiven
+  'Blocks' ein invertiertes 'P' oder ein '\{' an.
+  In diesem Fall ist hier 'yes' anzugeben.
+
+\config{LCD4LINUX\_DRV\_CONTROLLERS}{LCD4LINUX\_DRV\_CONTROLLERS}{LCD4LINUXDRVCONTROLLERS}
+
+  HD44780 Displays können nur maximal 80 Zeichen darstellen. Um mehr zu erreichen (z.B. 40x4)
+  werden 2 Controller an ein Display angeschlossen. Aber auch kleinere Display können mit 2 Controllern ausgestattet sein.
+  Sollte ein solches Display vorliegen, dann hier '2' angeben.
+
+\config{LCD4LINUX\_DRV\_BITS}{LCD4LINUX\_DRV\_BITS}{LCD4LINUXDRVBITS}
+
+  HD44780 Displays können im 4- oder 8-Bit Modus betrieben werden. Je nach Verkabelung hier also '4' oder '8' angeben.
+  Default ist '8' wenn nichts angegeben ist.
+
+\config{LCD4LINUX\_DRV\_USEBUSY}{LCD4LINUX\_DRV\_USEBUSY}{LCD4LINUXDRVUSEBUSY}
+
+  Um das Busy-Flag eines HD44780 Displays zu nutzen, hier 'yes' angeben.
+
+\config{LCD4LINUX\_DRV\_OPTION\_N}{LCD4LINUX\_DRV\_OPTION\_N}{LCD4LINUXDRVOPTIONN}
+
+  Anzahl der manuell vergebenen Treiber-Optionen
+
+\config{LCD4LINUX\_DRV\_OPTION\_N}{LCD4LINUX\_DRV\_OPTION\_N}{LCD4LINUXDRVOPTIONN}
+
+  Hier können eigene Optionen angegeben werden, die noch nicht direkt vom Opt umgesetzt werden.
+
+\begin{example}
+\begin{verbatim}
+  Zum Beispiel einen größeren Font bei Grafik-Displays:
+
+  LCD4LINUX\_DRV\_OPTION\_N='1'
+  LCD4LINUX\_DRV\_OPTION\_1='Font'
+  LCD4LINUX\_DRV\_OPTION\_1\_VALUE='12x16'
+
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+\subsection{Konfiguration der Displayanzeige}
+
+\begin{description}
+  \config{LCD4LINUX\_ICONS}{LCD4LINUX\_ICONS}{LCD4LINUXICONS} 
+  - LCD4Linux bietet die Möglichkeit von animierten Icons, z.B. eines schlagenden
+  Herzens oder auch einen Blitz. Diese Icons können über das Layout konfiguriert
+  werden, allerdings benötigt das Programm dazu etwas Speicherplatz, den es sich
+  beim Programmstart reservieren muss, um die Icons zu laden. Geben Sie hier die
+  Anzahl der gewünschten Icons an (max. 8). Sollten Sie im Layout mehr Icons
+  konfigurieren, als Sie hier Speicherplatz reservieren, werden die 'zusätzlichen'
+  nicht angezeigt.
+
+\config{LCD4LINUX\_DISPLAY\_SIZE}{LCD4LINUX\_DISPLAY\_SIZE}{LCD4LINUXDISPLAYSIZE} 
+  - die Größe des Displays. Anzugeben in Länge (Zeichen) x Höhe (Zeilen). Wenn Ihr
+  Display 20 Zeichen in 4 Zeilen darstellen kann, so tragen Sie hier bitte '20x4'
+  ein.
+
+\config{LCD4LINUX\_DSL\_SPEED\_IN}{LCD4LINUX\_DSL\_SPEED\_IN}{LCD4LINUXDSLSPEEDIN} 
+  - Die Download-Geschwindigkeit des DSL Anschlusses. Wird benutzt um die Anzeige
+  des Download-Balkens zu kalibrieren.
+  
+\config{LCD4LINUX\_DSL\_SPEED\_OUT}{LCD4LINUX\_DSL\_SPEED\_OUT}{LCD4LINUXDSLSPEEDOUT} 
+  - Die Upload-Geschwindigkeit des DSL Anschlusses. Wird benutzt um die Anzeige
+  des Upload-Balkens zu kalibrieren.
+
+\config{LCD4LINUX\_LAYOUT\_N}{LCD4LINUX\_LAYOUT\_N}{LCD4LINUXLAYOUTN} 
+  - Der interessanteste Teil des Paketes, denn hier geht es um die eigentliche
+  Darstellung - also was auf dem Display wo erscheinen soll. Geben Sie hier die
+  Anzahl der Layout-Konfigurations-Zeilen an.
+
+  LCD4Linux benutzt ein Konzept namens 'Widgets'. Das sind im Grunde genommen
+  kleine eigenständige Funktionen, die dann irgendetwas machen.
+
+  Über 'LCD4LINUX\_LAYOUT\_x' werden dann diese Funktionen an die ihnen zugedachte
+  Position verwiesen. 
+  'Row1.Col1  :Info:' bedeutet das der Info-Lauftext (die Erklärung welches 
+  Widget was macht und wie lang es ist erfolgt weiter unten im Text) an der ersten
+  Position der ersten Zeile startet, und da der Info-Text die ganze Zeile belegt
+  passt da auch sonst nichts mehr hin. 
+  Möchten Sie jetzt aber trotzdem, dass vor dem Info-Text noch ein kleines Icon 
+  dargestellt werden soll, so müssen Sie die Konfiguration ein wenig ändern.
+
+  z.B. in:
+\begin{example}
+\begin{verbatim}
+        LCD4LINUX_LAYOUT_1='Row1.Col1  :Lightning:'
+        LCD4LINUX_LAYOUT_2='Row1.Col2  :Info:'
+\end{verbatim}
+\end{example}
+
+  Beachten Sie bitte, dass dann in diesem Beispiel das letzte Zeichen des Lauftextes
+  'abgeschnitten' wird, d.h. es kann nicht dargestellt werden, weil das Display
+  nicht groß genug ist. Das ist in dem Fall des Lauftextes nicht weiter schlimm,
+  da ja ohnehin die Zeichen 'weiterwandern' und dann der Text auch erscheint, nur
+  bei anderen Widgets die statisch sind und nicht weiterlaufen, könnte dann das
+  ein oder andere Zeichen fehlen.
+
+
+  Die zur Zeit möglichen Widgets sind in Table \ref{tab:lcd4linux-widgets-x} aufgeführt.
+  (die Info\_Tel\_x Widgets haben eine wechselnde Anzeige, in Abhängigkeit ob eine 
+  'letzte Rufnummer' vorliegt, darum steht dort ein '-ODER-')
+
+      \begin{small}
+       \begin{center}
+        \begin{longtable}{rp{7cm}r}
+
+               Typ &     Information   &             Zeichenbreite\\
+               \\
+                  :Info: &       Lauftext mit Name und IP    &  20 \\
+                 :Info2: &       Lauftext mit Name, Version, Ram und CPU   &  20 \\
+
+    :Date\_dd\_mm\_yyyy: &       Datum mit vier Stellen Jahr &  10 \\
+      :Date\_dd\_mm\_yy: &       Datum mit zwei Stellen Jahr &   8 \\
+      :Time\_hh\_mm\_ss: &       Uhrzeit                     &   8 \\                              
+
+   :ImonDSLQuantity\_In: &       DSL Eingangs Volumen        &  10 \\
+  :ImonDSLQuantity\_Out: &       DSL Ausgangs Volumen        &   9 \\
+       :ImonDSLRate\_In: &       DSL Eingangs Rate           &   9 \\
+      :ImonDSLRate\_Out: &       DSL Ausgangs Rate           &   9 \\
+      :ImonDSLRate\_Bar: &       DSL Rate Balken             &  20 \\
+   :ImonDSLOnline\_Time: &       DSL Onlinezeit              &  20 \\
+           :ImonDSL\_IP: &       DSL IP oder Offline         &  19 \\
+        :ImonDSL\_IP\_2: &       DSL IP oder Datum, Uhrzeit  &  20 \\
+           :ImonDSLName: &       DSL Circuit Name            &  20 \\
+         :ImonDSLCharge: &       DSL Online-Kosten           &  17 \\
+         
+       :ImonISDN1Status: &       ISDN Circuit Name            &  20 \\
+       :ImonISDN2Status: &       ISDN Circuit Name            &  20 \\
+         :ImonISDN1Name: &       ISDN Circuit Name            &  20 \\
+         :ImonISDN2Name: &       ISDN Circuit Name            &  20 \\
+    :ImonISDN1Rate\_Bar: &       ISDN Circuit Name            &  20 \\
+    :ImonISDN2Rate\_Bar: &       ISDN Circuit Name            &  20 \\
+     :ImonISDN1Rate\_In: &       ISDN Circuit Name            &  20 \\
+     :ImonISDN2Rate\_In: &       ISDN Circuit Name            &  20 \\
+    :ImonISDN1Rate\_Out: &       ISDN Circuit Name            &  20 \\
+    :ImonISDN2Rate\_Out: &       ISDN Circuit Name            &  20 \\
+       :ImonISDN1Charge: &       ISDN Circuit Name            &  20 \\
+       :ImonISDN2Charge: &       ISDN Circuit Name            &  20 \\
+         :ImonISDN1\_IP: &       ISDN Circuit Name            &  19 \\
+         :ImonISDN2\_IP: &       ISDN Circuit Name            &  19 \\
+ :ImonISDN1Online\_Time: &       ISDN Circuit Name            &  20 \\
+ :ImonISDN2Online\_Time: &       ISDN Circuit Name            &  20 \\
+ :ImonISDN1Quantity\_In: &       ISDN Circuit Name            &  15 \\
+ :ImonISDN2Quantity\_In: &       ISDN Circuit Name            &  15 \\
+:ImonISDN1Quantity\_Out: &       ISDN Circuit Name            &  15 \\
+:ImonISDN2Quantity\_Out: &       ISDN Circuit Name            &  15 \\
+
+          :Info\_Tel\_1: &       Kein Anruf! -ODER- Nummer, Datum, Uhrzeit      &  20 \\
+          :Info\_Tel\_2: &       Kein Anruf, DSL Onlinezeit -ODER- Nummer, Datum, Uhrzeit, DSL Onlinezeit    &  20 \\
+          :Info\_Tel\_3: &       DSL Onl.Zeit -ODER- Rufnummer &  20 \\
+                 :TelNr: &       TelNummer letzter Anruf     &  20 \\
+               :TelDate: &       Datum letzter Anruf         &   8 \\
+               :TelTime: &       Uhrzeit letzter Anruf       &   8 \\
+       
+                    :OS: &       Anzeige Betriebssystem      &  20 \\
+                   :CPU: &       Anzeige CPU Version         &   9 \\
+                   :RAM: &       Anzeige gesamt RAM Speicher &  11 \\
+             :RAM\_FREE: &       Anzeige freien RAM Speicher &  16 \\                   
+                  :Busy: &       CPU Auslastung (cpu usage)  &   9 \\
+               :BusyBar: &       CPU Auslastungs Balken      &  10 \\
+                  :Load: &       Rechner Auslastung          &  10 \\
+               :LoadBar: &       Rechner Auslastungs Balken  &  10 \\
+                  :Eth0: &       Volumen von Eth0            &  10 \\
+               :Eth0Bar: &       Rate von Eth0               &  14 \\
+                   :PPP: &       Volumen über PPP-Verbindung &   9 \\
+                :Uptime: &       Zeit seit letztem Neustart  &  20 \\
+
+              :VarText1: &       text -$>$ /etc/lcd\_text1.txt  & max 20 \\
+              :VarText2: &       text -$>$ /etc/lcd\_text2.txt  & max 20 \\
+              :VarText3: &       text -$>$ /etc/lcd\_text3.txt  & max 20 \\
+              :VarText4: &       text -$>$ /etc/lcd\_text4.txt  & max 20 \\
+
+             :Lightning: &       Icon: Blitz             &  1 \\
+             :Heartbeat: &       Icon: Herzschlag        &  1 \\
+                 :Heart: &       Icon: Herz              &  1 \\
+                  :Blob: &       Icon: (Luft)Blase       &  1 \\
+                  :Wave: &       Icon: Welle             &  1 \\
+              :Squirrel: &       Icon: Wirbel            &  1 \\
+                  :Rain: &       Icon: Regen(tropfen)    &  1 \\
+
+            \caption{Übersicht über mögliche Widgets}
+            \marklabel{tab:lcd4linux-widgets-x}{}
+
+        \end{longtable}
+       \end{center}
+      \end{small}
+
+\config{LCD4LINUX\_START\_STOP\_MSG}{LCD4LINUX\_START\_STOP\_MSG}{LCD4LINUXSTARTSTOPMSG} 
+  - wenn diese Option auf 'yes' gesetzt wird, so werden beim Systemstart und
+  beim Herunterfahren Textmeldungen ausgegeben.
+  
+  Wenn das LCD im Expertenmodus (\var{LCD4LINUX\_EXPERT\_MODE='yes'}) konfiguriert wird
+  müssen zusätzlich vier Layouts mit den Namen \verb*?Startup?, \verb*?Halt?,
+  \verb*?Poweroff? und \verb*?Reboot? angelegt werden.
+  Siehe dazu auch die Beispiel-Konfig unter 'opt$\backslash$etc$\backslash$lcd4linux')
+
+\config{LCD4LINUX\_EXPERT\_MODE}{LCD4LINUX\_EXPERT\_MODE}{LCD4LINUXEXPERTMODE} 
+  - wenn diese Option auf 'yes' gesetzt wird, so wird die komplette Konfiguration 
+  ignoriert und stattdessen eine 'lcd4linux.conf' aus dem Ordner 'config$\backslash$etc$\backslash$lcd4linux$\backslash$' 
+  (Ordner muss selbst erstellt werden, eine Beispiel-Konfig findet sich unter 
+  'opt$\backslash$etc$\backslash$lcd4linux') mit auf den Router kopiert. Diese Datei muss entsprechend 
+  den eigenen Bedürfnissen angepasst werden.
+
+\config{LCD4LINUX\_TEST}{LCD4LINUX\_TEST}{LCD4LINUXTEST} 
+  - zum Testen der Konfiguration der 'lcd4linux.conf' kann man diese Option 
+  einschalten.
+
+  Der LCD4LINUX-Daemon wird dann nicht automatisch gestartet, sondern man muss 
+  sich auf die Console verbinden (per ssh oder direkt) und den Daemon im 
+  DebugModus starten - man sieht dann direkt evtl. Fehlermeldungen und der 
+  Daemon läuft dann nicht als Hintergrunddienst, sondern kann über 'strg+c' 
+  abgebrochen werden.
+
+  Wenn man nun einen Editor auf dem fli4l mitinstalliert hat (z.B. den e3) kann
+  man nun unter /etc/lcd4linux/lcd4linux.conf die Konfiguration korrigieren.
+
+  Der Aufruf für den LCD4Linux-DebugModus lautet:
+\begin{example}
+\begin{verbatim}
+  'lcd4linux -f /etc/lcd4linux/lcd4linux.conf -Fvv'
+\end{verbatim}
+\end{example}
+
+\end{description}
+
+
+\subsection{Anschlussbelegung eines LCD-Moduls am Parallelport}
+ 
+\begin{example}
+\begin{verbatim}
+   13 _____________________________ 1 Draufsicht auf den
+      \ o o o o o o o o o o o o o /   Parallelport, Rück-
+       \ o o o o o o o o o o o o /    seite PC
+     25 ------------------------- 14
+\end{verbatim}
+\end{example}
+   
+
+ Der Anschluss eines LCD-Moduls an den Router wird folgendermaßen aufgetrennt:
+
+ 
+\begin{example}
+\begin{verbatim}
+ 
+ Parallelport-Pin   Beschreibung   LCD-Modul    LCD-Pin
+         18-25      GND                             --|
+                    GND                          1  --|- Brücke
+                    R/W                          5  --|
+                    +5V                          2
+             1      STROBE         EN(1)         6
+             2      D0             D0            7
+             3      D1             D1            8
+             4      D2             D2            9
+             5      D3             D3           10
+             6      D4             D4           11
+             7      D5             D5           12
+             8      D6             D6           13
+             9      D7             D7           14
+            14      Autofeed       RS            4
+            17      Select In      EN(2)         ? (für LCDs mit 2 Controller)
+
+  Bei Display mit Hintergrundbeleuchtung:
+                                   HG+          15 (mit Vorwiderstand ca. 20Ohm)
+                                   GND          16
+\end{verbatim}
+\end{example}
+
+  An Pin 3 kann der Abgriff eines $>$= 20kOhm Potis zwischen +5V und GND 
+  geschaltet werden. Damit kann der Kontrast des Displays reguliert werden.
+  Bei meinem Display (Conrad) liegt Pin 3 direkt an Masse und man kann
+  alles einwandfrei erkennen.
+
+\begin{example}
+\begin{verbatim}
+  
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Pin 3 - driver input)
+\end{verbatim}
+\end{example}
+
+
+
+\subsection{Anschluss eines 4x40 Displays}
+
+  Da sich der Anschluss eines 4x40 Displays stark von anderen Displays
+  unterscheidet, hier ein Beispiel (Conrad - NLC-40x4x05):
+
+\begin{example}
+\begin{verbatim}
+
+Parallelport-Pin   Beschreibung   LCD-Modul           LCD-Pin
+        18-25                                             --|
+                   GND                                13  --|- Brücke
+                   R/W                                10  --|
+                   +5V                                14
+            1      STROBE         EU (Enable-Upper)    9
+            2      D0             D0                   8
+            3      D1             D1                   7
+            4      D2             D2                   6
+            5      D3             D3                   5
+            6      D4             D4                   4
+            7      D5             D5                   3
+            8      D6             D6                   2
+            9      D7             D7                   1
+           14      Autofeed       RS                  11
+           17      Select In      ED (Enable-Down)    15
+\end{verbatim}
+\end{example}
+
+
+  An Pin 12 kann der Abgriff eines $>$= 20kOhm Potis zwischen +5V und GND 
+  geschaltet werden. Damit kann der Kontrast des Displays reguliert werden.
+  Es kann aber auch reichen, Pin 12 direkt an Masse zu legen um alles
+  einwandfrei erkennen zu können.
+
+\begin{example}
+\begin{verbatim}
+
+  +5V ---+
+         /
+         \ <--+
+         /    |
+         \    |
+  GND ---+    +--- VL (Pin 12 - driver input)
+\end{verbatim}
+\end{example}
+
+
+  \begin{itemize}
+  \item Die Leitung ED wird an Pin 17 des parallelen Ports angeschlossen.
+  
+  \item Das Display wird in der lcd.txt als 2x40 Display definiert.
+  
+  \item Bei den Typendefinitionen für isdn\_rate wird aber die 4x40 als
+    Zeilen-/Spaltengröße angesehen.
+  \end{itemize}
+
+
+  Leider gibt es keinen Standard, was die Pinbelegung des Parallelports
+  auf dem Motherboard betrifft. Für die interne Verwendung von LCD-Modulen
+  muß man also die Anschlüsse anhand des zum Motherboard mitgelieferten
+  Slotblechadapters durchmessen.
+
+  Die erforderliche Spannungsversorgung kann man leider nicht dem Parallelport
+  entnehmen, da die Stromaufnahme eines LCD-Modules zu hoch ist. Geeignet dafür
+  sind die Anschlüsse für Maus (PS/2), Tastatur (DIN, PS/2), Gameport, USB oder ein
+  freier Anschluss vom PC-Netzteil. Da einige Soundkartenhersteller am Gameport
+  spezielle Signale generieren, kann keine Garantie übernommen, dass es in jeder
+  Kombination funktioniert. Daher gilt hier: Immer vorher messen!
+
+
+\subsection{Danksagung}
+
+  Dank geht an:
+
+  \begin{itemize}
+  \item Frank Meyer für das imond Interface und fli4l :)
+   
+  \item Gernot Miksch für das Paket LCD
+   
+  \item Michael Reinelt (\altlink{https://ssl.bulix.org/projects/lcd4linux}) für 
+        das LCD4Linux Programm
+  \end{itemize}

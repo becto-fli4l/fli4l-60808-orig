@@ -1,0 +1,52 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc000.lcdlinux - lcd startup message                   __FLI4LVER__
+#
+# Creation:     30.01.2013  cspiess
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+begin_script LCD4LINUX 'LCD startup message'
+
+    if [ "$LCD4LINUX_EXPERT_MODE" = "no" ]
+    then
+        (
+            echo "Display 'configured'"
+            echo "Display configured {"
+    
+            # setup driver specifiy sections
+            . /etc/rc.d/lcd4linux.driver
+            if [ "0$LCD4LINUX_DRV_OPTION_N" -gt 0 ]
+            then
+                for i in `seq 1 $LCD4LINUX_DRV_OPTION_N`
+                do
+                    eval echo \"    \$LCD4LINUX_DRV_OPTION_${i}   \'\$LCD4LINUX_DRV_OPTION_${i}_VALUE\'\"
+                done
+            fi
+            echo "    Icons '$LCD4LINUX_ICONS'"
+            echo "    Size '$LCD4LINUX_DISPLAY_SIZE'"
+            echo "}"
+            echo ""
+    
+            echo "Layout 'Startup'"
+            echo "Layout Startup {"
+            echo "    Row1 {"
+            echo "        Col1 'Msg-Startup'"
+            echo "    }"
+            echo "}"
+    
+            echo "Widget Msg-Startup {"
+            echo "    class 'Text'"
+            echo "    expression 'STARTUP'"
+            echo "    align 'L'"
+            echo "    width 10"
+            echo "}"
+        ) > /etc/lcd4linux/lcd4linux.conf
+        chmod 0600 /etc/lcd4linux/lcd4linux.conf
+    fi
+    if [ "$LCD4LINUX_TEST" != "yes" ]
+    then
+        /usr/bin/lcd4linux -q -F -f /etc/lcd4linux/lcd4linux.conf -c Layout="'Startup'" >/dev/null 2>&1 &
+        echo $! >/var/run/lcd4linux.startup.pid 
+    fi
+end_script
