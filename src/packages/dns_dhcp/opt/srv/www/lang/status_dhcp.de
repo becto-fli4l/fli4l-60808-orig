@@ -1,0 +1,81 @@
+﻿#!/bin/sh
+# status_dhcp.cgi
+#
+# Last Update:  $Id$
+
+_STAT_DHCP_DOWNLOAD_HEAD="Download DNS/DHCP-Vorlagendatei"
+_STAT_DHCP_DOWNLOAD_INFO="Es wurden keine zur Laufzeit hinzugefügten DHCP-Hosts gefunden. Somit ist kein Download einer Konfigurationsvorlage möglich!"
+_STAT_DHCP_ADD_HEAD="Hinzufügen eines DHCP-Hosts"
+_STAT_DHCP_ERROR="Fehler:"
+_STAT_DHCP_INFO="Info:"
+_STAT_DHCP_IPADDR="IP-Adresse"
+_STAT_DHCP_HOSTNAME="Hostname"
+_STAT_DHCP_MACADDR="MAC-Adresse"
+_STAT_DHCP_LEASETIME="Leasetime"
+_STAT_DHCP_LEASE_END="Läuft ab<br />[Datum Uhrzeit]"
+_STAT_DHCP_NETWORK="Network"
+_STAT_DHCP_DEL_HEAD="Löschen von DHCP-Hosts"
+_STAT_DHCP_RELOAD_HEAD="Reload des DNS/DHCP-Servers"
+_STAT_DHCP_ERR_NORANGE="Es wurden keine DHCP-Bereiche konfiguriert."
+_STAT_DHCP_ERR_NOHOSTS="Es wurden keine statischen DHCP-Hosts konfiguriert."
+_STAT_DHCP_MSG_RELOAD="Der DNS/DHCP-Server wurde neu gestartet"
+_STAT_DHCP_IP_EMPTYFIELD="Mindestens ein Eingabefeld der IP-Adresse ist leer"
+_STAT_DHCP_HOST_EMPTY="Es wurde kein Hostname eingegeben"
+_STAT_DHCP_MAC_EMPTY="Es wurde keine MAC-Adresse eingegebenen"
+_STAT_DHCP_LEASETIME_EMPTY="Es wurde keine Leasetime angegeben"
+
+_STAT_DHCP_ERR_IP_DOUBLE="Die eingegebene IP-Adresse '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' ist bereits einem anderen Host zugeordnet"
+_STAT_DHCP_ERR_IP_FORMAT="Die eingegebene IP-Adresse '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' ist keine gültige IP-Adresse"
+_STAT_DHCP_ERR_IP_NOTNET="Die eingegebene IP-Adresse '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' gehört nicht zum Netz 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_BCAST="Die eingegebene IP-Adresse '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' darf nicht gleich der Broadcast-Adresse des Netzes 'IP_NET_${FORM_netid}' sein"
+_STAT_DHCP_ERR_IP_NET="Die eingegebene IP-Adresse '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' darf nicht gleich der Netz-Adresse des Netzes 'IP_NET_${FORM_netid}' sein"
+_STAT_DHCP_ERR_IP_RANGE="Die eingegebene IP-Adresse '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' darf sich nicht innerhalb der DHCP-Range befinden"
+
+_STAT_DHCP_ERR_HOST_DOUBLE="Der eingegebene Hostname '${FORM_host}' ist bereits einem anderen Host zugeordnet"
+_STAT_DHCP_ERR_HOST_VALIDATE="Der eingegebene Hostname '${FORM_host}' enthält ungültige Zeichen. Erlaubt sind die ASCII-Zeichen 'a' bis 'z' (in Groß- und Kleinschreibung), die Ziffern '0' bis '9' sowie der Bindestrich '-'."
+
+_STAT_DHCP_ERR_MAC_DOUBLE="Die eingegebene MAC-Adresse '${FORM_mac}' ist bereits einem anderen Host zugeordnet"
+_STAT_DHCP_ERR_MAC_FORMAT="Das Format der eingegebenen MAC-Adresse ist nicht korrekt"
+
+_STAT_DHCP_ERR_LEASETIME="Die eingegebene Leasetime '${FORM_leasetime}' ist zu klein [min=120]"
+
+_STAT_DHCP_HOSTSFILE="Hosts-Datei"
+
+_STAT_DHCP_ERR_NEWIPHASDNSENTRY="Für die eingegebene IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' gibt es einen DNS-Eintrag - im DNS ist aber nicht der Hostname '${FORM_host}' für diese IP hinterlegt"
+_STAT_DHCP_ERR_NEWHOSTHASDNSENTRY="Für den eingegebenen Hostname '${FORM_host}' gibt es einen DNS-Eintrag - im DNS ist aber nicht die IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' für diesen Hostname hinterlegt"
+
+_STAT_DHCP_ERR_DATA="in den Daten"
+_STAT_DHCP_ERR_NOHOSTADDED="Es wurde kein neuer Host zur Konfiguration hinzugefügt. Bitte versuchen Sie es erneut!"
+
+_STAT_DHCP_INFO_DHCPHOST="DHCP-Host"
+_STAT_DHCP_INFO_RENEWNEEDED="Der eingegebene Host '${FORM_host}' mit der MAC '${FORM_mac}' hat bisher eine IP aus der DHCP-Range benutzt! Um die neue IP per DHCP zuzuordnen muss ein 'release/renew' durchgeführt werden!"
+
+_STAT_DHCP_ADD_HOSTADDED="Der eingegebene Host '${FORM_host}' / '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' wurde zur Konfiguration hinzugefügt"
+
+_STAT_DHCP_DEL_HOSTREMOVED="Der Host '${FORM_hostname}' wird aus /etc/dnsmasq.d/dhcp_hosts_NET${FORM_net}.wwwconf gelöscht"
+
+
+_STAT_DHCP_LEASE_NOLEASEFILE="Die Leasedatei <strong>${LEASES_FILE}</strong> ist nicht vorhanden.<br>Bitte Überprüfen Sie ob Sie den DHCP Server laufen haben."
+_STAT_DHCP_LEASE_TABHEAD="DHCP-Leases: ${LEASES_FILE}"
+_STAT_DHCP_LEASE_NOENTRY="Es sind keine Leases in der Datei <strong>${LEASES_FILE}</strong> vorhanden."
+
+_STAT_DHCP_RANGE_TABHEAD="DHCP-Ranges"
+
+_STAT_DHCP_INFOTEXT1="Zur Laufzeit angelegte DHCP-Hosts gehen bei einem Reboot verloren!"
+_STAT_DHCP_INFOTEXT2="Die Daten können jedoch als Vorlage zum Einfügen in die Konfigurationsdatei <b>\"config/dns_dhcp.txt\"</b> herruntergeladen werden!"
+
+_STAT_DHCP_RANGE_TYPE="Typ"
+_STAT_DHCP_RANGE_START="Start"
+_STAT_DHCP_RANGE_END="End"
+_STAT_DHCP_RANGE_MASK="Subnetmask"
+_STAT_DHCP_RANGE_BCAST="Broadcast"
+_STAT_DHCP_RANGE_DEFROUTER="Default-Router"
+_STAT_DHCP_RANGE_DNSDOMAIN="DNS-Domain"
+_STAT_DHCP_RANGE_DNSSRV="DNS-Server"
+_STAT_DHCP_RANGE_NTPSRV="NTP-Server"
+
+_STAT_DHCP_HOSTS_HOSTS="DHCP-Hosts"
+_STAT_DHCP_HOSTS_ALIAS="Alias(es)"
+_STAT_DHCP_HOSTS_ACTION="Aktion"
+
+_STAT_DHCP_MAINTITLE="DHCP-Server"

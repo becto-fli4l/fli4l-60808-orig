@@ -1,0 +1,146 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ip-up200.dns                                          __FLI4LVER__
+#
+# called whenever an IPv4 PPP connection over default circuit has come up
+# and dnsmasq is installed
+#
+# Creation:     2007-11-293  lanspezi
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+# back up etc/resolv.dnsmasq to etc/resolv.dnsmasq.bak
+# if provider supports sending ip(s) of dns server(s)
+#----------------------------------------------------------------------------
+
+. /etc/rc.d/resolvconf-common
+. /etc/rc.d/helper-dns_dnsmasq.sh
+
+# $1 = IPv4 network address
+# output = 0 if it is a private address according to RFC 1918, 1 otherwise
+is_private()
+{
+    case $1 in
+    10.*.*.*)
+        return 0
+        ;;
+    192.168.*.*)
+        return 0
+        ;;
+    172.*.*.*)
+        set -- ${1//./ }
+        [ $2 -ge 16 -a $2 -lt 32 ] && return 0
+        ;;
+    esac
+    return 1
+}
+
+# $1 = IPv4 address of DNS upstream server
+# result = 0 if the router is part of the same subnet, 1 otherwise
+# output = network the DNS upstream server is part of (if function returns 0)
+is_part_of_lan()
+{
+    local net
+    for net in $(get_local_ipv4_subnets)
+    do
+        local mask=${net##*/}
+        local dnsnet=$(netcalc network "$1/$mask")
+        if [ "$dnsnet/$mask" = "$net" ]
+        then
+            echo "$net"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# $1 = DNS server added to resolv.conf
+# expects $bogus_priv_file to contain the address ranges to be exempted from
+#   being forwarded to upstream DNS servers
+# creates $bogus_priv_file~ as a backup file if an address range has to be deleted
+check_private_range()
+{
+    if is_private "$1"
+    then
+        local lan=$(is_part_of_lan "$1")
+        if [ -n "$lan" ]
+        then
+            # use ~ suffix such that dnsmasq skips this file
+            if [ ! -f $bogus_priv_file~ ]
+            then
+                cp $bogus_priv_file $bogus_priv_file~
+            fi
+            dns_remove_private_subnet $lan
+            echo "  forwarding $(netcalc dnsrev ${lan%/*}) to $1"
+        fi
+    fi
+}
+
+# expects $delegate_file to contain the domains for which upstream DNS requests
+#   are allowed to return private addresses
+# creates $delegate_file~ as a backup file if $delegate_file needs to be modified
+check_dns_domain()
+{
+    if [ -n "$DNSDOMAIN" ]
+    then
+        if [ ! -f $delegate_file~ ]
+        then
+            cp -a $delegate_file $delegate_file~
+        fi
+        echo "rebind-domain-ok=/$DNSDOMAIN/" >> $delegate_file
+    fi
+}
+
+# restarts dnsmasq
+restart_dnsmasq()
+{
+    sync_lock_resource dns_restart ip-up200.dns
+    if [ -f $delegate_file~ -o -f $bogus_priv_file~ -o -f $dnsserver_n_file~ ]
+    then
+        killall dnsmasq
+        sleep 1
+        dnsmasq
+    else
+        killall -HUP dnsmasq
+    fi
+    sync_unlock_resource dns_restart ip-up200.dns
+}
+
+if [ -f /etc/dnsmasq.conf ]
+then
+    if [ "$circ_usepeerdns" = "yes" ]
+    then
+        # pppd or DHCP clients set DNS1 and DNS2
+        if [ "$DNS1" -o "$DNS2" ]
+        then
+            delegate_file=/etc/dnsmasq.d/dns_delegate.conf
+            dnsserver_n_file=/etc/dnsmasq.d/dns_resolver.conf
+            bogus_priv_file=$dns_private_subnets
+
+            if ! resolvconf_addpeerdns $circ_id $DNS1 $DNS2 &&
+                [ -f $dnsserver_n_file ]
+            then
+                mv $dnsserver_n_file $dnsserver_n_file~
+            fi
+
+            sync_lock_resource dns_delegate_file ip-up200.dns
+            for dns in $DNS1 $DNS2
+            do
+                echo "using nameserver $dns"
+                check_private_range $dns
+            done
+            if [ -f $bogus_priv_file~ ]
+            then
+                 dns_update_private_subnets
+            fi
+
+            check_dns_domain
+            sync_unlock_resource dns_delegate_file ip-up200.dns
+
+            restart_dnsmasq
+        else
+            echo "The DHCPv4 server didn't send any nameserver addresses, DNS forwarders not changed"
+        fi
+    else
+        echo "Using peer DNS servers disabled for $interface"
+    fi
+fi

@@ -1,0 +1,64 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ip-down800.dhcp                                       __FLI4LVER__
+#
+# called whenever an IPv4 PPP connection over default circuit has been shut
+# down and dnsmasq is installed
+#
+# Creation:     2007-11-29  lanspezi
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+# restore etc/resolv.dnsmasq from etc/resolv.dnsmasq.bak
+#----------------------------------------------------------------------------
+
+. /etc/rc.d/resolvconf-common
+. /etc/rc.d/helper-dns_dnsmasq.sh
+
+resolv_file=/etc/resolv.dnsmasq
+delegate_file=/etc/dnsmasq.d/dns_delegate.conf
+dnsserver_n_file=/etc/dnsmasq.d/dns_resolver.conf
+bogus_priv_file=$dns_private_subnets
+
+if [ -f /etc/dnsmasq.conf ]
+then
+    if [ "$circ_usepeerdns" = "yes" ]
+    then
+        restart=no
+
+        echo "removing peer DNS servers"
+        if ! resolvconf_removepeerdns $circ_id &&
+            [ -f $dnsserver_n_file~ ]
+        then
+            mv $dnsserver_n_file~ $dnsserver_n_file
+            echo "$dnsserver_n_file restored."
+            restart=yes
+        fi
+
+        sync_lock_resource dns_delegate_file ip-down800.dns
+        if [ -f $delegate_file~ ]
+        then
+            mv $delegate_file~ $delegate_file
+            echo "$delegate_file restored."
+            restart=yes
+        fi
+        if [ -f $bogus_priv_file~ ]
+        then
+            mv $bogus_priv_file~ $bogus_priv_file
+            dns_update_private_subnets
+            echo "$bogus_priv_file restored."
+            restart=yes
+        fi
+        sync_unlock_resource dns_delegate_file ip-down800.dns
+
+        sync_lock_resource dns_restart ip-down800.dns
+        if [ $restart = yes ]
+        then
+            killall dnsmasq
+            sleep 1
+            dnsmasq
+        else
+            killall -HUP dnsmasq
+        fi
+        sync_unlock_resource dns_restart ip-down800.dns
+    fi
+fi

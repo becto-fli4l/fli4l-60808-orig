@@ -1,0 +1,120 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc370.dns_dhcp - configure dns and dhcp
+#
+# Creation:     2007-02-03 lanspezi
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+# create config -> dns
+# --------------------
+
+if [ "$OPT_DNS" = "yes" ]
+then
+    begin_script DNS "configure DNS service..."
+    
+    cat <<-EOF>>/etc/services
+dns             53/tcp
+dns             53/udp
+dhcp            67/tcp
+dhcp            67/udp
+EOF
+    
+    mkdir -p /etc/dnsmasq.d
+    # include dnsmasq specific dns functions
+    . /etc/rc.d/helper-dns_dnsmasq.sh
+
+    create_dns_config
+
+    end_script
+fi
+
+# create config -> dhcp
+# ---------------------
+if [ "$OPT_DHCP" = "yes" ]
+then
+    begin_script DHCP "configure DHCP service ..."
+
+    # include common dhcp functions
+    . /etc/rc.d/helper-dhcp.sh
+
+    case $DHCP_TYPE in
+        isc-dhcpd)
+            # include isc specific dhcp functions
+            . /etc/rc.d/helper-dhcp_isc.sh
+            lease=iscdhcpd
+            ;;
+        dnsmasq)
+            # include dnsmasq specific dhcp functions
+            . /etc/rc.d/helper-dhcp_dnsmasq.sh
+            lease=dnsmasq
+            ;;
+        *)
+            log_error "$DHCP_TYP not supported"
+            ;;
+    esac
+
+    
+    if lease_file
+    then
+        case $DHCP_TYPE in
+            dnsmasq)
+                mkdir -p /etc/dnsmasq.d
+                # always write config-option for lease file
+                echo "dhcp-leasefile=${DHCP_LEASES_DIR}/dnsmasq.leases" > /etc/dnsmasq.d/dhcp.conf
+                if [ "$DHCP_VERBOSE" = "yes" ]
+                then
+                    echo "log-dhcp" >> /etc/dnsmasq.d/dhcp.conf
+                fi
+                echo "dhcp-authoritative" >> /etc/dnsmasq.d/dhcp.conf
+                echo "dhcp-script=/usr/local/bin/dnsmasq_dhcp-script.sh" >> /etc/dnsmasq.d/dhcp.conf
+                if [ "$DHCP_OPTION_WPAD" = "yes" ]
+                then
+                    if [ "x$DHCP_OPTION_WPAD_URL" = "x" ]
+                    then
+                        echo "dhcp-option=252,\"\\n\"" >> /etc/dnsmasq.d/dhcp.conf
+                    else
+                        echo "dhcp-option=252,${DHCP_OPTION_WPAD_URL}" >> /etc/dnsmasq.d/dhcp.conf
+                    fi
+                fi
+                ;;
+            isc-dhcpd)
+                ## Name of Lease-File is ${DHCP_LEASES_DIR/iscdhcpd.leases}
+                mkdir -p /etc/dhcpd.d/
+                ;;
+        esac
+        
+        check_lease_file $lease
+        
+        create_dhcp_deny_mac
+
+        create_dhcp_hosts
+
+        create_dhcp_range_extra
+
+        create_dhcp_range_local
+    else
+        OPT_DHCP='no'
+    fi
+
+    end_script
+fi
+
+# create config -> tftp
+# --------------------
+if [ "$OPT_TFTP" = "yes" ]
+then
+    begin_script DNS "configure TFTP service..."
+    
+    if [ ! -d /etc/dnsmasq.d ]
+    then
+        log_error "please activate dnsmasq dns-server, needed to activate service tftp"
+    else
+        mkdir -p $TFTP_PATH
+        {
+            echo "enable-tftp"
+            echo "tftp-root=$TFTP_PATH"
+        } > /etc/dnsmasq.d/tftp.conf
+    fi
+    end_script
+fi

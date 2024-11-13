@@ -1,0 +1,81 @@
+﻿#!/bin/sh
+# status_dhcp.cgi
+# Traduit par Bernard Charrier
+# Last Update:  $Id$
+
+_STAT_DHCP_DOWNLOAD_HEAD="Télécharger le fichier modéle DNS/DHCP"
+_STAT_DHCP_DOWNLOAD_INFO="Aucun hôte n'a été ajouté durant la durée d'exécution du DHCP. Par conséquent, il n'est pas possible de télécharger le modéle-config!"
+_STAT_DHCP_ADD_HEAD="Ajouter un hôte au DHCP"
+_STAT_DHCP_ERROR="Erreur:"
+_STAT_DHCP_INFO="Info:"
+_STAT_DHCP_IPADDR="Adresse-IP"
+_STAT_DHCP_HOSTNAME="Nom d'hôte"
+_STAT_DHCP_MACADDR="Adresse-MAC"
+_STAT_DHCP_LEASETIME="Durée du bail"
+_STAT_DHCP_LEASE_END="Expire le<br />[Date Heure]"
+_STAT_DHCP_NETWORK="Réseau" 
+_STAT_DHCP_DEL_HEAD="Supprimer l'hôte du DHCP"
+_STAT_DHCP_RELOAD_HEAD="Recharger le serveur DNS/DHCP"
+_STAT_DHCP_ERR_NORANGE="Pas de plage-DHCP définie"
+_STAT_DHCP_ERR_NOHOSTS="Pas d'hôte statique configuré dans le DHCP"
+_STAT_DHCP_MSG_RELOAD="Le serveur DNS/DHCP a été redémarré"
+_STAT_DHCP_IP_EMPTYFIELD="Un ou plusieurs champs sont vides lors de la configuration de l'adresse-IP"
+_STAT_DHCP_HOST_EMPTY="Le champ Nom d'hôte est vide"
+_STAT_DHCP_MAC_EMPTY="Le champ Adresse-MAC est vide"
+_STAT_DHCP_LEASETIME_EMPTY="La durée du bail n'est pas précisée"
+
+_STAT_DHCP_ERR_IP_DOUBLE="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' est utilisé par un autre hôte"
+_STAT_DHCP_ERR_IP_FORMAT="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' a un format incorrect"
+_STAT_DHCP_ERR_IP_NOTNET="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' ne fait pas partie du réseau 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_BCAST="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' est identique à l'adresse-broadcast du réseau 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_NET="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' est identique à l'adresse du réseau 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_RANGE="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' ne doit pas faire partie de la plage-DHCP"
+
+_STAT_DHCP_ERR_HOST_DOUBLE="Le nom d'hôte '$FORM_host' est utilisé par un autre hôte"
+_STAT_DHCP_ERR_HOST_VALIDATE="Le nom d'hôte '$FORM_host' contient des caractères non autorisés. Les caractères ASCII autorisés sont de 'a' à 'z' (minuscules et majuscules), de '0' à '9' et le trait d'union '-'."
+
+_STAT_DHCP_ERR_MAC_DOUBLE="L'adresse-MAC '$FORM_mac' est utilisée par un autre hôte"
+_STAT_DHCP_ERR_MAC_FORMAT="Le format de l'adresse-MAC n'est pas correct"
+
+_STAT_DHCP_ERR_LEASETIME="La durée du bail '$FORM_leasetime' est trop petite [min=120]"
+
+_STAT_DHCP_HOSTSFILE="Fichier hôtes"
+
+_STAT_DHCP_ERR_NEWIPHASDNSENTRY="L'adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' est enregistré dans le fichier DNS - Mais il n'y a aucun nom d'hôte '${FORM_host}' pour cette IP"
+_STAT_DHCP_ERR_NEWHOSTHASDNSENTRY="Le nom d'hôte '${FORM_host}' est enregistré dans le fichier DNS - Mais il n'y a aucune adresse-IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' pour ce nom d'hôte"
+
+_STAT_DHCP_ERR_DATA="dans les données"
+_STAT_DHCP_ERR_NOHOSTADDED="Aucun nouvel hôte n'a été ajouté à la configuration. S'il vous plaît essayer à nouveau!"
+
+_STAT_DHCP_INFO_DHCPHOST="Hôte-DHCP"
+_STAT_DHCP_INFO_RENEWNEEDED="L'hôte '${FORM_host}' enregistré avec l'adresse-MAC '${FORM_mac}' n'utilise pas d'adresse IP dans la plage-DHCP! Pour attribuer une nouvelle adresse IP via le DHCP vous devez exécuter sortir/renouveler!"
+
+_STAT_DHCP_ADD_HOSTADDED="L'hôte ${FORM_host}' / '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' enregistré a été ajouté à la configuration"
+
+_STAT_DHCP_DEL_HOSTREMOVED="L'hôte '${FORM_hostname}' sera supprimé de /etc/dnsmasq.d/dhcp_hosts_NET${FORM_net}.wwwconf"
+
+
+_STAT_DHCP_LEASE_NOLEASEFILE="Le fichier bail <strong>${LEASES_FILE}</strong> n'existe pas.<br>Vérifiez s'il vous plaît si le serveur-DHCP fonctionne."
+_STAT_DHCP_LEASE_TABHEAD="Bail-DHCP: ${LEASES_FILE}"
+_STAT_DHCP_LEASE_NOENTRY="Aucun bail n'existe dans le fichier <strong>${LEASES_FILE}</strong>."
+
+_STAT_DHCP_RANGE_TABHEAD="Plage-DHCP"
+
+_STAT_DHCP_INFOTEXT1="L'ajout un hote-DHCP pendant le processus sera perdue lors du redémarrage!"
+_STAT_DHCP_INFOTEXT2="Les données peuvent être utilisées comme un modèle pour les insérer dans le fichier de configuration <b>\"config/dns_dhcp.txt\"</b>!"
+
+_STAT_DHCP_RANGE_TYPE="Type"
+_STAT_DHCP_RANGE_START="Début"
+_STAT_DHCP_RANGE_END="Fin"
+_STAT_DHCP_RANGE_MASK="Masque de sous-réseau"
+_STAT_DHCP_RANGE_BCAST="Broadcast"
+_STAT_DHCP_RANGE_DEFROUTER="Routeur par défaut"
+_STAT_DHCP_RANGE_DNSDOMAIN="Domaine-DNS"
+_STAT_DHCP_RANGE_DNSSRV="Serveur-DNS"
+_STAT_DHCP_RANGE_NTPSRV="Serveur-NTP"
+
+_STAT_DHCP_HOSTS_HOSTS="Hôtes-DHCP"
+_STAT_DHCP_HOSTS_ALIAS="Alias"
+_STAT_DHCP_HOSTS_ACTION="Action"
+
+_STAT_DHCP_MAINTITLE="Serveur-DHCP"

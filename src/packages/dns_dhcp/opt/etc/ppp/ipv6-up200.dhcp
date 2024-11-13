@@ -1,0 +1,33 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ipv6-up200.dhcp                                       __FLI4LVER__
+#
+# called whenever a IPv6 PPP connection over default circuit has come up
+# and dnsmasq is not installed
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /etc/rc.d/resolvconf-common
+
+if [ "$circ_type" = "dhcp" -a ! -f /etc/dnsmasq.conf ]
+then
+    if [ "$circ_usepeerdns" = "yes" ]
+    then
+        # dibbler sets SRV_OPTION23...
+        if [ -n "$SRV_OPTION23" ]
+        then
+            DNSSERVERS=$(echo "$SRV_OPTION23" | sed 's/ \+/\n/g' | sort -u)
+            resolvconf_addpeerdns $circ_id $DNSSERVERS
+
+            for dns in $DNSSERVERS
+            do
+                echo "using nameserver $dns"
+            done
+        else
+            echo "The DHCPv6 server didn't send any nameserver addresses, DNS forwarders not changed"
+        fi
+    else
+        echo "Using peer DNS servers disabled for $interface"
+    fi
+fi

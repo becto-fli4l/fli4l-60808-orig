@@ -1,0 +1,163 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc390.dns_dhcp - start dns and dhcp
+#
+# Creation:     2007-02-03 lanspezi
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+#
+# setting user.group and rights for additional config-files of dnsmasq
+# --------------------------------------------------------------------
+if [ -d /etc/dnsmasq.d ]
+then
+    chown dns.dns /etc/dnsmasq.d/*
+    chmod 600 /etc/dnsmasq.d/*
+    chown dns.dns /etc/dnsmasq.d
+    chmod 700 /etc/dnsmasq.d
+fi
+
+if [ "$OPT_DNS" = "yes" ]
+then
+    dnsmasq_msg='DNS'
+    check_rdns "-REMOVE"
+    if [ "$OPT_HTTPD" = "yes" ]
+    then
+        log_info "add DNS info to webgui"
+        httpd-menu.sh add status_dns.cgi DNS '$_MT_stat' status
+    fi
+    begin_script DNS "configure firewall for DNS service ..."
+        conf_firewall_dns
+    end_script
+
+fi
+
+if [ "$OPT_DHCP" = "yes" ]
+then
+    begin_script DHCP "configure firewall for DHCP service ..."
+
+    case $DHCP_TYPE in
+        isc-dhcpd)
+            . /etc/rc.d/helper-dhcp_isc.sh
+            while read ifname
+            do
+                case $iflist in
+                    *$ifname*)
+                        # ignore it, its already there
+                        ;;
+                    *)
+                        iflist="$iflist $ifname"
+                        ;;
+                esac
+            done < /var/run/dhcpd.iflist
+            dhcpdoptions="-q -cf /etc/dhcpd.conf -lf /var/run/iscdhcpd.leases -pf /var/run/dhcpd.pid $iflist"
+            if [ ! -f $DHCP_LEASES_DIR/iscdhcpd.leases ]
+            then
+                > $DHCP_LEASES_DIR/iscdhcpd.leases
+            fi
+            cp $DHCP_LEASES_DIR/iscdhcpd.leases /var/run/
+            ln -s /srv/www/admin/status_dhcp-isc-dhcpd.cgi /srv/www/admin/status_dhcp.cgi
+            ;;
+        dnsmasq)
+            if [ "$dnsmasq_msg" ]; then
+                dnsmasq_msg="$dnsmasq_msg and DHCP"
+            else
+                dnsmasq_msg=DHCP
+            fi
+            . /etc/rc.d/helper-dhcp_dnsmasq.sh
+            ln -s /srv/www/admin/status_dhcp-dnsmasq.cgi /srv/www/admin/status_dhcp.cgi
+            ;;
+        *)
+            log_error "$DHCP_TYPE not supported"
+            ;;
+    esac
+
+    conf_firewall_dhcp
+
+    end_script
+
+    if [ "$OPT_HTTPD" = "yes" ]
+    then
+        log_info "add DHCP info to webgui"
+        httpd-menu.sh add status_dhcp.cgi DHCP '$_MT_stat' status
+    fi
+    echo "DHCP_LEASES_DIR=\"$DHCP_LEASES_DIR\"" > /var/run/dhcp_leases_dir
+fi
+
+# start services
+# --------------
+case ${OPT_DNS}_${OPT_DHCP}_${DHCP_TYPE} in
+
+    yes_yes_dnsmasq | no_yes_dnsmasq | yes_no_*)
+        begin_script DNS_DHCP "start dnsmasq as $dnsmasq_msg server ..."
+
+        mkdir /var/run/dnsmasq
+        chown dns.dns /var/run/dnsmasq
+        dnsmasq || log_error "dnsmasq not started!"
+
+        end_script
+        ;;
+    yes_yes_isc-dhcpd)
+        begin_script DNS_DHCP "start dnsmasq as DNS and isc-dhcpd as DHCP server ..."
+
+        mkdir /var/run/dnsmasq
+        chown dns.dns /var/run/dnsmasq
+        dnsmasq || log_error "dnsmasq not started!"
+        dhcpd $dhcpdoptions || log_error "isc-dhcpd not started!"
+
+        end_script
+        ;;
+    no_yes_isc-dhcpd)
+        begin_script DNS_DHCP "start isc-dhcpd as DHCP server ..."
+
+        dhcpd $dhcpdoptions || log_error "isc-dhcpd not started!"
+
+        end_script
+        ;;
+    *)
+        log_info "no DNS and DHCP server selected (${OPT_DNS}_${OPT_DHCP}_${DHCP_TYPE}) ..."
+        ;;
+esac
+
+case $OPT_DHCPRELAY in
+    yes)
+        begin_script DHCRELAY "starting dhcprelay ..."
+
+	# make sure the interface the gets the replay is on the list of interface
+	# the dhcprelay agent is listen too. Otherwise the paket gets dropped
+	# see https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=648401
+	# another thing to take into account is the upstream/downstream listen
+	# interfaces, see ISC-Bugs #41547, in short use -ui to listen to
+	# upstream server und -id for downstream servers
+	listen_for_reply=`ip route get $DHCPRELAY_SERVER|head -n1|sed -e 's#.* dev \([^ ]\+\).*#\1#'`
+
+        interfaces=
+        eval ifn='$DHCPRELAY_IF_N'
+        [ 0$ifn -eq 0 ] || for idx in `seq 1 $ifn`
+        do
+            eval iface='$DHCPRELAY_IF_'$idx
+            fw_prepend_rule filter INPUT-tail "prot:udp if:$iface:any 68 67 ACCEPT" "dhcprelay access"
+
+	    if [ "$listen_for_reply" = "$iface" ]
+	    then
+		listen_for_reply=
+                onlydowndstream=
+	    else
+		onlydowndstream='d'
+	    fi
+            interfaces="$interfaces -i$onlydowndstream $iface"
+        done
+
+	if [ -n "$listen_for_reply" ]
+	then
+	    interfaces="-iu $listen_for_reply "$interfaces
+            fw_prepend_rule filter INPUT-tail "prot:udp if:$listen_for_reply:any 68 67 ACCEPT" "dhcprelay access"
+	fi
+
+	log_info "starting DHCP Relay Agent with dhcrelay $interfaces $DHCPRELAY_SERVER"
+	
+        dhcrelay $interfaces $DHCPRELAY_SERVER
+
+        end_script
+    ;;
+esac

@@ -1,0 +1,32 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /etc/ppp/ip-up200.dhcp                                         __FLI4LVER__
+#
+# called whenever an IPv4 PPP connection over default circuit has come up
+# and dnsmasq is not installed
+#
+# Creation:     ??.??.2003  lanspezi
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /etc/rc.d/resolvconf-common
+
+if [ "$circ_type" = "dhcp" -a ! -f /etc/dnsmasq.conf ]
+then
+    if [ "$circ_usepeerdns" = "yes" ]
+    then
+        # DHCP daemon sets DNS1 and DNS2
+        if [ "$DNS1" -o "$DNS2" ]
+        then
+            resolvconf_addpeerdns $circ_id $DNS1 $DNS2
+            for dns in $DNS1 $DNS2
+            do
+                echo "using nameserver $dns"
+            done
+        else
+            echo "The DHCPv4 server didn't send any nameserver addresses, DNS forwarders not changed"
+        fi
+    else
+        echo "Using peer DNS servers disabled for $interface"
+    fi
+fi

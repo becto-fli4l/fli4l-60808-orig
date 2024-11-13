@@ -1,0 +1,338 @@
+##-----------------------------------------------------------------------------
+## fli4l __FLI4LVER__ - configuration for package "dns_dhcp"
+##
+##  P L E A S E  R E A D  T H E  D O C U M E N T A T I O N !
+##
+##  B I T T E  U N B E D I N G T  D I E  D O K U M E N T A T I O N  L E S E N !
+##
+##-----------------------------------------------------------------------------
+## Creation:     2007-01-01 lanspezi
+## Last Update:  $Id$
+##
+## Copyright (c) 2001-2016 - Frank Meyer, fli4l-Team <team@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+
+#------------------------------------------------------------------------------
+# HOSTS
+#------------------------------------------------------------------------------
+#
+# Do not add an entry for the router! It's added automatically.
+# If you need an alias please add HOSTNAME_ALIAS_N in the base.txt
+#
+
+#HOST[]                         # 1st host:
+#{
+#  NAME='client1'               # name
+#  DOMAIN='foo.lan'             # different domain (optional)
+                                # as declared in DOMAIN_NAME (base.txt)
+#  IP4='192.168.6.10'           # IP-Adress
+#  IP6='2001:db8::10'           # IPv6-Adress / optional
+#  ALIAS[]='mail.lan.fli4l'     # 1st optional alias name
+#  ALIAS[]='printserver.lan.fli4l'
+#  DHCPTYP='hostname'           # set static dhcp-lease via [hostname]
+                                # or [mac]
+#  MAC='de:ad:be:ef:08:15'      # MAC-Adress - needed for static DHCP or
+                                # host based PXE
+#  PXE {
+#    FILENAME='pxelinux'        # Filename of PXE Netboot-Image
+#    SERVERNAME='tftp.lan.fli4l'
+                                # Name of Netboot-Server - see OPT_TFTP
+#    SERVERIP='192.168.6.1'     # IP-Adress of Netboot-Server
+#    OPTIONS=''                 # extra options for PXE-Boot
+#  }
+#}
+
+#HOST[]                         # 2nd host:
+#{
+#  NAME='client2'
+#  IP4='192.168.6.11'
+#  MAC='de:ad:be:ef:08:15'
+#}
+
+#------------------------------------------------------------------------------
+# HOST entries (Extra-Host with full FQDN):
+#------------------------------------------------------------------------------
+#HOST_EXTRA[]
+#{
+#  NAME='host.foo.bar'          # name
+#  IP4='10.0.0.1'               # IP-Adress (ipv4)
+#  IP6='2001:db8::1'            # IP-Adress (ipv6) / optional
+#}
+
+#------------------------------------------------------------------------------
+# DNS configuration:
+#------------------------------------------------------------------------------
+#OPT_DNS='no'                   # start dns server: yes or no
+#DNS_LISTEN[]='IP_NET_1_IPADDR' # This array contains the addresses the DNS
+                                # server should bind to. If the array is
+                                # empty, the DNS server binds itself to *all*
+                                # interfaces. Note that if your DNS server
+                                # needs to bind to dynamically created
+                                # interfaces (e.g. VPN tunnel devices), you
+                                # should leave this array empty. Otherwise
+                                # DNS name resolution will not work.
+DNS_BIND_INTERFACES='no'        # If DNS_LISTEN is not empty, enabling this
+                                # option requests that the DNS server bind
+                                # itself to each relevant interface separately
+                                # instead of binding to all interfaces at once
+                                # and then discarding DNS queries from "wrong"
+                                # addresses. This allows to run some other
+                                # DNS server simultaneously on addresses not
+                                # listed in DNS_LISTEN. You very likely don't
+                                # want to run some other DNS server on your
+                                # fli4l router, so say 'no'.
+DNS_VERBOSE='no'                # log queries into syslog
+DNS_MX_SERVER=''                # fqdn of the mx for your DOMAIN
+#DNS_FORBIDDEN[]='foo.bar'      # 1st forbidden domain
+#DNS_FORBIDDEN[]='bar.foo'      # 2nd forbidden domain
+#DNS_REDIRECT[]='foo.bar.foo'   # 1st redirected domain
+#{
+#  IP='192.168.6.100'           # IP of redirected domain
+#}
+
+DNS_BOGUS_PRIV='yes'            # fake reverse lookups for RFC1918
+                                # private address ranges
+DNS_FILTERWIN2K='no'            # filters useless windows-originated DNS
+                                # requests and blocks all SRV requests,
+                                # when enabled
+DNS_LOCAL_HOST_CACHE_TTL='60'   # TTL for entries in /etc/hosts or DHCP hosts
+#DNS_SUPPORT_IPV6='no'          # enable/disable IPV6-support
+
+#------------------------------------------------------------------------------
+# Special DNS configuration
+#---------------------------
+# delegation of DNS-Request for Domains or/and reverse network lookup
+# zone delegation (domain and network) to upstream servers
+#------------------------------------------------------------------------------
+
+#DNS_ZONE_DELEGATION[] {
+#  UPSTREAM_SERVER[] {
+#    IP='1.2.3.4:5353'          # ip address or @hostname with optional port-
+                                # number used to query upstream server
+#    QUERYSOURCEIP='111.222.33.123'
+                                # ip adress or IP_NET_x_IPADDR with optional
+                                # portnumber used as query source
+#  }
+#  UPSTREAM_SERVER[] {
+#    IP='@dns-upstream'
+#    QUERYSOURCEIP='IP_NET_1_IPADDR'
+#  }
+#  UPSTREAM_SERVER[] {
+#    IP='192.168.3.12'
+#    QUERYSOURCEIP='IP_NET_1_IPADDR:5678'
+#  }
+#
+#  DOMAIN[]='firma.de.example.com'
+#  DOMAIN[]='firma.com.example.com'
+#
+#  NETWORK[]='192.168.1.0/24'
+#  NETWORK[]='172.16.1.0/24'
+#  NETWORK[]='10.1.2.0/24'
+#}
+
+# domains which are allowed to return private ip addresses from upstream
+# DNS Servers
+#DNS_REBINDOK[].DOMAIN='rfc-ignorant.de'
+
+#------------------------------------------------------------------------------
+# DHCP-Server configuration:
+#------------------------------------------------------------------------------
+#OPT_DHCP='no'                  # activate DHCP server: yes or no
+
+DHCP_TYPE='dnsmasq'             # use 'dnsmasq' or 'isc-dhcpd'
+
+DHCP_VERBOSE='no'               # activate verbose dhcp-information
+DHCP_LS_TIME_DYN='3600'         # default time for dynamic leases: 1 hour
+DHCP_MAX_LS_TIME_DYN='7200'     # max time  for dynamic leases: 2 hours
+DHCP_LS_TIME_FIX='86400'        # default time for fix leases: 1 day
+DHCP_MAX_LS_TIME_FIX='604800'   # max time for fix leases: 1 week
+DHCP_LEASES_DIR='auto'          # don't touch this until you
+                                # have read the manual!
+
+#DHCP_DNS_SERVERS=''            # IPs of external DNS servers
+                                # if empty the IP of the router's
+                                # net interface is used
+                                # if set to 'none' no DNS server is transmitted
+#DHCP_WINS_SERVERS=''           # IPs of external WINS servers
+                                # (don't use if OPT_NMBD='yes'!)
+                                # if set to 'none' no WINS server is transmitted
+#DHCP_NTP_SERVERS=''            # IPs of external NTP servers
+                                # if empty and OPT_CHRONY ir OPT_NTP='yes'
+                                # the IP of the router's net interface is used;
+                                # if set to 'none' no NTP server is transmitted
+
+DHCP_OPTION_WPAD='no'           # set to 'yes' in order to request that the DHCP server 
+                                # reply to WPAD DHCP option (option 252)
+DHCP_OPTION_WPAD_URL=''         # set URL for Web-Proxy-Autodiscovery (wpad.dat) or set to empty
+                                # to send an empty answer to requesting clients
+
+#------------------------------------------------------------------------------
+# Parameters for local Networks
+#------------------------------------------------------------------------------
+#DHCP_RANGE[]
+#{
+#  NET='IP_NET_1'               # reference to Network defined in base.txt
+#  START='192.168.6.100'        # start-IP
+#  END='192.168.6.150'          # end-IP
+#  DNS_DOMAIN=''                # set a diffrent dns-domain for
+                                # the range (optional)
+#  DNS_SERVERS=''               # IPs of external DNS servers
+                                # if empty the settings of DHCP_DNS_SERVERS is used
+                                # if set to 'none' no DNS server is transmitted
+#  WINS_SERVERS=''              # IPs of external WINS servers
+                                # if empty the settings of DHCP_WINS_SERVERS is used
+                                # if set to 'none' no WINS server is transmitted
+#  NTP_SERVERS=''               # IPs of external NTP servers
+                                # if empty the settings of DHCP_NTP_SERVERS is used
+                                # if set to 'none' no NTP server is transmitted
+#  GATEWAY=''                   # if empty the IP of the router's net
+                                # interface is used
+                                # if set to 'none' no
+                                # gateway is transmitted
+
+#  PXE {
+#    FILENAME='pxelinux'        # Filename of PXE Netboot-Image
+#    SERVERNAME='srv.lan.fli4l'
+                                # Name of Netboot-Server - see OPT_TFTP
+#    SERVERIP='192.168.6.2'     # IP-Adress of Netboot-Server
+#    OPTIONS=''                 # extra options for PXE-Boot
+#  }
+
+#  OPTION {
+#    WPAD='no'                  # set to 'yes' in order to request that the DHCP server 
+                                # reply to WPAD DHCP option (option 252)
+#    WPAD_URL=''                # set URL for Web-Proxy-Autodiscovery (wpad.dat) or set to empty
+                                # to send an empty answer to requesting clients
+
+#    []='encap:175, 190, user'  # extra option for dhcp - see manual of dnsmasq
+                                # http://thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example
+#  }
+#}
+
+#------------------------------------------------------------------------------
+# Parameters for extra Networks (via relay)
+#------------------------------------------------------------------------------
+#DHCP_EXTRA_RANGE[] {
+#  START='192.168.8.2'          # start-IP of n'th extra range
+#  END='192.168.8.50'           # end-IP of n'th extra range
+#  NETMASK='255.255.255.0'      # netmask for extra range
+#  DNS_SERVERS='192.168.8.1'    # DNS Server for extra range
+#  WINS_SERVERS='192.168.8.1'   # WINS Server for extra range
+#  NTP_SERVERS=''               # NTP Server for extra range
+#  GATEWAY='192.168.8.1'        # default gateway for extra range
+#  DEVICE='eth0'                # device used to reach extra network
+#}
+
+# Deny hosts from dhcp-Access
+# ---------------------------
+#DHCP_DENY_MAC[]='00:01:02:03:04:05'
+                                # MAC address is denied from DHCP
+
+#------------------------------------------------------------------------------
+# DHCPRELAY configuration:
+#------------------------------------------------------------------------------
+#OPT_DHCPRELAY='no'             # install DHCPRELAY: yes or no
+DHCPRELAY_SERVER='192.168.6.1'  # which is the actual dhcp server?
+#DHCPRELAY_IF[]='eth1'          # first interface to listen on
+
+#------------------------------------------------------------------------------
+# TFTP Server configuration:
+#------------------------------------------------------------------------------
+#OPT_TFTP='no'                  # activate tftp-server: yes or no
+TFTP_PATH='/data/tftp'          # basedir of tftp-server
+
+#------------------------------------------------------------------------------
+# yadifa as slave DNS
+#------------------------------------------------------------------------------
+#OPT_YADIFA='no'                # activate yadifa as slave dns
+YADIFA_USE_DNSMASQ_ZONE_DELEGATION='yes'
+                                # use autoconfigure dnsmasq zone delegation
+                                # for every slave zone
+#YADIFA_LISTEN[]='IP_NET_1_IPADDR'
+                                # interface to listen to;
+                                # ip address or reference to network in base.txt
+#YADIFA_LISTEN[]='IP_NET_2_IPADDR:1234'
+                                # with optional port number
+#YADIFA_ALLOW_QUERY[]='192.168.20.0/20'
+                                # host or network to allow query, or the keyword
+                                # 'any', may be negotiated with a prefixed '!'
+#YADIFA_ALLOW_QUERY[]='127.0.0.0/8'
+                                # allow localhost
+#YADIFA_ALLOW_QUERY[]='!192.168.99.0/24'
+                                # but not this network
+
+#YADIFA_SLAVE_ZONE[]='sub.example.com'
+                                # name of slave zone
+#{
+#  USE_DNSMASQ_ZONE_DELEGATION='no'
+                                # disable autoconfiguration dnsmasq
+                                # zone delegation for this zone
+#  MASTER='192.168.1.1'         # IP address of master dns server
+#  ALLOW_QUERY[]='192.168.0.0/16'
+#}
+#YADIFA_SLAVE_ZONE[]='testing.example.com'
+                                # name of slave zone
+#{
+#  MASTER='192.168.1.1'         # IP address of master dns server
+#  ALLOW_QUERY[]='192.168.0.0/16'
+#  ALLOW_QUERY[]='!any'
+#}
+
+#------------------------------------------------------------------------------
+# Optional package: DHCP client
+#------------------------------------------------------------------------------
+#OPT_DHCP_CLIENT='no'           # install DHCP client: yes, no
+
+#
+# put these into circuits.txt
+#
+
+#CIRC[] {
+#  NAME='DHCPv4-LAN'            # circuit name, don't use spaces
+#  TYPE='dhcp'                  # this is a DHCP circuit
+#  ENABLED='yes'                # the circuit is enabled
+#  CLASS[]='internet'           # set meaningful class
+#  NETS_IPV4[]='0.0.0.0/0'
+                                # use default IPv4 route over this circuit
+#  USEPEERDNS='no'              # use dns server of your provider: yes or no
+#  UP='yes'                     # activate at boot time (OPT_IMOND='no')
+#  WAIT='15'                    # wait max. 15 seconds for an IP address to
+                                # be assigned before continuing the boot
+                                # process; if '0' (the default), the boot
+                                # process continues immediately
+#  DHCP_DAEMON='dhcpcd'         # choose the DHCP program to use; if you
+                                # don't specify this, some default will be
+                                # chosen (currently dhcpcd)
+#  DHCP_DEV='IP_NET_1_DEV'
+                                # listen on this interface
+#  DHCP_HOSTNAME=''             # Transfer a specific host-id to provider
+#  DHCP_STARTDELAY='0'          # Time [sec] to wait before the client is
+                                # started
+#}
+
+#CIRC[] {
+#  NAME='DHCPv6-PPPoE'          # circuit name, don't use spaces
+#  TYPE='dhcp'                  # this is a DHCP circuit
+#  ENABLED='yes'                # the circuit is enabled
+#  PROTOCOLS='ipv6'             # use DHCPv6
+#  USEPEERDNS='yes'             # use dns server of your provider: yes or no
+#  UP='yes'                     # activate at boot time (OPT_IMOND='no')
+#  WAIT='15'                    # wait max. 15 seconds for an IP address to
+                                # be assigned before continuing the boot
+                                # process; if '0' (the default), the boot
+                                # process continues immediately
+#  DHCP_DEV='pppoe-v6'          # listen on the interface provided by the
+                                # circuit having the pppoe-v6 tag
+#}
+
+#------------------------------------------------------------------------------
+# Optional package: DHCP server (currently only for IPv6)
+#------------------------------------------------------------------------------
+#OPT_DHCP_SERVER='no'           # install DHCP server: yes, no
+DHCP_SERVER_LEASES_DIR='auto'   # where to store the leases?

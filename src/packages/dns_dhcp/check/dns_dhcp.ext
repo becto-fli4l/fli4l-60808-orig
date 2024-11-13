@@ -1,0 +1,580 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for dns_dhcp
+#
+# Last Update:  $Id$
+#
+# Copyright (c) 2007-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+
+if (opt_dns)
+then
+    provides dns version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_dhcp)
+then
+    provides dhcp version 4.0.0
+    depends on fli4l version 4.0
+fi
+if (opt_dhcp && opt_dhcprelay)
+then
+    error "It's not possible to activate OPT_DHCP and OPT_DHCPRELAY at the same time."
+fi
+
+if (opt_httpd)
+then
+    if (httpd_gui_lang == "auto")
+    then
+        set gui_lang=locale
+    else
+        set gui_lang=httpd_gui_lang
+    fi
+
+    split (gui_lang, lang_tmp_%, ' ')
+    foreach lang in lang_tmp_%
+    do
+        stat("opt/srv/www/lang/status_dns.$lang", langfile)
+        if(langfile_res == "OK")
+        then
+            add_to_opt "srv/www/lang/status_dns.$lang" "mode=444 flags=sh"
+        else
+            warning "could not find 'srv/www/lang/status_dns.$lang', perhaps this file isn't translated yet. Falling back to English."
+            add_to_opt "srv/www/lang/status_dns.en" "mode=444 flags=sh"
+        fi
+        stat("opt/srv/www/lang/status_dhcp.$lang", langfile)
+        if(langfile_res == "OK")
+        then
+            add_to_opt "srv/www/lang/status_dhcp.$lang" "mode=444 flags=sh"
+        else
+            warning "could not find 'srv/www/lang/status_dhcp.$lang', perhaps this file isn't translated yet. Falling back to English."
+            add_to_opt "srv/www/lang/status_dhcp.en" "mode=444 flags=sh"
+        fi
+    done
+fi
+
+if (OPT_DHCP)
+then
+
+    if (! OPT_DNS && dhcp_type == "dnsmasq")
+    then
+        error "DNSMASQ with internal DHCP: sorry, you must activate the DNS-Server in dns_dhcp.txt. Set OPT_DNS to yes"
+    fi
+
+    foreach n in DHCP_RANGE_N
+    do
+        set checknet=DHCP_RANGE_%_NET[n]
+        if (checknet =~ "IP_NET_([0-9]+)")
+        then
+            set index=match_%[1]:numeric
+            if (defined (IP_NET_%[index]))
+            then
+                set checknet=IP_NET_%[index]
+                ### warning "DEBUG: checknet is $checknet"
+
+                set dhcp_start=DHCP_RANGE_%_START[n]
+                set dhcp_end=DHCP_RANGE_%_END[n]
+
+                if ("$dhcp_start" != "") && ("$dhcp_end" != "")
+                then
+                    if(!subnet("$dhcp_start", "$checknet"))
+                    then
+                        error "DHCPD: DHCP_RANGE_${n}_START is not a valid IP for the network referred in DHCP_RANGE_${n}_NET"
+                    fi
+                    if(!subnet("$dhcp_end", "$checknet"))
+                    then
+                        error "DHCP: DHCP_RANGE_${n}_END is not a valid IP for the network referred in DHCP_RANGE_${n}_NET"
+                    fi
+
+                    split (dhcp_start, tmp_s_%, '.', numeric)
+                    split (dhcp_end, tmp_e_%, '.', numeric)
+
+                    set n_start=((tmp_s_%[1]*16777216)+(tmp_s_%[2]*65536)+(tmp_s_%[3]*256)+(tmp_s_%[4]))
+                    set n_end=((tmp_e_%[1]*16777216)+(tmp_e_%[2]*65536)+(tmp_e_%[3]*256)+(tmp_e_%[4]))
+
+                    if (n_start >= n_end)
+                    then
+                        error "DHCP: DHCP_RANGE_${n}_START and DHCP_RANGE_${n}_END defines an invalid range"
+                    fi
+
+                    foreach m in HOST_N
+                    do
+                        set host_mac=HOST_%_MAC[m] ?: ""
+                        if ("$host_mac" != "")
+                        then
+                            set host_ip=HOST_%_IP4[m]
+                            if (host_ip =~ "(RE:IPADDR)")
+                            then
+                                split (host_ip, tmp_h_%, '.', numeric)
+                                set n_host=((tmp_h_%[1]*16777216)+(tmp_h_%[2]*65536)+(tmp_h_%[3]*256)+(tmp_h_%[4]))
+                                if ((n_host <= n_end) && (n_host >= n_start))
+                                then
+                                    error "DHCP: IP of HOST_${m} is in DHCP_RANGE_${n}. dnsmasq didn't allow any static IP addresses within DHCP_RANGE_${n}_START and DHCP_RANGE_${n}_END. If you want to assign an ip address with HOST_x_MAC you should use an address outside DHCP_RANGE."
+                                fi
+                            fi
+                        fi
+                    done
+                fi
+            else
+                warning "Undefined reference to IP_NET_% ($checknet) in DHCP_RANGE_${n}_NET."
+            fi
+            if (defined(DHCP_RANGE_%_PXE_SERVERIP[n]) && !defined(DHCP_RANGE_%_PXE_SERVERNAME[n]))
+            then
+                error "You have to define both, name and ip, for the pxe server in DHCP_RANGE_${n}_PXE_SERVERNAME and DHCP_RANGE_${n}_PXE_SERVERIP"
+            fi
+        fi
+    done
+
+  foreach n in DHCP_EXTRA_RANGE_N
+  do
+    set dhcp_e_start=DHCP_EXTRA_RANGE_%_START[n]
+    set dhcp_e_end=DHCP_EXTRA_RANGE_%_END[n]
+    set dhcp_e_gw=DHCP_EXTRA_RANGE_%_GATEWAY[n]
+    set dhcp_e_mask=DHCP_EXTRA_RANGE_%_NETMASK[n]
+    if ("$dhcp_e_start" != "") && ("$dhcp_e_end" != "")
+    then
+      if(!samenet("$dhcp_e_start/$dhcp_e_mask", "$dhcp_e_end/$dhcp_e_mask"))
+      then
+        error "DHCP: HCP_EXTRA_RANGE_${n}_START, DHCP_EXTRA_RANGE_${n}_END and DHCP_EXTRA_RANGE_${n}_NETMASK defines not a valid network"
+      fi
+      if(!subnet("$dhcp_e_gw", "$dhcp_e_end/$dhcp_e_mask"))
+      then
+        error "DHCP: DHCP_EXTRA_RANGE_${n}_GATEWAY are not in the Network defined in DHCP_EXTRA_RANGE_${n}_*"
+      fi
+
+      split (dhcp_e_start, tmp_s_%, '.', numeric)
+      split (dhcp_e_end, tmp_e_%, '.', numeric)
+
+      set n_start=((tmp_s_%[1]*16777216)+(tmp_s_%[2]*65536)+(tmp_s_%[3]*256)+(tmp_s_%[4]))
+      set n_end=((tmp_e_%[1]*16777216)+(tmp_e_%[2]*65536)+(tmp_e_%[3]*256)+(tmp_e_%[4]))
+
+      if (n_start >= n_end)
+      then
+        error "DHCP: DHCP_EXTRA_RANGE_${n}_START and DHCP_EXTRA_RANGE_${n}_END defines an invalid range"
+      fi
+
+      foreach m in HOST_N
+      do
+        set host_mac=HOST_%_MAC[m] ?: ""
+        if ("$host_mac" != "")
+        then
+          set host_ip=HOST_%_IP4[m]
+          split (host_ip, tmp_h_%, '.', numeric)
+          set n_host=((tmp_h_%[1]*16777216)+(tmp_h_%[2]*65536)+(tmp_h_%[3]*256)+(tmp_h_%[4]))
+          if ((n_host <= n_end) && (n_host >= n_start))
+          then
+            error "DHCP: IP of HOST_${m} is in DHCP_EXTRA_RANGE_${n}"
+          fi
+        fi
+      done
+    fi
+  done
+fi
+
+
+set aliases=""
+set hostname_all=""
+foreach i in HOST_N
+do
+    set host_name=host_%_name[i]
+    set host_domain=host_%_domain[i] ?: ""
+    if ( host_domain != "" )
+    then
+        set hostname_all="$hostname_all $host_name.$host_domain"
+    else
+        set hostname_all="$hostname_all $host_name.$domain_name"
+    fi
+done
+
+foreach i in HOST_N
+do
+    set host_ip_a=host_%_ip4[i]
+    set host_name_a=host_%_name[i]
+    set host_mac_a1=host_%_mac[i] ?: ""
+    set host_mac_a2=host_%_mac2[i] ?: ""
+    set host_domain_a=host_%_domain[i] ?: ""
+    set host_alias_n_a=host_%_alias_n[i]
+
+    foreach i1 in host_alias_n_a
+    do
+        set alias=host_%_alias_%[i][i1]
+        if (alias =~ "\.")
+        then
+            if (hostname_all =~ " $alias ")
+            then
+                error "HOST_${i}_ALIAS_${i1}='$alias' is defined as NAME for a HOST!"
+            fi
+        else
+            if (hostname_all =~ " $alias.$domain_name ")
+            then
+                error "HOST_${i}_ALIAS_${i1}='$alias' is defined as NAME for a HOST!"
+            fi
+        fi
+        if (aliases =~ " $alias ")
+        then
+           error "HOST_${i}_ALIAS_${i1}='$alias' is already defined for another HOST, please check your dns_dhcp configuration!"
+        fi
+        set aliases="$aliases $alias "
+    done
+    if ( host_name_a == hostname )
+    then
+        error "You can't define a host entry for the router in HOST_${i}. Name and Aliases of the router are defined in base.txt via HOSTNAME and HOSTNAME_ALIAS_x."
+    fi
+
+    foreach j in HOST_N
+    do
+        if (j > i) then
+            set host_ip_b=host_%_ip4[j]
+            set host_name_b=host_%_name[j]
+            set host_mac_b1=host_%_mac[j] ?: ""
+            set host_mac_b2=host_%_mac2[j] ?: ""
+            set host_domain_b=host_%_domain[j] ?: ""
+
+            if( host_ip_a == host_ip_b ) then
+                error "You can't use the same IP for more than one Host.  HOST_${i}_IP4='$host_ip_a' and HOST_${j}_IP4='$host_ip_b' use the same IP."
+            fi
+            if ( host_name_a == host_name_b ) then
+                set same_domain="yes"
+                if ( host_domain_a != "" ) then
+                    if ( host_domain_a != domain_name ) then
+                        set same_domain="no"
+                    fi
+                    if ( host_domain_b != "" ) then
+                        if ( host_domain_b != host_domain_a ) then
+                            set same_domain="no"
+                        fi
+                    fi
+                fi
+                if ( host_domain_b != "" ) then
+                    if ( host_domain_b != domain_name ) then
+                        set same_domain="no"
+                    fi
+                fi
+                if ( same_domain == "yes" ) then
+                    error "HOST_${i}_NAME='$host_name_a' and HOST_${j}_NAME='$host_name_b' are identical and has no diffrent FQDN."
+                fi
+            fi
+            if ( host_mac_a1 != "" ) then
+                if ( host_mac_b1 != "" ) then
+                    if ( host_mac_a1 == host_mac_b1 ) then
+                        warning "$host_name_a and $host_name_b use the same MAC-Adresse. Please check!"
+                    fi
+                fi
+            fi
+        fi
+    done
+done
+
+# check if IPv6 support is correctly activated and configured
+if (opt_hosts)
+then
+    foreach i in host_%_ip6
+    do
+        if("$i" == "auto" && !opt_ipv6)
+        then
+            error "You have to enable OPT_IPV6 in the ipv6 package in order to use %i='$i'!"
+        else
+        if("$i" != "" && opt_dns && !dns_support_ipv6)
+        then
+            error "You have to enable DNS_SUPPORT_IPV6 in order to use %i='$i'!"
+        fi
+        fi
+    done
+
+    foreach i in host_%_ip6_net
+    do
+        if("$i" != "" && !(opt_ipv6 && opt_dns && dns_support_ipv6))
+        then
+            error "You have to enable OPT_IPV6, OPT_DNS and DNS_SUPPORT_IPV6 in order to use %i='$i'!"
+        fi
+    done
+fi
+
+# check to make sure there's at least on DNS_LISTEN enabled if
+# DNS_BIND_INTERFACES is 'yes'
+if (opt_dns)
+then
+    if(DNS_BIND_INTERFACES == "yes")
+    then
+        if(DNS_LISTEN_N == 0)
+        then
+            error "You need to set at least one DNS_LISTEN entry if you enable DNS_BIND_INTERFACES. Without such an entry dnsmasq can't listen to your DNS request!"
+        fi
+    fi
+fi
+
+
+# check if yadifa has a least one listen address and one slave zone
+if (opt_yadifa)
+then
+    if(!defined(OPT_IPSET) || OPT_IPSET == "no")
+    then
+        error "You need to enable OPT_IPSET='yes' in advanced_networking.txt for yadifa"
+    fi
+    if((YADIFA_LISTEN_N == 0 && !defined(YADIFA_USE_DNSMASQ_ZONE_DELEGATION)) ||
+       (YADIFA_LISTEN_N == 0 && defined(YADIFA_USE_DNSMASQ_ZONE_DELEGATION) && YADIFA_USE_DNSMASQ_ZONE_DELEGATION == "no") )
+    then
+        error "You need to specify at least one listen address (YADIFA_LISTEN_x) for yadifa or you need to set YADIFA_USE_DNSMASQ_ZONE_DELEGATION='yes'"
+	fi
+    if(YADIFA_LISTEN_N == 0 && defined(YADIFA_USE_DNSMASQ_ZONE_DELEGATION) && YADIFA_USE_DNSMASQ_ZONE_DELEGATION == "yes")
+    then
+		foreach i in yadifa_slave_zone_n
+		do
+			if(yadifa_slave_zone_%_use_dnsmasq_zone_delegation[i] == "no")
+			then
+			    set zone=yadifa_slave_zone_%[i]
+				error "The slave zone YADIFA_SLAVE_ZONE_${i}='$zone' is not available if you set YADIFA_SLAVE_ZONE_${i}_USE_DNSMASQ_ZONE_DELEGATION='no' and don't configure any listen interface for yadifa with YADIFA_LISTEN_N='x'!"
+			fi
+		done
+	fi
+    if(YADIFA_SLAVE_ZONE_N == 0)
+    then
+        error "You need to specify at least one slave zone for yadifa"
+    fi
+fi
+
+if (opt_dns)
+then
+    foreach i in CIRC_N
+    do
+        if (CIRC_%_ENABLED[i] == "yes")
+        then
+            if (CIRC_%_USEPEERDNS[i] == "yes")
+            then
+                add_to_opt "etc/ppp/ip-up200.dns" "mode=555 flags=sh"
+                add_to_opt "etc/ppp/ip-down800.dns" "mode=555 flags=sh"
+                if (dns_support_ipv6 && opt_ipv6)
+                then
+                    add_to_opt "etc/ppp/ipv6-up200.dns" "mode=555 flags=sh"
+                    add_to_opt "etc/ppp/ipv6-down800.dns" "mode=555 flags=sh"
+                fi
+            fi
+        fi
+    done
+    if (opt_net)
+    then
+        if (opt_ipv6)
+        then
+            add_to_opt "etc/rc.d/rc020.mom.types.circuits.net.ipv6.dns" "mode=555 flags=sh"
+            add_to_opt "usr/share/circuits/type/net.ipv6.dns" "mode=555 flags=sh"
+        fi
+    fi
+fi
+
+if (opt_dhcp_client)
+then
+    depends on fli4l version 4.0
+
+    foreach i in CIRC_N
+    do
+        if (CIRC_%_ENABLED[i] == "yes")
+        then
+            set type=CIRC_%_TYPE[i]
+            if (type == "dhcp")
+            then
+                if (!opt_dhcp_client)
+                then
+                    error "CIRC_${i}_TYPE='${type}' requires OPT_DHCP_CLIENT='yes'"
+                fi
+
+                set ipv4="no"
+                set ipv6="no"
+
+                set protocols=CIRC_%_PROTOCOLS[i]
+                if (opt_ipv4)
+                then
+                    set nets_ipv4_n=CIRC_%_NETS_IPV4_N[i]
+                else
+                    set nets_ipv4_n=0
+                fi
+                if (opt_ipv6)
+                then
+                    set nets_ipv6_n=CIRC_%_NETS_IPV6_N[i]
+                else
+                    set nets_ipv6_n=0
+                fi
+
+                if (nets_ipv4_n > 0 || protocols =~ "ipv4")
+                then
+                    set ipv4="yes"
+                fi
+                if (nets_ipv6_n > 0 || protocols =~ "ipv6")
+                then
+                    set ipv6="yes"
+                fi
+
+                if (ipv6 == "yes" && !opt_ipv6)
+                then
+                    error "CIRC_${i}_TYPE='${type}' requires OPT_IPV6='yes'"
+                fi
+                if (ipv4 == "yes" && ipv6 == "yes")
+                then
+                    error "Cannot route both IPv4 and IPv6 nets using a single DHCP circuit, please use two separate ones instead"
+                fi
+
+                if (CIRC_%_HUP_TIMEOUT[i] != "")
+                then
+                    error "CIRC_${i}_HUP_TIMEOUT cannot be used with CIRC_${i}_TYPE='$type'"
+                fi
+                if (CIRC_%_DHCP_DEV[i] == "")
+                then
+                    error "CIRC_${i}_DHCP_DEV must be set for CIRC_${i}_TYPE='$type'"
+                fi
+
+                set daemon=CIRC_%_DHCP_DAEMON[i] ?: ""
+                if (ipv4 == "yes" && daemon == "dibbler")
+                then
+                    error "CIRC_${i}_DHCP_DAEMON='${daemon}' does not work with IPv4"
+                fi
+                if (ipv6 == "yes" && daemon == "dhcpcd")
+                then
+                    error "CIRC_${i}_DHCP_DAEMON='${daemon}' does not work with IPv6"
+                fi
+
+                # keep this in sync with the defaults in circuits.dhcp!
+                if (ipv4 == "yes" && daemon == "")
+                then
+                    set daemon="dhcpcd"
+                fi
+                if (ipv6 == "yes" && daemon == "")
+                then
+                    set daemon="dibbler"
+                fi
+
+                if (ipv4 == "yes" && CIRC_%_USEPEERDNS[i] == "yes")
+                then
+                    add_to_opt "etc/ppp/ip-up200.dhcp" "mode=555 flags=sh"
+                    add_to_opt "etc/ppp/ip-down800.dhcp" "mode=555 flags=sh"
+                fi
+                if (ipv6 == "yes" && CIRC_%_USEPEERDNS[i] == "yes")
+                then
+                    add_to_opt "etc/ppp/ipv6-up200.dhcp" "mode=555 flags=sh"
+                    add_to_opt "etc/ppp/ipv6-down800.dhcp" "mode=555 flags=sh"
+                fi
+
+                if (daemon == "dhcpcd")
+                then
+                    add_to_opt "etc/dhcpcd.sh" "mode=555 flags=sh"
+                    add_to_opt "etc/rc.d/rc310.dhcpcd" "mode=555 flags=sh"
+                    add_to_opt "sbin/dhcpcd" "mode=555"
+                    add_to_opt "usr/local/bin/dhcp-dhcpcd-circuit-ctrl.sh" "mode=555 flags=sh"
+                fi
+                if (daemon == "dibbler")
+                then
+                    add_to_opt "usr/sbin/dibbler-client" "mode=555"
+                    add_to_opt "usr/local/bin/dhcp-dibbler-circuit-ctrl.sh" "mode=555 flags=sh"
+                    add_to_opt "usr/local/bin/dibbler-notify.sh" "mode=555 flags=sh"
+                fi
+            fi
+        fi
+    done
+fi
+
+if (opt_dhcp_server)
+then
+    depends on fli4l version 4.0
+
+    foreach i in CIRC_N
+    do
+        if (CIRC_%_ENABLED[i] == "yes")
+        then
+            set type=CIRC_%_TYPE[i]
+            if (type == "dhcp-server")
+            then
+                set ipv4="no"
+                set ipv6="no"
+
+                set protocols=CIRC_%_PROTOCOLS[i]
+                if (protocols =~ "ipv4")
+                then
+                    set ipv4="yes"
+                fi
+                if (protocols =~ "ipv6")
+                then
+                    set ipv6="yes"
+                fi
+
+                if (ipv4 == "yes" && !opt_ipv4)
+                then
+                    error "CIRC_${i}_TYPE='${type}' requires OPT_IPV4='yes'"
+                fi
+                if (ipv6 == "yes" && !opt_ipv6)
+                then
+                    error "CIRC_${i}_TYPE='${type}' requires OPT_IPV6='yes'"
+                fi
+                if (ipv4 == "yes" && ipv6 == "yes")
+                then
+                    error "Cannot route both IPv4 and IPv6 nets using a single DHCP circuit, please use two separate ones instead"
+                fi
+
+                if (CIRC_%_HUP_TIMEOUT[i] != "")
+                then
+                    error "CIRC_${i}_HUP_TIMEOUT cannot be used with CIRC_${i}_TYPE='$type'"
+                fi
+                if (CIRC_%_DHCP_SERVER_DEV[i] == "")
+                then
+                    error "CIRC_${i}_DHCP_SERVER_DEV must be set for CIRC_${i}_TYPE='$type'"
+                fi
+
+                if (ipv4 == "yes")
+                then
+                    if (CIRC_%_DHCP_SERVER_PREFIX_POOL_N[i] > 0)
+                    then
+                        error "DHCPv4 only provides IPv4 addresses, not prefixes, so CIRC_${i}_DHCP_SERVER_PREFIX_POOL_N must be undefined or zero"
+                    fi
+                fi
+                if (ipv6 == "yes")
+                then
+                    set pool_n=CIRC_%_DHCP_SERVER_PREFIX_POOL_N[i]
+                    foreach j in pool_n
+                    do
+                        set network=CIRC_%_DHCP_SERVER_PREFIX_POOL_%_NETWORK[i][j]
+
+                        if (!(network =~ "^(RE:NETWORK6)$"))
+                        then
+                            error "CIRC_${i}_DHCP_SERVER_PREFIX_POOL_${j}_NETWORK='${network}' is not a valid IPv6 network"
+                        fi
+
+                        set prefixlen=CIRC_%_DHCP_SERVER_PREFIX_POOL_%_PREFIX_LENGTH[i][j]
+                        if (prefixlen == "")
+                        then
+                            error "CIRC_${i}_DHCP_SERVER_PREFIX_POOL_${j}_PREFIX_LENGTH must be set"
+                        else
+                            if (prefixlen < 12 || prefixlen > 120)
+                            then
+                                error "CIRC_${i}_DHCP_SERVER_PREFIX_POOL_${j}_PREFIX_LENGTH='${prefixlen}' is neither empty nor a number between 12 and 120"
+                            fi
+                        fi
+                    done
+                fi
+
+                set daemon=CIRC_%_DHCP_SERVER_DAEMON[i] ?: ""
+                if (ipv4 == "yes" && daemon == "dibbler")
+                then
+                    error "CIRC_${i}_DHCP_SERVER_DAEMON='${daemon}' does not work with IPv4"
+                fi
+                if (ipv6 == "yes" && daemon == "dnsmasq")
+                then
+                    error "CIRC_${i}_DHCP_SERVER_DAEMON='${daemon}' does not work with IPv6"
+                fi
+
+                # keep this in sync with the defaults in circuits.dhcp!
+                if (ipv4 == "yes" && daemon == "")
+                then
+                    set daemon="dnsmasq"
+                fi
+                if (ipv6 == "yes" && daemon == "")
+                then
+                    set daemon="dibbler"
+                fi
+
+                if (daemon == "dibbler")
+                then
+                    add_to_opt "etc/rc.d/rc310.dibbler-server" "mode=555 flags=sh"
+                    add_to_opt "usr/sbin/dibbler-server" "mode=555"
+                    add_to_opt "usr/local/bin/dhcp-server-dibbler-circuit-ctrl.sh" "mode=555 flags=sh"
+                fi
+            fi
+        fi
+    done
+fi

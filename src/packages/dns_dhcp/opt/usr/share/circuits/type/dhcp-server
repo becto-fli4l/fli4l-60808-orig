@@ -1,0 +1,44 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/dhcp-server - DHCP server circuits          __FLI4LVER__
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+dhcp_server_circuit_add()
+{
+    circ_dev=$circ_dhcp_server_dev
+    circuit_allocate_device dhcp-server circ_alias
+
+    # no pools (hey, what defaults do you expect? ;-)
+    local circ_dhcp_server_prefix_pool_n=${circ_dhcp_server_prefix_pool_n:-0}
+    # default prefix length is /64
+    local circ_dhcp_server_prefix_length=${circ_dhcp_server_prefix_length:-64}
+
+    # keep this in sync with the defaults in dhcp_client.ext!
+    case $circ_protocols in
+    ipv4) local circ_dhcp_server_daemon=${circ_dhcp_server_daemon:-dnsmasq} ;;
+    ipv6) local circ_dhcp_server_daemon=${circ_dhcp_server_daemon:-dibbler} ;;
+    esac
+
+    cat >> $1 <<EOF
+circ_dhcp_server_dev=$circ_dhcp_server_dev
+circ_dhcp_server_daemon=$circ_dhcp_server_daemon
+circ_dhcp_server_prefix_pool_n=$circ_dhcp_server_prefix_pool_n
+EOF
+
+    local i
+    for i in $(seq 1 $circ_dhcp_server_prefix_pool_n)
+    do
+        eval local pool_network=\$circ_dhcp_server_prefix_pool_${i}_network
+        eval local pool_prefixlen=\$circ_dhcp_server_prefix_pool_${i}_prefix_length
+        cat >> "$1" <<EOF
+circ_dhcp_server_prefix_pool_${i}_network="$pool_network"
+circ_dhcp_server_prefix_pool_${i}_prefix_length="$pool_prefixlen"
+EOF
+    done
+
+    return 0
+}

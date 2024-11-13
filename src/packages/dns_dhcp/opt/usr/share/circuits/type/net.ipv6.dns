@@ -1,0 +1,79 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /d opt/usr/share/circuits/type/net.ipv6.dns - net circuits (IPv6 RDNSS)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+. /usr/share/radvd.api
+
+net_circuit_ipv6_advertise_dns_add_hook()
+{
+    [ -n "$circ_net_ipv6_address" ] || return 1
+    circuit_write_field $circ_id circ_net_ipv6_advertise_dns "$circ_net_ipv6_advertise_dns"
+}
+
+# Input:
+#   $1 = circuit identifier
+#   $2 = circuit interface
+#   $3 = layer-3 protocol
+#   $4 = event
+net_circuit_ipv6_advertise_dns_change_hook()
+{
+    local id=$1 dev=$2 l3prot=$3 event=$4 adv_dns old_addresses new_addresses
+
+    case $event in
+    pre-*)
+        return 0
+        ;;
+    post-up)
+        new_addresses=$5
+        ;;
+    post-change)
+        old_addresses=$5
+        new_addresses=$6
+        ;;
+    post-down)
+        old_addresses=$5
+        ;;
+    esac
+
+    [ "$l3prot" = ipv6 ] || return 0
+
+    circuit_read_field $id circ_net_ipv6_advertise_dns adv_dns
+    if [ "$adv_dns" = "yes" -a -n "${old_addresses}${new_addresses}" ]
+    then
+        lazy_begin
+
+        # if an address is both in the list of removed and the list of added
+        # addresses, we have to ignore it here because we want to advertise it
+        # only once
+        local addr
+        for addr in $(list_unique $(list_sub "$old_addresses" $new_addresses))
+        do
+            addr=${addr%%/*}
+            radvd_advertise_dns $id "$addr" 0
+        done
+
+        for addr in $(list_unique $new_addresses)
+        do
+            addr=${addr%%/*}
+            # pass no lifetime, choosing "forever" if no prefix is recognized
+            set -- $(circuit_get_address_lifetimes "$addr" ipv6)
+            local lifetime=$1
+            # If lifetime is "forever", use radvd's default. This means that it
+            # is not possible to advertise a DNS server with "forever" lifetime.
+            # However, this is not a problem in practice as radvd periodically
+            # announces the DNS server, thereby refreshing the RA lifetime.
+            [ $lifetime = forever ] && lifetime=
+            radvd_advertise_dns $id "$addr" $lifetime
+        done
+
+        lazy_end
+    fi
+
+    return 0
+}
+
+net_circuit_register_add_hook net_circuit_ipv6_advertise_dns_add_hook
+net_circuit_register_change_hook net_circuit_ipv6_advertise_dns_change_hook

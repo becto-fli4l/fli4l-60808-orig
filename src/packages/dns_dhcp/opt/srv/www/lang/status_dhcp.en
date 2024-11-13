@@ -1,0 +1,81 @@
+﻿#!/bin/sh
+# status_dhcp.cgi
+
+# Last Update:  $Id$
+
+_STAT_DHCP_DOWNLOAD_HEAD="Download DNS/DHCP template"
+_STAT_DHCP_DOWNLOAD_INFO="No hosts were added at runtime. Therefore it is not possible to download a configuration template."
+_STAT_DHCP_ADD_HEAD="Adding a DHCP host"
+_STAT_DHCP_ERROR="Error:"
+_STAT_DHCP_INFO="Info:"
+_STAT_DHCP_IPADDR="IP address"
+_STAT_DHCP_HOSTNAME="Host name"
+_STAT_DHCP_MACADDR="MAC address"
+_STAT_DHCP_LEASETIME="Lease time"
+_STAT_DHCP_LEASE_END="Runs out at <br />[Date Time]"
+_STAT_DHCP_NETWORK="Network"
+_STAT_DHCP_DEL_HEAD="Deleting DHCP hosts"
+_STAT_DHCP_RELOAD_HEAD="Reloading the DNS/DHCP server"
+_STAT_DHCP_ERR_NORANGE="No DHCP range defined"
+_STAT_DHCP_ERR_NOHOSTS="There are no static DHCP hosts defined"
+_STAT_DHCP_MSG_RELOAD="DNS/DHCP server reloaded"
+_STAT_DHCP_IP_EMPTYFIELD="At least one input field for the IP address is empty"
+_STAT_DHCP_HOST_EMPTY="No host name defined"
+_STAT_DHCP_MAC_EMPTY="No MAC address defined"
+_STAT_DHCP_LEASETIME_EMPTY="No lease time defined"
+
+_STAT_DHCP_ERR_IP_DOUBLE="The IP address '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' is already in use by another host"
+_STAT_DHCP_ERR_IP_FORMAT="The IP address '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' does not have the correct format"
+_STAT_DHCP_ERR_IP_NOTNET="The IP address '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' is not a member of network 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_BCAST="The IP address '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' must be different from the broadcast address of network 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_NET="The IP address ${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' must be different from the network address of network 'IP_NET_${FORM_netid}'"
+_STAT_DHCP_ERR_IP_RANGE="The IP address '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' is not outside the DHCP range"
+
+_STAT_DHCP_ERR_HOST_DOUBLE="The hostname '$FORM_host' is already in use by another host"
+_STAT_DHCP_ERR_HOST_VALIDATE="The hostname '$FORM_host' contains invalid characters. Valid are only: the ASCII characters 'a' through 'z' (case insensitive), the digits '0' through '9', and the hyphen '-'."
+
+_STAT_DHCP_ERR_MAC_DOUBLE="The MAC address '$FORM_mac' is already in use by another host"
+_STAT_DHCP_ERR_MAC_FORMAT="The format of the MAC address is incorrect"
+
+_STAT_DHCP_ERR_LEASETIME="The lease time '$FORM_leasetime' is too small [min=120]"
+
+_STAT_DHCP_HOSTSFILE="Hosts File"
+
+_STAT_DHCP_ERR_NEWIPHASDNSENTRY="For the IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' a DNS entry already exists - but no hostname exists for this IP in the DNS '${FORM_host}'"
+_STAT_DHCP_ERR_NEWHOSTHASDNSENTRY="For the hostname '${FORM_host}' a DNS entry already exists - but no IP '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' exists in the DNS for this hostname"
+
+_STAT_DHCP_ERR_DATA="In the data"
+_STAT_DHCP_ERR_NOHOSTADDED="No new host was added to the configuration. Please try again!"
+
+_STAT_DHCP_INFO_DHCPHOST="DHCP Host"
+_STAT_DHCP_INFO_RENEWNEEDED="The host entered '${FORM_host}' with the MAC '${FORM_mac}' is already using an IP from the DHCP range! TO assign the new IP via DHCP a 'release/renew' has to be performed!"
+
+_STAT_DHCP_ADD_HOSTADDED="The host entered '${FORM_host}' / '${FORM_ip1}.${FORM_ip2}.${FORM_ip3}.${FORM_ip4}' was added to the configuration"
+
+_STAT_DHCP_DEL_HOSTREMOVED="The host '${FORM_hostname}' will be deleted from /etc/dnsmasq.d/dhcp_hosts_NET${FORM_net}.wwwconf"
+
+
+_STAT_DHCP_LEASE_NOLEASEFILE="The lease file <strong>${LEASES_FILE}</strong> does not exist.<br>Please check if the DHCP server is running."
+_STAT_DHCP_LEASE_TABHEAD="DHCP-Leases: ${LEASES_FILE}"
+_STAT_DHCP_LEASE_NOENTRY="No leases exist in the file <strong>${LEASES_FILE}</strong>."
+
+_STAT_DHCP_RANGE_TABHEAD="DHCP Ranges"
+
+_STAT_DHCP_INFOTEXT1="DHCP hosts added during runtime will be lost when rebooting!"
+_STAT_DHCP_INFOTEXT2="The data may be loaded down as a template for the configuration file <b>\"config/dns_dhcp.txt\"</b>!"
+
+_STAT_DHCP_RANGE_TYPE="Type"
+_STAT_DHCP_RANGE_START="Start"
+_STAT_DHCP_RANGE_END="End"
+_STAT_DHCP_RANGE_MASK="Subnet Mask"
+_STAT_DHCP_RANGE_BCAST="Broadcast"
+_STAT_DHCP_RANGE_DEFROUTER="Default Router"
+_STAT_DHCP_RANGE_DNSDOMAIN="DNS Domain"
+_STAT_DHCP_RANGE_DNSSRV="DNS Server"
+_STAT_DHCP_RANGE_NTPSRV="NTP Server"
+
+_STAT_DHCP_HOSTS_HOSTS="DHCP Hosts"
+_STAT_DHCP_HOSTS_ALIAS="Alias(es)"
+_STAT_DHCP_HOSTS_ACTION="Action"
+
+_STAT_DHCP_MAINTITLE="DHCP Server"

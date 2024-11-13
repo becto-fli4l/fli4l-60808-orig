@@ -1,0 +1,1156 @@
+% Do not remove the next line
+% Synchronized to r55089
+
+\marklabel{sec:dnsdhcp}
+{
+\section{DNS\_DHCP - Serveur DNS et DHCP - Relay DHCP et serveur DNS esclave}
+}
+
+\subsection{Nom d'hôte}
+\subsubsection{Hôte}
+\begin{description}
+    \config{OPT\_HOSTS}{OPT\_HOSTS}{OPTHOSTS}
+
+    Avec la variable optionnelle \var{opt\_HOSTS}, la configuration des noms
+	d'hôtes peut être désactivée~!
+
+    \configlabel{HOST\_x\_NAME}{HOSTxNAME}
+    \configlabel{HOST\_x\_IP4}{HOSTxIP4}
+    \configlabel{HOST\_x\_IP6}{HOSTxIP6}
+    \configlabel{HOST\_x\_DOMAIN}{HOSTxDOMAIN}
+    \configlabel{HOST\_x\_ALIAS\_N}{HOSTxALIASN}
+    \configlabel{HOST\_x\_ALIAS\_x}{HOSTxALIASx}
+    \configlabel{HOST\_x\_MAC}{HOSTxMAC}
+    \configlabel{HOST\_x\_MAC2}{HOSTxMAC2}
+    \configlabel{HOST\_x\_DHCPTYP}{HOSTxDHCPTYP}
+    \config{HOST\_N HOST\_x\_\{attribute\}}{HOST\_N}{HOSTN}
+
+      {Tous les ordinateurs du réseau local doivent être enregistrés
+      avec une adresse IP, un nom, un alias (ou pseudo) et éventuellement
+      une adresse MAC pour la configuration du dhcpd. Pour ce faire,
+      on indique d'abord le nombre d'ordinateur dans la variable \var{HOST\_\-N}.
+
+     \textbf{Remarque~:} depuis la version 3.4.0, l'enregistrement des
+     informations du routeur sont générées dans le fichier \var{$<$config$>$/base.txt}.
+     Des alias supplémentaires peuvent être ajoutés dans celui-ci, voir la
+     variable \jump{HOSTNAMEALIASN}{\var{HOSTNAME\_ALIAS\_N}}.
+
+      Ensuite on définit les caractéristiques de chaque hôte dans ces variables.
+      Certain paramètres sont obligatoires comme par ex. l'adresse IP, le nom et
+      d'autres sont optionnels, c.-à-d. qu'ils ne sont pas obligatoires.
+
+    \begin{description}
+      \item[NAME]         -- Nom d'hôte par n-fois
+      \item[IP4]          -- Adresse IP (ipv4) de l'hôte par n-fois
+      \item[IP6]          -- Adresse IP (ipv6) de l'hôte par n-fois (optionnelle)
+                             Si vous indiquez 'auto', l'adresse sera automatiquement
+                             composée du préfixe IPv6 (avec le masque de
+                             sous-réseau /64) et l'adresse MAC correspondant
+                             à l'hôte si vous avez activé OPT\_IPV6. Pour que
+                             cela fonctionne, vous devrez configurer
+                             \var{HOST\_x\_MAC} (voir ci-dessous) et configurer
+                             le paquetage \texttt{ipv6}.
+      \item[DOMAIN]       -- Domaine DNS de l'hôte par n-fois (optionnelle)
+      \item[ALIAS\_N]     -- Nombre d'alias (ou pseudo)
+      \item[ALIAS\_m]     -- m-fois le nom d'alias de l'hôte par n-fois
+      \item[MAC]          -- Adresse MAC de l'hôte par n-fois
+      \item[MAC2]         -- Adresse MAC pour une autre interface de l'hôte par n-fois
+      \item[DHCPTYP]      -- Attribution de l'adresse IP par DHCP en fonction
+                            de l'adresse MAC ou du Nom (optionnelle)
+    \end{description}
+
+      Dans l'exemple du fichier dns\_dhcp.txt, 4 ordinateurs sont configurés~-
+      Pour les PCs "client1", "client2", "client3" et "client4".
+
+\begin{example}
+\begin{verbatim}
+         HOST_1_NAME='client1'                # 1st host: ip and name
+         HOST_1_IP4='192.168.6.1'
+\end{verbatim}
+\end{example}
+
+      Les noms d'alias doivent être compatibles avec le nom complet du domaine
+      spécifié dans fli4l.
+
+      L'adresse MAC est optionnelle, elle est pertinente que si fli4l utilise
+      un serveur DHCP. Pour cela vous devez voir la description des options
+      de la variable "\var{OPT\_\-DHCP}" indiqué plus bas dans ce document. Si
+      vous n'utilisez pas de serveur DHCP, vous pouvez juste indiquer l'adresse IP,
+      le nom de l'ordinateur et peut-être un alias. L'adresse MAC à un adressage
+      de 48 bits et se compose de 6 hexadécimales séparées par deux points.
+
+      Exemple~:
+
+\begin{example}
+\begin{verbatim}
+        HOST_2_MAC='de:ad:af:fe:07:19'
+\end{verbatim}
+\end{example}
+
+      \emph{Remarque~:} si vous ajoutez à fli4l le paquetage IPv6, il n'y a pas
+      besoin d'indiquer les adresses IPv6, si l'adresse MAC est présente dans
+      la configuration, le paquetage IPv6 créera automatiquement les adresses
+      IPv6 (EUI-64 modifié) en utilisant l'adresse MAC. Bien sûr, vous n'êtes
+      pas obligé d'utiliser l'adressage automatique, vous pouvez indiquer
+      les adresses IPv6 manuellement sur l'hôte, si vous le souhaitez.
+      }
+\end{description}
+
+
+\subsubsection{Extra hôte}
+
+\begin{description}
+  \configlabel{HOST\_EXTRA\_x\_NAME}{HOSTEXTRAxNAME}
+  \configlabel{HOST\_EXTRA\_x\_IP4}{HOSTEXTRAxIP4}
+  \configlabel{HOST\_EXTRA\_x\_IP6}{HOSTEXTRAxIP6}
+  \config{HOST\_EXTRA\_N HOST\_EXTRA\_x\_NAME HOST\_EXTRA\_x\_IP4 HOST\_EXTRA\_x\_IP6}{HOST\_EXTRA\_N}{HOSTEXTRAN}
+
+  {
+      Avec ces variables, vous pouvez ajouter d'autres hôtes qui
+      n'appartiennent pas au domaine local, pas exemple des hôtes qui
+      se trouvent sur un autre domaine à travers une connexion VPN
+  }
+\end{description}
+
+
+\subsection{Serveur DNS}
+
+\begin{description}
+    \config{OPT\_DNS}{OPT\_DNS}{OPTDNS}
+
+    {Pour activer le serveur DNS vous devez paramétrer la variable \var{OPT\_DNS}
+    sur 'yes'.
+
+    Si aucun ordinateur Windows n'est utilisé dans le LAN (ou réseau local), ou
+    si un serveur DNS est déjà disponible dans le LAN, vous pouvez mettre la
+    variable \var{OPT\_DNS} sur 'no' et ignorer le reste de ce paragraphe.
+
+    Dans le doute, toujours utiliser la (configuration par défaut)~: \var{OPT\_DNS}='yes'}
+\end{description}
+
+
+\subsubsection{Option générale pour serveur DNS}
+
+\begin{description}
+    \configlabel{DNS\_LISTEN\_x}{DNSLISTENx}
+    \config{DNS\_LISTEN\_N DNS\_LISTEN\_x}{DNS\_LISTEN\_N}{DNSLISTENN}
+
+      {Si vous avez choisi d'activer la variable \var{OPT\_DNS}='yes', vous
+      pouvez indiquer dans la variable \var{DNS\_LISTEN\_N} le nombre de
+      variable à configurer et indiquez dans la variable \var{DNS\_LISTENIP\_1}
+      l'adresse IP locale sur laquelle, les requêtes DNS utiliserons
+      le programme \verb+Dnsmasq+. Si vous paramétrez la variable \var{DNS\_LISTEN\_N}
+      sur '0' toutes les requêtes DNS des adresses IP locaux utiliserons
+      le programme \verb+Dnsmasq+.
+
+      À ce stade, seul les adresses IP des interfaces existantes (ethernet,
+      wlan ...) peuvent être utilisées, sinon vous aurez un message d'avertissement
+      au démarrage du routeur. Il est désormais possible d'utiliser alternativement
+      les alias, par exemple \verb+IP_NET_1_IPADDR+.
+
+      Pour toutes les adresses indiquées, les règles ACCEPT de la chaîne INPUT
+      seront créées pour le pare-feu si \var{PF\_INPUT\_ACCEPT\_DEF='yes'}
+      et/ou \var{PF6\_INPUT\_ACCEPT\_DEF='yes'} sont activées. Si la variable \var{DNS\_LISTEN='0'}
+	  est à zéro, les règles qui permettent l'accès au DNS seront également générées pour
+	  \emph{toutes} les interfaces configurées.
+
+      \wichtig{Si vous souhaitez que le serveur DNS écoute les interfaces configurées
+	  dynamiquement à l'installation, par exemple, une interface réseau pour un tunnel
+	  VPN. Vous ne devez pas configurer cette liste de variables, il faut les laisser vide.
+	  Sinon le serveur DNS ne répondra pas aux requêtes DNS effectuées via le tunnel VPN.}
+
+      En cas de doute, vous pouvez utiliser les paramètres par défaut.}
+
+    \config{DNS\_BIND\_INTERFACES}{DNS\_BIND\_INTERFACES}{DNSBINDINTERFACES}{
+      Si vous voulez que le serveur DNS écouter uniquement les adresses configurées via
+	  la variable \var{DNS\_LISTEN\_x} \emph{et} si vous voulez un serveur DNS
+	  \emph{supplémentaire} pour écouter les \emph{autres} adresses du réseau. Avec cette
+	  option, vous demandez au serveur DNS d'écouter uniquement les adresses assignées.
+	  Par défaut, le serveur DNS écoute \emph{toutes} les interfaces et envoie les requêtes
+	  DNS qui arrivent par les adresses qu'ils ne sont pas configurées dans la liste de variables
+	  \var{DNS\_LISTEN\_x}. Cette option a un avantage, c'est que le serveur DNS peut aussi traiter
+	  les interfaces configurées dynamiquement et un inconvénient c'est qu'aucun serveur DNS
+	  alternatif peut fonctionner simultanément en utilisant le port 53 du DNS standard. Si
+	  vous voulez utiliser le serveur DNS et si vous exécutez un deuxième serveur DNS esclave
+	  comme "yadifa" directement sur le routeur fli4l, vous devez savoir que le serveur
+	  Dnsmasq ne sera pas exclusivement utilisé par fli4l. Vous devez sélectionner
+	  le paramètre 'yes' et configurer les adresses IP dans la variable \var{DNS\_LISTEN} pour
+	  pouvoir utiliser le serveur Dnsmasq.}
+
+    \config{DNS\_VERBOSE}{DNS\_VERBOSE}{DNSVERBOSE}
+
+      {Enregistrement des requêtes DNS~: 'yes' ou 'no'
+
+      Si vous voulez avoir des détails sur les requêtes DNS, mettez la variable
+      \var{DNS\_VERBOSE} sur 'yes'. Dans ce cas, les messages des requêtes DNS
+      seront consignés sur le serveur de nom~- A savoir sur l'interface syslog.
+      Si vous voulez rendre visible et lire ce fichier jounal, vous devez activer
+      la variable \jump{OPTSYSLOGD}{\var{OPT\_SYSLOGD='yes'}}, voir ci-dessous.}
+
+    \config{DNS\_MX\_SERVER}{DNS\_MX\_SERVER}{DNSMXSERVER}
+
+      {Avec cette variable, vous pouvez enregistrer un nom d'hôte pour le MX
+      (Mail-Exchanger) et pour définir dans \var{DOMAIN\_NAME} un domaine. Si
+      un MTA (Mail"=Transport"=Agent, par exemple sendmail) est installé sur le
+      serveur interne, une demande de DNS sera faite par Mail-Exchanger, l'objectif
+      est d'envoyer un mail au domaine recherché. Le serveur DNS fournit ici
+      l'hôte au MTA, pour l'envoi du mail au \var{DOMAIN\_NAME} du domaine compétent.
+
+      \achtung{ Il ne s'agit pas de configuration automatique un clients de
+                messagerie, comme par exemple Outlook~! Veuillez ne pas enregistrer
+                votre adresse mail ici, après ne vous étonnez pas si Outlook ne
+                fonctionne pas.}
+      }
+
+    \configlabel{DNS\_FORBIDDEN\_x}{DNSFORBIDDENx}
+    \config{DNS\_FORBIDDEN\_N DNS\_FORBIDDEN\_x}{DNS\_FORBIDDEN\_N}{DNSFORBIDDENN}
+
+    {Avec ces variables, vous pouvez paramétrer les domaines pour lesquels les
+    requêtes DNS n'auront "pas accés" au serveur DNS, ils n'auront aucune réponse.
+
+      Exemple:
+
+\begin{example}
+\begin{verbatim}
+        DNS_FORBIDDEN_N='1'
+        DNS_FORBIDDEN_1='foo.bar'
+\end{verbatim}
+\end{example}
+
+      Dans cet exemple une demande d'accés au domaine www.foo.bar répondra
+      par une erreur.
+
+      On peut aussi interdire un Top-Level-Domains (ou domaines de premier niveau)
+      les plus connus sont .com, .fr, .de~:
+
+\begin{example}
+\begin{verbatim}
+        DNS_FORBIDDEN_1='de'
+\end{verbatim}
+\end{example}
+
+      Dans cet exemple, la résolution de nom pour 'de' du Top-level-domain sur
+      le Web sera supprimé pour tous les ordinateurs du réseau local.}
+
+    \configlabel{DNS\_REDIRECT\_x}{DNSREDIRECTx}
+    \configlabel{DNS\_REDIRECT\_x\_IP}{DNSREDIRECTxIP}
+    \config{DNS\_REDIRECT\_N DNS\_REDIRECT\_x DNS\_REDIRECT\_x\_IP}{DNS\_REDIRECT\_N}{DNSREDIRECTN}
+
+    {Avec ces variables, vous pouvez spécifier les domaines sur lesquels les
+    requêtes DNS seront redirigées vers une autre adresse IP du serveur DNS.
+
+      Exemple~:
+
+\begin{example}
+\begin{verbatim}
+        DNS_REDIRECT_N='1'
+        DNS_REDIRECT_1='yourdom.dyndns.org'
+        DNS_REDIRECT_1_IP='192.168.6.200'
+\end{verbatim}
+\end{example}
+
+      Dans cet exemple, une demande d'accés au domaine yourdom.dyndns.org sera
+      dérivé vers l'adresse IP 192.168.6.200. Ainsi vous pouvez dériver les
+      domaines externe de votre choix, sur une adresse IP local de votre choix.}
+
+     \config{DNS\_BOGUS\_PRIV}{DNS\_BOGUS\_PRIV}{DNSBOGUSPRIV}
+
+      {Si vous placez cette variable sur 'yes' vous ne transmettez pas les
+      recherches inversées pour les adresses IP RFC1918 (classe d'adresse IP
+      privée, non routables sur Internet) ces adresses ne seront pas transmis
+      au serveur DNS, mais le Dnsmasq répondra.}
+
+     \config{DNS\_FORWARD\_PRIV\_x}{DNS\_FORWARD\_PRIV\_x}{DNSFORWARDPRIVx}
+
+     Si vous avez besoin de transmettre la résolution d'adresse de certain sous-réseau
+	 privés, malgré la configuration de la variable \var{DNS\_BOGUS\_PRIV} pour le serveur DNS.
+	 La transmission est nécessaire, par exemple si le routeur gère une connexion montante pour
+	 certain sous-réseaux privés. Cette ensemble de variables peut être utilisés pour définir
+	 les sous-réseaux privés, ainsi, la résolution d'adresse sera transmise.
+
+     \config{DNS\_FILTERWIN2K}{DNS\_FILTERWIN2K}{DNSFILTERWIN2K}
+
+     {Si vous placez cette variable sur 'yes' les requêtes DNS du type SOA, SRV
+     et ANY seront bloquées. Les services qui utilisent ce type de requète ne
+     fonctionneront plus sans une configuration supplémentaire.\hfil\break
+     Par exemple~:
+     \begin{itemize}
+     \item XMPP (Jabber)
+     \item SIP
+     \item LDAP
+     \item Kerberos
+     \item Teamspeak3 (à partir de la version du client 3.0.8)
+     \item Minecraft (à partir de toutes les versions 1.3.1)
+     \item Recherche pour la gestion du contrôleur de domaine (Win2k)
+     \end{itemize}
+     Pour plus d'informations~:}
+     \begin{itemize}
+     \item Voir les explications des types de requète DNS à cette adresse~:\hfil\break
+           \altlink{http://en.wikipedia.org/wiki/List_of_DNS_record_types}
+     \item Voir le manuel du Dnsmasq à cette adresse~:\hfil\break
+           \altlink{http://www.thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html}
+     \item Voir les requêtes SRV dans le détail à cette adresse~:\hfil\break
+           \altlink{http://en.wikipedia.org/wiki/SRV_resource_record} 
+     \end{itemize}
+     \achtung{Si vous avez indiqué le paramètre 'no' en plus des problèmes de
+     transmission des requêtes DNS, cela peut aussi provoquer des connexions
+     indésirables ou empêcher la fermeture d'une connexion déjà existante.
+     Surtout si vous utilisez l'ISDN (ou Numéris) ou l'UMTS, des coûts de connexion
+     supplémentaires peuvent survenir. Vous devez choisir ce qui est le plus
+     important pour vous.}
+
+     \config{DNS\_FORWARD\_LOCAL}{DNS\_FORWARD\_LOCAL}{DNSFORDWARDLOCAL}
+
+      {Si vous placez cette variable sur 'yes' le routeur fli4l peut être configuré
+      dans un domaine avec la variable DOMAIN\_NAME='example.local', et via la
+      variable DNS\_ZONE\_DELEGATION\_x\_DOMAIN='example.local'} les requêtes
+      seront résolues à partir d'un autre serveur de nom.
+
+     \config{DNS\_LOCAL\_HOST\_CACHE\_TTL}{DNS\_LOCAL\_HOST\_CACHE\_TTL}{DNSLOCALHOSTCACHETTL}
+
+      {Vous indiquez dans cette variable le TTL (Time To Live, en seconde) pour
+      les noms enregistrés dans le fichier /etc/hosts et pour les adresses IP
+      affectés par le DHCP. La valeur par défaut pour fli4l est de 60 secondes.
+      La valeur par défaut du TTL pour les noms enregistrés dans le Dnsmasq locale
+      doit être de 0, en fait la mise en cache des entrées DNS sera désactivée.
+      L'idée, est que l'exécution des baux du DHCP, etc. pourront être transmis
+      rapidement. Exemple d'un Proxy IMAP local, il peut demander plusieurs fois
+      par seconde un nom enregistré dans le DNS, cela occasionne des lourdes charges
+      sur le réseau. Le compromis est donc un TTL relativement court, avec
+      60 secondes. Il peut même fonctionner sans ce court TTL de 60 secondes,
+      avec une simple mise hors tension à tous moment de l'hôte, de sorte que le
+      logiciel qui interroge ne traitera pas de toute façon la réponce de l'hote.}
+
+     \config{DNS\_SUPPORT\_IPV6}{DNS\_SUPPORT\_IPV6}{DNSSUPPORTIPV6} (optionelle)
+
+      {Si vous placez cette variable sur 'yes' vous activez le serveur DNS
+      supportant l'adressage IPv6.}
+\end{description}
+
+\subsubsection{Configuration d'une zone DNS}
+
+      Le Dnsmasq peut également gérer un domaine DNS de manière autonome,
+	  c'est à dire, il a "autorité" pour ce domaine. Par conséquent, il faut
+	  faire deux choses~: la première consiste à spécifier le nom du service
+	  DNS externe (!) sur fli4l pour l' envoie des requètes, la deuxième est
+	  savoir sur quelle interface réseau que tous cela se passera. La spécification
+	  du référencement externe est nécessaire, car le domaine qui gère fli4l,
+	  est toujours un sous-domaine d'un autre domaine. \footnote{Nous allons
+	  supposer que personne n'utilise fli4l comme serveur DNS à la racine...}
+	  La spécification de l'interface "externe" est important parce que Dnsmasq
+	  se comporte différemment par rapport à une autre interface "interne"~:
+	  le Dnsmasq ne répond jamais aux requêtes de extérieur, en dehors de sa
+	  propre configuration de nom de domaine. En interne le Dnsmasq fonctionne
+	  naturellement comme un relay DNS pour que la résolution de noms qui n'est
+	  pas sur le routeur, fonctionne sur Internet.
+
+	  D'autre part, vous devez configurer le réseau pour que la résolution de nom
+	  soit accessible vers l'extérieur. La configuration du réseaux ne doit être
+	  spécifiée avec une adresses IP publiques, parce que les adresses des hôtes
+	  privées, ne peuvent pas atteindre une IP publique qui est externe.
+
+	  Ci-dessous, un exemple de configuration est décrite. Cet exemple suppose que
+	  le paquet IPv6 ainsi que le préfixe IPv6 est routé vers le réseau publique.
+	  Cette adresse peut par exemple, être fournis par le fournisseur de tunnel 6in4
+	  comme Hurricane Electric.
+
+\begin{description}
+
+\config{DNS\_AUTHORITATIVE}{DNS\_AUTHORITATIVE}{DNSAUTHORITATIVE}
+
+      Si vous activez la variable \verb+DNS_AUTHORITATIVE='yes'+, vous activez
+	  le module Dnsmasq qui fait autorité. Toutefois, cela ne suffit pas, car
+	  vous devez fournir plus d'information (voir ci-dessous).
+
+	  Paramètre par défaut~:\verb+DNS_AUTHORITATIVE='no'+
+
+	  Exemple~: \verb+DNS_AUTHORITATIVE='yes'+
+
+\config{DNS\_AUTHORITATIVE\_NS}{DNS\_AUTHORITATIVE\_NS}{DNSAUTHORITATIVENS}
+
+	  Dans cette variable vous configurez le nom du DNS externe pour fli4l, vous
+	  indiquez ici le Nom de Domaine du DNS. Cela peut être un nom de DNS qui appartient
+	  à un service de DNS Dynamique.
+
+	  Exemple~: \verb+DNS_AUTHORITATIVE_NS='fli4l.noip.me'+
+
+\config{DNS\_AUTHORITATIVE\_LISTEN}{DNS\_AUTHORITATIVE\_LISTEN}{DNSAUTHORITATIVELISTEN}
+
+	  Dans cette variable vous configurez l'adresse ou l'interface, sur la quelle les
+	  demandes de DNS du Dnsmasq doit répondre par le domaine qui fait autorité.
+	  Les noms symboliques comme \verb+IP_NET_2_IPADDR+, \verb+IP_NET_1_DEV+ ou
+    \verb+{LAN}+ sont autorisés. Le Dnsmasq peut répondre seulement à \emph{une}
+    adresse/interface qui fait autorité.
+
+	  \wichtig{Il faut faire attention à se que l'adresse/interface ne dépend jamais 
+	  du réseau local, autrement aucun nom ne sera résolu dans le LAN~!}
+
+	  Exemple~: \verb+DNS_AUTHORITATIVE_LISTEN='IP_NET_2_IPADDR'+
+
+\configlabel{DNS\_ZONE\_NETWORK\_x}{DNSZONENETWORKx}
+\config{DNS\_ZONE\_NETWORK\_N DNS\_ZONE\_NETWORK\_x}{DNS\_ZONE\_NETWORK\_N}{DNSZONENETWORKN}
+
+	  Dans cette variable vous configurez l'adresse réseau, pour que le Dnsmasq qui fait
+	  autorité puisse résoudre les noms. Il fonctionne à la fois en recherche normal
+	  (le nom de l'adresse IP) ainsi qu'en recherche inversée (l'adresse IP du nom).
+
+	  Un exemple complet~:
+
+\begin{example}
+\begin{verbatim}
+        DNS_AUTHORITATIVE='yes'
+        DNS_AUTHORITATIVE_NS='fli4l.noip.me'
+        DNS_AUTHORITATIVE_LISTEN='IP_NET_2_IPADDR' # Uplink dépend de eth1
+        DNS_ZONE_NETWORK_N='1'
+        DNS_ZONE_NETWORK_1='2001:db8:11:22::/64'   # IPv6-LAN local
+\end{verbatim}
+\end{example}
+
+	  Il est supposé que "2001:db8:11::/48" est le réseau public et sera routé vers le préfix IPv6
+	  dans fli4l, et que 22 sous-réseau dans le LAN ont été sélectionnés.
+
+\end{description}
+
+\subsubsection{Délégation de zone DNS}
+
+\begin{description}
+    \configlabel{DNS\_ZONE\_DELEGATION\_x}{DNSZONEDELEGATIONx}
+    \configlabel{DNS\_ZONE\_DELEGATION\_x\_UPSTREAM\_SERVER\_x}{DNSZONEDELEGATIONUPSTREAMSERVERx}
+    \configlabel{DNS\_ZONE\_DELEGATION\_x\_UPSTREAM\_SERVER\_x\_IP}{DNSZONEDELEGATIONUPSTREAMSERVERxIP}
+    \configlabel{DNS\_ZONE\_DELEGATION\_x\_UPSTREAM\_SERVER\_x\_quERYSOURCEIP}{DNSZONEDELEGATIONUPSTREAMSERVERxQUERYSOURCEIP}
+    \configlabel{DNS\_ZONE\_DELEGATION\_x\_DOMAIN}{DNSZONEDELEGATIONxDOMAIN}
+    \configlabel{DNS\_ZONE\_DELEGATION\_x\_NETWORK}{DNSZONEDELEGATIONxNETWORK}
+    \config{DNS\_ZONE\_DELEGATION\_N DNS\_ZONE\_DELEGATION\_x}{DNS\_ZONE\_DELEGATION\_N}{DNSZONEDELEGATIONN}
+
+      {Il y a des situations particulières, où le référencement d'un ou plusieurs
+      serveurs DNS est utiliser, par exemple lorsque l'on utilise fli4l en
+      Intranet sans connexion Internet ou un mélange des deux (un Intranet avec
+      son propre serveur DNS et en plus une connexion Internet).
+
+      Si nous imaginons le scénario suivant~:
+
+      \begin{itemize}
+      \item Circuit 1~: Avec une connexion Internet
+      \item Circuit 2~: Avec une connexion à un réseau d'entreprises 192.168.1.0
+          nom de domaine (firma.de)
+      \end{itemize}
+
+      Nous allons configurer \var{ISDN\_\-CIRC\_\-1\_\-ROUTE} sur '0.0.0.0' et
+      \var{ISDN\_\-CIRC\_\-2\_\-ROUTE} sur '192.168.1.0'. Pour accéder aux
+      ordinateurs avec l'adresse IP 192.168.1.x fli4l utilisera le circuit 2,
+      autrement le circuit 1 sera utilisé. Si le réseau d'entreprise n'est pas
+      public, il est possible de mettre en service un serveur DNS interne dans
+      le réseau. Supposons, que l'adresse de ce serveur DNS est 192.168.1.12 et
+      le nom de domaine est "firma.de".
+
+      Vous devez alors paramétrer les variables suivantes~:
+
+\begin{example}
+\begin{verbatim}
+        DNS_ZONE_DELEGATION_N='1'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_N='1'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_IP='192.168.1.12'
+        DNS_ZONE_DELEGATION_1_DOMAIN_N='1'
+        DNS_ZONE_DELEGATION_1_DOMAIN_1='firma.de'
+\end{verbatim}
+\end{example}
+
+      Aprés cette configuration, les requêtes DNS seront envoyées au domaine
+      firma.de ils utiliseront le serveur DNS interne de l'entreprise. Tous les
+      autres requêtes DNS iront comme d'usage vers un serveur DNS sur Internet.
+
+      Autre cas~:
+
+      \begin{itemize}
+      \item Circuit 1~: Internet
+      \item Circuit 2~: Réseau d'entreprise 192.168.1.0 *avec* une connexion Internet
+      \end{itemize}
+
+      Ici vous avez deux possibilités d'accéder à Internet. Si vous souhaitez
+      séparer le travail et la vie privée, vous pouvez alors paramètrer~:
+
+\begin{example}
+\begin{verbatim}
+        ISDN_CIRC_1_ROUTE='0.0.0.0'
+        ISDN_CIRC_2_ROUTE='0.0.0.0'
+\end{verbatim}
+\end{example}
+
+      Vous définissez donc les deux circuits avec une route par défaut et vous
+      commutez alors les circuits en utilisant le client-imond~- en fonction
+      de la demande. Dans ce cas vous devez paramétrer les variables
+      \var{DNS\_ZONE\_DELEGATION\_\-N} et \var{DNS\_ZONE\_DELEGATION\_x\_DOMAIN\_x}
+      comme décrit ci-dessous.}
+
+      Si vous voulez utiliser la résolution de DNS inversé sur votre réseau,
+      par ex. faire une recherche inversée pour certains serveurs de messageries,
+      vous pouvez indiquer dans la variable optionnelle \var{DNS\_ZONE\_DELEGATION\_x\_NETWORK\_x},
+      le ou les réseaux (mis en oeuvres), cela active la recherche inversée.
+      Voici un exemple~:
+
+\begin{example}
+\begin{verbatim}
+        DNS_ZONE_DELEGATION_N='2'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_N='1'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_IP='192.168.1.12'
+        DNS_ZONE_DELEGATION_1_DOMAIN_N='1'
+        DNS_ZONE_DELEGATION_1_DOMAIN_1='firma.de'
+        DNS_ZONE_DELEGATION_1_NETWORK_N='1'
+        DNS_ZONE_DELEGATION_1_NETWORK_1='192.168.1.0/24'
+        DNS_ZONE_DELEGATION_2_UPSTREAM_SERVER_N='1'
+        DNS_ZONE_DELEGATION_2_UPSTREAM_SERVER_1_IP='192.168.2.12'
+        DNS_ZONE_DELEGATION_2_DOMAIN_N='1'
+        DNS_ZONE_DELEGATION_2_DOMAIN_1='bspfirma.de'
+        DNS_ZONE_DELEGATION_2_NETWORK_N='2'
+        DNS_ZONE_DELEGATION_2_NETWORK_1='192.168.2.0/24'
+        DNS_ZONE_DELEGATION_2_NETWORK_2='192.168.3.0/24'
+\end{verbatim}
+\end{example}
+
+        Avec l'option de configuration
+        \var{DNS\_ZONE\_DELEGATION\_x\_UPTREAM\_SERVER\_x\_QUERYSOURCEIP} vous
+        pouvez définir l'adresse IP sortante qui interrogera le serveur DNS amont.
+        C'est utile, par exemple quand vous allez sur le serveur amont via un VPN
+        et si vous ne voulez pas que l'adresse locale du VPN fli4l apparaît comme
+        l'adresse IP source dans le serveur amont. Autre cas d'application,
+        l'adresse IP du serveur DNS amont ne sera pas routable (cela se produit
+        éventuellement à travers une interface VPN). Dans autre cas, il est
+        logique que le Dnsmasq utilise l'adresse IP sortante qui est paramétré
+        sur le routeur fli4l et que l'adresse IP du serveur DNS amont soit défini
+        pour être accessible.
+
+\begin{example}
+\begin{verbatim}
+        DNS_ZONE_DELEGATION_N='1'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_N='1'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_IP='192.168.1.12'
+        DNS_ZONE_DELEGATION_1_UPSTREAM_SERVER_1_QUERYSOURCEIP='192.168.0.254'
+        DNS_ZONE_DELEGATION_1_DOMAIN_N='1'
+        DNS_ZONE_DELEGATION_1_DOMAIN_1='firma.de'
+        DNS_ZONE_DELEGATION_1_NETWORK_N='1'
+        DNS_ZONE_DELEGATION_1_NETWORK_1='192.168.1.0/24'
+\end{verbatim}
+\end{example}
+
+    \configlabel{DNS\_REBINDOK\_x\_DOMAIN}{DNSREBINDOKxDOMAIN}
+    \config{DNS\_REBINDOK\_N DNS\_REBINDOK\_x\_DOMAIN}{DNS\_REBINDOK\_N}{DNSREBINDOKN}
+
+      Habituellement le serveur de noms \emph{Dnsmasq} refuse de répondre à d'autre
+      serveur de nom, s'il contient des adresses IP de réseau privé. Il empêche
+      ainsi une certaine forme d'attaques réseau. Mais si vous avez un nom de
+      domaine avec une adresse IP dans votre réseau et si un serveur de nom
+      distinct responsable du réseau privé fournit les réponses exactes,
+      il sera rejeté par le serveur \emph{Dnsmasq}. On peut faire une liste
+      de ces domaines dans la variable \var{DNS\_REBINDOK\_x}, les réponses
+      appropriées des demandes au sujet de ce domaine, seront ensuite acceptées.
+      Un autre exemple d'un serveur de nom qui fournirait les réponses aux
+      adresses IP privées, ces serveurs sont soi-disant des "serveurs Blacklist
+      en temps réel". Voici un exemple basé sur ces serveurs~:
+
+\begin{example}
+\begin{verbatim}
+        DNS_REBINDOK_N='8'
+        DNS_REBINDOK_1_DOMAIN='rfc-ignorant.org'
+        DNS_REBINDOK_2_DOMAIN='spamhaus.org'
+        DNS_REBINDOK_3_DOMAIN='ix.dnsbl.manitu.net'
+        DNS_REBINDOK_4_DOMAIN='multi.surbl.org'
+        DNS_REBINDOK_5_DOMAIN='list.dnswl.org'
+        DNS_REBINDOK_6_DOMAIN='bb.barracudacentral.org'
+        DNS_REBINDOK_7_DOMAIN='dnsbl.sorbs.net'
+        DNS_REBINDOK_8_DOMAIN='nospam.login-solutions.de'
+\end{verbatim}
+\end{example}
+\end{description}
+
+
+\subsection{Serveur DHCP}
+
+\begin{description}
+    \config{OPT\_DHCP}{OPT\_DHCP}{OPTDHCP}
+
+    {Avec la variable \var{OPT\_DHCP}, vous pouvez activer un serveur DHCP.}
+
+    \config{DHCP\_TYPE}{DHCP\_TYPE}{DHCPTYPE} (optionnelle)
+
+    {Avec cette variable, vous déterminez si vous voulez utiliser la fonction
+    DHCP interne avec Dnsmasq, ou si vous voulez recourir à la fonction ISC-DHCPD
+    externe. Dans ce cas avec ISC-DHCPD le support DDNS (ou DNS dynamique)
+    sera supprimé.}
+
+    \config{DHCP\_VERBOSE}{DHCP\_VERBOSE}{DHCPVERBOSE}
+
+    {Avec cette variable, vous activez les messages sur les transactions DHCP
+    dans le log (ou fichier journal).}
+
+    \config{DHCP\_LS\_TIME\_DYN}{DHCP\_LS\_TIME\_DYN}{DHCPLSTIMEDYN}
+
+    {Avec cette variable, vous indiquez le Lease-Time (ou délai du bail) standard
+    pour des adresses IP fournies dynamiquement.}
+
+    \config{DHCP\_MAX\_LS\_TIME\_DYN}{DHCP\_MAX\_LS\_TIME\_DYN}{DHCPMAXLSTIMEDYN}
+
+    {Avec cette variable, vous indiquez le Lease-Time (ou délai du bail) maximum
+    pour des adresses IP fournies dynamiquement.}
+
+    \config{DHCP\_LS\_TIME\_FIX}{DHCP\_LS\_TIME\_FIX}{DHCPLSTIMEFIX}
+
+    {Avec cette variable, vous indiquez le Lease-Time standard pour des
+    adresses IP assignées statiquement.}
+
+    \config{DHCP\_MAX\_LS\_TIME\_FIX}{DHCP\_MAX\_LS\_TIME\_FIX}{DHCPMAXLSTIMEFIX}
+
+    {Avec cette variable, vous indiquez le Lease-Time maximum pour des
+    adresses IP assignées statiquement.}
+
+    \config{DHCP\_LEASES\_DIR}{DHCP\_LEASES\_DIR}{DHCPLEASESDIR}
+
+    {Avec cette variable, vous indiquez le répertoire pour le fichier du bail DHCP.
+    Il est possible de spécifier un chemin absolu ou d'indiquer le paramètre \emph{auto}.
+    Si vous avez défini \emph{auto} le fichier du bail sera stocké dans le sous-répertoire
+    persistant du DHCP (voir la documentation de la Base)}
+
+    \config{DHCP\_LEASES\_VOLATILE}{DHCP\_LEASES\_VOLATILE}{DHCPLEASESVOLATILE}
+
+    {Le répertoire \emph{Leases} se trouve dans le disque RAM (car avec une
+    installation par CD le routeur n'a pas autres supports), au boot le routeur
+    enverra un message d'avertissement, à cause de l'absent du répertoire \emph{Leases}
+    pour l'installation des fichiers. Cet avertissement sera annulé, si vous
+    indiquez dans la variable \var{DHCP\_LEASES\_VOLATILE} la valeur \emph{yes}.}
+
+    \config{DHCP\_DNS\_SERVERS}{DHCP\_DNS\_SERVERS}{DHCPDNSSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur DNS. \\
+	Plusieurs serveurs DNS peuvent être entrés, vous devez les séparer par un espace.
+	Cette variable est optionnelle. Si vous la laissez vide ou si vous l'oubliez,
+	l'adresse IP du réseau correspondant sera utilisée lorsque le serveur DNS du routeur
+	sera activé. En outre, il est possible de mettre la valeur 'none' dans cette variable.
+	Il n'y aura aucun serveur DNS attribué par la suite. Ce paramètre peut être écrasé
+	par la variable
+	\smalljump{DHCPRANGExDNSSERVERS}{\var{DHCP\_RANGE\_x\_DNS\_SERVERS}}.}
+    
+    \config{DHCP\_WINS\_SERVERS}{DHCP\_WINS\_SERVERS}{DHCPWINSSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur WINS. \\
+	Plusieurs serveurs WINS peuvent être entrés, vous devez les séparer par un espace.
+	Cette variable est optionnelle. Si vous la laissez vide ou si vous l'oubliez, et
+	si le serveur WINS est configuré et activé dans le paquetage SAMBA, les paramètres à
+	partir de ce paquetage seront utilisés. En outre, il est possible de mettre la valeur
+	'none' dans cette variable. Il n'y aura aucun serveur WINS attribué par la suite.
+	Ce paramètre peut être écrasé par la variable
+	\smalljump{DHCPRANGExWINSSERVERS}{\var{DHCP\_RANGE\_x\_WINS\_SERVERS}}.}
+
+    \config{DHCP\_NTP\_SERVERS}{DHCP\_NTP\_SERVERS}{DHCPNTPSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur NTP. \\
+	Plusieurs serveurs NTP peuvent être entrés, vous devez les séparer par un espace.
+	Cette variable est optionnelle. Si vous la laissez vide ou si vous l'oubliez,
+	l'adresse IP du réseau correspondant sera utilisée lorsqu'un paquet d'un serveur temps
+	du routeur sera activé. En outre, il est possible de mettre la valeur 'none' dans cette
+	variable. Il n'y aura aucun serveur NTP attribué par la suite. Ce paramètre peut être
+	écrasé par la variable
+	\smalljump{DHCPRANGExNTPSERVERS}{\var{DHCP\_RANGE\_x\_NTP\_SERVERS}}.}
+    
+    \config{DHCP\_OPTION\_WPAD}{DHCP\_OPTION\_WPAD}{DHCPOPTIONWPAD}
+     
+     {Avec cette variable, vous activez ou désactivez la transmission du DHCP OPTION 252
+	 (Web Proxy Autodiscovery Protocol) cela permet au navigateur d'acquérir les paramètres
+	 du proxy automatiquement.
+	 (Voir \altlink{http://de.wikipedia.org/wiki/Web_Proxy_Autodiscovery_Protocol})
+     }
+     
+     \config{DHCP\_OPTION\_WPAD\_URL}{DHCP\_OPTION\_WPAD\_URL}{DHCPOPTIONWPADURL}
+     
+     {Dans cette variable vous indiquez l'URL du fichier wpad.dat, si vous laissez le champ
+	 vide la réponse envoyée au navigateur qui recherche le fichier sera nul, ainsi il
+	 n'effectura aucune autre requête.
+     }
+
+\end{description}
+
+
+\subsubsection{Plage DHCP locale}
+
+\begin{description}
+    \config{DHCP\_RANGE\_N}{DHCP\_RANGE\_N}{DHCPRANGEN}
+
+    {Avec cette variable, vous indiquez le nombre de plage d'adresses IP.}
+
+    \config{DHCP\_RANGE\_x\_NET}{DHCP\_RANGE\_x\_NET}{DHCPRANGExNET}
+
+    {Avec cette variable, vous indiquez le réseau défini dans la variable
+	\var{IP\_NET\_x}.}
+
+    \config{DHCP\_RANGE\_x\_START}{DHCP\_RANGE\_x\_START}{DHCPRANGExSTART}
+
+    {Avec cette variable, vous indiquez la première adresse IP.}
+
+    \config{DHCP\_RANGE\_x\_END}{DHCP\_RANGE\_x\_END}{DHCPRANGExEND}
+
+    {Avec cette variable, vous indiquez la dernière adresse IP. Les deux
+	variables \var{DHCP\_RANGE\_x\_START} et \var{DHCP\_RANGE\_x\_END} peuvent être
+    vide. Alors, aucune plage DHCP ne sera créée. Mais les hôtes avec l'attribution
+    d'une adresse MAC recevront les valeurs des autres variables.}
+
+    \config{DHCP\_RANGE\_x\_DNS\_DOMAIN}{DHCP\_RANGE\_x\_DNS\_DOMAIN}{DHCPRANGExDNSDOMAIN}
+
+    {Avec cette variable, vous définissez un domaine DNS spécifique pour les hôtes
+    de la plage DHCP. Cette variable est optionnelle. Si rien n'est enregistré,
+    la variable sera simplement omise et le domaine DNS par défaut \var{DOMAIN\_NAME}
+    sera utilisé.}
+
+    \config{DHCP\_RANGE\_x\_DNS\_SERVERS}{DHCP\_RANGE\_x\_DNS\_SERVERS}{DHCPRANGExDNSSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur DNS. \\
+	Plusieurs serveurs DNS peuvent être entrés, vous devez les séparer par un espace.
+	Cette variable est optionnelle. Si vous la laissez vide ou si vous l'oubliez, la valeur
+	de la variable \smalljump{DHCPDNSSERVERS}{\var{DHCP\_DNS\_SERVERS}} sera utilisée.
+	En outre, il est possible de mettre la valeur 'none' dans cette variable. Il n'y
+	aura aucun serveur DNS attribué par la suite.}
+
+    \config{DHCP\_RANGE\_x\_WINS\_SERVERS}{DHCP\_RANGE\_x\_WINS\_SERVERS}{DHCPRANGExWINSSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur WINS. \\
+	Plusieurs serveurs WINS peuvent être entrés, vous devez les séparer par un espace.
+	Cette variable est optionnelle. Si vous la laissez vide ou si vous l'oubliez, la valeur
+	de la variable \smalljump{DHCPWINSSERVERS}{\var{DHCP\_WINS\_SERVERS}} sera utilisée.
+	En outre, il est possible de mettre la valeur 'none' dans cette variable. Il n'y
+	aura aucun serveur WINS attribué par la suite.}
+
+    \config{DHCP\_RANGE\_x\_NTP\_SERVERS}{DHCP\_RANGE\_x\_NTP\_SERVERS}{DHCPRANGExNTPSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur NTP. \\
+	Plusieurs serveurs NTP peuvent être entrés, vous devez les séparer par un espace.
+	Cette variable est optionnelle. Si vous la laissez vide ou si vous l'oubliez, la valeur
+	de la variable \smalljump{DHCPNTPSERVERS}{\var{DHCP\_NTP\_SERVERS}} sera utilisée.
+	En outre, il est possible de mettre la valeur 'none' dans cette variable. Il n'y
+	aura aucun serveur NTP attribué par la suite.}
+
+    \config{DHCP\_RANGE\_x\_GATEWAY}{DHCP\_RANGE\_x\_GATEWAY}{DHCPRANGExGATEWAY}
+
+    {Avec cette variable, vous définissez la Gateway (ou passerelle) pour les hôtes
+    de la plage DHCP. Cette variable est optionnelle. Si rien n'est enregistré,
+    la variable sera simplement omise et l'adresse IP référencée dans la variable
+    \var{DHCP\_RANGE\_x\_NET} sera utilisée. Il est également possible de placer
+    'none' dans cette variable, alors aucune Gateway ne sera utilisé.}
+
+    \config{DHCP\_RANGE\_x\_MTU}{DHCP\_RANGE\_x\_MTU}{DHCPRANGExMTU}
+
+    {Avec cette variable, vous définissez le MTU du client pour la plage d'adresses.
+	Cette variable est optionnelle.}
+
+    \config{DHCP\_RANGE\_x\_OPTION\_WPAD}{DHCP\_RANGE\_x\_OPTION\_WPAD}{DHCPRANGExOPTIONWPAD}
+     
+     {Avec cette variable, vous activez ou désactivez la transmission du DHCP OPTION 252
+	 (Web Proxy Autodiscovery Protocol) pour une plage DHCP, cela permet au navigateur
+	 d'acquérir les paramètres du proxy automatiquement.
+	 (Voir \altlink{http://de.wikipedia.org/wiki/Web_Proxy_Autodiscovery_Protocol})
+	 cette variable est optionnelle.
+     }
+     
+     \config{DHCP\_RANGE\_x\_OPTION\_WPAD\_URL}{DHCP\_RANGE\_x\_OPTION\_WPAD\_URL}{DHCPRANGExOPTIONWPADURL}
+     
+     {Dans cette variable vous indiquez l'URL du fichier wpad.dat, si vous laissez le champ
+	 vide la réponse envoyée au navigateur qui recherche le fichier sera nul, ainsi il
+	 n'effectura aucune autre requête. Cette variable est optionnelle.
+     }
+
+    \configlabel{DHCP\_RANGE\_x\_OPTION\_x}{DHCPRANGExOPTIONx}
+    \config{DHCP\_RANGE\_x\_OPTION\_N}{DHCP\_RANGE\_x\_OPTION\_N}{DHCPRANGExOPTIONN}
+
+    {Avec ces variables vous pouvez définir des options spécifiques pour ce
+    domaine. Les options peuvent être trouvées dans le Manuel Dnsmasq
+    (\altlink{http://thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example}). Ces
+    options n'ont pas été contrôlées, ils peuvent causer des erreurs ou des
+    problèmes avec le serveur DNS/DHCP. Cette variable est optionnelle.}
+\end{description}
+
+
+\subsubsection{Extra plage DHCP}
+
+\begin{description}
+    \config{DHCP\_EXTRA\_RANGE\_N}{DHCP\_EXTRA\_RANGE\_N}{DHCPEXTRARANGEN}
+
+    {Avec cette variable, vous indiquez le nombre de plage d'adresse IP pour un serveur
+	DHCP qui n'est pas dans le réseau local. Pour cela vous devez installer un relais
+	DHCP qui sera sur le réseau de la gateway (ou passerelle).}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_START}{DHCP\_EXTRA\_RANGE\_x\_START}{DHCPEXTRARANGExSTART}
+
+    {Avec cette variable, vous indiquez la première adresse IP.}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_END}{DHCP\_EXTRA\_RANGE\_x\_END}{DHCPEXTRARANGExEND}
+
+    {Avec cette variable, vous indiquez la dernière adresse IP.}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_NETMASK}{DHCP\_EXTRA\_RANGE\_x\_NETMASK}{DHCPEXTRARANGExNETMASK}
+
+    {Avec cette variable, vous indiquez le masque de sous réseau.}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_DNS\_SERVERS}{DHCP\_EXTRA\_RANGE\_x\_DNS\_SERVERS}{DHCPEXTRARANGExDNSSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur DNS \\
+    (Voir \smalljump{DHCPRANGExDNSSERVERS}{\var{DHCP\_RANGE\_x\_DNS\_SERVERS}}).}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_WINS\_SERVERS}{DHCP\_EXTRA\_RANGE\_x\_WINS\_SERVERS}{DHCPEXTRARANGExWINSSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur WINS \\
+    (Voir \smalljump{DHCPRANGExWINSSERVERS}{\var{DHCP\_RANGE\_x\_WINS\_SERVERS}}).}
+    
+    \config{DHCP\_EXTRA\_RANGE\_x\_NTP\_SERVERS}{DHCP\_EXTRA\_RANGE\_x\_NTP\_SERVERS}{DHCPEXTRARANGExNTPSERVERS}
+
+    {Dans cette variable vous indiquez l'adresse du serveur NTP \\
+    (Voir \smalljump{DHCPRANGExNTPSERVERS}{\var{DHCP\_RANGE\_x\_NTP\_SERVERS}}).}
+ 
+    \config{DHCP\_EXTRA\_RANGE\_x\_GATEWAY}{DHCP\_EXTRA\_RANGE\_x\_GATEWAY}{DHCPEXTRARANGExGATEWAY}
+
+    {Avec cette variable, vous indiquez l'adresse de la Gateway par défaut pour ce domaine.}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_MTU}{DHCP\_EXTRA\_RANGE\_x\_MTU}{DHCPEXTRARANGExMTU}
+
+    {Avec cette variable, vous indiquez le MTU du client pour la plage d'adresses.
+	Cette variable est optionnelle.}
+
+    \config{DHCP\_EXTRA\_RANGE\_x\_DEVICE}{DHCP\_EXTRA\_RANGE\_x\_DEVICE}{DHCPEXTRARANGExDEVICE}
+
+    {Avec cette variable, vous indiquez l'interface réseau pour accéder à ce domaine.}
+\end{description}
+
+
+\subsubsection{Clients DHCP non autorisés}
+
+\begin{description}
+    \config{DHCP\_DENY\_MAC\_N}{DHCP\_DENY\_MAC\_N}{DHCPDENYMACN}
+
+    {Avec cette variable, vous indiquez le nombre de variable, dont l'accès au serveur DHCP
+	sera refusé par les adresses MAC des hôtes.}
+
+    \config{DHCP\_DENY\_MAC\_x}{DHCP\_DENY\_MAC\_x}{DHCPDENYMACx}
+
+    {Avec cette variable, vous indiquez les adresses MAC des hôtes, dont l'accès
+     au serveur DHCP sera refusé.}
+\end{description}
+
+
+\subsubsection{Supporte le boot par le réseau}
+
+  Dnsmasq supporte les clients, qui lancent le Bootp/PXE via le réseau pour
+  booter (ou démarrer) fli4l. Les informations nécessaires sont fournies par le
+  Dnsmasq pour configurer l'hôte sur le sous-réseau. Les variables nécessaires
+  sont DHCP\_RANGE\_\%- et HOST\_\%- Ce paragraphe décrit l'installation et le
+  fichier de boot avec (*\_PXE\_FILENAME), le serveur met à disposition les variables
+  (*\_PXE\_SERVERNAME et *\_PXE\_SERVERIP), éventuellement (*\_PXE\_OPTIONS)
+  si nécessaire pour les options. De plus, on peut activer un serveur TFTP
+  interne, si bien que le boot sera complètement supporté par Dnsmasq.
+
+\begin{description}
+    \configlabel{HOST\_x\_PXE\_FILENAME}{HOSTxPXEFILENAME}
+    \config{HOST\_x\_PXE\_FILENAME DHCP\_RANGE\_x\_PXE\_FILENAME}{DHCP\_RANGE\_x\_PXE\_FILENAME}{DHCPRANGExPXEFILENAME}
+
+    Avec cette variable, vous indiquez l'image boot à lancer. Avec PXE vous
+    indiquez ici le pxe-Bootloader à charger, par exemple pxegrub, pxelinux
+    ou un autre Bootloader qui convient.
+
+    \configlabel{HOST\_x\_PXE\_SERVERNAME}{HOSTxPXESERVERNAME}
+    \configlabel{HOST\_x\_PXE\_SERVERIP}{HOSTxPXESERVERIP}
+    \configlabel{DHCP\_RANGE\_x\_PXE\_SERVERNAME}{DHCPRANGExPXESERVERNAME}
+    \config{HOST\_x\_PXE\_SERVERNAME HOST\_x\_PXE\_SERVERIP
+    DHCP\_RANGE\_x\_PXE\_SERVERNAME
+    DHCP\_RANGE\_x\_PXE\_SERVERIP}{DHCP\_RANGE\_x\_PXE\_SERVERIP}{DHCPRANGExPXESERVERIP}
+
+    Avec ces variables, vous indiquez Le nom et l'adresse IP du serveur TFTP,
+    ces variables doivent rester vides, si le routeur est utilisé en tant que
+    serveur TFTP.
+
+    \configlabel{HOST\_x\_PXE\_OPTIONS}{HOSTxPXEOPTIONS}
+    \config{DHCP\_RANGE\_x\_PXE\_OPTIONS HOST\_x\_PXE\_OPTIONS}{DHCP\_RANGE\_x\_PXE\_OPTIONS}{DHCPRANGExPXEOPTIONS}
+
+    Certains Bootloader ont besoin d'options pour booter. Il demande par exemple,
+    avec pxegrub, l'option 150 avec le nom du fichier menu. Cette option peut
+    être indiquer dans cette variable et sera reprise alors par le fichier config.
+    Dans l'exemple pxegrub, on pourrait paramètrer comme ceci~: \\
+    \begin{example}
+      \begin{verbatim}
+    HOST_x_PXE_OPTIONS='150,"(nd)/grub-menu.lst"'
+      \end{verbatim}
+    \end{example}
+
+    S'il est nécessaire d'indiquer plusieurs options, ils seront simplement
+    séparés par un espace.
+\end{description}
+
+
+\subsection {Relais DHCP}
+
+    Le relais DHCP est utilisé, lorsqu'un autre serveur DHCP assume la
+    gestion de la plage d'adresses IP et qui ne peut pas directement être
+    atteint par les clients.
+
+\begin{description}
+\config{OPT\_DHCPRELAY}{OPT\_DHCPRELAY}{OPTDHCPRELAY}
+
+    Vous devez paramétrer cette variable sur 'yes' pour que le routeur puisse
+    faire fonctionner le relais DHCP. Il ne faut pas activer un serveur DHCP
+	en même temps.
+
+    Configuration par défaut~: \var{OPT\_\-DHCPRELAY}='no'
+
+\config{DHCPRELAY\_SERVER}{DHCPRELAY\_SERVER}{DHCPRELAYSERVER}
+
+    À ce stade, le serveur DHCP est correctement enregistré, pour que les
+    demandes puissent passer.
+
+\configlabel{DHCPRELAY\_IF\_N}{DHCPRELAYIFN}
+\configlabel{DHCPRELAY\_IF\_x}{DHCPRELAYIFx}
+\configvar{DHCPRELAY\_IF\_N DHCPRELAY\_IF\_x}
+
+    Avec la variable \var{DHCPRELAY\_\-IF\_N}, on indique le nombre de cartes
+    réseaux sur lesquelles le serveur Relay doit écouter. Dans la variable
+    \var{DHCPRELAY\_IF\_x} on indique la carte réseau correspondantes.
+
+    L'interface sur laquelle le serveur DHCP répond aux demandes, doit être
+    mentionnée dans la liste. En outre, il faut s'assurer que les routes de
+    l'ordinateur, sur lequel le serveur DHCP est installé fonctionne correctement.
+    La réponse du serveur DHCP doit provenir via l'adresse IP de l'interface
+    sur laquelle le client DHCP dépend. Prenons le scénario suivant~:
+
+    \begin{itemize}
+    \item Relais sur deux interfaces
+    \item Interface client~: eth0, 192.168.6.1
+    \item Interface serveur DHCP~:  eth1, 192.168.7.1
+    \item Serveur DHCP~:  192.168.7.2
+    \end{itemize}
+
+    Il doit y avoir pour le serveur DHCP, une route qui accéde à l'objectif,
+    ici il faut répondre à l'adresse 192.168.6.1, est-ce que le routeur sur
+    lequel le relais fonctionne par défaut sur la passerelle peux accéder
+    au serveur DHCP, si oui tout est ok. \\
+    Si ce n'est pas le cas, nous allons avoir besoin d'une extra route
+    supplémentaire. Si le serveur DHCP veut accéder au client par le
+    routeur fli4l, vous devez enregistrer dans config/base.txt~:
+    IP\_ROUTE\_x='192.168.6.0/24 192.168.7.1'
+
+    Pendant le fonctionnement, il y a parfois des messages d'avertissements
+    au sujet de certains paquets ignorés, ne tenez pas compte de ces avertissements,
+    cela a aucune incidance sur le fonctionnement normal.
+
+   Exemple~:
+
+\begin{example}
+\begin{verbatim}
+        OPT_DHCPRELAY='yes'
+        DHCPRELAY_SERVER='192.168.7.2'
+        DHCPRELAY_IF_N='2'
+        DHCPRELAY_IF_1='eth0'
+        DHCPRELAY_IF_2='eth1'
+\end{verbatim}
+\end{example}
+\end{description}
+
+\marklabel{sec:dhcp }
+{
+\subsection {Client-DHCP}
+}
+
+Le client DHCP peut être utilisé pour recevoir une adresse IP sur une ou
+plusieurs interface(s) du routeur~- cela émane le plus souvent du fournisseur
+d'accès. Actuellement cette possibilité de liaison provient principalement de
+la Suisse, des Pays-Bas et de la France, avec l'utilisation d'un modem câblé.
+On a aussi parfois besoin de cette configuration, quand le routeur est intégré
+derrière un autre routeur qui distribue les adresses IP par DHCP (par ex.
+derrière une FritzBox).
+
+Au démarrage du routeur, les interfaces spécifiées obtiennent une adresse IP.
+Ensuite, cette interface est affectée et si besoin une route par défaut est
+définie pour cette interface.
+
+\begin{description}
+\config{OPT\_DHCP\_CLIENT}{OPT\_DHCP\_CLIENT}{OPTDHCPCLIENT}
+
+Il faut paramétrer 'yes' dans cette variable, si vous voulez utiliser
+le client DHCP.
+
+      Configuration par défaut~: \var{OPT\_\-DHCP\_CLIENT}='no'
+
+\config{DHCP\_CLIENT\_TYPE}{DHCP\_CLIENT\_TYPE}{DHCPCLIENTTYPE}
+
+Le paquetage client DHCP a actuellement deux protocoles différents le dhclient
+et le dhcpcd. Vous pouvez choisir et indiquer ici le protocole que vous souhaitez.
+
+      Configuration par défaut~: \var{DHCP\_CLIENT\_TYPE}='dhcpcd'
+
+\config{DHCP\_CLIENT\_N}{DHCP\_CLIENT\_N}{DHCPCLIENTN}
+
+Vous indiquez ici, le nombre d'interfaces à configurer.
+
+\config{DHCP\_CLIENT\_x\_IF}{DHCP\_CLIENT\_x\_IF}{DHCPCLIENTxIF}
+
+Vous indiquez ici, l'interface à configurer qui est référencée par \var{IP\_NET\_x\_DEV},
+par ex. \var{DHCP\_CLIENT\_1\_IF}='\var{IP\_NET\_1\_DEV}'. Le client DHCP récupère
+le périphérique associé à la variable correspondante. Celle-ci doit être
+enregistrée dans le fichier base.txt, toujours dans le fichier base.txt à la
+place de l'adresse IP et du masque de sous réseau du périphérique vous devez
+paramétrer '\emph{dhcp}'
+
+\config{DHCP\_CLIENT\_x\_ROUTE}{DHCP\_CLIENT\_x\_ROUTE}{DHCPCLIENTxROUTE}
+
+Si vous voulez appliquée une route pour l'interface, vous pouvez l'indiquer ici.
+La variable peut être paramétrée avec les valeurs suivantes~:
+\begin{description}
+\item[none] Aucune route n'est appliquée sur l'interface.
+\item[default] Une route par défaut est appliquée sur l'interface.
+\item[imond] Imond gère la route par défaut pour cette interface.
+\end{description}
+
+      Configuration par défaut~: \var{DHCP\_CLIENT\_x\_ROUTE}='default'
+
+\config{DHCP\_CLIENT\_x\_USEPEERDNS}{DHCP\_CLIENT\_x\_USEPEERDNS}{DHCPCLIENTxUSEPEERDNS}
+
+Si cette variable est paramétrée sur 'yes' et si la route par défaut est
+configurée sur ce périphérique, alors les demandes DNS du routeur seront
+transférées au serveur DNS du fournisseur d'accés Internet, pour que cela
+fonctionne vous devez paramétrer les serveurs DNS dans le fichier base.txt.
+
+      Configuration par défaut~: \var{DHCP\_CLIENT\_x\_\-USEPEERDNS}='no'
+
+\config{DHCP\_CLIENT\_x\_HOSTNAME}{DHCP\_CLIENT\_x\_HOSTNAME}{DHCPCLIENTxHOSTNAME}
+
+Certains fournisseurs d'accés Internet demandent un nom d'hôte pour la connexion
+Internet. Ce nom doit être fournie par le FAI et doit être indiqué ici. Ce nom
+ne doit pas être identique au nom d'hôte du routeur.
+
+      Configuration par défaut~: \var{DHCP\_CLIENT\_x\_HOSTNAME}=''
+
+\config{DHCP\_CLIENT\_x\_STARTDELAY}{DHCP\_CLIENT\_x\_STARTDELAY}{DHCPCLIENTxSTARTDELAY}
+
+Cette variable est optionnelle, elle sert à retarder le départ du client DHCP.
+
+Dans certaines installations (par exemple lorsque fli4l est configuré en tant
+que client DHCP derrière un modem câblé, une FritzBox, ...) il est nécessaire
+d'attendre que le serveur DHCP soit redémarré pour le paramétrage du client,
+par exemple lors d'une coupure d'électricité.
+
+      Configuration par défaut~: \var{DHCP\_CLIENT\_x\_STARTDELAY}='0'
+
+\config{DHCP\_CLIENT\_x\_WAIT}{DHCP\_CLIENT\_x\_WAIT}{DHCPCLIENTxWAIT}
+
+Normalement, le client DHCP démarre en arrière-plan. Cela signifie que le
+processus de Boot n'est pas retardé par la création de l'adresse IPv4. si un
+paquetage installé sur le routeur à besoin rapidement d'une adresse configurée,
+il est nécessaire, que l'adresse IP soit créée avant que le processus de Boot
+ne démarre, (par exemple pour l'OPT\_IGMP). Dans ce cas, vous pouvez activer
+la variable \verb+DHCP_CLIENT_x_WAIT='yes'+, pour forcer la surveillance de
+l'adresse IP.
+
+      Configuration par défaut~: \var{DHCP\_CLIENT\_x\_WAIT}='no'
+
+\config{DHCP\_CLIENT\_DEBUG}{DHCP\_CLIENT\_DEBUG}{DHCPCLIENTDEBUG}
+
+Vous enregistrez avec cette variable des informations supplémentaires,
+lorsqu'une adresse IP est attribuée sur le client DHCP.
+
+      Configuration par défaut~: ou à délaisser \var{DHCP\_CLIENT\_DEBUG}='no'
+
+\end{description}
+
+\subsection {Serveur TFTP}
+
+    Un serveur TFTP peut être utilisé dans fli4l, pour la transmission de fichiers.
+    Cela peut servir, par exemple, à un client pour récupérer des fichiers sur son
+    portable par Internet.
+
+\begin{description}
+
+    \config{OPT\_TFTP}{OPT\_TFTP}{OPTTFTP}
+
+    Cette variable active le serveur TFTP interne du Dnsmasq.
+    Le paramètre par défaut est 'no'.
+
+    \config{TFTP\_PATH}{TFTP\_PATH}{TFTPPATH}
+
+    Vous indiquez ici le répertoire du serveur TFTP dans lequel sera placé les
+    fichiers, pour que les clients puissent les récupérer. Vous pouvez déposer
+    les fichiers dans le chemin correspondant, à l'aide d'un programme adapté
+    (par ex. scp).
+\end{description}
+
+
+\subsection {YADIFA - Serveur DNS esclave}
+
+\begin{description}
+
+    \config{OPT\_YADIFA}{OPT\_YADIFA}{OPYADIFA}
+
+    Avec cette variable vous activez YADIFA, un serveur DNS esclave.
+    Le paramètre par défaut est 'no'.
+
+    \config{OPT\_YADIFA\_USE\_DNSMASQ\_ZONE\_DELEGATION}{OPT\_YADIFA\_USE\_DNSMASQ\_ZONE\_DELEGATION}{OPTYADIFAUSEDNSMASQZONEDELEGATION}
+
+    Si cette variable est activé, yadifa produira un script de démarrage qui
+    génèrera automatiquement les entrées de toutes les zones esclaves
+    correspondant au délégation de zone pour Dnsmasq. Ainsi, les zones d'esclaves
+    sont directement interrogés par le Dnsmasq, en principe il ne sera pas
+    nécessaire de configurer plusieurs fois YADIFA\_LISTEN\_x. Les réponces des
+    requêtes de Dnsmasq sont transmises à yadifa qui écoute uniquement
+    sur le port localhost:35353.
+
+    \config{YADIFA\_LISTEN\_N}{YADIFA\_LISTEN\_N}{YADIFALISTENN}
+
+    Si vous avez activez \var{OPT\_YADIFA}='yes', avec l'aide de la variable
+    \var{YADIFA\_LISTEN\_N} vous indiquez le nombre d'adresses, si vous indiquez
+    \var{YADIFA\_LISTEN\_1} vous devez spécifier une adresse IP du réseau local,
+    sur laquelle YADIFA devra accepter les requêtes DNS. Un numéro de port est
+    facultatif, si vous indiquez 192.168.1.1:5353 le serveur DNS esclave YADIFA
+    écoutera les requêtes DNS sur le port 5353. Assurez-vous que le Dnsmasq
+    n'écoute pas sur toutes les interfaces (voir \var{DNS\_BIND\_INTERFACES}).
+    A ce stade, seuls les adresses IP des interfaces existantes (Ethernet, Wlan, ...)
+    peuvent être utilisé, sinon il y aura un message d'avertissement au démarrage
+    du routeur. Il est également possible d'utiliser les alias, par ex. \verb+IP_NET_1_IPADDR+
+
+    \config{YADIFA\_ALLOW\_QUERY\_N}{YADIFA\_ALLOW\_QUERY\_N}{YADIFAALLOWQUERYN}
+    \config{YADIFA\_ALLOW\_QUERY\_x}{YADIFA\_ALLOW\_QUERY\_x}{YADIFAALLOWQUERYX}
+
+    Dans ces variables vous indiquer le nombre et les adresses IP ou les
+    réseaux pour que YADIFA puis avoir une autorisation d'accès. YADIFA utilise
+    les informations du filtrage de paquets de fli4l qui doit être configuré en
+    conséquence, il faut aussi paramétrer les fichiers de configuration de YADIFA.
+    En ajoutant le préfixe '!' à l'adresse, l'accès à l'adresse IP ou au réseau
+    sera rejeté par YADIFA.
+
+    Le filtrage de paquets de fli4l est configuré pour YADIFA de sorte que tous
+    les réseaux autosisés soient ajoutés dans chaque zone pour l'ensemble de la
+    liste ipset (yadifa-allow-query). Une différenciation entre les zones pour
+    le filtrage de paquets n'est pas possible. De plus toutes les adresses IP
+    et de réseaux de la configuration globale dont l'accès est refusé seront
+    ajoutées à cette liste. Il n'est donc pas possible d'étendre l'accès de
+    chaque zone ultérieurement.
+
+    \config{YADIFA\_SLAVE\_ZONE\_N}{YADIFA\_SLAVE\_ZONE\_N}{YADIFASLAVEZONEN}
+
+    Dans cette variable vous indiquez le nombre de zone DNS pour YADIFA esclave.
+
+    \config{YADIFA\_SLAVE\_ZONE\_x}{YADIFA\_SLAVE\_ZONE\_x}{YADIFASLAVEZONEx}
+
+    Dans cette variable vous indiquez le nom de la zone DNS esclave.
+
+    \config{OPT\_YADIFA\_SLAVE\_ZONE\_USE\_DNSMASQ\_ZONE\_DELEGATION}{OPT\_YADIFA\_SLAVE\_ZONE\_USE\_DNSMASQ\_ZONE\_DELEGATION}{OPTYADIFASLAVEZONEUSEDNSMASQZONEDELEGATION}
+
+    Dans cette variable vous activez (='yes') ou déactivez (='no')
+    la délégation de zone pour la zone esclave du Dnsmasq.
+
+    \config{YADIFA\_SLAVE\_ZONE\_x\_MASTER}{YADIFA\_SLAVE\_ZONE\_x\_MASTER}{YADIFASLAVEZONExMASTER}
+
+    Dans cette variable vous indiquez l'adresse IP avec le numéro de port
+    facultatif du serveur DNS maître.
+
+    \config{YADIFA\_SLAVE\_ZONE\_x\_ALLOW\_QUERY\_N}{YADIFA\_SLAVE\_ZONE\_x\_ALLOW\_QUERY\_N}{YADIFASLAVEZONExALLOWQUERYN}
+    \config{YADIFA\_SLAVE\_ZONE\_x\_ALLOW\_QUERY\_x}{YADIFA\_SLAVE\_ZONE\_x\_ALLOW\_QUERY\_x}{YADIFASLAVEZONExALLOWQUERYx}
+
+    Dans ces variables vous indiquez le nombre et les adresses IP ou
+    les réseaux, pour que YADIFA puis avoir une autorisation d'accès. En outre
+    l'accès peut être limité à des zones DNS spécifiques. YADIFA utilise ces
+    informations pour créer un fichier de configuration YADIFA.
+
+    En ajoutant le préfixe '!' à l'adresse, l'accès à l'adresse IP ou du réseau
+    sera rejeté par YADIFA.
+
+\end{description}

@@ -1,0 +1,349 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/rc400.yadifa - start yadifa slave dns
+#
+# Creation:     2013-06-26 babel
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_YADIFA" = "yes" ]
+then
+    begin_script YADIFA "starting yadifa slave dns ..."
+
+    # create ipset to add all listen ip to this set
+    ipset create -q yadifa-listen hash:ip,port
+    # create ipset for all networks that are allowed to query yadifa
+    ipset create -q yadifa-allow-query hash:net
+    mkdir -p /var/log/yadifa
+    chown dns /var/log/yadifa
+
+    {
+        echo "<main>"
+        echo "    # Detach from the console"
+        echo "    daemon on"
+        echo "    # Jail the application"
+        echo "    chroot off"
+        echo "    # The path of the log files"
+        echo "    logpath \"/var/log/yadifa\""
+        echo "    # The path of the pid file"
+        echo "    pidfile \"/var/run/yadifad.pid\""
+        echo "    # The path of the zone files"
+        echo "    datapath \"/var/zones\""
+        echo "    # The path of the DNSSEC keys"
+        echo "    keyspath \"/var/zones/keys\""
+        echo "    # The path of the transfer and journaling files (AXFR & IXFR)"
+        echo "    xfrpath \"/var/zones/xfr\""
+        echo "    # The version returned by a query to version.yadifa. CH TXT"
+        echo "    version \"2.0.4\""
+        echo "    # Enable EDNS0 support (?)"
+        echo "    #edns0 on"
+        echo "    # Set the maximum UDP packet size. Packetsize annot be less than 512 or more than 65535. A typical choice is 4096."
+        echo "    edns0-max-size 4096"
+        echo "    # The maximum number of parallel TCP queries."
+        echo "    max-tcp-queries 100"
+        echo "    # The user id to use"
+        echo "    uid dns"
+        echo "    # The group id to use"
+        echo "    gid dns"
+        echo "    # The DNS port - any DNS query will use that port unless a specific value is used"
+        echo "    port 53"
+        echo "    # The interfaces to listen to."
+        echo "    # listen        0.0.0.0"
+        # check if there's any use of dnsmasq as a frontend dns server
+        for idx in `seq 1 $YADIFA_SLAVE_ZONE_N`
+        do
+            eval zd='$YADIFA_SLAVE_ZONE_'$idx'_USE_DNSMASQ_ZONE_DELEGATION'
+            if [ "$zd" = "yes" ]
+            then
+                use_dnsmasq_zone_delegation="yes"
+            fi
+        done
+        : ${YADIFA_USE_DNSMASQ_ZONE_DELEGATION:=yes}
+        if [ "$YADIFA_USE_DNSMASQ_ZONE_DELEGATION" = "yes" ]
+        then
+            use_dnsmasq_zone_delegation="yes"
+        fi
+        listen=
+        if [ "$use_dnsmasq_zone_delegation" = "yes" ]
+        then
+            listen="127.0.0.1 port 35353"
+            if [ $YADIFA_LISTEN_N -gt 0 ]
+            then
+                listen="$listen,"
+            fi
+            ipset add -q yadifa-listen 127.0.0.1,tcp:35353
+            ipset add -q yadifa-listen 127.0.0.1,udp:35353
+        fi
+        for idx in `seq 1 $YADIFA_LISTEN_N`
+        do
+            eval addr='$YADIFA_LISTEN_'$idx
+            # split ip/net and port
+            set `echo $addr | sed 's/:/ /'`
+            addr=$1
+            port=$2
+            # translate IP_NET_x_IP_ADDR to real ip address
+            if translate_ip_net $addr YADIFA_LISTEN_$idx
+            then
+                if [ -z "$port" ]
+                then
+                    listen="$listen $res"
+		    # set port to 53, needed for ipset filter later
+		    port=53
+                else
+                    listen="$listen $res port $port"
+                fi
+                # add a "," to the end of the list if there are more ip addresses to listen
+                if [ $idx -lt $YADIFA_LISTEN_N ]
+                then
+                    listen="$listen,"
+                fi
+		ipset add -q yadifa-listen $res,tcp:$port
+		ipset add -q yadifa-listen $res,udp:$port
+            fi
+        done
+        echo "    listen $listen"
+        echo "    # Enable the collection and logging of statistics"
+        echo "    statistics on"
+        echo "    # Drop queries with erroneous content"
+        echo "    answer-formerr-packets off"
+        echo "    # Maximum number of records in an AXFR packet. Set to 1 for compatibility"
+        echo "    # with very old name servers"
+        echo "    axfr-maxrecordbypacket 0"
+        echo "    # Global Access Control rules"
+        echo "    # Rules can be defined on network ranges, TSIG signatures, and ACL rules"
+        echo "    # simple queries:"
+        echo "    # allow-query !192.0.2.251,any"
+        if [ "$YADIFA_ALLOW_QUERY_N" -gt 0 ]
+        then
+            for idx in `seq 1 $YADIFA_ALLOW_QUERY_N`
+            do
+                eval addr='$YADIFA_ALLOW_QUERY_'$idx
+                # split ip/net and the ! prefix
+                get_negation $addr
+                # we need the ! prefix without a space afterwards
+                neg_opt=`echo $neg_opt | sed -e 's/^! /!/g'`
+                # translate IP_NET_x_IP_ADDR to real ip address
+                if translate_ip_net $param YADIFA_ALLOW_QUERY_$idx
+                then
+                    allow_query="$allow_query $neg_opt$res"
+                    # add a "," to the end of the list if there are more ip addresses to listen
+                    if [ $idx -lt $YADIFA_ALLOW_QUERY_N ]
+                    then
+                        allow_query="$allow_query,"
+                    fi
+                fi
+		if [ -z "$neg_opt" ]
+ 		then
+		    ipset add -q yadifa-allow-query $res
+		else
+		    ipset add -q yadifa-allow-query $res nomatch
+		fi
+            done
+	else
+	    ipset add -q yadifa-allow-query 0.0.0.0/0
+	    allow_query="any"
+	fi
+        echo "    allow-query $allow_query"
+        echo "    # dynamic update of a zone"
+        echo "    # allow-update none"
+        echo "    # dynamic update of a slave (forwarded to the master)"
+        echo "    # allow-update-forwarding none"
+        echo "    # allow-update-forwarding admins,key abroad-admin-key"
+        echo "    # transfer of a zone (AXFR or IXFR)"
+        echo "    # allow-transfer any"
+        echo "    # allow-transfer transferer"
+        echo "    # notify of a change in the master"
+        echo "    # allow-notify any"
+        echo "    # allow-notify master,admins"
+        echo "</main>"
+        echo "# Admin-key key definition (the name is arbitrary)"
+        echo "#<key>"
+        echo "#    name        abroad-admin-key"
+        echo "#    algorithm   hmac-md5"
+        echo "#    secret      WorthlessKeyForExample=="
+        echo "#</key>"
+        echo "# Master-slave key definition"
+        echo "#<key>"
+        echo "#    name        master-slave"
+        echo "#    algorithm   hmac-md5"
+        echo "#    secret      MasterAndSlavesTSIGKey=="
+        echo "#</key>"
+        echo "# Access Control List definitions"
+        echo "#<acl>"
+        echo "#    transferer  key master-slave"
+        echo "#    admins      192.0.2.0/24, 2001:db8::74"
+        echo "#    master      192.0.2.53"
+        echo "#</acl>"
+        echo "# Master domain zone config"
+        echo "#<zone>"
+        echo "#    # This server is master for that zone (mandatory)"
+        echo "#    type        master"
+        echo "#    # The domain name (mandatory)"
+        echo "#    domain      mydomain.eu"
+        echo "#    # The zone file, relative to 'datapath'  (mandatory for a master)"
+        echo "#    file        master/mydomain.eu"
+        echo "#    # List of servers also notified of a change (beside the ones in the zone file)"
+        echo "#    also-notify 192.0.2.84, 192.0.2.149"
+        echo "#</zone>"
+        echo "# Slave domain zone config"
+        echo "#<zone>"
+        echo "#    # This server is slave for that zone (mandatory)"
+        echo "#    type slave"
+        echo "#    # The domain name (mandatory)"
+        echo "#    domain      myotherdomain.eu"
+        echo "#    # The address of the master (mandatory for a slave, forbidden for a master)"
+        echo "#    masters     191.0.2.53 port 4053 key master-slave"
+        echo "#    # The zone file, relative to 'datapath'."
+        echo "#    file        slaves/myotherdomain.eu"
+        echo "#</zone>"
+        for idx in `seq 1 $YADIFA_SLAVE_ZONE_N`
+        do
+	    allow_query=
+	    echo "<zone>"
+	    echo "    type slave"
+            eval domain='$YADIFA_SLAVE_ZONE_'$idx
+            echo "    domain $domain"
+
+            eval zd='$YADIFA_SLAVE_ZONE_'$idx'_USE_DNSMASQ_ZONE_DELEGATION'
+            : ${zd:=$use_dnsmasq_zone_delegation}
+            if [ "$zd" = "yes" ]
+            then
+                echo "server=/$domain/127.0.0.1#35353" >> /etc/dnsmasq.d/dns_delegate_yadifa.conf
+                echo "rebind-domain-ok=$domain" >> /etc/dnsmasq.d/dns_delegate_yadifa.conf
+            fi
+
+            eval masterip='$YADIFA_SLAVE_ZONE_'$idx'_MASTER'
+            # split ip/net and port
+            set `echo $masterip | sed 's/:/ /'`
+            masterip=$1
+            port=$2
+            # translate IP_NET_x_IP_ADDR to real ip address
+            if translate_ip_net $masterip YADIFA_SLAVE_ZONE_$idx_MASTER
+            then
+                if [ -z "$port" ]
+                then
+                    echo "    masters $res"
+                else
+                    echo "    masters $res port $port"
+                fi
+            fi
+	    echo "    file slaves/$domain"
+	    eval nszaq='$YADIFA_SLAVE_ZONE_'$idx'_ALLOW_QUERY_N'
+            if [ 0$nszaq -gt 0 ]
+            then
+                for zdx in `seq 1 $nszaq`
+                do
+                    eval addr='$YADIFA_SLAVE_ZONE_'${idx}'_ALLOW_QUERY_'$zdx
+                    # split ip/net and the ! prefix
+                    get_negation $addr
+                    # we need the ! prefix without a space afterwards
+                    neg_opt=`echo $neg_opt | sed -e 's/^! /!/g'`
+                    # translate IP_NET_x_IP_ADDR to real ip address
+		    eval var='$YADIFA_SLAVE_ZONE_'${idx}'_ALLOW_QUERY_'$zdx
+                    if translate_ip_net $param $var
+                    then
+                        allow_query="$allow_query $neg_opt$res"
+                        # add a "," to the end of the list if there are more ip addresses to listen
+                        if [ $zdx -lt $nszaq ]
+                        then
+                            allow_query="$allow_query,"
+                        fi
+                    fi
+                    # since this can override global allow/not allow settings this is not that easy
+                    # I think we need cant use simple iptables rules since we need to know which
+		    # zone a query will go to. So for now we simple ignore these rules.
+   		    #if [ -z "$neg_opt" ]
+ 		    #then
+		    #    ipset add -q yadifa-allow-query $res
+		    #else
+		    #    ipset add -q yadifa-allow-query-not $res
+		    #fi
+                done
+	        echo "    allow_query $allow_query"
+            fi
+	    echo "</zone>"
+	    #mkdir -p /var/zones/slaves/$domain
+        done
+        echo "# Channels"
+        echo "# Logging output-channel configurations:"
+        echo "# The \"name\" is arbitrary and is used in the <loggers>."
+        echo "# The \"stream-name\" defines the output type (ie: a file name or syslog)."
+        echo "# The \"arguments\" are specific to the output type (ie: unix file access"
+        echo "# rights or syslog options and facilities)."
+        echo "# Example: YADIFA running as daemon channel definition."
+        echo "#<channels>"
+        echo "#   name        stream-name     arguments"
+        echo "#    database    database.log    0644"
+        echo "#    dnssec      dnssec.log      0644"
+        echo "#    server      server.log      0644"
+        echo "#    statistics  statistics.log  0644"
+        echo "#    system      system.log      0644"
+        echo "#    queries     queries.log     0644"
+        echo "#    zone        zone.log        0644"
+        echo "#    all         all.log         0644"
+        echo "#    syslog      syslog          user"
+        echo "#</channels>"
+        echo "# Example: YADIFA running in debug mode."
+        echo "# This example shows the \"stderr\" and \"stdout\" which can also be used"
+        echo "# in the first example, but will output to the console."
+        echo "<channels>"
+        echo "#   name        stream-name     arguments"
+        echo "    syslog      syslog          user"
+        echo "    stderr      STDERR"
+        echo "    stdout      STDOUT"
+        echo "</channels>"
+        echo "# Loggers"
+        echo "# Logging input configurations:"
+        echo "# The \"bundle\" name is predifined: database, dnssec, server, statistics, system, zone."
+        echo "# The \"debuglevel\" uses the same names as syslog or \"*\" or \"all\" to  filter the input."
+        echo "# The "channels" are a comma-separated list of channels."
+        echo "# Example without syslog"
+        echo "#<loggers>"
+        echo "#   bundle          debuglevel                          channels"
+        echo "#    database        ALL                                 database,all"
+        echo "#    dnssec          warning                             dnssec,all"
+        echo "#    server          INFO,WARNING,ERR,CRIT,ALERT,EMERG   server,all"
+        echo "#    statistics      *                                   statistics"
+        echo "#    system          *                                   system,all"
+        echo "#    queries         *                                   queries"
+        echo "#    zone            *                                   zone,all"
+        echo "#</loggers>"
+        echo "# Example with syslog"
+        echo "<loggers>"
+        echo "#   bundle          debuglevel                          channels"
+        echo "    database        INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "    dnssec          INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "    server          INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "    stats           INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "    system          INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "    queries         INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "    zone            INFO,WARNING,ERR,CRIT,ALERT,EMERG   syslog"
+        echo "</loggers>"
+    }>/etc/yadifad.conf
+
+    # to match ipset lists you need to specify some dst/src combinations that are not that obvious (at least to mee).
+    # to match the ipset list yadifa-listen which contains an ip/port combination we need to specify dst,dst that
+    # matches the dst ip (first dst) and the dst port (the second dst). the yadifa-allow-query list uses only
+    # one flag (src) since we match the src network (or a single host). and you can combine both list in one ip rule
+    # if you use two matches. so the following rule matches all ip interfaces yadifa listen on and each allow network
+    # that should query our dns server. great magic :)
+    iptables -I INPUT -m set --match-set yadifa-listen dst,dst -m set --match-set yadifa-allow-query src -j ACCEPT
+
+    mkdir -p /var/zones/slaves
+    mkdir -p /var/zones/keys
+    mkdir -p /var/zones/xfr
+    chown -R dns.dns /var/zones
+    chmod 700 -R /var/zones
+    yadifad
+
+    if [ "$use_dnsmasq_zone_delegation" = "yes" ]
+    then
+        chown dns:dns /etc/dnsmasq.d/dns_delegate_yadifa.conf
+        chmod 600 /etc/dnsmasq.d/dns_delegate_yadifa.conf
+        killall dnsmasq
+        sleep 1
+        dnsmasq
+    fi
+
+    end_script
+fi

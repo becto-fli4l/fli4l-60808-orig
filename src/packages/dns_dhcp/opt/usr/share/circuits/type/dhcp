@@ -1,0 +1,55 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# /usr/share/circuits/type/dhcp - DHCP circuit(s)
+#
+# Last Update:  $Id$
+#----------------------------------------------------------------------------
+
+# $1 = circuit information file
+# $2 = variable receiving an error message (if any)
+dhcp_circuit_add()
+{
+    circ_dev=$circ_dhcp_dev
+
+    local circ_dhcp_startdelay=${circ_dhcp_startdelay:-0}
+    local circ_dhcp_accept_csr=${circ_dhcp_accept_csr:-yes}
+
+    # keep this in sync with the defaults in dhcp_client.ext!
+    case $circ_protocols in
+    ipv4) local circ_dhcp_daemon=${circ_dhcp_daemon:-dhcpcd} ;;
+    ipv6) local circ_dhcp_daemon=${circ_dhcp_daemon:-dibbler} ;;
+    esac
+
+    circuit_allocate_device dhcp circ_alias
+
+    cat >> $1 <<EOF
+circ_dhcp_dev=$circ_dhcp_dev
+circ_dhcp_daemon=$circ_dhcp_daemon
+circ_dhcp_hostname=$circ_dhcp_hostname
+circ_dhcp_startdelay=$circ_dhcp_startdelay
+circ_dhcp_accept_csr=$circ_dhcp_accept_csr
+circ_dhcp_prefix_length=$circ_dhcp_prefix_length
+EOF
+
+    return 0
+}
+
+# $1 = circuit identifier
+# $2 = daemon's exit code
+dhcp_circuit_cleanup()
+{
+    local circ_id=$1 i=1 prefix circ_dev
+    local dibbler_dir=/var/lib/dibbler/$circ_id
+    local config_file=$dibbler_dir/client.conf \
+        notify_script=$dibbler_dir/dibbler-notify-${circ_id}.sh
+
+    for prefix in $(circuit_get_prefixes $circ_id ipv6 | cut -d' ' -f 1)
+    do
+        export SRV_PREFIX${i}=${prefix%/*}
+        export SRV_PREFIX${i}LEN=${prefix##*/}
+        i=$((i+1))
+    done
+
+    circuit_read_field $circ_id circ_dev
+    IFACE=$circ_dev CIRCD_SYNC=yes $notify_script delete
+}

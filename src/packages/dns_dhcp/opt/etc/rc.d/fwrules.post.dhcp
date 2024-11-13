@@ -1,0 +1,23 @@
+#!/bin/sh
+#------------------------------------------------------------------------------
+# /etc/rc.d/fwrules.post.dhcp
+#
+# Creation:     04.01.2003  od
+# Last Update:  $Id$
+#------------------------------------------------------------------------------
+
+if [ "$OPT_DHCP" = yes ]
+then
+    # DHCPDISCOVER is done with ip adress 0.0.0.0 so we have to open
+    # INPUT table for these packages
+    for idx in `seq 1 $IP_NET_N`
+    do
+        eval range='$DHCP_RANGE_'$idx
+        if [ -n "$range" ]
+        then
+            eval dev='$IP_NET_'$idx'_DEV'
+            fw_append_rule filter INPUT "prot:udp if:$dev:any any:68 any:67 ACCEPT" "OPT_DHCP"
+        fi
+    done
+fi
+
