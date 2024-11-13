@@ -1,0 +1,531 @@
+% Synchronized to r37690
+\marklabel{sec:ow}
+
+\setcounter{secnumdepth}{6}
+
+\newcommand{\IsqC}{$\textrm{I}^{\textrm{2}}\textrm{C}$}
+\newcommand{\isqc}{$\textrm{i}^{\textrm{2}}\textrm{c}$}
+
+\section{Introduction}
+
+This package installs OWFS (see chapter \ref{cap:OW_OWFS}) and provides read/write
+access to a 1--wire bus plugged to fli4l. A 1--wire busmaster is connected to a serial
+interface\footnote{DS9097U COM Port adadpter.} or to a USB port\footnote{DS9490R USB Bridge
+also in conjunction with DS1402D-DR8 (Blue Dot™) for iButton. All DS9490 adapters based on
+DS2490 USB--1--wire-chips.} of the PC.
+In addition, the OPT also supports \IsqC{} adapters and binding to
+an OWServer. Find more details in the man pages following (chapter:
+\ref{cap:OW_MANPAGES}). The 1--wire-side of the adapters is connected to the 1--wire bus.
+
+\section{Hardware}
+\subsection{The 1--Wire Standard}
+The 1--Wire ® resp. One-Wire bus from Maxim (Maxim/Dallas) describes a serial interface
+that uses just one data wire and is used both as a power supply and as a transmit and
+receive line. However, a \glqq{}return\grqq{} (GND) is required. Every 1--Wire chip has
+a unique ID number by which it can be addressed. So several 1--Wire devices can be
+connected on a single bus.
+
+\subsection{The 1--Wire-Components}
+Maxim offers a variety of 1--Wire-Components: Serial-, USB-,
+\IsqC-adapters, thermometers, switches(up to 8 channels), EEPROMs, Clocks, A/D-converters,
+digital potentiometer. You really get everything you need for home automation.
+An overview of the major components can be found in the appendix
+under \ref{cap:OW_FAMILYCODE}.
+You may also connect iButton ® parts (NV-RAM, EPROM, EEPROM, Temperature,
+Humidity, RTC, SHA, Logger).
+
+\subsection{The 1--Wire-Bus}
+The 1--wire-bus in principle consists of two twisted lines, in accordance with
+corresponding topologies longer distances up to 150 m should not be a problem.
+Cat5 twisted pair Ethernet cable is often used for the wiring.
+For the assignment of the individual cores, different approaches exist. Maxim
+uses 6-pin modular jacks and plugs (RJ-11) and has created its own standard,
+but this does not fit the 8-pin RJ-45 plug stuff. Further standards are
+described in the appendix (chapter \ref{cap:OW_PINADERBELEGUNG}).
+You will also find informations on the topology of the bus at Maxim, their
+website offers everything you need to deal with 1--wire.
+
+\marklabel{cap:OW_OWFS}
+{
+\section{OWFS}
+}
+OWFS  stands for \glqq{}One Wire File System\grqq{}. This is a software developed by Paul H.
+Alfille licensed under the GPL. Based on a 1--Wire-protocol system libraries (OWLib) depict
+the 1--Wire-Bus OWFS as a file system. In addition, the program offers additional implementations,
+as owserver, owshell, owhttpd, owftpd, owtap and language modules for capi,
+perl, tcl, php, which were not included in the present adaption for fli4l.
+Details on OWFS and a lot of interesting things for 1--Wire may be found
+at: \altlink{ http://owfs.org/} and \altlink{http://sourceforge.net/projects/owfs/}.
+
+\section{Fuse}
+Fuse stands for \glqq{}filesystem in userspace\grqq{}. Fuse enables the implementation of a
+fully functional filesystem in userspace.
+With the installation of \var{OPT\_OW} the Fuse kernel module is automatically loaded at startup.
+Everything else about Fuse can be found at:
+\altlink{http://fuse.sourceforge.net/} and \altlink{http://sourceforge.net/projects/fuse/.}
+
+\section{libusb}
+libusb is a free, GPL-licensed USB library which is required to access
+the 1--wire bus with a USB adapter.
+Everything else concerning libusb can be found at: \altlink{http://libusb.sourceforge.net/}
+
+\section{License}
+This program is licensed under the GNU General Public License, Version 2, June 1991
+and can be freely used, reproduced and altered under the conditions indicated.
+The text of the GNU General Public License can be found at:
+\altlink{http://www.gnu.org/licenses/gpl.txt}
+
+\section{Warranty And Liability Disclaimer}
+This program was devloped with the will and in the hope
+that it will be useful. Nevertheless, there is no warranty of any kind --
+Warranty of merchantability or fitness for a particular purpose are rejected.
+For details, refer to the GNU General Public License (GPL).
+There is no liability for loss of data, damage to hardware or software or any other damage.
+
+\section{System Requirements}
+ based on the size of \var{OPT\_OW} a harddisk resp. a flash card is needed.
+For details see \var{OPT\_HD}.
+
+For display in a browser the webserver from fli4l package \glqq{}httpd\grqq{} is
+needed. For further details see chapter \ref{cap:OW_BROWSER}.
+
+\textbf{Please note:}
+
+The USB control via the W1 kernel modules does not yet work (according to Paul Alfille,
+the maintainer of OWFS) and has not been tested in Opt.
+(The W1 modules for version V2.8 p16 and p19 were tested once, but since
+connection and evaluation are completely different from the standard version,
+were not examined further for correct funtion)
+
+To use the USB adapter the details of the system must be present in "udev" in "rules.d".
+Only if these settings are correct, the connection to OWSERVER and OWFS will work.
+
+The use of the two programs \emph{owshell} and \emph{owhttpd} did not work
+properly on some hardware environments. The authors try to find a solution to
+the problem in collaboration with Paul Alfille. If errors occur, you may try posting
+on the fli4l newsgroup with a detailed description of your problem.
+
+\section{Installation}
+After unpacking the tar.gz archive into the fli4l directory adapt the file
+config/ow.txt to your needs. To use the web interface activate the httpd
+webserver via \var{OPT\_HTTPD}='yes' (see chapter \ref{cap:OW_SONSTIGEVARIABLEN}).
+If RRDTool is used for recording system readings, the configuration of the
+text fileconfig/rrdtool.txt is needed too (see chapter \ref{cap:OW_RRDTOOL}).
+
+\section{Configuration}
+Example configuration without comments, further explanations below:
+
+\begin{example}
+\begin{verbatim}
+    OPT_OW='yes'                      # install OPT_OW (yes/no)
+    OW_USER_SCRIPT=''                 # e.g. 'usr/local/bin/ow-user-script.sh'
+
+    OW_OWFS='yes'                     # start owfs (yes/no)
+    OW_OWFS_DEV='usb'                 # usb*, ttyS*, ip:port, etc.
+    OW_OWFS_GROUP_N='4'                           # number of groups
+    OW_OWFS_GROUP_1_NAME='1--Wire at USB'         # name of first group
+    OW_OWFS_GROUP_1_PORT_N='2'                    # number of ports of device
+    OW_OWFS_GROUP_1_PORT_1_ID='81.70D42A000000/ID'      # ID of device
+    OW_OWFS_GROUP_1_PORT_1_ALIAS='ID'                   # alias of ID
+    OW_OWFS_GROUP_1_PORT_2_ID='81.70D42A000000/Admin/*' # admin-access
+    OW_OWFS_GROUP_1_PORT_2_ALIAS='Admin/'               # alias of admin
+
+    OW_OWFS_GROUP_2_NAME='Heating'
+    OW_OWFS_GROUP_2_PORT_N='7'
+    OW_OWFS_GROUP_2_PORT_1_ID='3A.F6E401000000/PA'
+    OW_OWFS_GROUP_2_PORT_1_ALIAS='1. circulation pump'
+    OW_OWFS_GROUP_2_PORT_2_ID='3A.F6E401000000/PB'
+    OW_OWFS_GROUP_2_PORT_2_ALIAS='2. charging pump'
+    OW_OWFS_GROUP_2_PORT_3_ID='10.651BA9010800/temp'
+    OW_OWFS_GROUP_2_PORT_3_ALIAS='4. Return temperature'
+    OW_OWFS_GROUP_2_PORT_4_ID='10.DEF0A8010800/temp'
+    OW_OWFS_GROUP_2_PORT_4_ALIAS='3. flow temperature'
+    OW_OWFS_GROUP_2_PORT_5_ID='3A.F6E401000000/Admin/*'
+    OW_OWFS_GROUP_2_PORT_5_ALIAS='Admin/Switch-'
+    OW_OWFS_GROUP_2_PORT_6_ID='10.DEF0A8010800/Admin/*'
+    OW_OWFS_GROUP_2_PORT_6_ALIAS='Admin/VLT-'
+    OW_OWFS_GROUP_2_PORT_7_ID='10.651BA9010800/Admin/*'
+    OW_OWFS_GROUP_2_PORT_7_ALIAS='Admin/RLT-'
+
+    OW_OWFS_GROUP_3_NAME='Solar devices'
+    OW_OWFS_GROUP_3_PORT_N='3'
+    OW_OWFS_GROUP_3_PORT_1_ID='1C.7F6CF7040000/P0'
+    OW_OWFS_GROUP_3_PORT_1_ALIAS='1. charging pump'
+    OW_OWFS_GROUP_3_PORT_2_ID='1C.7F6CF7040000/P1'
+    OW_OWFS_GROUP_3_PORT_2_ALIAS='2. valve'
+    OW_OWFS_GROUP_3_PORT_3_ID='1C.7F6CF7040000/Admin/*'
+    OW_OWFS_GROUP_3_PORT_3_ALIAS='Admin/Switch-'
+
+    OW_OWSHELL='yes'
+    OW_OWSHELL_RUN='yes'
+    OW_OWSHELL_DEV='usb'
+    OW_OWSHELL_PORT='127.0.0.1:4304'
+
+    OW_OWHTTPD='yes'
+    OW_OWHTTPD_RUN='yes'
+    OW_OWHTTPD_DEV='127.0.0.1:4304'
+    OW_OWHTTPD_PORT='8080'
+\end{verbatim}
+\end{example}
+
+The following variables have to be to configured in the file config/ow.txt:
+
+\begin{description}
+\config{OPT\_OW}{OPT\_OW}{OPTOW}
+With the default setting OPT\_OW='no', the package is not installed.
+Using \var{OPT\_OW}='yes' activates the package.
+
+\config{OW\_USER\_SCRIPT}{OW\_USER\_SCRIPT}{OWUSERSCRIPT}
+This variable defines the path and file name of an optional background control,
+with which, for example, the heating system can be controlled.
+Further details can be found in chapter \ref{cap:OW_OWUSERSCRIPT}.
+
+\config{OW\_OWFS}{OW\_OWFS}{OWOWFS}
+OWFS provides easy access to the 1--wire bus via the fli4l web interface. By
+specifying \var{OW\_OWFS}='yes' a file system in the default path '/var/run/ow'
+is generated using fuse. The 1--wire bus is depicted there. The directories created
+in the file system are sorted by Identnumbers (see Appendix \ref{cap:OW_FAMILYCODE})
+of the chips. With the family code of the components a corresponding sortorder
+can easily be created.
+
+\config{OW\_OWFS\_DEV}{OW\_OWFS\_DEV}{OWOWFSDEV}
+The variable \var{OW\_OWFS\_DEV} defines the PC interface the
+1--wire adapter is connected to.
+
+\begin{tabular}{|l|l|p{0.5\textwidth}|}
+\hline
+\textbf{PC interface} & \textbf{Variable set to} & \textbf{Example} \\
+\hline
+serial           & ttyS*          & ttyS0 = COM1, ttyS1 = COM2 \\
+\hline
+\multirow{3}{*}{}{USB}
+                 & ttyUSB*        & ttyUSB1 = first USB adapter \\
+\cline{2-3}
+          \latex{&} usb           & usb = first USB adapter \\
+\cline{2-3}
+          \latex{&} usb[2-9]      & usb3 = third USB adapter \\
+\hline
+\IsqC{}          & \isqc{}-[0-9]  & \isqc{}-0 = first \IsqC{} port \\
+\hline
+\multirow{2}{*}{}{Simulation}
+                 & fake           & \multirow{2}{*}{}{For using '\var{FAKE}'
+                                    and '\var{TESTER}' modes set the
+                                    variables \var{OW\_OWFS\_FAKE} or
+                                    \var{OW\_OWFS\_TESTER} to valid family
+                                    codes, see chapter
+                                    \ref{cap:OW_SONSTIGEVARIABLEN}} \\
+\cline{2-2}
+     \latex{&} tester \latex{&} \\
+\hline
+\end{tabular}
+
+\config{OW\_OWFS\_GROUP\_N}{OW\_OWFS\_GROUP\_N}{OWOWFSGROUPN}
+The variable \var{OW\_OWFS\_GROUP\_N} specifies the number of groups
+displayed in the browser where In- and Outputs belonging together i.e.
+for driving a solar device and the corresponding names for
+OW\_OWFS\_GROUP\_NAME are defined.
+
+\configlabel{OW\_OWFS\_GROUP\_x\_PORT\_N}{OWOWFSGROUPxPORTN}
+\configlabel{OW\_OWFS\_GROUP\_x\_PORT\_x\_ALIAS}{OWOFSGROUPxPORTxALIAS}
+\config{OW\_OWFS\_GROUP\_x\_PORT\_N
+	OW\_OWFS\_GROUP\_x\_PORT\_x\_ID
+	OW\_OWFS\_\_GROUP\_x\_PORT\_x\_ALIAS}
+	{OW\_OWFS\_GROUP\_x\_PORT\_x\_ID}{OWOWFSGROUPxPORTxID}
+The variable \var{OW\_OWFS\_GROUP\_x\_PORT\_N} defines the number of ports
+for a group. With the two subsquent variables \var{OW\_OWFS\_GROUP\_x\_PORT\_x\_ID} and \\
+\var{OW\_OWFS\_GROUP\_x\_PORT\_x\_ALIAS} you assign a name to the In-
+resp. Output of 1--wire components.
+
+If you want to suppress display of certain data in the web interface, i.e. because
+the port of a component has not been established or after completion of the
+configuration the admin branch is no longer needed, you can prefix the name with
+an exclamation mark (!).
+
+\config{OW\_OW\_SHELL}{OW\_OW\_SHELL}{OWOWSHELL}
+Activation of the OWFS "server", for providing the OWFS-BUS simultaneously
+for multiple applications (OWFS and OWHTTPD). For using this no other application
+may be set to the direct interface of the adapter, but instead must be linked to
+the server.
+
+\config{OW\_OW\_SHELL\_RUN}{OW\_OW\_SHELL\_RUN}{OWOWSHELLRUN}
+Should  the Server service be started at boot time?
+\config{OW\_OW\_SHELL\_DEV}{OW\_OW\_SHELL\_DEV}{OWOWSHELLDEV}
+The device the server accesses (hardware)
+\config{OW\_OW\_SHELL\_PORT}{OW\_OW\_SHELL\_PORT}{OWOWSHELLPORT}
+IP-address and port the server uses.
+Only the localhost address 127.0.0.1 makes sense here.
+As a default port 4304 (OWFS port) should be used for the Server.
+This address is hardcoded into package RRDTool. If you want to collect
+values via RRDTool you may not change this setting.
+
+\config{OW\_OWHTTPD}{OW\_OWHTTPD}{OWOWHTTPD}
+Activation of OWFS's own web server.
+\config{OW\_OWHTTPD\_RUN}{OW\_OWHTTPD\_RUN}{OWOWHTTPDRUN}
+Should the web server be started during system boot?
+\config{OW\_OWHTTPD\_READONLY}{OW\_OWHTTPD\_READONLY}{OWOWHTTPDREADONLY}
+Should write access to the components be allowed in OWFS via the web server?
+\config{OW\_OWHTTPD\_DEV}{OW\_OWHTTPD\_DEV}{OWOWHTTPDDEV}
+Device, the web server accesses. In conclusion with OW\_OWSHELL (Server) also
+a single device may be accessed here.
+\config{OW\_OWHTTPD\_PORT}{OW\_OWHTTPD\_PORT}{OWOWHTTPDPORT}
+HTTP port for the web server.
+
+Configuration example:
+\begin{example}
+\begin{verbatim}
+    OW_OWFS_GROUP_x_PORT_x_ID='29.57D305000000/P6'
+    OW_OWFS_GROUP_x_PORT_x_ALIAS='EA-Modul/!P6'        # Signal suppressed
+    OW_OWFS_GROUP_x_PORT_x_ID='29.57D305000000/Admin/*'
+    OW_OWFS_GROUP_x_PORT_x_ALIAS='EA-Modul/Admin/!'    # Admin path deactivated
+                                                       # completely
+\end{verbatim}
+\end{example}
+
+A detailed description for the configuration of OWFS can be found in the appendix
+\glqq{}\ref{cap:OW_MANPAGES}\grqq{} and here: \altlink{http://owfs.org/index.php?page=owfs}.
+
+\end{description}
+
+\marklabel{cap:OW_SONSTIGEVARIABLEN}
+{
+\section{Miscellaneous Variables}
+}
+The following variables can be customized via the file config/ow.txt if needed:
+
+\begin{description}
+\config{OW\_LOG\_DESTINATION}{OW\_LOG\_DESTINATION}{OWLOGDESTINATION}
+Target for status and error outputs.
+
+\begin{verbatim}
+    0 = mixed (1 and 2)
+    1 = syslog
+    2 = stderr
+    3 = off
+\end{verbatim}
+
+Default setting is '1'.
+
+\config{OW\_LOG\_LEVEL}{OW\_LOG\_LEVEL}{OWLOGLEVEL}
+ The Log level (1-9) determines the amount of status and error outputs, with:
+
+\begin{verbatim}
+    1 = silent and 9 = maximum verbosity
+\end{verbatim}
+
+Default setting is '1'.
+
+\config{OW\_TEMP\_SCALE}{OW\_TEMP\_SCALE}{OWTEMPSCALE}
+ The available temperature scales.
+\begin{verbatim}
+    C = "Celsius"
+    F = "Fahrenheit"
+    K = "Kelvin"
+    R = "Rankine"
+\end{verbatim}
+
+Default setting is 'C'.
+
+\config{OW\_REFRESH\_INTERVAL}{OW\_REFRESH\_INTERVAL}{OWREFRESHINTERVAL}
+ Refresh for fli4l-HTTP in seconds. '0' = no refresh.
+
+ Default setting is '10'.
+
+\config{OW\_OWFS\_FAKE}{OW\_OWFS\_FAKE}{OWOWFSFAKE}
+Enables the random simulation of 1--wire components.
+There may be specified multiple components with family
+code separated by spaces. The simulated states are purely
+coincidental. The option can not be activated simultaneously
+with the 'TESTER' mode.
+
+\config{OW\_OWFS\_TESTER}{OW\_OWFS\_TESTER}{OWOWFSTESTER}
+Enables the systematic simulation of 1--wire components.
+There may be specified multiple components with family
+code separated by spaces. The simulated conditions follow
+realistic values. This option can not be activated
+simultaneously with the 'FAKE' mode.
+
+\config{OW\_OWFS\_RUN}{OW\_OWFS\_RUN}{OWOWFSRUN}
+Specifies whether owfs should be started automatically during
+the boot of the router. Default value is 'yes', whereas
+with 'no' the application must be started manually.
+
+\config{OW\_OWFS\_READONLY}{OW\_OWFS\_READONLY}{OWOWFSREADONLY}
+Sets with "yes" stated that component states can only be
+read but not written via owfs.
+
+ Default setting is 'no'.
+
+\config{OW\_OWFS\_PATH}{OW\_OWFS\_PATH}{OWOWFSPATH}
+Specifies the root directory for the fuse directory structure.
+The default value is '/var/run/ow'. The selected directory
+should be situated on the RAMdisk for reasons of system performance!
+
+\config{OW\_CACHE\_SIZE}{OW\_CACHE\_SIZE}{OWCACHESIZE}
+Is used to set the maximum size of the cache in
+[bytes] on systems with very little RAM disk.
+
+  The default value of '0' removes any limitation.
+
+\config{OW\_USER\_SCRIPT\_INTERVAL}{OW\_USER\_SCRIPT\_INTERVAL}{OWUSERSCRIPTINTERVAL}
+Specifies the waiting time between two runs
+of the user-script. The value '0 'should only be used, if
+'sleep' is executed in the script.
+
+\config{OW\_DEVICE\_LIB}{OW\_DEVICE\_LIB}{OWDEVICELIB}
+Specifies the absolute path and file name of the component library
+on the router. By using a value other than the default value
+'/srv/www/include/ow-device.lib' it may be ensured that
+the component library will not be overwritten when updating
+the opt library and personal changes are preserved.
+
+\config{OW\_INVERT\_PORT\_LEDS}{OW\_INVERT\_PORT\_LEDS}{OWINVERTPORTLEDS}
+ Inverts the state of the port Leds of i/o ports (latch*,
+sensed*, PIO*).
+
+Default setting is 'no'.
+\end{description}
+
+\section{Variables Not Documented}
+
+The following variables are not (yet) documented:
+\begin{description}
+\config{OW\_MODULE\_CONF\_FILE}{OW\_MODULES\_CONF\_FILE}{OWMODULECONFFILE}
+\config{OW\_USER\_SCRIPT\_STOP}{|OW\_USER\_SCRIPT\_STOP}{OWUSERSCRIPTSTOP}
+\config{OW\_SCRIPT\_WRAPPER}{OW\_SCRIPT\_WRAPPER}{OWSCRIPTWRAPPER}
+\config{OW\_MENU\_ITEM}{OW\_MENU\_ITEM}{OWMENUITEM}
+\config{OW\_RIGHTS\_SECTION}{OW\_RIGHTS\_SECTION}{OWRIGHTSSECTION}
+
+\config{OW\_OWFS\_PID\_FILE}{OW\_OWFS\_PID\_FILE}{OWOWFSPIDFILE}
+\config{OW\_OWFS\_GROUP\_x\_NAME}{OW\_OWFS\_GROUP\_x\_NAME}{OWOWFSGROUPxNAME}
+\config{OW\_REFRESH\_FILE}{OW\_REFRESH\_FILE}{OWREFRESHFILE}
+\config{OW\_REFRESH\_TEMP}{OW\_REFRESH\_TEMP}{OWREFRESHTEMP}
+\config{OW\_ALIAS\_FILE}{OW\_ALIAS\_FILE}{OWALIASFILE}
+\config{OW\_CSS\_FILE}{OW\_CSS\_FILE}{OWCSSFILE}
+
+\config{OW\_OWHTTPD\_FAKE}{OW\_OWHTTPD\_FAKE}{OWOWHTTPDFAKE}
+\config{OW\_OWHTTPD\_TESTER}{OW\_OWHTTPD\_TESTER}{OWOWHTTPDTESTER}
+\config{OW\_OWHTTPD\_PID\_FILE}{OW\_OWHTTPD\_PID\_FILE}{OWOWHTTPDPIDFILE}
+\end{description}
+
+\section{Operation In Browser And Console}
+
+\marklabel{cap:OW_BROWSER}
+{
+\subsection{Browser}
+}
+\subsubsection{Web Server}
+fli4l's optionally installable web server (opt\_httpd) offers the possibility
+to execute own shell/CGI script applications from any browser on the network.
+This was used here. To use the web server config/httpd.txt must be configured
+accordingly.
+
+In \var{OPT\_OW} a browser application is provided. It only will be installed, if
+\var{OW\_OWFS}='yes' is set in /config/ow.txt. The script is located at
+/srv/www/admin/ow.cgi and under\\ \verb!fli4l-version\opt\files\srv\www\admin\ow.cgi!
+in the fli4l installation directory. The menu entry appears at \glqq{}Opt /
+1--Wire-Bus\grqq{}.
+
+\subsubsection{Display}
+Under the tab \glqq{}Status\grqq{} the componetens connected to the 1--wire bus
+are displayed grouped in a tree structure according to the settings in config/ow.txt.
+The group is opened by \glq{}clicking\grq{} on it. The values configured will be
+shown. In the admin structure all parameters defined for the component in the
+component library (see 8.4) are shown. Concerning the meaning of the parameters
+see the data sheets of Maxim and the referenced manpages.
+
+Under the tab \glqq{}Admin\grqq{} (only shown in admin mode) the chosen applications
+may be switched on or off.
+
+The LEDs shown signal the following states by colors:
+\begin{itemize}
+\item LED green = not active (Unoperational)
+\item LED red = active (Operational)
+\item LED yellow = not active (Warning)
+\end{itemize}
+
+The control buttons are used to switch the assigned ports. The icon indicates
+the current switching status in addition. Regarding the permissions, see 8.1.
+
+\subsection{Console}
+The query and control of sensors and actuators is also possible on the console
+of the fli4l or via remote access (i.e. WinSCP, Putty).
+
+For example with:
+\begin{itemize}
+\item cat /var/run/ow/10.DEF0A8010800/temperature \\
+      the temperature of a DS19S20 is queried.
+\item echo ``1'' $>$ /var/run/ow/1C.7F6CF7040000/PIO.O \\
+      output 1 of a DS28E04-100 (dual switch) is activated.
+\item echo ``0'' $>$ /var/run/ow/1C.7F6CF7040000/PIO.O \\
+      output 1 is deactivated again.
+\end{itemize}
+
+Further description can be found in the appendix \glqq{}\ref{cap:OW_MANPAGES}\grqq{} and here: \\
+\altlink{http://owfs.org/index.php?page=owfs}
+
+\section{Advanced Features}
+\subsection{Assignment Of Rights}
+The assignment of user rights is implemented in fli4l's web interface\\
+(see the notes in doc/english/pdf/httpd.pdf).\\
+\var{OPT\_OW} akes use of this too.
+To use the OW rights the following modes can be specified in the file config/httpd.txt
+for the area \glqq{}ow\grqq{}:
+\begin{itemize}
+\item admin = all rights\\
+\item exec = execute commands, switch In- and Outputs, View data\\
+\item view = view data
+\end{itemize}
+
+The Admin tab by which owfs and the user-script may be switched on and off
+will not be displayed in the mode \glqq{}exec\grqq{} and \glqq{}view\grqq{}.
+All entries containing an \glqq{}Admin\grqq{} will be disabled too.
+
+\subsection{Components Library}
+Due to the variety of 1--wire components offered by MAXIM an own component
+library was created. The corresponding library script is on the fli4l
+in /srv/www/include/ow-device.lib and in the fli4l installation directory under
+\verb!fli4l-version\opt\files\srv\www\include\ow-device.lib!. The library already
+contains some important components. Own devices can be added according to the
+nomenclature used and shared with other fli4l users on the fli4l newsgroups
+at 'spline.fli4l.opt'. Only components in the library will be shown in the
+browser. The library scripts may be edited as desired either for testing
+purposes or as a permanent change on the router itself using programs such
+as \glqq{}WinSCP\grqq{} or in the fli4l installation directory.
+
+\marklabel{cap:OW_OWUSERSCRIPT}
+{
+\subsection{OW\_USER\_SCRIPT}
+}
+
+The script can be found on the router under /usr/local/bin/ow-user-script.sh and
+in the fli4l installation directory at \verb!fli4l-version\opt\files\usr\local\bin\ow-userscript.sh!.
+It can be adapted to reflect your current needs for applications to be monitored
+and/or controlled. The advantage of the script is the fact that even large and
+complex controls are possible on existing hardware.
+
+\marklabel{cap:OW_RRDTOOL}
+{
+\section{RRDTool}
+}
+\subsection{Interface}
+The data collected via the 1--Wire-Bus may be recorded and graphically presented by
+the fli4l-Opt \glqq{}RRDTool\grqq{} This opt already contains the necessary interfaces.
+Owfs (see /config/ow.txt) has to be installed. When installing RRDTool configure the
+entries in /config/rrdtool.txt to your needs. For package OW the \var{OW\_SHELL} has
+to be set to port 127.0.0.1:4304 because RRDTool's Collectd-Plugin listens on this
+port will display the data from all sensors in separate graphics.
+Sensors will be sorted by Sensor ID (Unique sensor number of the sensor itself).
+In addition, a second group is displayed according to group definitions made in the
+package's config file, ordered in the way defined there.
+In addition, all temperature sensors in each group will be presented together in a
+single graphic ordered by the port number given in the configuration.
+
+\section{Feedback}
+We welcome any, even short feedback, even if the package is running without
+any problems.
+
+Have a lot of fun with 1--wire!
+
+Klaus der Tiger \email{der.tiger.opt-ow@arcor.de}\\
+Karl M. Weckler \email{news4kmw@web.de}\\
+Roland Franke \email{fli4l@franke-prem.de}

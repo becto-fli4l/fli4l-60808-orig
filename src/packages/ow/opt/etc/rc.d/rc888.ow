@@ -1,0 +1,309 @@
+#!/bin/sh
+#-----------------------------------------------------------------------------
+# /etc/rc.d/rc888.ow - Start-up                                   __FLI4LVER__
+#
+# Creation:     04.02.2009 kmw <news4kmw@web.de>
+# Modification: 22.01.2012 Roland Franke
+# Last Update:  $Id$
+#-----------------------------------------------------------------------------
+# Info: Fuse up by /etc/rc.d/rc180.ow.fuse
+
+# Defaults
+#----------
+: ${OW_VERSION:='2.0.3'}
+: ${OW_OPT_TITLE:='OWFS "1-Wire-Bus" '"$OW_VERSION"}
+: ${OW_MENU_ITEM:='1-Wire-Bus'}
+: ${OW_RIGHTS_SECTION:='ow'}
+: ${OW_DEVICE_LIB:='/srv/www/include/ow-device.lib'}
+: ${OW_REFRESH_FILE:='ow-refresh.cgi'}
+: ${OW_REFRESH_TEMP:='/tmp/ow-refresh.tmp'}
+: ${OW_REFRESH_INTERVAL:='10'}
+: ${OW_INVERT_LEDS:='no'}
+: ${OW_ALIAS_FILE:='/var/run/ow-alias.sed'}
+: ${OW_CSS_FILE:='ow.css'}
+: ${OW_MODULE_CONF_FILE:='/var/run/owfs.conf'}
+: ${OW_LOG_DESTINATION:='3'}
+: ${OW_LOG_LEVEL:='0'}
+: ${OW_CACHE_SIZE:='0'}
+: ${OW_TEMP_SCALE:='C'}
+: ${OW_OWFS_GROUP_N:='0'}
+: ${OW_OWFS_BINARY:='/usr/bin/owfs'}
+: ${OW_OWFS_RUN:='yes'}
+: ${OW_OWFS_PATH:='/mnt/1wire'}
+: ${OW_OWFS_PID_FILE:='/var/run/owfs.pid'}
+: ${OW_OWSHELL_BINARY:='/usr/bin/owserver'}
+: ${OW_OWSHELL_RUN:='yes'}
+: ${OW_OWSHELL_PORT:='4304'}
+: ${OW_OWSHELL_PID_FILE:='/var/run/owsever.pid'}
+: ${OW_OWHTTPD_BINARY:='/usr/bin/owhttpd'}
+: ${OW_OWHTTPD_RUN:='yes'}
+: ${OW_OWHTTPD_PORT:='8001'}
+: ${OW_OWHTTPD_PID_FILE:='/var/run/owhttpd.pid'}
+: ${OW_RRDTOOL_COLORS:='0000FF 0077FF 00FFFF 00FF77 00FF00 77FF00 FFFF00 FF7700 FF0000 FF0077 FF00FF 7700FF'}
+: ${OW_USER_SCRIPT_STOP:='/var/lock/ow-userscript.stop'}
+: ${OW_SCRIPT_WRAPPER:='/usr/local/bin/ow-script-wrapper.sh'}
+
+create_symbolic_link ()
+  {
+  local target=$1
+  local name=$2
+  #--------------
+  local file=`ls -1 $target | sed -n '$p'`
+  if [ -n "$file" ]
+  then
+    if [ -z "$name" ]; then name=/usr/lib/`echo $file | sed 's|^.*/||;s|\.[0-9]*\.[0-9]*$||'`; fi
+    if [ ! -e $name ]
+    then
+      ln -s $file $name
+    else
+      log_warn "Cannot create link '$name', because file already exists."
+    fi
+  else
+    log_error "Symbolic link target $target does not exist!"
+  fi
+  }
+
+write_config_common ()
+  {
+  case $OW_LOG_DESTINATION in
+    [0-3])  ;;
+    off)    OW_LOG_DESTINATION=3;;
+    mixed)  OW_LOG_DESTINATION=0;;
+    stderr) OW_LOG_DESTINATION=2;;
+    syslog) OW_LOG_DESTINATION=1;;
+    *)      OW_LOG_DESTINATION=1;;
+  esac
+  case $OW_TEMP_SCALE in
+    F) OW_TEMP_SCALE="Fahrenheit";OW_TEMP_UNIT="°F";;
+    K) OW_TEMP_SCALE="Kelvin";    OW_TEMP_UNIT="K";;
+    R) OW_TEMP_SCALE="Rankine";   OW_TEMP_UNIT="°Ra";;
+    *) OW_TEMP_SCALE="Celsius";   OW_TEMP_UNIT="°C";;
+  esac
+  cat > $OW_MODULE_CONF_FILE << EOF
+error_print = $OW_LOG_DESTINATION
+error_level = $OW_LOG_LEVEL
+format = f.i
+cache_size = $OW_CACHE_SIZE
+$OW_TEMP_SCALE
+foreground
+allow_root
+EOF
+  }
+
+write_config_option ()
+  {
+  local variable=$1
+  local option=$2
+  #--------------
+  if [ -n "$variable" -a -n "$option" ]
+  then
+    eval local value='$'$variable
+    case "$value" in
+      no|"") ;;
+      yes)   echo "$option";;
+      *)
+        value=`echo "$value" | tr ' ' ','`
+        echo "$option = $value"
+      ;;
+    esac
+  fi
+  }
+
+write_config ()
+  {
+  local module=$1
+  #--------------
+  if [ ! -f $OW_MODULE_CONF_FILE ]; then write_config_common; fi
+  if [ -n "$module" ]
+  then
+    local section=
+    case $module in
+      OWFS)    section="owfs: ";;
+      OWSHELL) section="server: ";;
+      OWHTTPD) section="http: ";;
+      OWFTP)   section="ftp: ";;
+      *)       section="";;
+    esac
+    local cf_path=`echo $OW_MODULE_CONF_FILE|sed 's|[^/]*$||'`
+    if [ ! -d $cf_path ]; then mkdir -p -m 775 $cf_path; fi
+    (
+      # Devices
+      local device_list="";
+      if [ -z "`eval echo '$OW_'$module'_FAKE'`" -a -z "`eval echo '$OW_'$module'_TESTER'`" ]
+      then
+        local ioport=
+        for ioport in `eval echo '$OW_'$module'_DEV'`
+        do
+          case $ioport in
+            tty*|i2c-*)
+              echo 'device = /dev/'$ioport
+              device_list="$device_list$ioport "
+            ;;
+            usb*)
+              echo "$ioport" | sed 's|usb\([0-9]\)|usb = \1|'
+              device_list="$device_list$ioport "
+            ;;
+            *)
+              port=${ioport#*:}
+              addr=${ioport%:*}
+              if translate_ip_net $addr
+              then
+                echo 'server = '$res':'$port
+                device_list="$device_list$res:$port "
+              else
+                log_error "Unhandled device type '$ioport' in OW_$module""_DEV."
+              fi
+            ;;
+          esac
+        done
+        if [ -z "$device_list" ]
+        then
+          eval 'OW_'$module'_RUN'=no
+          log_error "No valid devices available. $module cannot be started."
+        fi
+      else
+        write_config_option 'OW_'$module'_FAKE'     'fake'
+        write_config_option 'OW_'$module'_TESTER'   'tester'
+      fi
+      eval 'OW_'$module'_DEV'=$device_list
+      write_config_option 'OW_'$module'_PORT'     'port'
+      write_config_option 'OW_'$module'_PID_FILE' 'pid_file'
+      write_config_option 'OW_'$module'_PATH'     'mountpoint'
+      write_config_option 'OW_'$module'_READONLY' 'readonly'
+     ) | sed 's|.*|'"$section"'&|' >> $OW_MODULE_CONF_FILE
+  fi
+  }
+
+write_alias_file ()
+  {
+  if [ -f $OW_ALIAS_FILE ]; then rm $OW_ALIAS_FILE; fi
+  local group_index=
+  for group_index in `seq 1 $OW_OWFS_GROUP_N`
+  do
+    eval local group_name='$OW_OWFS_GROUP_'$group_index'_NAME'
+    if [ "$OPT_RRDTOOL" = "yes" ]
+    then
+      grp_index=$(printf %03d $group_index)
+      mkdir -p "/var/run/owfs_rrdtool_group/$grp_index$group_name"
+    fi
+    group_name=`make_sed_save "$group_name"`
+    local port_index=
+    for port_index in `eval seq 1 '$OW_OWFS_GROUP_'$group_index'_PORT_N'`
+    do
+      alias_ok=0
+      eval local port_id='$OW_OWFS_GROUP_'$group_index'_PORT_'$port_index'_ID'
+      eval local port_alias='$OW_OWFS_GROUP_'$group_index'_PORT_'$port_index'_ALIAS'
+      port_alias=`make_sed_save "$port_alias"`
+      # Wildcards
+      local front=`echo "$port_id" | cut -d* -f1`
+      if [ "$front" != "$port_id" ]
+      then
+        port_id="$front\([^/]*\)"`echo "$port_id" | cut -d* -f2-`
+        port_alias="$port_alias\1"
+        alias_ok=1
+      fi
+      echo "s|^/$port_id |/$group_name/$port_alias |" >> $OW_ALIAS_FILE
+      if [ $alias_ok = "0" ] 
+      then
+        sensor_alias=`echo "$port_id" | cut -c 4-15`
+        echo "$port_alias" >> /var/run/ow_$sensor_alias
+        if [ "$OPT_RRDTOOL" = "yes" ]
+        then
+          for int in `ls -d $RRDTOOL_DB_PATH/$HOSTNAME/onewire-$sensor_alias/* |
+ cut -d "-" -f2 | cut -d "/" -f2`
+          do
+            prt_index=$(printf %03d $port_index)
+            ln -s "$RRDTOOL_DB_PATH/$HOSTNAME/onewire-$sensor_alias/$int" "/var/run/owfs_rrdtool_group/$grp_index$group_name/$prt_index$port_alias-$int"
+          done
+        fi
+      fi
+    done
+  done
+  }
+
+make_sed_save ()
+  {
+  local unsave=$@
+  #--------------
+  echo "$unsave" | sed 's|\\| |g;s:|:\\|:g;s|\&|\\\&|g;s|^[ ]*||;s|[ ]*$||'
+  }
+
+start_module ()
+  {
+  local module=$1
+  #--------------
+  if [ -n "$module" ]
+  then
+    if [ "`eval echo '$OW_'$module`" = yes ]
+    then
+      write_config "$module"
+      if [ "`eval echo '$OW_'$module'_RUN'`" = yes ]
+      then
+        if  eval '$OW_'$module'_BINARY' -c $OW_MODULE_CONF_FILE &
+        then
+          echo "$module started."
+        else
+          log_error "Starting of $module failed."
+        fi
+      fi
+    fi
+  fi
+  }
+
+case $OPT_OW in
+  yes)
+    begin_script OPT_OW "starting OWFS ..."
+
+#    create_symbolic_link /usr/lib/libfuse.so.*
+#    create_symbolic_link /usr/lib/libulockmgr.so.*
+#    create_symbolic_link /usr/lib/libow-*
+#    create_symbolic_link /usr/lib/libusb-*
+
+    if [ -f $OW_MODULE_CONF_FILE ]; then rm $OW_MODULE_CONF_FILE; fi
+
+    local opt_module=
+    for opt_module in OWFS OWSHELL OWHTTPD
+    do
+      if [ "`eval echo '$OW_'$opt_module`" = yes ]
+      then
+        case $opt_module in
+          OWFS)
+            # Link for Web Interface
+            if [ -f /srv/www/admin/ow.cgi -a -f /usr/local/bin/httpd-menu.sh ]
+            then
+              /usr/local/bin/httpd-menu.sh add "ow.cgi" "1-Wire-Bus" "" ""
+            fi
+            # Check OWFS folder
+            eval opt_path='$OW_'$opt_module'_PATH'
+            if [ ! -d $opt_path ]; then /bin/mkdir -p -m 775 $opt_path; fi
+            if [ -d $opt_path ]
+            then
+              start_module "$opt_module"
+              write_alias_file
+            else
+              log_error "Cannot create path '$opt_path'."
+            fi
+          ;;
+          *) start_module "$opt_module";;
+        esac
+      fi
+    done
+
+    # Write configuration file
+    set | grep "^OW_" | sed '/^OW_OWFS_GROUP_.*/d' > /var/run/ow.conf
+
+    # Start user script
+    if [ -n "$OW_USER_SCRIPT" ]
+    then
+      if [ -f $OW_USER_SCRIPT ]
+      then
+        /bin/sh $OW_SCRIPT_WRAPPER &
+        log_info 'User script started.'
+      else
+        log_error "Cannot find user script '$OW_USER_SCRIPT'."
+      fi
+    fi
+
+    end_script
+  ;;
+esac

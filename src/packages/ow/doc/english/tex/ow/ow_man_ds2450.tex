@@ -1,0 +1,310 @@
+% Synchronized to r29817
+\paragraph*{Name}
+DS2450 - Quad A/D Converter 
+\paragraph*{Synopsis}
+
+\subparagraph*{Voltage * 4  and Memory.}
+
+\textbf{20}
+[.]XXXXXXXXXXXX[XX][/[ \textbf{PIO.[A-D$|$ALL]} $|$ \textbf{volt.[A-D$|$ALL]} $|$ \textbf{volt2.[A-D$|$ALL]} ]] 
+
+\textbf{20} [.]XXXXXXXXXXXX[XX][/[
+\textbf{8bit/volt.[A-D$|$ALL]} $|$ \textbf{8bit/volt2.[A-D$|$ALL]} ]] 
+
+\textbf{20} [.]XXXXXXXXXXXX[XX][/[ \textbf{memory}
+$|$ \textbf{pages/page.[0-3$|$ALL]} $|$ \textbf{power} ] 
+
+\textbf{20} [.]XXXXXXXXXXXX[XX][/[ \textbf{alarm/high.[A-D$|$ALL]}
+$|$ \textbf{alarm/low.[A-D$|$ALL]} $|$ \textbf{set\_alarm/high.[A-D$|$ALL]} $|$ \textbf{set\_alarm/low.[A-D$|$ALL]} $|$ \textbf{set\_alarm/unset}
+$|$ \textbf{set\_alarm/volthigh.[A-D$|$ALL]} $|$ \textbf{set\_alarm/volt2high.[A-D$|$ALL]} $|$ \textbf{set\_alarm/voltlow.[A-D$|$ALL]}
+$|$ \textbf{set\_alarm/volt2low.[A-D$|$ALL]} ] 
+
+\textbf{20} [.]XXXXXXXXXXXX[XX][/[           \textbf{address}
+$|$ \textbf{crc8} $|$ \textbf{id} $|$ \textbf{locator} $|$ \textbf{r\_address} $|$ \textbf{r\_id} $|$ \textbf{r\_locator} $|$ \textbf{type}  ]] 
+\subparagraph*{CO2 sensor}
+
+\textbf{20} [.]XXXXXXXXXXXX[XX][/[
+\textbf{CO2/ppm} $|$ \textbf{CO2/power} $|$ \textbf{CO2/status} ] 
+\paragraph*{Family Code}
+
+
+\textit{20} 
+\paragraph*{Special Properties}
+
+\subparagraph*{alarm/high.A
+... alarm/high.D alarm.high.ALL}
+\subparagraph*{alarm/high.A ... alarm/high.D alarm.high.ALL}\textit{read-write,}
+binary 
+
+The alarm state of the voltage channel. The alarm state is set one of two
+ways: \begin{description}
+\item [voltage conversion ] Whenever the \textit{DS2450} measures a voltage on a channel,
+that voltage is compared to the high and low limits \textit{set\_alarm/volthigh}
+and/or \textit{set\_alarm/voltlow} and if the alarm is enabled \textit{set\_alarm/high} and/or
+\textit{set\_alarm/low} the corresponding flag is set in \textit{alarm/high} and/or \textit{alarm/low}
+
+\item [manual set ] The flag can be set by a direct write to \textit{alarm/high} or \textit{alarm/low}
+
+\end{description}
+
+\subparagraph*{memory}\textit{read-write,} binary 
+
+32 bytes of data. Much has special implications. See the datasheet. 
+\subparagraph*{pages/page.0
+... pages/page.3 pages/page.ALL}\textit{read-write,} binary 
+
+Memory is split into 4 pages of 8 bytes each. Mostly for reading and setting
+device properties. See the datasheet for details. 
+
+\textit{ALL} is an aggregate of the pages. Each page is accessed sequentially. 
+\subparagraph*{Pio.a
+... Pio.d Pio.all}\textit{read-write,} yes-no 
+
+Pins used for digital control. 1 turns the switch on (conducting). 0 turns
+the switch off (non-conducting). 
+
+Control is specifically enabled. Reading \textit{volt} will turn off this control.
+
+
+\textit{ALL} is an aggregate of the voltages. Readings are made separately. 
+\subparagraph*{power}\textit{read-write,}
+yes-no 
+
+Is the \textit{DS2450} externally powered? (As opposed to parasitically powered
+from the data line). 
+
+The analog A/D  will be kept on continuously. And the bus will be released
+during a conversion allowing other devices to communicate. 
+
+Set \textsf{true (1)} only if Vcc powered (not parasitically powered). Unfortunately,
+the \textit{DS2450} cannot sense it's powered state. This flag must be explicitly
+written, and thus is a potential source of error if incorrectly set. 
+
+It is always safe to leave \textit{power} set to the default 0 (off) state. 
+\subparagraph*{set\_alarm/high.A
+... set\_alarm/high.D set\_alarm/high.ALL}
+\subparagraph*{set\_alarm/low.A ... set\_alarm/low.D set\_alarm/low.ALL}\textit{read-write,}
+yes-no 
+
+Enabled status of the voltage threshold. 1 is on. 0 is off. 
+\subparagraph*{set\_alarm/volthigh.A
+... set\_alarm/volthigh.D set\_alarm/volthigh.ALL}
+\subparagraph*{set\_alarm/volt2high.A ... set\_alarm/volt2high.D
+set\_alarm/volt2high.ALL}
+\subparagraph*{set\_alarm/voltlow.A ... set\_alarm/voltlow.D set\_alarm/voltlow.ALL}
+\subparagraph*{set\_alarm/volt2low.A
+... set\_alarm/volt2low.D set\_alarm/volt2low.ALL}\textit{read-write,} floating point 
+
+The upper or lower limit for the voltage measured before triggering an
+alarm. 
+
+Note that the alarm must be enabled \textit{alarm/high} or \textit{alarm.low} and an actual
+reading must be requested \textit{volt} for the alarm state to actually be set. The
+alarm state can be sensed at \textit{alarm/high} and \textit{alarm/low} 
+\subparagraph*{set\_alarm/unset}\textit{read-write,}
+yes-no 
+
+Status of the power-on-reset (POR) flag. 
+
+The POR is set when the \textit{DS2450} is first powered up, and will match the
+alarm state until explicitly cleared. (By writing 0 to it). 
+
+The purpose of the POR is to alert the user that the chip is not yet fully
+configured, especially alarm thresholds and enabling. 
+\subparagraph*{volt.A ... volt.D volt.ALL}
+\subparagraph*{8bit/volt.A
+... 8bit/volt.D 8bit/volt.ALL}\textit{read-only,} floating point 
+
+Voltage read, 16 bit resolution (or 8 bit for the  \textit{8bit} directory). Range
+0 - 5.10V. 
+
+Output ( \textit{PIO} ) is specifically disabled. 
+
+\textit{ALL} is an aggregate of the voltages. Readings are made separately. 
+\subparagraph*{volt2.A
+... volt2.D volt2.ALL}
+\subparagraph*{8bit/volt2.A ... 8bit/volt2.D 8bit/volt2.ALL}\textit{read-only,} floating
+point 
+
+Voltage read, 16 bit resolution (or 8 bit for the  \textit{8bit} directory). Range
+0 - 2.55V. 
+
+Output ( \textit{PIO} ) is specifically disabled. 
+
+\textit{ALL} is an aggregate of the voltages. Readings are made separately. 
+\paragraph*{CO2 (Carbon
+Dioxide) SENSOR PROPERTIES}
+The CO2 sensor is a device constructed from a
+SenseAir K30 and a \textit{DS2450} 
+\subparagraph*{CO2/power}\textit{read-only,} floating point 
+
+Supply voltage to the CO2 sensor (should be around 5V) 
+\subparagraph*{CO2/ppm}\textit{read-only,}
+unsigned 
+
+CO2 level in ppm (parts per million). Range 0-5000. 
+\subparagraph*{CO2/status}\textit{read-only,} yes-no
+
+
+Is the internal voltage correct (around 3.2V)? 
+\paragraph*{Standard Properties}
+     
+    
+\subparagraph*{address}
+\subparagraph*{r\_address}\textit{read-only,} ascii 
+
+The entire 64-bit unique ID. Given as upper case hexidecimal digits (0-9A-F).
+
+
+\textit{address} starts with the \textit{family} code 
+
+\textit{r} address is the \textit{address} in reverse order, which is often used in other
+applications and labeling. 
+\subparagraph*{crc8}\textit{read-only,} ascii 
+
+The 8-bit error correction portion. Uses cyclic redundancy check. Computed
+from the preceding 56 bits of the unique ID number. Given as upper case
+hexidecimal digits (0-9A-F). 
+\subparagraph*{family}\textit{read-only,} ascii 
+
+The 8-bit family code. Unique to each \textit{type} of device. Given as upper case
+hexidecimal digits (0-9A-F). 
+\subparagraph*{id}
+\subparagraph*{r\_id}\textit{read-only,} ascii 
+
+The 48-bit middle portion of the unique ID number. Does not include the family
+code or CRC. Given as upper case hexidecimal digits (0-9A-F). 
+
+\textit{r} id is the \textit{id} in reverse order, which is often used in other applications
+and labeling. 
+\subparagraph*{locator}
+\subparagraph*{r\_locator}\textit{read-only,} ascii 
+
+Uses an extension of the 1-wire design from iButtonLink company that associated
+1-wire physical connections with a unique 1-wire code. If the connection is
+behind a \textbf{Link Locator} the \textit{locator} will show a unique 8-byte number (16 character
+hexidecimal) starting with family code FE. 
+
+If no \textbf{Link Locator} is between the device and the master, the \textit{locator} field
+will be all FF. 
+
+\textit{r} locator is the \textit{locator} in reverse order. 
+\subparagraph*{present (DEPRECATED)}\textit{read-only,}
+yes-no 
+
+Is the device currently \textit{present} on the 1-wire bus? 
+\subparagraph*{type}\textit{read-only,} ascii 
+
+Part name assigned by Dallas Semi. E.g. \textit{DS2401} Alternative packaging (iButton
+vs chip) will not be distiguished.  
+\paragraph*{Alarms}
+None. 
+\paragraph*{Description}
+          
+\subparagraph*{1-Wire}\textit{1-wire}
+ is a wiring protocol and series of devices designed and manufactured by
+Dallas Semiconductor, Inc. The bus is a low-power low-speed low-connector scheme
+where the data line can also provide power. 
+
+Each device is uniquely and
+unalterably numbered during manufacture. There are a wide variety of devices,
+including memory, sensors (humidity, temperature, voltage, contact, current),
+switches, timers and data loggers. More complex devices (like thermocouple
+sensors) can be built with these basic devices. There are also 1-wire devices
+that have encryption included. 
+
+The 1-wire scheme uses a single  \textit{bus} master
+and multiple \textit{slaves} on the same wire. The bus master initiates all communication.
+The slaves can be  individually discovered and addressed using their unique
+ID. 
+
+Bus masters come in a variety of configurations including serial, parallel,
+i2c, network or USB adapters. 
+\subparagraph*{OWFS design}\textit{OWFS} is a suite of programs that
+designed to make the 1-wire bus and its devices easily accessible. The underlying
+priciple is to create a virtual filesystem, with the unique ID being the
+directory, and the individual properties of the device are represented
+as simple files that can be read and written. 
+
+Details of the individual
+slave or master design are hidden behind a consistent interface. The goal
+is to  provide an easy set of tools for a software designer to create monitoring
+or control applications. There  are some performance enhancements in the
+implementation, including data caching, parallel access to bus  masters,
+and aggregation of device communication. Still the fundemental goal has
+been ease of use, flexibility  and correctness rather than speed.  
+\subparagraph*{Ds2450}The
+\textsf{\textbf{DS2450 (3)}} is a (supposedly) high resolution A/D converter with 4 channels.
+Actual resolutin is reporterd to be 8 bits. The channels can also function
+as switches. Voltage sensing (with temperature and current, but sometimes
+restricted voltrage ranges) can also be obtained with the \textbf{DS2436} , \textbf{DS2438}
+and \textbf{DS276x} 
+\paragraph*{Addressing}
+          All 1-wire devices are factory assigned a
+unique 64-bit address. This address is of the form: \begin{description}
+\item [\textbf{Family Code} ] 8 bits 
+\item [\textbf{Address}
+] 48 bits 
+\item [\textbf{CRC} ] 8 bits 
+\end{description}
+
+
+\begin{description}
+\item [Addressing under OWFS is in hexidecimal, of form: ] 
+\item [\textbf{01.123456789ABC}
+] 
+\end{description}
+
+
+where \textbf{01} is an example 8-bit family code, and \textbf{12345678ABC} is an example
+48 bit address. 
+
+The dot is optional, and the CRC code can included. If included,
+it must be correct.  
+\paragraph*{Datasheet}
+\begin{description}
+\item [DS2450 ] \altlink{http://pdfserv.maxim-ic.com/en/ds/DS2450.pdf}
+
+\item [CO2 sensor ] \altlink{http://www.senseair.se/Datablad/k30\%20.pdf} 
+\item [CO2 device ] \altlink{https://www.m.nu/co2meter-version-2-p-259.html?language=en}
+
+\end{description}
+
+\paragraph*{See Also}
+
+\subparagraph*{Programs}\textsf{\textbf{owfs (1)} \textsf{owhttpd (1)} \textsf{owftpd (1)} \textsf{owserver (1)}} \textsf{\textbf{owdir (1)}
+\textsf{owread (1)} \textsf{owwrite (1)} \textsf{owpresent (1)}} \textsf{\textbf{owtap (1)}} 
+\subparagraph*{Configuration and testing}\textsf{\textbf{owfs
+(5)} \textsf{owtap (1)} \textsf{owmon (1)}} 
+\subparagraph*{Language bindings}\textsf{\textbf{owtcl (3)} \textsf{owperl (3)} \textsf{owcapi (3)}}
+
+\subparagraph*{Clocks}\textsf{\textbf{DS1427 (3)} \textsf{DS1904(3)} \textsf{DS1994 (3)} \textsf{DS2404 (3)} \textsf{DS2404S (3)} \textsf{DS2415 (3)}
+\textsf{DS2417 (3)}} 
+\subparagraph*{ID}\textsf{\textbf{DS2401 (3)} \textsf{DS2411 (3)} \textsf{DS1990A (3)}} 
+\subparagraph*{Memory}\textsf{\textbf{DS1982 (3)} \textsf{DS1985
+(3)} \textsf{DS1986 (3)} \textsf{DS1991 (3)} \textsf{DS1992 (3)} \textsf{DS1993 (3)} \textsf{DS1995 (3)} \textsf{DS1996 (3)} \textsf{DS2430A
+(3)} \textsf{DS2431 (3)} \textsf{DS2433 (3)} \textsf{DS2502 (3)} \textsf{DS2506 (3)} \textsf{DS28E04 (3)} \textsf{DS28EC20 (3)}}
+
+\subparagraph*{Switches}\textsf{\textbf{DS2405 (3)} \textsf{DS2406 (3)} \textsf{DS2408 (3)} \textsf{DS2409 (3)} \textsf{DS2413 (3)} \textsf{DS28EA00
+(3)}} 
+\subparagraph*{Temperature}\textsf{\textbf{DS1822 (3)} \textsf{DS1825 (3)} \textsf{DS1820 (3)} \textsf{DS18B20 (3)} \textsf{DS18S20 (3)}
+\textsf{DS1920 (3)} \textsf{DS1921 (3)} \textsf{DS1821 (3)} \textsf{DS28EA00 (3)} \textsf{DS28E04 (3)} \textsf{EDS0064 (3)} \textsf{EDS0065
+(3)} \textsf{EDS0066 (3)} \textsf{EDS0067 (3)} \textsf{EDS0068 (3)} \textsf{EDS0071 (3)} \textsf{EDS0072 (3)}} 
+\subparagraph*{Humidity}\textsf{\textbf{DS1922
+(3)} \textsf{DS2438 (3)} \textsf{EDS0065 (3)} \textsf{EDS0068 (3)}} 
+\subparagraph*{Voltage}\textsf{\textbf{DS2450 (3)}} 
+\subparagraph*{Resistance}\textsf{\textbf{DS2890
+(3)}} 
+\subparagraph*{Multifunction (current, voltage, temperature)}\textsf{\textbf{DS2436 (3)} \textsf{DS2437 (3)}
+\textsf{DS2438 (3)} \textsf{DS2751 (3)} \textsf{DS2755 (3)} \textsf{DS2756 (3)} \textsf{DS2760 (3)} \textsf{DS2770 (3)} \textsf{DS2780
+(3)} \textsf{DS2781 (3)} \textsf{DS2788 (3)} \textsf{DS2784 (3)}} 
+\subparagraph*{Counter}\textsf{\textbf{DS2423 (3)}} 
+\subparagraph*{LCD Screen}\textsf{\textbf{LCD (3)}
+\textsf{DS2408 (3)}} 
+\subparagraph*{Crypto}\textsf{\textbf{DS1977 (3)}} 
+\subparagraph*{Pressure}\textsf{\textbf{DS2406 (3)} -- TAI8570 \textsf{EDS0066 (3)} \textsf{EDS0068
+(3)}}  
+\paragraph*{Availability}
+\altlink{http://www.owfs.org/} 
+\paragraph*{Author}
+Paul Alfille (\email{paul.alfille@gmail.com})

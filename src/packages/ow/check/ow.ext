@@ -1,0 +1,195 @@
+﻿#------------------------------------------------------------------------------
+#
+# fli4l __FLI4LVER__ - extended check script for ow
+#
+# Creation:     04.02.2009 kmw <news4kmw@web.de>
+# Last Update:  $Id$
+#
+# Copyright (c) 2001-2016 - fli4l-Team <team@fli4l.de>
+#------------------------------------------------------------------------------
+if (opt_ow)
+then
+  provides ow version 4.0.0
+  depends on fli4l version 4.0
+  set ow_valid_kernels = "4.4 4.14"
+
+  # Messages
+  if (locale =~ "de|DE")
+  then
+    set msg_too_small      = "[OPT_OW] BOOT_TYPE='$boot_type' ist zu klein fuer OPT_OW."
+    set msg_kernel_version = "[OPT_OW] Das OPT wurde noch nicht mit Kernel $kernel_version getestet. Eventuelle Fehlermeldung bitte an: <fli4l(at)franke-prem.de>"
+	set msg_interface_worg = "[OPT_OW] Das Hardwareinterface darf nur einmal eingebunden werden"
+    set msg_missing_httpd  = "[OPT_OW] Ohne OPT_HTTPD='yes' kann die Weboberfläche nicht genutzt werden."
+    set msg_missing_transl = "[OPT_OW] Leider ist das OPT noch nicht in Deine bevorzugte Sprache übersetzt worden."
+    set msg_httpd_conflict = "[OPT_OW] OWFS und OWHTTPD sollten nicht gleichzeitig verwendet werden!"
+    set msg_fake_mode      = "[OPT_OW] Im FAKE Modus und TESTER Modus ist die Unterstützung physikalischer Anschlüsse abgeschaltet. Betrifft:"
+    set msg_fake_a_tester  = "[OPT_OW] FAKE und TESTER Modus können nicht gleichzeitig verwendet werden. Betrifft:"
+    set msg_no_user_script = "[OPT_OW] Auf das user script kann nicht zugegriffen werden:"
+    set msg_no_wrapper     = "[OPT_OW] Auf den script wrapper kann nicht zugegriffen werden:"
+    set msg_no_run_script  = "[OPT_OW] Da OW_OWFS nicht aktiviert ist, wird auch das user script nicht nach dem boot gestartet!"
+    set msg_no_device_lib  = "[OPT_OW] Die angegebene Bauteilbibliothek konnte nicht gefunden werden:"
+    set msg_rrdtool_owfs   = "[OPT_OW] Die Messwertaufzeichnung erfordert sowohl OPT_RRDTOOL, wie auch OPT_OWFS."
+  else
+    set msg_kernel_version = "[OPT_OW] The OPT has not been tested with kernel $kernel_version, yet. Please send any error reports to: <fli4l(at)franke-prem.de.de>"
+	set msg_interface_worg = "[OPT_OW] The hardwareinterface can be only used by one function"
+    set msg_missing_httpd  = "[OPT_OW] Without OPT_HTTPD='yes' you cannot use the web interface."
+    set msg_missing_transl = "[OPT_OW] Unfortunately, the OPT has not been translated to your preferred language, yet."
+    set msg_httpd_conflict = "[OPT_OW] It's stongly discouraged to use OWFS and OWHTTPD simultaneously!"
+    set msg_fake_mode      = "[OPT_OW] Physical device support is disabled while in FAKE mode or TESTER mode. Applies to:"
+    set msg_fake_a_tester  = "[OPT_OW] You cannot use FAKE and TESTER mode simultaneously. Applies to:"
+    set msg_no_user_script = "[OPT_OW] The user script is not accessible:"
+    set msg_no_wrapper     = "[OPT_OW] The script wrapper is not accessible:"
+    set msg_no_run_script  = "[OPT_OW] Because OW_OWFS isn't activated, the user script won't be started during boot!"
+    set msg_no_device_lib  = "[OPT_OW] The device library stated could not be found:"
+    set msg_rrdtool_owfs   = "[OPT_OW] The logging of measuerments requires both, OPT_RRDTOOL and OW_OWFS."
+  fi
+
+  if (ow_owfs)
+  then
+    if (opt_httpd && defined(httpd_gui_lang))
+    then
+      if ("$httpd_gui_lang" == "auto")
+      then
+        set ow_langlist="$locale"
+      else
+        set ow_langlist="$httpd_gui_lang"
+      fi
+      split(ow_langlist, ow_langlist_%, ' ')
+      foreach ow_lang in ow_langlist_%
+      do
+        stat("opt/srv/www/lang/ow.$ow_lang", ow_langcheck)
+        if (ow_langcheck_res == "OK")
+        then
+          add_to_opt "srv/www/lang/ow.$ow_lang" "mode=444 flags=sh"
+        else
+          error "$msg_missing_transl"
+        fi
+      done
+    else
+      warning "$msg_missing_httpd"
+    fi
+
+	# Don't activate more than one Function (OWHTTPD; OWFS and OWSHELL)
+	# For access directly to the Hardwareinterface
+	if (ow_owshell == "yes")
+	then
+		if (ow_owshell_dev == ow_owfs_dev)
+		then
+			error "$msg_interface_worg"
+		fi
+		if (ow_owshell_dev == ow_owhttpd_dev)
+		then
+			error "$msg_interface_worg"
+		fi
+	fi
+
+    # Don't use OWFS and OWHTTPD together
+    if (ow_owhttpd) && !(ow_owshell)
+    then
+      warning "$msg_httpd_conflict"
+    fi
+
+    # Include Device Lib
+    if (defined(ow_device_lib) && ow_device_lib != "")
+    then
+      set ow_devicelib = "$ow_device_lib"
+    else
+      set ow_devicelib = "/srv/www/include/ow-device.lib"
+    fi
+    stat("opt$ow_devicelib", ow_devicelib_check)
+    if (ow_devicelib_check_res == "OK")
+    then
+      add_to_opt ".$ow_devicelib" "mode=555 flags=sh"
+    else
+      error "$msg_no_device_lib opt$ow_devicelib"
+    fi
+  fi
+
+  # Check tested kernel version
+  set ow_kernel_is_valid = ""
+  split(ow_valid_kernels, ow_kernel_list_%, ' ')
+  foreach ow_kernel in ow_kernel_list_%
+  do
+    if ("$kernel_major" == "$ow_kernel")
+    then
+      set ow_kernel_is_valid = "yes"
+    fi
+  done
+  if ( ! ow_kernel_is_valid)
+  then
+    warning "$msg_kernel_version"
+  fi
+
+  # Check for tester and fake mode
+  if (ow_owfs && defined(ow_owfs_fake) && defined(ow_owfs_tester))
+  then
+    error "$msg_fake_a_tester OWFS"
+  fi
+  if (ow_owshell && defined(ow_owshell_fake) && defined(ow_owshell_tester))
+  then
+    error "$msg_fake_a_tester OWSHELL"
+  fi
+  if (ow_owhttpd && defined(ow_owhttpd_fake) && defined(ow_owhttpd_tester))
+  then
+    error "$msg_fake_a_tester OWHTTPD"
+  fi
+  if (ow_owfs && defined(ow_owfs_dev) && (defined(ow_owfs_fake) || defined(ow_owfs_tester)))
+  then
+    warning "$msg_fake_mode OWFS"
+  fi
+  if (ow_owshell && defined(ow_owshell_dev) && (defined(ow_owshell_fake) || defined(ow_owshell_tester)))
+  then
+    warning "$msg_fake_mode OWSHELL"
+  fi
+  if (ow_owhttpd && defined(ow_owhttpd_dev) && (defined(ow_owhttpd_fake) || defined(ow_owhttpd_tester)))
+  then
+    warning "$msg_fake_mode OWHTTPD"
+  fi
+
+  # Include user script
+  if (defined(ow_user_script))
+  then
+    if (defined(ow_script_wrapper) && ow_script_wrapper != "")
+    then
+      set ow_scriptwrapper = "$ow_script_wrapper"
+    else
+      set ow_scriptwrapper = "/usr/local/bin/ow-script-wrapper.sh"
+    fi
+    stat("opt$ow_user_script", ow_script_check)
+    if (ow_script_check_res == "OK")
+    then
+      stat("opt$ow_scriptwrapper", ow_wrapper_check)
+      if (ow_wrapper_check_res == "OK")
+      then
+        add_to_opt ".$ow_user_script" "mode=555 flags=sh"
+        add_to_opt ".$ow_scriptwrapper" "mode=555 flags=sh"
+      else
+        error "$msg_no_wrapper opt$ow_scriptwrapper"
+      fi
+    else
+      error "$msg_no_user_script opt$ow_user_script"
+    fi
+    if (!ow_owfs)
+    then
+      warning "$msg_no_run_script"
+    fi
+  fi
+
+  # Include RRDTool helper script
+  if (defined(rrdtool_n))
+  then
+    set ow_need_helper = ""
+    foreach ow_source in rrdtool_n
+    do
+      if (rrdtool_%_source[ow_source] == "owfs")
+      then
+        set ow_need_helper = "yes"
+      fi
+    done
+    if (ow_need_helper)
+    then
+      add_to_opt "etc/rrdtool/owfs-helper" "mode=555 flags=sh"
+    fi
+  fi
+
+fi

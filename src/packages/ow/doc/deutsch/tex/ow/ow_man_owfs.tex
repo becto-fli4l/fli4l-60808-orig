@@ -1,0 +1,440 @@
+% Last Update: $Id$
+\paragraph*{Name}
+\textbf{owfs} - 1-wire filesystem 
+\paragraph*{Synopsis}
+\textbf{owfs}           [ \textit{-c} config
+] \textit{-d} serialport $|$ \textit{-u} $|$ \textit{-s} [host:]port  \textit{-m} mountdir 
+\paragraph*{Description}
+          
+\subparagraph*{1-Wire}\textit{1-wire}
+ is a wiring protocol and series of devices designed and manufactured by
+Dallas Semiconductor, Inc. The bus is a low-power low-speed low-connector scheme
+where the data line can also provide power. 
+
+Each device is uniquely and
+unalterably numbered during manufacture. There are a wide variety of devices,
+including memory, sensors (humidity, temperature, voltage, contact, current),
+switches, timers and data loggers. More complex devices (like thermocouple
+sensors) can be built with these basic devices. There are also 1-wire devices
+that have encryption included. 
+
+The 1-wire scheme uses a single  \textit{bus} master
+and multiple \textit{slaves} on the same wire. The bus master initiates all communication.
+The slaves can be  individually discovered and addressed using their unique
+ID. 
+
+Bus masters come in a variety of configurations including serial, parallel,
+i2c, network or USB adapters. 
+\subparagraph*{OWFS design}\textit{OWFS} is a suite of programs that
+designed to make the 1-wire bus and its devices easily accessible. The underlying
+priciple is to create a virtual filesystem, with the unique ID being the
+directory, and the individual properties of the device are represented
+as simple files that can be read and written. 
+
+Details of the individual
+slave or master design are hidden behind a consistent interface. The goal
+is to  provide an easy set of tools for a software designer to create monitoring
+or control applications. There  are some performance enhancements in the
+implementation, including data caching, parallel access to bus  masters,
+and aggregation of device communication. Still the fundemental goal has
+been ease of use, flexibility  and correctness rather than speed.  
+\subparagraph*{owfs}\textsf{\textbf{owfs
+(1)}} is the filesystem client of the  \textit{OWFS} family of programs. It runs on
+linux, freebsd and Mac OS X, and requires the  \textit{fuse} kernel module and library.
+(\altlink{http://fuse.sourceforge.net/}) which is a user-mode filesystem driver. 
+
+Essentially,
+the entire 1-wire bus is mounted to a place in your filesystem. All the 1-wire
+devices are accessible using standard file operations (read, write, directory
+listing). The system is safe, no actual files are exposed, these files are
+virtual. Not all operations are supported. Specifically, file creation, deletion,
+linking and renaming are not allowed. (You can link from outside to a owfs
+file, but not the other way around).           
+\paragraph*{Device Options (1-wire Bus
+Master)}
+These options specify the device (bus master) connecting the computer
+to the 1-wire bus. The 1-wire slaves are connected to the 1-wire bus, and the
+bus master connects to a port on the computer and controls the 1-wire bus.
+The bus master is either an actual physical device, the kernel w1 module,
+or an  \textsf{\textbf{owserver (1)}. } 
+
+At least one device option is required. There is no
+default. More than one device can be listed, and all will be used. (A logical
+union unless you explore the \textit{/bus.n/} directories.) 
+
+Linux and BSD enforce
+a security policy restricting access to hardware ports. You must have sufficient
+rights to access the given port or access will silently fail. 
+\paragraph*{ Serial devices}
+\textit{port}
+ specifies a serial port, e.g.  \textit{/dev/ttyS0} \begin{description}
+\item [\textit{-d port\textit{ }}$|$ \textit{--device=port\textit{ \textbf{(DS2480B)\textbf{
+}}}}] DS2480B-based bus master (like the DS9097U or the LINK in emulation mode).
+If the adapter doesn't respond, a passive type (DS9907E or diode/resistor)
+circuit will be assumed. 
+\item [\textit{--serial\_flextime} $|$ --serial\_regulartime \textbf{(DS2480B)\textbf{ }}] 
+
+Changes details of bus timing (see DS2480B datasheet). Some devices, like
+the \textit{Swart} LCD cannot work with \textit{flextime.} 
+\item [\textit{--baud=\textit{}}1200$|$9600$|$19200$|$38400$|$57600$|$115200
+\textbf{(DS2480B,LINK,HA5)\textbf{ }}] Sets the initial serial port communication speed for
+all bus masters. Not all serial devices support all speeds. You can change
+the individual bus master speed for the \textbf{LINK} and \textbf{DS2880B} in the interface/settings
+directory. The \textbf{HA5} speed is set in hardware, so the command line buad rate
+should match that rate. 
+
+Usually the default settings (9600 for \textbf{LINK} and \textbf{DS2480B} ) and 115200 for
+the \textbf{HA5} are sane and shouldn't be changed. 
+\item [\textit{--straight\_polarity\textit{  }}$|$ \textit{--reverse\_polarity\textit{
+\textbf{(DS2480B)\textbf{ }}}}] Reverse polarity of the DS2480B output transistors? Not needed
+for the DS9097U, but required for some other designs. 
+\item [\textit{--link=port\textit{ \textbf{(LINK)\textbf{ }}}}] \textbf{iButtonLink}
+\textit{LINK} adapter (all versions) in non-emulation mode. Uses an ascii protocol
+over serial. 
+\item [\textit{--ha7e=port\textit{ \textbf{(HA7E)\textbf{ }}}}] \textbf{Embedded Data Systems} \textit{HA7E} adapter ( and \textit{HA7S}
+) in native ascii mode. 
+\item [\textit{--ha5=port $|$ --ha5=port:a $|$ --ha5=port:acg\textit{ \textbf{(HA5)\textbf{ }}}}] \textbf{Embedded
+Data Systems} \textit{HA5} mutidrop adapter in native ascii mode. Up to 26 adapters
+can share the same port, each with an assigned letter. If no letter specified,
+the program will scan for the first response (which may be slow). 
+\item [\textit{--checksum}
+$|$ --no\_checksum \textbf{(HA5)\textbf{ }}] 
+
+Turn on (default) or off the checksum feature of the HA5 communication.
+ 
+\item [\textit{--passive=port} $|$ \textit{--ha2=port} $|$ \textit{--ha3=port} $|$ \textit{--ha4b=port \textbf{(Passive)\textbf{ }}}] Passive 1-wire adapters.
+Powered off the serial port and using passive electrical components (resitors
+and diodes). 
+\item [\textit{--8bit} $|$ --6bit \textbf{(Passive)\textbf{ }}] 
+
+Synthesize the 1-wire waveforme using a 6-bit (default) serial word, or 8-bit
+word. Not all UART devices support 6 bit operation. 
+\item [\textit{--timeout\_serial=5\textit{ }}] Timeout
+(in seconds) for all serial communications. 5 second default. Can be altered
+dynamically under  \textit{/settings/timeout/serial} 
+\end{description}
+
+\paragraph*{ USB devices}
+The only supported
+true USB bus masters are based on the DS2490 chip. The most common is the
+DS9490R which has an included 1-wire ID slave with family code 81. 
+
+There
+are also bus masters based on the serial chip with a USB to serial conversion
+built in. These are supported by the serial bus master protocol.  \begin{description}
+\item [\textit{-u}  $|$ \textit{--usb
+}] DS2490 based bus master (like the DS9490R). 
+\item [\textit{-u2}  $|$ \textit{--usb=2 }] Use the second USB
+bus master. (The order isn't predicatble, however, since the operating system
+does not conssitently order USB devices). 
+\item [\textit{-uall}  $|$ \textit{--usb=ALL }] Use all the USB
+devices. 
+\item [\textit{--usb\_flextime} $|$ --usb\_regulartime ] Changes the details of 1-wire waveform
+timing for certain network configurations. 
+\item [\textit{--altusb} ] Willy Robion's alternative
+USB timing.  
+\item [\textit{--timeout\_usb=5} ] Timeout for USB communications. This has a 5 second
+default and can be changed dynamically under \textit{/settings/timeout/usb} 
+\end{description}
+
+\paragraph*{ I2C
+devices}
+I2C is  2 wire protocol used for chip-to-chip communication. The bus
+masters: \textit{DS2482-100,} DS2482-101 and \textit{DS2482-800} can specify (via pin voltages)
+a subset of addresses on the i2c bus. Those choices are 
+
+\textit{i2c\_address} \begin{description}
+\item [0,1,2,3
+] 0x18,0x19,0x1A,0x1B 
+\item [4,5,6,7 ] 0x1C,0x1D,0x1E,0x1F (DS2482-800 only) 
+\end{description}
+
+
+\textit{port} for
+i2c masters have the form  \textit{/dev/i2c-0,} /dev/i2c-1, ... \begin{description}
+\item [\textit{-d port} $|$ \textit{--device=port }] This
+simple form only permits a specific  \textit{port}  and the first available \textit{i2c\_address}
+
+\item [\textit{--i2c=port} $|$ \textit{--i2c=port:i2c\_address} $|$ \textit{--i2c=port:ALL }] Specific i2c \textit{port} and the
+\textit{i2c\_address} is either the first, specific, or all or them. The  \textit{i2c\_address}
+is 0,1,2,... 
+\item [\textit{--i2c} $|$ \textit{--i2c=:} $|$ \textit{--i2c=ALL:ALL }] Search the available i2c buses for either
+the first, the first, or every i2c adapter. 
+\end{description}
+
+
+The \textit{DS2482-800} masters 8 1-wire
+buses and so will generate 8 \textit{/bus.n} entries. 
+\paragraph*{ Network devices}
+These bus masters
+communicate via the tcp/ip network protocol and so can be located anywhere
+on the network. The \textit{network\_address} is of the form tcp\_address:port 
+
+E.g. 192.168.0.1:3000
+or localhost:3000 \begin{description}
+\item [\textit{--link=network\_address} ] LinkHubE network LINK adapter by
+ \textbf{iButtonLink} 
+\item [\textit{--ha7net=network\_address} $|$ --ha7net ] HA7Net network 1-wire adapter
+with specified tcp address or discovered by udp multicast. By \textbf{Embedded Data
+Systems} 
+
+\textit{--timeout\_ha7=60} specific timeout for HA7Net communications (60 second default).
+
+\item [\textit{--etherweather=network\_address} ] Etherweather adapter 
+\item [\textit{-s network\_address} $|$ \textit{--server=network\_address
+}] Location of an \textsf{\textbf{owserver (1)}} program that talks to the 1-wire bus. The default
+port is 4304. 
+\item [\textit{--timeout\_network=5} ] Timeout for network bus master communications.
+This has a 1 second default and can be changed dynamically under \textit{/settings/timeout/network}
+
+\end{description}
+
+\paragraph*{ Simulated devices}
+Used for testing and development. No actual hardware
+is needed. Useful for separating the hardware development from the rest
+of the software design. \begin{description}
+\item [\textit{devices} ] is a list of comma-separated 1-wire devices
+in the following formats. Note that a valid CRC8 code is created automatically.
+
+\item [10,05,21 ] Hexidecimal \textit{family} codes (the DS18S20, DS2405 and DS1921 in this
+example). 
+\item [10.12AB23431211 ] A more complete hexidecimal unique address. Useful
+when an actual hardware device should be simulated. 
+\item [DS2408,DS2489 ] The 1-wire
+device name. (Full ID cannot be speciifed in this format). 
+\item [\textit{--fake=devices} ] Random
+address and random values for each read. The device ID is also random (unless
+specified). 
+\item [\textit{--temperature\_low=12} --temperature\_high=44 ] Specify the temperature
+limits for the \textit{fake} adapter simulation. These should be in the same temperature
+scale that is specified in the command line. It is possible to change the
+limits dynamically for each adapter under \textit{/bus.x/interface/settings/simulated/[temperature\_low$|$temperature\_high]}
+
+\item [\textit{--tester=devices} ] Predictable address and predictable values for each read.
+(See the website for the algorhythm). 
+\end{description}
+
+\paragraph*{ w1 kernel module}
+This a linux-specific
+option for using the operating system's access to bus masters. Root access
+is required and the implementation was still in progress as of owfs v2.7p12
+and linux 2.6.30. 
+
+Bus masters are recognized and added dynamically. Details
+of the physical bus master are not accessible, bu they include USB, i2c
+and a number of GPIO designs on embedded boards. 
+
+Access is restrict to superuser
+due to the netlink broadcast protocol employed by w1. Multitasking must
+be configured (threads) on the compilation. \begin{description}
+\item [\textit{--w1} ] Use the linux kernel w1 virtual
+bus master. 
+\item [\textit{--timeout\_w1=10} ] Timeout for w1 netlink communications. This has
+a 10 second default and can be changed dynamically under \textit{/settings/timeout/w1}
+ 
+\end{description}
+
+\paragraph*{Specific Options}
+
+\subparagraph*{-m --mountpoint=directory\_path}Path of a directory to mount
+the 1-wire file system 
+
+The mountpoint is required. There is no default. 
+\subparagraph*{--allow\_other}Shorthand
+for fuse mount option "-o allow\_other"  Allows other users to see the fuse
+(owfs) mount point and file system. Requires a setting in /etc/fuse.conf
+as well. 
+\subparagraph*{--fuse-opt \dq{}options\dq{}}Sends options to the fuse-mount process. Options
+should be quoted, e.g. "-o allow\_other".
+\paragraph*{Temperature Scale Options}
+
+\subparagraph*{-C --Celsius}
+\subparagraph*{-F --Fahrenheit}
+\subparagraph*{-K
+--Kelvin}
+\subparagraph*{-R --Rankine}Temperature scale used for data output. Celsius is the default.
+
+
+Can also be changed within the program at \textit{/settings/units/temperature\_scale}
+           
+\paragraph*{Pressure Scale Options}
+
+\subparagraph*{--mbar (default)}
+\subparagraph*{--atm}
+\subparagraph*{--mmHg}
+\subparagraph*{--inHg}
+\subparagraph*{--psi}
+\subparagraph*{--Pa}Pressure
+scale used for data output. Millibar is the default. 
+
+Can also be changed
+within the program at \textit{/settings/units/pressure\_scale}             
+\paragraph*{Format
+Options}
+Choose the representation of the 1-wire unique identifiers. OWFS uses
+these identifiers as unique directory names. 
+
+Although several display formats
+are selectable, all must be in  \textit{family-id-crc8} form, unlike some other programs
+and the labelling on iButtons, which are \textit{crc8-id-family} form. 
+\subparagraph*{-f --format=\dq{}f[.]i[[.]c]\dq{}}Display
+format for the 1-wire devices. Each device has a 8byte address, consisting
+of: \begin{description}
+\item [\textit{f} ] family code, 1 byte 
+\item [\textit{i} ] ID number, 6 bytes 
+\item [\textit{c} ] CRC checksum, 1 byte 
+\end{description}
+
+
+Possible
+formats are \textit{f.i} (default, 01.A1B2C3D4E5F6), \textit{fi} fic f.ic f.i.c and \textit{fi.c} 
+
+All formats
+are accepted as input, but the output will be in the specified format. 
+
+The
+address elements can be retrieved from a device entry in owfs by the  \textit{family,}
+id and crc8 properties, and as a whole with \textit{address.} The reversed id and
+address can be retrieved as \textit{r\_id} and  \textit{r\_address.}            
+\paragraph*{Job Control
+Options}
+
+\subparagraph*{-r --readonly}
+\subparagraph*{-w --write}Do we allow writing to the 1-wire bus (writing memory,
+setting switches, limits, PIOs)? The \textit{write} option is available for symmetry,
+it's the default. 
+\subparagraph*{-P --pid-file \dq{}filename\dq{}}Places the PID -- process ID of owfs
+into the specified filename. Useful for startup scripts control. 
+\subparagraph*{--background
+$|$ --foreground}Whether the program releases the console and runs in the \textit{background}
+after evaluating command line options. \textit{background} is the default. 
+\subparagraph*{--error\_print=0$|$1$|$2$|$3}\begin{description}
+\item [\textit{=0}
+] default mixed destination: stderr foreground / syslog background 
+\item [\textit{=1} ] syslog
+only 
+\item [\textit{=2} ] stderr only 
+\item [\textit{=3} ] /dev/null (quiet mode). 
+\end{description}
+
+\subparagraph*{--error\_level=0..9}\begin{description}
+\item [\textit{=0} ] default
+errors only 
+\item [\textit{=1} ] connections/disconnections 
+\item [\textit{=2} ] all high level calls 
+\item [\textit{=3} ] data
+summary for each call 
+\item [\textit{=4} ] details level 
+\item [\textit{$>$4} ] debugging chaff 
+\end{description}
+
+
+\textit{--error\_level=9}
+produces a lot of output            
+\paragraph*{Configuration File}
+
+\subparagraph*{-c file $|$ --configuration
+file}Name of an \textsf{\textbf{owfs (5)}} configuration file with more command line parameters
+            
+\paragraph*{Help Options}
+See also this man page and the web site \altlink{http://www.owfs.org/}
+
+\subparagraph*{-h --help=[device$|$cache$|$program$|$job$|$temperature]}Shows basic summary of options.
+\begin{description}
+\item [\textit{device} ] 1-wire bus master options 
+\item [\textit{cache} ] cache and communication size and
+timing 
+\item [\textit{program} ] mountpoint or TCP server settings 
+\item [\textit{job} ] control and debugging
+options 
+\item [\textit{temperature} ] Unique ID display format and temperature scale 
+\end{description}
+
+\subparagraph*{-V --version}\textit{Version}
+of this program and related libraries.            
+\paragraph*{Time Options}
+Timeouts for
+the bus masters were previously listed in \textit{Device} options. Timeouts for the
+cache affect the time that data stays in memory. Default values are shown.
+
+\subparagraph*{--timeout\_volatile=15}Seconds until a  \textit{volatile}  property expires in the cache.
+Volatile properties are those (like temperature) that change on their own.
+
+
+Can be changed dynamically at  \textit{/settings/timeout/volatile} 
+\subparagraph*{--timeout\_stable=300}Seconds
+until a  \textit{stable}  property expires in the cache. Stable properties are those
+that shouldn't change unless explicitly changed. Memory contents for example.
+
+
+Can be changed dynamically at  \textit{/settings/timeout/stable} 
+\subparagraph*{--timeout\_directory=60}Seconds
+until a  \textit{directory}  listing expires in the cache. Directory lists are the
+1-wire devices found on the bus. 
+
+Can be changed dynamically at  \textit{/settings/timeout/directory}
+
+\subparagraph*{--timeout\_presence=120}Seconds until the \textit{presence} and bus location of a 1-wire
+device expires in the cache. 
+
+Can be changed dynamically at  \textit{/settings/timeout/presence}
+
+
+\textbf{There are also timeouts for specific program responses:} 
+\subparagraph*{--timeout\_server=5}Seconds
+until the expected response from the \textsf{\textbf{owserver (1)}} is deemed tardy. 
+
+Can be
+changed dynamically at  \textit{/settings/timeout/server} 
+\subparagraph*{--timeout\_ftp=900}Seconds
+that an ftp session is kept alive. 
+
+Can be changed dynamically at  \textit{/settings/timeout/ftp}
+ 
+\paragraph*{Example}
+\begin{description}
+\item [owfs -d /dev/ttyS0 -m /mnt/1wire ] Bus master on serial port 
+\item [owfs -F
+-u -m /mnt/1wire ] USB adapter, temperatures reported in Fahrenheit 
+\item [owfs -s
+10.0.1.2:4304 -m /mnt/1wire ] Connect to an  \textsf{\textbf{owserver (1)}} process that was started
+on another machine at tcp port 4304 
+\end{description}
+
+\paragraph*{See Also}
+
+\subparagraph*{Programs}\textsf{\textbf{owfs (1)} \textsf{owhttpd (1)}
+\textsf{owftpd (1)} \textsf{owserver (1)}} \textsf{\textbf{owdir (1)} \textsf{owread (1)} \textsf{owwrite (1)} \textsf{owpresent (1)}}
+\textsf{\textbf{owtap (1)}} 
+\subparagraph*{Configuration and testing}\textsf{\textbf{owfs (5)} \textsf{owtap (1)} \textsf{owmon (1)}} 
+\subparagraph*{Language
+bindings}\textsf{\textbf{owtcl (3)} \textsf{owperl (3)} \textsf{owcapi (3)}} 
+\subparagraph*{Clocks}\textsf{\textbf{DS1427 (3)} \textsf{DS1904(3)} \textsf{DS1994
+(3)} \textsf{DS2404 (3)} \textsf{DS2404S (3)} \textsf{DS2415 (3)} \textsf{DS2417 (3)}} 
+\subparagraph*{ID}\textsf{\textbf{DS2401 (3)} \textsf{DS2411 (3)}
+\textsf{DS1990A (3)}} 
+\subparagraph*{Memory}\textsf{\textbf{DS1982 (3)} \textsf{DS1985 (3)} \textsf{DS1986 (3)} \textsf{DS1991 (3)} \textsf{DS1992 (3)}
+\textsf{DS1993 (3)} \textsf{DS1995 (3)} \textsf{DS1996 (3)} \textsf{DS2430A (3)} \textsf{DS2431 (3)} \textsf{DS2433 (3)} \textsf{DS2502
+(3)} \textsf{DS2506 (3)} \textsf{DS28E04 (3)} \textsf{DS28EC20 (3)}} 
+\subparagraph*{Switches}\textsf{\textbf{DS2405 (3)} \textsf{DS2406 (3)} \textsf{DS2408
+(3)} \textsf{DS2409 (3)} \textsf{DS2413 (3)} \textsf{DS28EA00 (3)}} 
+\subparagraph*{Temperature}\textsf{\textbf{DS1822 (3)} \textsf{DS1825 (3)}
+\textsf{DS1820 (3)} \textsf{DS18B20 (3)} \textsf{DS18S20 (3)} \textsf{DS1920 (3)} \textsf{DS1921 (3)} \textsf{DS1821 (3)} \textsf{DS28EA00
+(3)} \textsf{DS28E04 (3)}} 
+\subparagraph*{Humidity}\textsf{\textbf{DS1922 (3)}} 
+\subparagraph*{Voltage}\textsf{\textbf{DS2450 (3)}} 
+\subparagraph*{Resistance}\textsf{\textbf{DS2890 (3)}}
+
+\subparagraph*{Multifunction (current, voltage, temperature)}\textsf{\textbf{DS2436 (3)} \textsf{DS2437 (3)} \textsf{DS2438
+(3)} \textsf{DS2751 (3)} \textsf{DS2755 (3)} \textsf{DS2756 (3)} \textsf{DS2760 (3)} \textsf{DS2770 (3)} \textsf{DS2780 (3)} \textsf{DS2781
+(3)} \textsf{DS2788 (3)} \textsf{DS2784 (3)}} 
+\subparagraph*{Counter}\textsf{\textbf{DS2423 (3)}} 
+\subparagraph*{LCD Screen}\textsf{\textbf{LCD (3)} \textsf{DS2408 (3)}}
+
+\subparagraph*{Crypto}\textsf{\textbf{DS1977 (3)}} 
+\subparagraph*{Pressure}\textsf{\textbf{DS2406 (3)} -- TAI8570}  
+\paragraph*{Availability}
+\altlink{http://www.owfs.org/}
+
+\paragraph*{Author}
+Paul Alfille (\email{paul.alfille@gmail.com}) 

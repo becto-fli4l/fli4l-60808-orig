@@ -1,0 +1,241 @@
+% Last Update: $Id$
+\paragraph*{Name}
+owdir, owread, owwrite, owget, owpresent - lightweight owserver
+access 
+\paragraph*{Synopsis}
+\textbf{owdir} \textit{-s}  [host:]port [directory] 
+
+\textbf{owread} \textit{-s}  [host:]port filepath 
+
+\textbf{owwrite} \textit{-s}  [host:]port filepath value 
+
+\textbf{owget} \textit{-s}  [host:]port [directory] $|$ filepath 
+
+
+
+\textbf{owdir} \textit{--autoserver} [directory] 
+
+\textbf{owread} \textit{--autoserver} filepath 
+
+\textbf{owwrite} \textit{--autoserver} filepath value 
+
+\textbf{owget} \textit{--autoserver} [directory] $|$ filepath 
+
+\textbf{owdir} \textit{-f} --format f[.]i[[.]c] ] [ \textit{--dir}
+] \textit{-s}  [host:]port [directory] [directory2 ...] 
+
+\textbf{owread} \textit{-C} --celsius \textit{-K} --kelvin \textit{-F}
+--fahrenheit \textit{-R} --rankine [ \textit{--hex} ] [ \textit{--start=} offset ] [ \textit{--size=} bytes ] \textit{-s}  [host:]port
+filepath [filepath2 ...] 
+
+\textbf{owwrite} \textit{-C} --celsius \textit{-K} --kelvin \textit{-F} --fahrenheit \textit{-R} --rankine [ \textit{--hex} ] [ \textit{--start=} offset
+] \textit{-s}  [host:]port filepath value [filepath2 value2 ...] 
+
+\textbf{owget} \textit{-f} --format f[.]i[[.]c]
+\textit{-C} --celsius \textit{-K} --kelvin \textit{-F} --fahrenheit \textit{-R} --rankine [ \textit{--hex} ] [ \textit{--start=} offset ] [ \textit{--size=}
+bytes ] [ \textit{--dir} ] \textit{-s}  [host:]port [directory] $|$ filepath 
+
+\textbf{owdir} \textit{-V} --version 
+
+\textbf{owread} \textit{-V} --version 
+
+\textbf{owwrite} \textit{-V} --version 
+
+\textbf{owget} \textit{-V} --version 
+
+
+
+\textbf{owdir} \textit{-h} $|$ --help 
+
+\textbf{owread} \textit{-h} $|$ --help 
+
+\textbf{owwrite} \textit{-h} $|$ --help 
+
+\textbf{owget} \textit{-h} $|$ --help 
+
+
+\paragraph*{Description}
+          
+\subparagraph*{1-Wire}\textit{1-wire}  is a wiring protocol and series of devices
+designed and manufactured by Dallas Semiconductor, Inc. The bus is a low-power
+low-speed low-connector scheme where the data line can also provide power.
+
+
+Each device is uniquely and unalterably numbered during manufacture. There
+are a wide variety of devices, including memory, sensors (humidity, temperature,
+voltage, contact, current), switches, timers and data loggers. More complex
+devices (like thermocouple sensors) can be built with these basic devices.
+There are also 1-wire devices that have encryption included. 
+
+The 1-wire scheme
+uses a single  \textit{bus} master and multiple \textit{slaves} on the same wire. The bus
+master initiates all communication. The slaves can be  individually discovered
+and addressed using their unique ID. 
+
+Bus masters come in a variety of configurations
+including serial, parallel, i2c, network or USB adapters. 
+\subparagraph*{OWFS design}\textit{OWFS}
+is a suite of programs that designed to make the 1-wire bus and its devices
+easily accessible. The underlying priciple is to create a virtual filesystem,
+with the unique ID being the directory, and the individual properties of
+the device are represented as simple files that can be read and written.
+
+
+Details of the individual slave or master design are hidden behind a consistent
+interface. The goal is to  provide an easy set of tools for a software designer
+to create monitoring or control applications. There  are some performance
+enhancements in the implementation, including data caching, parallel access
+to bus  masters, and aggregation of device communication. Still the fundemental
+goal has been ease of use, flexibility  and correctness rather than speed.
+ 
+\subparagraph*{OWSHELL programs}\textbf{owdir owread owwrite } and  \textbf{owget} are collectively called
+the \textbf{owshell} programs. They allow lightweight access to an \textsf{\textbf{owserver (1)}} for
+use in command line scripts. 
+
+Unlike \textsf{\textbf{owserver (1)} \textsf{owhttpd (1)} \textsf{owftpd (1)}
+\textsf{owhttpd (1)}} there is not persistent connection with the 1-wire bus, no caching
+and no multithreading. Instead, each program connects to a running \textsf{\textbf{owserver
+(1)}} and performs a quick set of queries. 
+
+\textsf{\textbf{owserver (1)}} performs the actual
+1-wire connection (to physical 1-wire busses or other \textbf{owserver} programs),
+performs concurrency locking, caching, and error collection. 
+
+\textbf{owshell} programs
+are intended for use in command line scripts. An alternative approach is
+to mount an \textsf{\textbf{owfs (1)}} filesystem and perform direct file lists, reads and
+writes. 
+\subparagraph*{owdir}\textbf{owdir} performs a \textit{directory} listing. With no argument, all the
+devices on the main 1-wire bus will be listed. Given the name of a 1-wire
+device, the available properties will be listed. It is the equivalent of
+\begin{description}
+\item [\textit{ls} directory ] 
+\end{description}
+
+
+in the \textsf{\textbf{owfs (1)}} filesystem. 
+\subparagraph*{owread}\textbf{owread} obtains for value
+of a 1-wire device property. e.g. 28.0080BE21AA00/temperature gives the DS18B20
+temperature. It is the equivalent of \begin{description}
+\item [\textit{cat} filepath ] 
+\end{description}
+
+
+in the \textsf{\textbf{owfs (1)}} filesystem.
+
+\subparagraph*{owwrite}\textbf{owwrite} performs a change of a property, changing a 1-wire device
+setting or writing to memory. It is the equivalent of \begin{description}
+\item [\textit{echo} "value" $>$ filepath
+] 
+\end{description}
+
+
+in the \textsf{\textbf{owfs (1)}} filesystem. 
+\subparagraph*{owget}\textsf{\textbf{owget (1)}} is a convenience program, combining
+the function of \textsf{\textbf{owdir (1)}} and \textsf{\textbf{owread (1)}} by first trying to read the argument
+as a directory, and if that fails as a 1-wire property. 
+\paragraph*{Standard Options}
+
+\subparagraph*{--autoserver}Find
+an  \textit{owserver} using the Service Discovery protocol. Essentially Apple's Bonjour
+(aka zeroconf). Only the first  \textit{owserver}  will be used, and that choice
+is probably arbitrary. 
+\subparagraph*{-s [host:]port}Connect via tcp (network) to an \textit{owserver}
+process that is connected to a physical 1-wire bus. This allows multiple
+processes to share the same bus. The \textit{owserver} process can be local or remote.
+
+\paragraph*{Data Options}
+
+\paragraph*{--hex}
+Hexidecimal mode. For reading data, each byte of character
+will be displayed as two characrters 0-9ABCDEF. Most useful for reading memory
+locations. No spaces between data. 
+
+Writing data in hexidecimal mode just
+means that the data should be given as one long hexidecimal string. 
+\paragraph*{--start=offset}
+Read
+or write memory locations starting at the offset byte rather than the beginning.
+An offset of 0 means the beginning (and is the default). 
+
+
+\paragraph*{--size=bytes}
+Read
+up to the specified number of bytes of a memory location. 
+\paragraph*{Help Options}
+
+\subparagraph*{-h
+--help}Shows basic summary of options. 
+\subparagraph*{-V --version}\textit{Version} of this program and
+related libraries. 
+\paragraph*{Display Options}
+
+\subparagraph*{--dir}Modify the display of directories to
+indicate which entries are also directories. A directory member will have
+a trailing '/' if it is a directory itself. This aids recursive searches. 
+\subparagraph*{-f
+--format \dq{}f[.]i[[.]c]\dq{}}Display format for the 1-wire devices. Each device has
+a 8 byte address, consisting of: \begin{description}
+\item [\textit{f} ] family code, 1 byte 
+\item [\textit{i} ] ID number, 6 bytes
+
+\item [\textit{c} ] CRC checksum, 1 byte 
+\end{description}
+
+
+Possible formats are \textit{f.i} (default, 01.A1B2C3D4E5F6),
+\textit{fi} fic f.ic f.i.c and \textit{fi.c} 
+
+All formats are accepted as input, but the output
+will be in the specified format. 
+\paragraph*{Example}
+\begin{description}
+\item [owdir -s 3000 --format fic ] Get the
+device listing (full 16 hex digits, no dots) from the local \textit{owserver} at
+port 3000 
+\item [owread -F --autoserver 51.125499A32000/typeK/temperature ] Read temperature
+from the DS2751-based thermocouple on an auto-discovered \textit{owserver} Temperature
+in fahrenheit. 
+\item [owwrite -s 10.0.1.2:3001 32.000800AD23110/pages/page.1 "Passed"
+] Connect to a OWFS server process ( \textit{owserver} ) that was started on another
+machine at tcp port 3001 and write to the memory of a DS2780 
+\end{description}
+
+\paragraph*{See Also}
+
+\subparagraph*{Programs}\textsf{\textbf{owfs
+(1)} \textsf{owhttpd (1)} \textsf{owftpd (1)} \textsf{owserver (1)}} \textsf{\textbf{owdir (1)} \textsf{owread (1)} \textsf{owwrite (1)}
+\textsf{owpresent (1)}} \textsf{\textbf{owtap (1)}} 
+\subparagraph*{Configuration and testing}\textsf{\textbf{owfs (5)} \textsf{owtap (1)} \textsf{owmon
+(1)}} 
+\subparagraph*{Language bindings}\textsf{\textbf{owtcl (3)} \textsf{owperl (3)} \textsf{owcapi (3)}} 
+\subparagraph*{Clocks}\textsf{\textbf{DS1427 (3)} \textsf{DS1904(3)}
+\textsf{DS1994 (3)} \textsf{DS2404 (3)} \textsf{DS2404S (3)} \textsf{DS2415 (3)} \textsf{DS2417 (3)}} 
+\subparagraph*{ID}\textsf{\textbf{DS2401 (3)} \textsf{DS2411
+(3)} \textsf{DS1990A (3)}} 
+\subparagraph*{Memory}\textsf{\textbf{DS1982 (3)} \textsf{DS1985 (3)} \textsf{DS1986 (3)} \textsf{DS1991 (3)} \textsf{DS1992
+(3)} \textsf{DS1993 (3)} \textsf{DS1995 (3)} \textsf{DS1996 (3)} \textsf{DS2430A (3)} \textsf{DS2431 (3)} \textsf{DS2433 (3)}
+\textsf{DS2502 (3)} \textsf{DS2506 (3)} \textsf{DS28E04 (3)} \textsf{DS28EC20 (3)}} 
+\subparagraph*{Switches}\textsf{\textbf{DS2405 (3)} \textsf{DS2406
+(3)} \textsf{DS2408 (3)} \textsf{DS2409 (3)} \textsf{DS2413 (3)} \textsf{DS28EA00 (3)}} 
+\subparagraph*{Temperature}\textsf{\textbf{DS1822 (3)}
+\textsf{DS1825 (3)} \textsf{DS1820 (3)} \textsf{DS18B20 (3)} \textsf{DS18S20 (3)} \textsf{DS1920 (3)} \textsf{DS1921 (3)} \textsf{DS1821
+(3)} \textsf{DS28EA00 (3)} \textsf{DS28E04 (3)}} 
+\subparagraph*{Humidity}\textsf{\textbf{DS1922 (3)}} 
+\subparagraph*{Voltage}\textsf{\textbf{DS2450 (3)}} 
+\subparagraph*{Resistance}\textsf{\textbf{DS2890
+(3)}} 
+\subparagraph*{Multifunction (current, voltage, temperature)}\textsf{\textbf{DS2436 (3)} \textsf{DS2437 (3)}
+\textsf{DS2438 (3)} \textsf{DS2751 (3)} \textsf{DS2755 (3)} \textsf{DS2756 (3)} \textsf{DS2760 (3)} \textsf{DS2770 (3)} \textsf{DS2780
+(3)} \textsf{DS2781 (3)} \textsf{DS2788 (3)} \textsf{DS2784 (3)}} 
+\subparagraph*{Counter}\textsf{\textbf{DS2423 (3)}} 
+\subparagraph*{LCD Screen}\textsf{\textbf{LCD (3)}
+\textsf{DS2408 (3)}} 
+\subparagraph*{Crypto}\textsf{\textbf{DS1977 (3)}} 
+\subparagraph*{Pressure}\textsf{\textbf{DS2406 (3)} -- TAI8570}  
+\paragraph*{Availability}
+\altlink{http://www.owfs.org/}
+
+\paragraph*{Author}
+Paul Alfille (\email{paul.alfille@gmail.com}) 
+

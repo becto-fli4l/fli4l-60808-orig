@@ -1,0 +1,317 @@
+% Synchronized to r29817
+\paragraph*{Name}
+DS2406, DS2407 - Dual Addressable Switch with 1kbit Memory
+
+\paragraph*{Synopsis}
+Dual Switch, Write-once Memory 
+
+\textbf{12} [.]XXXXXXXXXXXX[XX][/[ \textbf{channels}
+$|$ \textbf{latch.[A$|$B$|$ALL$|$BYTE]} $|$ \textbf{memory} $|$ \textbf{pages/page.[0-3$|$ALL]} $|$ \textbf{PIO.[A$|$B$|$ALL$|$BYTE]} $|$ \textbf{power} $|$ \textbf{sensed.[A$|$B$|$ALL$|$BYTE]}
+$|$ \textbf{set\_alarm} $|$ \textbf{TAI8570/[sibling$|$temperature$|$pressure]} $|$ \textbf{T8A/volt.[0-7,ALL]}    
+      \textbf{address} $|$ \textbf{crc8} $|$ \textbf{id} $|$ \textbf{locator} $|$ \textbf{r\_address} $|$ \textbf{r\_id} $|$ \textbf{r\_locator} $|$ \textbf{type}  ]]
+
+\paragraph*{Family Code}
+
+
+\textit{12} 
+\paragraph*{Special Properties}
+
+\subparagraph*{channels}\textit{read-only,} unsigned integer 
+
+Is this a 1 or 2 channel switch? The \textit{DS2406} comes in two forms, one has
+only one \textit{PIO} pin (PIO.A). Returns 1 or 2. 
+\subparagraph*{latch.A latch.B latch.ALL latch.BYTE}\textit{read-write,}
+yes-no 
+
+The activity latch is set to 1 with the first negative or positive edge
+detected on the associated PIO channel. 
+
+Writing any data will clear latch for all (both)) channels. This is a hardware
+"feature" of the chip. 
+
+\textit{ALL} references both channels simultaneously, comma separated 
+
+\textit{BYTE} references both channels simultaneously as a single byte, with channel
+A in bit 0. 
+\subparagraph*{memory}\textit{read-write,} binary 
+
+128 bytes of non-volatile, write-once data. 
+\subparagraph*{pages/page.0 ... pages/page.3 pages/page.ALL}\textit{read-write,}
+binary 
+
+Memory organized as 4 pages or 32 bytes. Memory is write-once. 
+
+\textit{ALL} is the aggregate of all 4 pages, sequentially accessed. 
+\subparagraph*{Pio.a Pio.b Pio.all
+Pio.byte}\textit{read-write,} yes-no 
+
+State of the open-drain output ( \textit{PIO} ) pin. 0 = non-conducting (off), 1 =
+\textsf{conducting (on)}. 
+
+Writing zero will turn off the switch, non-zero will turn on the switch.
+Reading the \textit{PIO} state will return the switch setting (flipflop in the data
+sheet). To determine the actual logic level at the switch, refer to the
+\textit{sensed} property. 
+
+Note that the actual pin setting for the chip uses the opposite polarity
+-- 0 for conducting, 1 for non-conducting. However, to turn a connected device
+on (i.e. to deliver power) we use the software concept of 1 as conducting
+or "on". 
+
+\textit{ALL} references both channels simultaneously, comma separated. 
+
+\textit{BYTE} references both channels simultaneously as a single byte, with channel
+A in bit 0. 
+\subparagraph*{power}\textit{read-only,} yes-no 
+
+Is the \textit{DS2406} powered parasitically =0 or separately on the Vcc pin =1
+
+\subparagraph*{sensed.A sensed.B sensed.ALL sensed.BYTE}\textit{read-only,} yes-no 
+
+Logic level at the \textit{PIO} pin. 0 = ground. 1 = high (~2.4V - 5V ). Really makes
+sense only if the \textit{PIO} state is set to zero (off), else will read zero. 
+
+\textit{ALL} references both channels simultaneously, comma separated. 
+
+\textit{BYTE} references both channels simultaneously as a single byte, with channel
+A in bit 0. 
+\subparagraph*{set\_alarm}\textit{read-write,} unsigned integer (0-331) 
+
+A number consisting of three digits XYZ, where: \begin{description}
+\item [X ] channel selection 
+
+\textit{0} neither 
+
+\textit{1} A only 
+
+\textit{2} B only 
+
+\textit{3} A or B 
+\item [Y ] source selection 
+
+\textit{0} undefined 
+
+\textit{1} latch 
+
+\textit{2} PIO 
+
+\textit{3} sensed 
+\item [Z ] polarity selection 
+
+\textit{0} low 
+
+\textit{1} high 
+\end{description}
+
+
+All digits will be truncated to the 0-3 (or 0-1) range. Leading zeroes
+are optional (and may be problematic for some shells). 
+
+Example: \begin{description}
+\item [311 ] Responds
+on Conditional Search when either latch.A or latch.B (or both) are set to
+1. 
+\item [$<$100 ] Never responds to Conditional Search. 
+\end{description}
+
+\subparagraph*{Tai8570/}\textit{subdirectory} 
+
+Properties when the \textsf{\textit{DS2406} (3)} is built into a \textit{TAI8570.} 
+
+If the \textsf{\textit{DS2406} (3)} is not part of a \textit{TAI8570} or is not the controlling switch,
+attempts to read will result in an error. 
+\subparagraph*{TAI8570/pressure}\textit{read-only,} floating
+point 
+
+Barometric \textit{pressure} in millibar. 
+\subparagraph*{TAI8570/sibling}\textit{read-only,} ascii 
+
+Hex address of the \textsf{\textit{DS2406} (3)} paired with this chip in a \textit{TAI8570.} 
+\subparagraph*{TAI8570/temperature}\textit{read-only,}
+floating-point 
+
+Ambient \textit{temperature} measured by the \textit{TAI8570} in prevailing temperature units
+(Centigrade is the default). 
+\subparagraph*{T8A/volt.[0-7$|$ALL]}\textit{read-only,} floating-point 
+
+Uses the T8A (by \textit{Embedded} Data Systems ) 8 channel voltage converter. Units
+in volts, 0 to 5V range. 12 bit resolution. 
+\paragraph*{Standard Properties}
+         
+
+\subparagraph*{address}
+\subparagraph*{r\_address}\textit{read-only,} ascii 
+
+The entire 64-bit unique ID. Given as upper case hexidecimal digits (0-9A-F).
+
+
+\textit{address} starts with the \textit{family} code 
+
+\textit{r} address is the \textit{address} in reverse order, which is often used in other
+applications and labeling. 
+\subparagraph*{crc8}\textit{read-only,} ascii 
+
+The 8-bit error correction portion. Uses cyclic redundancy check. Computed
+from the preceding 56 bits of the unique ID number. Given as upper case
+hexidecimal digits (0-9A-F). 
+\subparagraph*{family}\textit{read-only,} ascii 
+
+The 8-bit family code. Unique to each \textit{type} of device. Given as upper case
+hexidecimal digits (0-9A-F). 
+\subparagraph*{id}
+\subparagraph*{r\_id}\textit{read-only,} ascii 
+
+The 48-bit middle portion of the unique ID number. Does not include the family
+code or CRC. Given as upper case hexidecimal digits (0-9A-F). 
+
+\textit{r} id is the \textit{id} in reverse order, which is often used in other applications
+and labeling. 
+\subparagraph*{locator}
+\subparagraph*{r\_locator}\textit{read-only,} ascii 
+
+Uses an extension of the 1-wire design from iButtonLink company that associated
+1-wire physical connections with a unique 1-wire code. If the connection is
+behind a \textbf{Link Locator} the \textit{locator} will show a unique 8-byte number (16 character
+hexidecimal) starting with family code FE. 
+
+If no \textbf{Link Locator} is between the device and the master, the \textit{locator} field
+will be all FF. 
+
+\textit{r} locator is the \textit{locator} in reverse order. 
+\subparagraph*{present (DEPRECATED)}\textit{read-only,}
+yes-no 
+
+Is the device currently \textit{present} on the 1-wire bus? 
+\subparagraph*{type}\textit{read-only,} ascii 
+
+Part name assigned by Dallas Semi. E.g. \textit{DS2401} Alternative packaging (iButton
+vs chip) will not be distiguished.  
+\paragraph*{Alarms}
+Use the \textit{set\_alarm} property to
+set the alarm triggering criteria. 
+\paragraph*{Description}
+          
+\subparagraph*{1-Wire}\textit{1-wire}  is a
+wiring protocol and series of devices designed and manufactured by Dallas
+Semiconductor, Inc. The bus is a low-power low-speed low-connector scheme where
+the data line can also provide power. 
+
+Each device is uniquely and unalterably
+numbered during manufacture. There are a wide variety of devices, including
+memory, sensors (humidity, temperature, voltage, contact, current), switches,
+timers and data loggers. More complex devices (like thermocouple sensors)
+can be built with these basic devices. There are also 1-wire devices that
+have encryption included. 
+
+The 1-wire scheme uses a single  \textit{bus} master and
+multiple \textit{slaves} on the same wire. The bus master initiates all communication.
+The slaves can be  individually discovered and addressed using their unique
+ID. 
+
+Bus masters come in a variety of configurations including serial, parallel,
+i2c, network or USB adapters. 
+\subparagraph*{OWFS design}\textit{OWFS} is a suite of programs that
+designed to make the 1-wire bus and its devices easily accessible. The underlying
+priciple is to create a virtual filesystem, with the unique ID being the
+directory, and the individual properties of the device are represented
+as simple files that can be read and written. 
+
+Details of the individual
+slave or master design are hidden behind a consistent interface. The goal
+is to  provide an easy set of tools for a software designer to create monitoring
+or control applications. There  are some performance enhancements in the
+implementation, including data caching, parallel access to bus  masters,
+and aggregation of device communication. Still the fundemental goal has
+been ease of use, flexibility  and correctness rather than speed.  
+\subparagraph*{Ds2406}The
+\textsf{\textbf{DS2406 (3)}} allows control of other devices, like LEDs and relays. It superceeds
+the \textbf{DS2405} and \textbf{DS2407} Alternative switches include the \textbf{DS2408} or even \textbf{DS2450}
+
+
+The \textbf{DS2407} is practically identical to the \textit{DS2406} except for a strange
+\textit{hidden} mode. It is supported just like the \textbf{DS2406} 
+\subparagraph*{Tai8570}The \textit{TAI-8570} Pressure
+Sensor is based on a 1-wire composite device by \textit{AAG} Electronica. The \textit{TAI8570}
+uses 2 \textsf{\textit{DS2406} (3)} chips, paired as a reader and writer to synthesize 3-wire
+communication. Only 1 of the \textsf{\textit{DS2406} (3)} will allow \textit{temperature} or \textit{pressure}
+readings. It's mate's address can be shown as \textit{sibling.} 
+
+The \textit{TAI8570} uses the
+\textit{Intersema} MS5534a pressure sensor, and stores calibration and temperature
+compensation values internally. 
+
+Design and code examples are available from
+AAG Electronica \altlink{http://aag.com.mx/} , specific permission to use code in a
+GPL product was given by Mr. Aitor Arrieta of AAG and Dr. Simon Melhuish
+of OWW. 
+\paragraph*{Addressing}
+          All 1-wire devices are factory assigned a unique
+64-bit address. This address is of the form: \begin{description}
+\item [\textbf{Family Code} ] 8 bits 
+\item [\textbf{Address} ] 48
+bits 
+\item [\textbf{CRC} ] 8 bits 
+\end{description}
+
+
+\begin{description}
+\item [Addressing under OWFS is in hexidecimal, of form: ] 
+\item [\textbf{01.123456789ABC}
+] 
+\end{description}
+
+
+where \textbf{01} is an example 8-bit family code, and \textbf{12345678ABC} is an example
+48 bit address. 
+
+The dot is optional, and the CRC code can included. If included,
+it must be correct.  
+\paragraph*{Datasheet}
+
+
+\altlink{http://pdfserv.maxim-ic.com/en/ds/DS2406.pdf} 
+
+\altlink{http://pdfserv.maxim-ic.com/en/ds/DS2407.pdf} 
+
+\altlink{http://www.embeddeddatasystems.com/page/EDS/PROD/IO/T8A}
+
+\altlink{http://oww.sourceforge.net/hardware.html\#bp} 
+\paragraph*{See Also}
+
+\subparagraph*{Programs}\textsf{\textbf{owfs (1)} \textsf{owhttpd
+(1)} \textsf{owftpd (1)} \textsf{owserver (1)}} \textsf{\textbf{owdir (1)} \textsf{owread (1)} \textsf{owwrite (1)} \textsf{owpresent
+(1)}} \textsf{\textbf{owtap (1)}} 
+\subparagraph*{Configuration and testing}\textsf{\textbf{owfs (5)} \textsf{owtap (1)} \textsf{owmon (1)}} 
+\subparagraph*{Language
+bindings}\textsf{\textbf{owtcl (3)} \textsf{owperl (3)} \textsf{owcapi (3)}} 
+\subparagraph*{Clocks}\textsf{\textbf{DS1427 (3)} \textsf{DS1904(3)} \textsf{DS1994
+(3)} \textsf{DS2404 (3)} \textsf{DS2404S (3)} \textsf{DS2415 (3)} \textsf{DS2417 (3)}} 
+\subparagraph*{ID}\textsf{\textbf{DS2401 (3)} \textsf{DS2411 (3)}
+\textsf{DS1990A (3)}} 
+\subparagraph*{Memory}\textsf{\textbf{DS1982 (3)} \textsf{DS1985 (3)} \textsf{DS1986 (3)} \textsf{DS1991 (3)} \textsf{DS1992 (3)}
+\textsf{DS1993 (3)} \textsf{DS1995 (3)} \textsf{DS1996 (3)} \textsf{DS2430A (3)} \textsf{DS2431 (3)} \textsf{DS2433 (3)} \textsf{DS2502
+(3)} \textsf{DS2506 (3)} \textsf{DS28E04 (3)} \textsf{DS28EC20 (3)}} 
+\subparagraph*{Switches}\textsf{\textbf{DS2405 (3)} \textsf{DS2406 (3)} \textsf{DS2408
+(3)} \textsf{DS2409 (3)} \textsf{DS2413 (3)} \textsf{DS28EA00 (3)}} 
+\subparagraph*{Temperature}\textsf{\textbf{DS1822 (3)} \textsf{DS1825 (3)}
+\textsf{DS1820 (3)} \textsf{DS18B20 (3)} \textsf{DS18S20 (3)} \textsf{DS1920 (3)} \textsf{DS1921 (3)} \textsf{DS1821 (3)} \textsf{DS28EA00
+(3)} \textsf{DS28E04 (3)} \textsf{EDS0064 (3)} \textsf{EDS0065 (3)} \textsf{EDS0066 (3)} \textsf{EDS0067 (3)} \textsf{EDS0068
+(3)} \textsf{EDS0071 (3)} \textsf{EDS0072 (3)}} 
+\subparagraph*{Humidity}\textsf{\textbf{DS1922 (3)} \textsf{DS2438 (3)} \textsf{EDS0065 (3)} \textsf{EDS0068
+(3)}} 
+\subparagraph*{Voltage}\textsf{\textbf{DS2450 (3)}} 
+\subparagraph*{Resistance}\textsf{\textbf{DS2890 (3)}} 
+\subparagraph*{Multifunction (current, voltage,
+temperature)}\textsf{\textbf{DS2436 (3)} \textsf{DS2437 (3)} \textsf{DS2438 (3)} \textsf{DS2751 (3)} \textsf{DS2755 (3)} \textsf{DS2756
+(3)} \textsf{DS2760 (3)} \textsf{DS2770 (3)} \textsf{DS2780 (3)} \textsf{DS2781 (3)} \textsf{DS2788 (3)} \textsf{DS2784 (3)}} 
+\subparagraph*{Counter}\textsf{\textbf{DS2423
+(3)}} 
+\subparagraph*{LCD Screen}\textsf{\textbf{LCD (3)} \textsf{DS2408 (3)}} 
+\subparagraph*{Crypto}\textsf{\textbf{DS1977 (3)}} 
+\subparagraph*{Pressure}\textsf{\textbf{DS2406 (3)} -- TAI8570
+\textsf{EDS0066 (3)} \textsf{EDS0068 (3)}}  
+\paragraph*{Availability}
+\altlink{http://www.owfs.org/} 
+\paragraph*{Author}
+Paul Alfille
+(\email{paul.alfille@gmail.com})  

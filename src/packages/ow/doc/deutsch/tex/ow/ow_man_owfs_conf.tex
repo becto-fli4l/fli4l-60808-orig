@@ -1,0 +1,301 @@
+% Last Update: $Id$
+\paragraph*{Name}
+\textbf{owfs.conf} - owfs programs configuration file 
+\paragraph*{Synopsis}
+An OWFS
+configuration file is specified on the command line: \begin{description}
+\item [\textbf{owfs -c config\_file
+[other options]} ] The file name is arbitrary, there is no default configuration
+file used. 
+\end{description}
+
+\paragraph*{Usage}
+A configuration file can be invoked for any of the OWFS
+programs ( \textsf{\textbf{owfs (1)} \textsf{owhttpd (1)} \textsf{owserver (1)} \textsf{owftpd (1)}} ) or any of the
+language bindings ( \textsf{\textbf{owperl (1)} \textsf{owcapi (1)} \textsf{owtcl (1)} owphp owpython} ) to
+set command line parameters. 
+\paragraph*{Syntax}
+
+
+Similar to Unix shell script or perl
+syntax \begin{description}
+\item [Comments ] \# Any  \textit{\#} marks the start of a comment 
+
+\# blank lines are ignored  
+\item [Options ] \textbf{option } \# some options (like 'foreground')
+take no values 
+
+\textbf{option = value } \# other options need a value 
+
+\textbf{option value   } \# '=' can be omitted if whitespace separates 
+
+\textbf{Option} \# Case is ignored (for options, not values) 
+
+\textbf{opt            } \# non-ambiguous abbreviation allowed 
+
+\textbf{-opt --opt     } \# hyphens ignored 
+\item [\textit{owserver} ] \textbf{server: } opt = value \# only \textit{owserver}
+effected by this line 
+
+\textbf{! server: } opt = value \#  \textit{owserver} NOT effected by this line 
+\item [\textit{owhttpd} ] \textbf{http:
+} opt = value \# only \textit{owhttpd} effected by this line 
+
+\textbf{! http: } opt = value \#  \textit{owhttpd} NOT effected by this line 
+\item [\textit{owftpd} ] \textbf{ftp: }
+opt = value \# only \textit{owftpd} effected by this line 
+
+\textbf{! ftp: } opt = value \#  \textit{owftpd} NOT effected by this line 
+\item [\textit{owfs} ] \textbf{owfs: } opt
+= value \# only \textit{owfs} effected by this line 
+
+\textbf{! owfs: } opt = value \#  \textit{owfs} NOT effected by this line 
+\item [Limits ] \# maximum
+line length of 250 characters 
+
+\# no limit on number of lines 
+\end{description}
+
+\paragraph*{Description}
+          
+\subparagraph*{1-Wire}\textit{1-wire}  is a wiring
+protocol and series of devices designed and manufactured by Dallas Semiconductor,
+Inc. The bus is a low-power low-speed low-connector scheme where the data line
+can also provide power. 
+
+Each device is uniquely and unalterably numbered
+during manufacture. There are a wide variety of devices, including memory,
+sensors (humidity, temperature, voltage, contact, current), switches, timers
+and data loggers. More complex devices (like thermocouple sensors) can be
+built with these basic devices. There are also 1-wire devices that have encryption
+included. 
+
+The 1-wire scheme uses a single  \textit{bus} master and multiple \textit{slaves}
+on the same wire. The bus master initiates all communication. The slaves
+can be  individually discovered and addressed using their unique ID. 
+
+Bus
+masters come in a variety of configurations including serial, parallel,
+i2c, network or USB adapters. 
+\subparagraph*{OWFS design}\textit{OWFS} is a suite of programs that
+designed to make the 1-wire bus and its devices easily accessible. The underlying
+priciple is to create a virtual filesystem, with the unique ID being the
+directory, and the individual properties of the device are represented
+as simple files that can be read and written. 
+
+Details of the individual
+slave or master design are hidden behind a consistent interface. The goal
+is to  provide an easy set of tools for a software designer to create monitoring
+or control applications. There  are some performance enhancements in the
+implementation, including data caching, parallel access to bus  masters,
+and aggregation of device communication. Still the fundemental goal has
+been ease of use, flexibility  and correctness rather than speed.  
+\subparagraph*{Configuration}\textsf{\textbf{owfs.conf
+(5)}} allows a uniform set of command line parameters to be set. 
+
+Not all OWFS
+programs use the same command line options, but the non-relevant ones will
+be ignored. 
+
+Command line and configuration options can mixed. They will be
+invoked in the order presented. Left to right for the command line. Top to
+bottom for the configuration file. 
+
+Configuration files can call other configuration
+files. There is an arbitrary depth of 5 levels to prevent infinite loops.
+More than one configuration file can be specified. 
+\paragraph*{Sample}
+\begin{description}
+\item [Here is a sample
+configuration file with all the possible parameters included. ] \# \textbf{Sources}
+
+
+\textit{device} = /dev/ttyS0 \# serial port: DS9097U DS9097 ECLO or LINK 
+
+\textit{device} = /dev/i2c-0 \# i2c port: DS2482-100 or DS2482-800 
+
+\textit{usb} \#       USB device: DS9490 PuceBaboon 
+
+\textit{usb} = 2 \#   Second DS9490 
+
+\textit{usb} = all \# All DS9490s 
+
+\textit{altUSB} \# Willy Robison's tweaks 
+
+\textit{LINK} = /dev/ttyS0 \#     serial LINK in ascii mode 
+
+\textit{LINK} = [address:]port \# LINK-HUB-E (tcp access) 
+
+\textit{HA7} \# HA7Net autodiscovery mode 
+
+\textit{HA7} = address[:port] \# HA7Net at tcp address (port 80) 
+
+\textit{etherweather} = address[:port] \# Etherweather device 
+
+\textit{server} = [address:]port \# \textbf{owserver} tcp address 
+
+\textit{FAKE} = 10,1B \# Random simulated device with family codes (hex) 
+
+\textit{TESTER} = 28,3E \# Predictable simulated device with family codes 
+
+\# 
+
+\# \textbf{Sinks} 
+
+\# \# \textbf{owfs} specific 
+
+\textit{mountpoint} = filelocation \# \textit{FUSE} mount point 
+
+\textit{allow\_other} \# Short hand for \textit{FUSE} mount option " 
+
+\# \# \textbf{owhttpd owserver owftpd} specific 
+
+\textit{port} = [address:]port \# tcp out port 
+
+\# 
+
+\# \textbf{Temperature scales} 
+
+\textit{Celsius} \# default 
+
+\textit{Fahrenheit} 
+
+\textit{Kelvin} 
+
+\textit{Rankine} 
+
+\# 
+
+\# \textbf{Timeouts (all in seconds)} 
+
+\#                    cache for values that change on their own 
+
+\textit{timeout\_volatile} = value \# seconds "volatile" values remain in cache 
+
+\#                    cache for values that change on command 
+
+\textit{timeout\_stable} = value \# seconds "stable" values remain in cache 
+
+\#                    cache for directory lists (non-alarm) 
+
+\textit{timeout\_directory} = value \# seconds "directory" values remain in cache
+
+
+\#                    cache for 1-wire device location 
+
+\textit{timeout\_presence} = value \# seconds "device presence" (which bus) 
+
+\textit{timeout\_serial} = value \# seconds to wait for serial response 
+
+\textit{timeout\_usb} = value \# seconds to wait for USB response 
+
+\textit{timeout\_network} = value \# seconds to wait for tcp/ip response 
+
+\textit{timeout\_ftp} = value \# seconds inactivity before closing ftp session 
+
+\# 
+
+\# \textbf{Process control} 
+
+\textit{configuration} = filename \# file (like this) of program options 
+
+\textit{pid\_file} = filename \# file to store PID number 
+
+\textit{foreground} 
+
+\textit{background} \# default 
+
+\textit{readonly} \# prevent changing 1-wire device contents 
+
+\textit{write} \# default 
+
+\textit{error\_print} = 0-3 \# 0-mixed 1-syslog 2-stderr 3-suppressed 
+
+\textit{error\_level} = 0-9 \# increasing noise 
+
+\# 
+
+\# \textbf{zeroconf / Bonjour} 
+
+\textit{zero} \#   turn on zeroconf announcement (default) 
+
+\textit{nozero} \#   turn off zeroconf announcement 
+
+\textit{annouce} = name  \# name of announced service (optional) 
+
+\textit{autoserver} \#   Add owservers descovered by zeroconf/Bonjour 
+
+\textit{noautoserver} \#   Don't use zeroconf/Bonjour owservers (default) 
+
+\# 
+
+\# \textbf{tcp persistence} 
+
+\textit{timeout\_persistent\_low} = 600 \# minimum time a persistent socket will stay
+open 
+
+\textit{timeout\_persistent\_high} = 3600 \# max time an idle client socket will stay
+around 
+
+\textit{} 
+
+\# 
+
+\# \textbf{Display} 
+
+\textit{format} = f[.]i[[.]c] \# 1-wire address \textit{f} amily \textit{i} d code \textit{c} rc 
+
+\# 
+
+\# \textbf{Cache} 
+
+\textit{cache\_size} = 1000000 \# maximum cache size (in bytes) or 0 for no limit
+(default 0) \# 
+
+\# \textbf{Information} 
+
+\# (silly in a configuration file) 
+
+\textit{version} 
+
+\textit{help} 
+
+\textit{morehelp} 
+\end{description}
+
+\paragraph*{See Also}
+
+\subparagraph*{Programs}\textsf{\textbf{owfs (1)} \textsf{owhttpd (1)} \textsf{owftpd (1)} \textsf{owserver (1)}} \textsf{\textbf{owdir
+(1)} \textsf{owread (1)} \textsf{owwrite (1)} \textsf{owpresent (1)}} \textsf{\textbf{owtap (1)}} 
+\subparagraph*{Configuration and testing}\textsf{\textbf{owfs
+(5)} \textsf{owtap (1)} \textsf{owmon (1)}} 
+\subparagraph*{Language bindings}\textsf{\textbf{owtcl (3)} \textsf{owperl (3)} \textsf{owcapi (3)}}
+
+\subparagraph*{Clocks}\textsf{\textbf{DS1427 (3)} \textsf{DS1904(3)} \textsf{DS1994 (3)} \textsf{DS2404 (3)} \textsf{DS2404S (3)} \textsf{DS2415 (3)}
+\textsf{DS2417 (3)}} 
+\subparagraph*{ID}\textsf{\textbf{DS2401 (3)} \textsf{DS2411 (3)} \textsf{DS1990A (3)}} 
+\subparagraph*{Memory}\textsf{\textbf{DS1982 (3)} \textsf{DS1985
+(3)} \textsf{DS1986 (3)} \textsf{DS1991 (3)} \textsf{DS1992 (3)} \textsf{DS1993 (3)} \textsf{DS1995 (3)} \textsf{DS1996 (3)} \textsf{DS2430A
+(3)} \textsf{DS2431 (3)} \textsf{DS2433 (3)} \textsf{DS2502 (3)} \textsf{DS2506 (3)} \textsf{DS28E04 (3)} \textsf{DS28EC20 (3)}}
+
+\subparagraph*{Switches}\textsf{\textbf{DS2405 (3)} \textsf{DS2406 (3)} \textsf{DS2408 (3)} \textsf{DS2409 (3)} \textsf{DS2413 (3)} \textsf{DS28EA00
+(3)}} 
+\subparagraph*{Temperature}\textsf{\textbf{DS1822 (3)} \textsf{DS1825 (3)} \textsf{DS1820 (3)} \textsf{DS18B20 (3)} \textsf{DS18S20 (3)}
+\textsf{DS1920 (3)} \textsf{DS1921 (3)} \textsf{DS1821 (3)} \textsf{DS28EA00 (3)} \textsf{DS28E04 (3)}} 
+\subparagraph*{Humidity}\textsf{\textbf{DS1922
+(3)}} 
+\subparagraph*{Voltage}\textsf{\textbf{DS2450 (3)}} 
+\subparagraph*{Resistance}\textsf{\textbf{DS2890 (3)}} 
+\subparagraph*{Multifunction (current, voltage,
+temperature)}\textsf{\textbf{DS2436 (3)} \textsf{DS2437 (3)} \textsf{DS2438 (3)} \textsf{DS2751 (3)} \textsf{DS2755 (3)} \textsf{DS2756
+(3)} \textsf{DS2760 (3)} \textsf{DS2770 (3)} \textsf{DS2780 (3)} \textsf{DS2781 (3)} \textsf{DS2788 (3)} \textsf{DS2784 (3)}} 
+\subparagraph*{Counter}\textsf{\textbf{DS2423
+(3)}} 
+\subparagraph*{LCD Screen}\textsf{\textbf{LCD (3)} \textsf{DS2408 (3)}} 
+\subparagraph*{Crypto}\textsf{\textbf{DS1977 (3)}} 
+\subparagraph*{Pressure}\textsf{\textbf{DS2406 (3)} -- TAI8570}
+ 
+\paragraph*{Availability}
+\altlink{http://www.owfs.org/} 
+\paragraph*{Author}
+Paul Alfille (\email{paul.alfille@gmail.com})

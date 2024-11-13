@@ -1,0 +1,326 @@
+#------------------------------------------------------------------------------
+# /srv/www/include/ow-device.lib - Devices Library                 __FLI4LVER__
+#
+# Creation:     04.02.2009 kmw <news4kmw@web.de>
+# Modification: 22.01.2012 Roland Franke
+# Last UPdate:  $Id$
+#-----------------------------------------------------------------------------
+
+# This device library is a collection of routines to interact with bus devices
+# and translate data stored in the OWFS directory structure to a common format,
+# that can be handled by the httpd web interface. Each routine handles one
+# device type.
+# You're gladly welcome to add new devices and distribute your tested routines
+# in the newsgroup on 'spline.fli4l.opt' ! Please, make sure you state [OPT_OW]
+# and the device name of in the subject field of your posting!
+#
+#                              NAMING CONVENTION
+# Every routine has to be named staring with 'OWDevice_' and the device type
+# appended.
+# Variables used should start with 'dev_' to avoid conflicts with the main
+# program.
+#
+#                                  PARAMETERS
+# The path to the device's cache folder is submitted as parameter to the routine
+# when called.
+#
+#                                 RETURN VALUE
+# For each property of the device, the routine has to return a line containing
+# the meta-data of a property. The meta-data is the set of data and functions
+# needed to display the property's state. The functions in the meta-data are not
+# executed immediately, but passed on to the main program, where the meta-data
+# is sorted and only the meta-data of the currently displayed properties is
+# executed. This saves a significant amount of cpu time and makes refreshing the
+# display as performant as possible.
+#
+# The property identifier and the meta-data have to be separated by a colon with
+# a heading and a tailing blank ( : ).
+# The property identifier must not contain any other characters than alpha-
+# numerics, dashes (-) and underlines (_). It is suggested to use the same
+# naming used in the datasheet of the device, e.g. ports of a DS2408 are named
+# P0 to P7. If necessary, you may use a preceding underline (_) to indicate
+# active-low signals.
+#
+# Property names with a heading exclamation mark (!) are omitted from being
+# listed in the GUI. That way you can hide properties which usually are not
+# relevant. Later on the can be made visible using the aliasing feature.
+#
+# There are some common routines available to simplify the task of creating new
+# device handlers. They are:
+#
+# OWDeviceStandardProperties
+#   Inserts some common properties like address and type. Also sets variable
+#   $dev_address to be used in {id} paramters.
+#
+# Text {id} {text}
+#   Used to display dynamic text like, e.g. measured temperatures, that change
+#   continously, but cannot be edited. To display static text like measurement
+#   units you shouldn't use the Text function for performance reasons. Just
+#   state static text directly as part of the property data.
+#
+#   {id} is the unique identifier of the property in the form of
+#   '{device address}-{port}', where the address is the one read from the
+#   device's data folder and the {port} can be any name. If the {port} part
+#   starts with an underscore character, the LED or button is displayed with
+#   inverted state.
+#   Calling OWDeviceStandardProperties also sets the variable $dev_address to be
+#   used as part of {id}.
+#
+# StatusLED {id} {state}
+#   Returns a HTML phrase with the image of a LED. The color of the LED is
+#   determined by the {state} parameter, which can be eighter '1', 'on', 'yes'
+#   for a green LED or '0', 'off', 'no' for a red LED. A state of 'warn' returns
+#   a yellow LED. Any other state returns a dark (grey) LED.
+#
+#   For {id} see the description of the Text function above.
+#
+# Command {id} {command}
+#   This inserts a command button. A command can be used to set a property of
+#   the device or switch any device functions (e.g. reset the device).
+#   The {command} parameter requires a specific syntax in the form of
+#   {file name}-{value}, where {value} is written to {file name} when the
+#   command is used. {file name} is relative to $dev_path/$dev_address.
+#   All commands are URL encoded, so special characters usually don't cause any
+#   troubles. Anyway, don't use any sort of quotation marks ('"´ or `) as part
+#   of {command}.
+#
+#   For {id} see the description of the Text function above.
+#
+# InputField {id} {value} {unit}
+#   To edit non-binary values of properties, the InputField routine can be used.
+#   Setting binary values is best done by the means of a command (see above).
+#   It displays an input field where the {value} shown can be edited. It works
+#   basically the same way the Command routine does. The {unit} field is
+#   optional. If set, it's content is displayed in a line with the input filed.
+#   This can be used to put the measurement unit visible behind the field.
+#   BE CAREFUL, WHICH VAULES YOU ENTER IN A TEXTFIELD! The values are NOT
+#   check, but directly written to the OWFS!
+#
+#   For {id} see the description of the Text function above.
+#
+# Invert {data}
+#   Invert the state of binary data (1 -> 0, 0 -> 1).
+#
+# ------------------------------------------------------------------------------
+#
+# Diese Bauteilbibliothek ist eine Sammlung von Routinen für die Interaktion mit
+# Bauteilen am Bus und die Übersetzung der Daten in der OWFS Verzeichnisstruktur
+# in ein allgemeines Format, das von der httpd Weboberfläche unterstützt wird.
+# Jede Routine ist für einen Bauteiltyp zuständig.
+# Du bist gerne eingeladen neue Bauteile einzufügen und Deine getesten Routinen
+# in der newsgroup auf 'spline.fli4l.opt' zu veröffentlichen! Bitte stell dabei
+# sicher, dass im Betreff-Feld Deiner Nachricht [OPT_OW] und die Bauteilbezeich-
+# nung stehen!
+
+Invert ()
+  {
+  inv_data=$*
+  #-------------
+  echo '$(expr '"$inv_data"' = 0)'
+  }
+
+OWDeviceStandardProperties ()
+  {
+  if [ -n "$dev_path" ]
+  then
+    dev_address=`cat $dev_path/address`
+    local item=
+    ls -1 $dev_path | while read item
+    do
+      if [ -d $dev_path/$item ]
+      then
+        ls -1 $dev_path/$item | sed 's|^|'$item'/|'
+      else
+        echo $item
+      fi
+    done | sed -n '\
+      \|\.ALL$|d;\
+      \|\.BYTE$|d;\
+      s|^address$|Admin/& : '"$(cat $dev_path/address)"'|p;\
+      s|^locator$|Admin/& : '"$(cat $dev_path/locator)"'|p;\
+      s|^type$|Admin/& : '"$(cat $dev_path/type)"'|p;\
+      s|^present$|Admin/& : $(StatusLED '$dev_address'-& $(cat '$dev_path'/&))|p;\
+      s|^counters\.\(.*\)$|counter\1 : $(Text '$dev_address'-& $(cat '$dev_path'/&))|p;\
+      s|^latch\.\(.*\)$|Admin/latch\1 : $(StatusLED '$dev_address'-_& $(cat '$dev_path'/&))$(Command '$dev_address'-& "&-1")|p;\
+      s|^PIO[.]*\(.*\)$|Admin/pio\1 : $(StatusLED '$dev_address'-_& $(cat '$dev_path'/&))$(Command '$dev_address'-_& "&-$(expr $(cat '$dev_path'/&) = 0)")|p;\
+      s|^power$|Admin/& : $(Text '$dev_address'-& $(cat '$dev_path'/& \| sed "s/1/'$_ow_value_external'/;s/0/'$_ow_value_parasitic'/"))|p;\
+      s|^sensed\([.]*\)\(.*\)$|P\2 : $(StatusLED '$dev_address'-& $(cat '$dev_path'/&))$(Command '$dev_address'-_PIO\1\2 "PIO\1\2-$(cat '$dev_path'/&)")|p;\
+      s|^set_alarm$|Admin/& : $(InputField '$dev_address'-& $(cat '$dev_path'/&))|p;\
+      s|^temperature$|temp : $(Text '$dev_address'-& $(expr $(cat '$dev_path'/& \| sed "s/$/00/;s/\\\\.\\\\(.\\\\{2\\\\}\\\\).*/\\\\1/") + 5 \| sed "s/\\\\(.\\\\).$/.\\\\1 '$OW_TEMP_UNIT'/"))\nAdmin/temp : $(Text '$dev_address'-& $(cat '$dev_path'/& && echo " '$OW_TEMP_UNIT'"))|p;\
+      s|^volt\.\(.*\)$|volt\1 : $(Text '$dev_address'-& "$(cat '$dev_path'/&) V"|p;\
+      s|^pages/page\.\(.*\)$|Admin/page\1 : $(InputField '$dev_address'-& $(cat '$dev_path'/&))|p'
+  fi
+  }
+
+#
+# DEVICE SPECIFICATION ---------------------------------------------------------
+#
+
+OWDevice_ ()
+  {
+  echo "??? : '<div class=ow_error>'$_ow_error_unrecognized_device_type'</div>'"
+  }
+
+OWDevice_DS1420 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  # The device ID won't change, so it can be static text
+  echo 'ID : '$(cat $dev_path/id)
+  }
+
+OWDevice_DS18B20 ()
+  {
+  dev_path=$1
+  #-------------
+  dev_address=$(cat $dev_path/address)
+  for dev_property in temperature9 temperature10 temperature11 temperature12 fasttemp
+  do
+    dev_item=$(echo $dev_property | sed 's|temperature|temp|')
+    echo 'Admin/'$dev_item' :'\
+      '$(Text '$dev_address'-'$dev_item' $(cat '$dev_path'/'$dev_property' && echo " '$OW_TEMP_UNIT'"))'
+  done
+  # All other properties are just the same as in DS18S20
+  OWDevice_DS18S20 $dev_path
+  }
+
+OWDevice_DS18S20 () # Used as well by DS18B20
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  echo 'Admin/temphigh :'\
+    '$(InputField '$dev_address'-temphigh $(cat '$dev_path'/temphigh) "'"$OW_TEMP_UNIT"'")'
+  echo 'Admin/templow :'\
+    '$(InputField '$dev_address'-templow $(cat '$dev_path'/templow) "'"$OW_TEMP_UNIT"'")'
+  }
+
+OWDevice_DS2405 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  }
+
+OWDevice_DS2406 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  echo 'Admin/channels : '$(cat $dev_path/channels)
+  }
+
+OWDevice_DS2408 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  echo 'Admin/por :'\
+    '$(StatusLED '$dev_address'-por $(cat '$dev_path'/por))'\
+    '$(Command '$dev_address'-por por-0)'
+  echo 'Admin/strobe :'\
+    '$(Command '$dev_address'-strobe strobe-'`Invert '$(cat '$dev_path'/strobe)'`')'\
+    '$(Text '$dev_address'-strobe $(cat '$dev_path'/strobe | sed "s|0|'"$_ow_value_resetinput"'|;s|1|'"$_ow_value_strobeoutput"'|"))'
+  for dev_lcdtype in H M
+  do
+    echo 'Admin/LCD_'$dev_lcdtype'_clear :'\
+      '$(Command '$dev_address'-LCD_'$dev_lcdtype'/clear LCD_'$dev_lcdtype'/clear-1)'
+    echo 'Admin/LCD_'$dev_lcdtype'_home :'\
+      '$(Command '$dev_address'-LCD_'$dev_lcdtype'/home LCD_'$dev_lcdtype'/home-1)'
+    echo 'Admin/LCD_'$dev_lcdtype'_message :'\
+      '$(InputField '$dev_address'-LCD_'$dev_lcdtype'/message "")'
+    echo 'Admin/LCD_'$dev_lcdtype'_screen :'\
+      '$(InputField '$dev_address'-LCD_'$dev_lcdtype'/screen "")'
+  done
+  }
+
+OWDevice_DS2413 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  }
+
+OWDevice_DS2423 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  for dev_page in `seq 0 15`
+  do
+    echo 'Admin/count'$dev_page' :'\
+      '$(Text '$dev_address'-pages/count'$dev_page' "$(cat '$dev_path'/pages/count.'$dev_page')")'
+  done
+  }
+
+ OWDevice_DS2438 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  echo 'humidity : '$(cat $dev_path/humidity)
+  echo 'VAD : '$(cat $dev_path/VAD)  
+  echo 'VDD : '$(cat $dev_path/VDD)  
+  echo 'pressure : '$(cat $dev_path/B1-R1-A/pressure)
+  echo 'illuminance : '$(cat $dev_path/S3-R1-A/illuminance)
+  }
+
+OWDevice_DS2450 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  for dev_port in A B C D
+  do
+    for dev_level in high low
+    do
+      echo 'Admin/alarm/'$dev_level$dev_port' :'\
+        '$(StatusLED '$dev_address'-alarm/'$dev_level$dev_port' $(cat '$dev_path'/alarm/'$dev_level'.'$dev_port'))'\
+        '$(Command '$dev_address'-alarm/'$dev_level$dev_port' "alarm/'$dev_level'.'$dev_port'-'`Invert $(cat '$dev_path'/alarm/'$dev_level'.'$dev_port')`'")'
+      echo 'Admin/alarm/set_'$dev_level$dev_port' :'\
+        '$(StatusLED '$dev_address'-set_alarm/'$dev_level$dev_port' $(cat '$dev_path'/set_alarm/'$dev_level'.'$dev_port'))'\
+        '$(Command '$dev_address'-set_alarm/'$dev_level$dev_port' "set_alarm/'$dev_level'.'$dev_port'-'`Invert $(cat '$dev_path'/set_alarm/'$dev_level'.'$dev_port')`'")'
+      echo 'Admin/alarm/volt'$dev_level$dev_port' :'\
+        '$(InputField '$dev_address'-set_alarm/volt'$dev_level'.'$dev_port' "$(cat '$dev_path'/set_alarm/volt'$dev_level'.'$dev_port')" "V")'
+      echo 'Admin/alarm/volt2'$dev_level$dev_port' :'\
+        '$(InputField '$dev_address'-set_alarm/volt2'$dev_level'.'$dev_port' "$(cat '$dev_path'/set_alarm/volt2'$dev_level'.'$dev_port')" "V")'
+    done
+  done
+  echo 'Admin/alarm/unset :'\
+    '$(StatusLED '$dev_address'-set_alarm/unset $(cat '$dev_path'/set_alarm/unset)'\
+    '$(Command '$dev_address'-set_alarm/unset "set_alarm/unset-'`Invert $(cat '$dev_path'/set_alarm/unset)`'")'
+  }
+
+OWDevice_DS2502 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  echo 'ID : '$(cat $dev_path/id)
+  if [ -n "`echo $dev_address | grep '^89.'`" ]
+  then
+    echo 'mac_e : '$(cat $dev_path/mac_e)
+    echo 'mac_fw : '$(cat $dev_path/mac_fw)
+  fi
+  }
+
+OWDevice_DS28E04 ()
+  {
+  dev_path=$1
+  #-------------
+  OWDeviceStandardProperties
+  }
+OWDevice_EDS ()
+  {
+  dev_path=$1
+  OWDeviceStandardProperties
+  echo 'dew_point : '$(cat $dev_path/EDS0068/dew_point)
+  echo 'heat_index : '$(cat $dev_path/EDS0068/heat_index)
+  echo 'humidex : '$(cat $dev_path/EDS0068/humidex)
+  echo 'humidity : '$(cat $dev_path/EDS0068/humidity)
+  echo 'inHg : '$(cat $dev_path/EDS0068/inHg)
+  echo 'light : '$(cat $dev_path/EDS0068/light)
+  echo 'pressure : '$(cat $dev_path/EDS0068/pressure)
+  echo 'temperature : '$(cat $dev_path/EDS0068/temperature)
+  }
