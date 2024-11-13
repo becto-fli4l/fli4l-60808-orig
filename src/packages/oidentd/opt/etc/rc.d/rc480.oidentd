@@ -1,0 +1,45 @@
+#!/bin/sh
+#----------------------------------------------------------------------------
+# rc480.oidentd - configure and start oidentd 2.0.7 
+#
+# Creation:    14.04.2001  m-fox 
+# Last Update:  $Id$
+#
+#----------------------------------------------------------------------------
+
+if [ "$OPT_OIDENTD" = "yes" ]
+then
+    begin_script OIDENTD "starting oidentd"
+
+    if [ ! -f /etc/oidentd_masq.conf ]    # already existing?
+    then                                  # yes, don't overwrite
+        cat <<-EOF > /etc/oidentd_masq.conf 
+    #----------------------------------------------------------------------
+    # /etc/oidentd_masq.conf
+    # Automatically created by rc480.oidentd
+    #----------------------------------------------------------------------
+EOF
+    [ $OIDENTD_HOST_N -eq 0 ] || {
+        for idx in `seq 1 $OIDENTD_HOST_N`
+        do
+            eval ipaddr='$OIDENTD_HOST_'$idx'_IP'
+            eval username='$OIDENTD_HOST_'$idx'_USERNAME'
+            eval systemtype='$OIDENTD_HOST_'$idx'_SYSTEM'
+            translate_ip_net $ipaddr OIDENTD_HOST_${idx}_IP oident_host || continue
+            echo "$oident_host $username $systemtype" 
+        done } >> /etc/oidentd_masq.conf
+    fi
+
+    if [ "$OIDENTD_FORWARD" = yes ]
+    then
+        startpar="-m -f"     # enable forwarding to clients
+    else 
+        startpar="-m"        # lookup only by database, no forwarding  
+    fi
+
+    [ -n "$OIDENTD_DEFAULT" ] && startpar="$startpar -r $OIDENTD_DEFAULT"
+
+    oidentd $startpar -d -g nogroup -u nobody
+
+    end_script
+fi

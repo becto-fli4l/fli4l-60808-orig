@@ -1,0 +1,156 @@
+% Last Update: $Id$
+\section {OIDENTD - Ident Daemon}
+
+OPT\_OIDENTD stellt einen Ident Daemon bereit, wie er im
+\jump{url:rfc1413}{RFC 1413} \jump{url:rfc1413e}{(deutche Übersetzung)} 
+spezifiziert wird. Ident (veraltet AUTH) ist ein Dienst, mit dem einem 
+anderem System Benutzerdaten zugestellt werden. Manche \mbox{E-Mail}-, News- und
+IRC-Server verwenden diesen Dienst, um die Identität eines Benutzers zu
+überprüfen, bevor ein Zugriff erlaubt wird. Ident verwendet den TCP-Port 113. 
+Zum Einsatz kommt \jump{url:oidentdsource}{oidentd} in
+der Version 2.0.8. 
+
+
+\textbf{Disclaimer: }\emph{Der Autor gibt weder eine Garantie auf die
+Funktionsfähigkeit des OPT\_\-OIDENTD, noch haftet er für Schäden, z.B.
+Datenverlust, die durch den Einsatz von OPT\_\-OIDENTD entstehen.}
+
+
+\marklabel{sec:konfigoidentd}{
+\subsection {Konfiguration des OPT\_OIDENTD}
+}
+
+Die Konfiguration erfolgt, wie bei allen fli4l Opts, durch Anpassung der Datei
+\var{Pfad/fli4l-\version/$<$config$>$/oidentd.txt} an die eigenen Anforderungen. Im
+weiteren erfolgt nun die Beschreibung der einzelnen Variablen: 
+
+
+\begin{description}
+
+\config {OPT\_OIDENTD}{OPT\_OIDENTD}{OPTOIDENTD}
+
+  Default: \var{OPT\_OIDENTD='no'}
+
+  Die Einstellung \var{'no'} deaktiviert das OPT\_OIDENTD vollständig. Es werden
+  keine Änderungen am fli4l Bootmedium bzw. dem Archiv \var{opt.img}
+  vorgenommen. Weiter überschreibt das OPT\_OIDENTD grundsätzlich keine anderen
+  Teile der fli4l Installation.\\
+  Um OPT\_OIDENTD zu aktivieren, ist die Variable \var{OPT\_OIDENTD} auf 
+  \var{'yes'} zu setzen. 
+
+  \wichtig:{Damit oidentd überhaupt Ident Anfragen beantworten kann, muß
+  der INPUT Port 113 TCP geöffnet sein! Ab Version 2.1.12 wird der Port
+  automatisch geöffnet!}
+  
+\config {OIDENTD\_FORWARD}{OIDENTD\_FORWARD}{OIDENTDFORWARD}
+
+  Default: \var{OIDENTD\_FORWARD='no'}
+
+  Die Variable \var{OIDENTD\_FORWARD} steuert, ob \var{oidentd} Ident Anfragen
+  an die Clients hinterm fli4l Router weiterleitet oder anhand der eigenen
+  Datenbank beantwortet. In der default Einstellung werden die Anfragen nicht
+  weitergeleitet.
+
+\config {OIDENTD\_DEFAULT}{OIDENTD\_DEFAULT}{OIDENTDDEFAULT}
+
+  Default: \var{OIDENTD\_DEFAULT='unkown'}
+
+  Läßt sich weder anhand der internen Datenbank, noch durch Forward (falls
+  aktiviert), eine gültige Antwort ermitteln, sendet \var{oidentd} den Inhalt
+  von \var{OIDENTD\_DEFAULT} als Antwort.
+
+\config {OIDENTD\_HOST\_N}{OIDENTD\_HOST\_N}{OIDENTDHOSTN}
+
+  Default: \var{OIDENTD\_HOST\_N='0'}
+
+  \var{OIDENTD\_HOST\_N} legt die Anzahl der Einträge in der lokalen
+  Datenbank fest. Für jeden Eintrag ist nachfolgender Satz an 
+  \var{OIDENTD\_HOST\_x\_...} Variablen anzulegen. Der Index \var{x} muß
+  fortlaufend bis zur Gesamtanzahl der Einträge heraufgezählt werden. 
+  
+
+\config {OIDENTD\_HOST\_x\_IP}{OIDENTD\_HOST\_x\_IP}{OIDENTDHOSTxIP}
+
+  Über \var{OIDENTD\_HOST\_x\_IP} wird der Client bzw. das Subnet festgelegt,
+  für den ein Eintrag generiert werden soll. Es kann sowohl der Hostname
+  (DNS-Name), die IP-Adresse oder das Subnet angegeben werden.
+
+  Beispiele: 
+
+  \begin{example}
+  OIDENTD\_HOST\_x\_IP='192.168.6.1'\\
+  OIDENTD\_HOST\_x\_IP='192.168.6.0/255.255.255.0'\\
+  OIDENTD\_HOST\_x\_IP='192.168.6.0/24'\\
+  OIDENTD\_HOST\_x\_IP='client.lan.fli4l'\\
+  OIDENTD\_HOST\_x\_IP='@client'
+  \end{example}
+  
+    
+\config {OIDENTD\_HOST\_x\_USERNAME}{OIDENTD\_HOST\_x\_USERNAME}{OIDENTDHOSTxUSERNAME}
+
+  Den Inhalt von \var{OIDENTD\_HOST\_x\_USERNAME} sendet \var{oidentd} als 
+  Antwort. Hier kann ein Benutzername (=Username), der echte Name, eine 
+  \mbox{E-Mail}-Adresse oder was auch immer hinterlegt werden. Jedoch sind keine
+  Leerstellen (Blanks, Spaces) erlaubt. Diese bitte durch einen Unterstrich
+  \_ ersetzen.
+
+\config {OIDENTD\_HOST\_x\_SYSTEM}{OIDENTD\_HOST\_x\_SYSTEM}{OIDENTDHOSTxSYSTEM}
+ 
+  Die Antwort auf einen Ident Request (=Anfrage) beinhaltet nicht nur den 
+  Benutzernamen (\var{OIDENTD\_HOST\_x\_USERNAME}), sondern auch das zugehörige
+  Betriebssystem des Benutzers. Die entsprechenden Kürzel sind im
+  \jump{url:rfc1340}{RFC 1340} festgelegt. Opt\_oidentd läßt aber nur eine
+  begrenzte Auswahl zu: \texttt{DOS, ELF, MACOS, MSDOS, OS/2, PC-DOS,
+  SCO-XENIX/386, SUN, UNIX, UNIX-BSD, UNIX-PC, UNKNOWN, WIN32, XENIX} und 
+  \texttt{OTHERS}. Sollte bedarf an Ergänzungen bestehen, nehmen Sie bitte Kontakt
+  mit dem Autor unter Berücksichtigung des 
+  \jump{sec:oisupport}{Supporthinweises} auf.
+
+
+\end{description}
+  
+\marklabel{sec:oisupport}{
+\subsection{Support}
+}
+Der Autor leistet Support nur im Rahmen der \jump{url:oifli4lnews}{fli4l
+Newsgroups}. Anfragen per \mbox{E-Mail} werden zu 100\% nicht beachtet. Einzig Hinweise
+auf Fehler sind per \mbox{E-Mail} willkommen. Da die Adresse \texttt{<arno@fli4l.de>}
+leider auch der massiven Spam-/Virenflut unterliegt, filtert der Autor diese
+Adresse.  Es werden nur Mails akzeptiert, die:
+\begin{itemize}
+ \item auch den Realname des Autors im \texttt{To:} enthalten: \\
+       \texttt{To: Arno Behrends <arno@fli4l.de>}
+ \item im Subject/\/Betreff/\/Thema den Tag \texttt{[oidentd]} führen: \\
+       \texttt{Subject: [oidentd] Fehler in der Doku}
+ \item kein HTML-Code enthalten.
+ \item keine Attachments/Dateianhänge beinhalten.
+\end{itemize}
+Bitte auch in den Newsgroup den Tag \texttt{[oidentd]} im Subject benutzen. Dies
+erhöht deutlich die Chance, vom Autor gelesen zu werden.
+
+
+\subsection{Literatur}
+
+\marklabel{url:oidentdsource}{
+ Homepage von oidentd: \altlink{http://dev.ojnk.net/}
+ }
+
+\marklabel{url:oidentdmanpage}{
+ man page zu oidentd: \altlink{http://linux.die.net/man/8/oidentd}
+ }
+
+\marklabel{url:rfc1413}{
+ RFC 1413 - Identification Protocol: \altlink{http://www.faqs.org/rfcs/rfc1413.html}
+ }
+
+\marklabel{url:rfc1413e}{
+ Identification Protocol (deutsch): \altlink{http://kefk.net/Security/Misc/marc_ruef/rfc1413de/rfc1413de.txt}
+ }
+
+\marklabel{url:rfc1340}{
+ RFC 1340 - Assigned Numbers: \altlink{http://www.faqs.org/rfcs/rfc1340.html}
+ }
+
+\marklabel{url:oifli4lnews}{
+ fli4l Newsgroups und ihre Spielregeln: \altlink{http://www.fli4l.de/hilfe/newsgruppen/}
+}
