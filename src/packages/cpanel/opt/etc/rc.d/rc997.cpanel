@@ -1,0 +1,51 @@
+#!/bin/sh
+##-----------------------------------------------------------------------------
+## /etc/rc.d/rc999.cpanel                                    __FLI4LVER__
+##
+## Creation:     23.06.2002  gk
+## Last Update:  $Id$
+##
+## Copyright (c) 2002-2006 - Georg Kainzbauer <georgkainzbauer@gmx.net>
+##                           Helmut Hummel <hh@fli4l.de>
+## Copyright (c) 2006-2016 - fli4l-Team <team@fli4l.de>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2 of the License, or
+## (at your option) any later version.
+##-----------------------------------------------------------------------------
+
+case $OPT_CPANEL in
+yes)
+    begin_script CPANEL "starting CPANEL on Port $CPANEL_PORT ... "
+
+    mkdir -p /usr/local/cpanel
+
+    echo "off" > /var/run/cpanel.status
+
+    case $CPANEL_STATUSLED in
+        ONLINE)
+            ln -s /usr/local/cpanel/script.online /usr/local/cpanel/script
+        ;;
+        SCRIPT)
+            echo "#!/bin/sh" > /usr/local/cpanel/script
+            for idx in `seq 1 $CPANEL_SCRIPTLINE_N`
+            do
+                eval echo '$CPANEL_SCRIPTLINE_'$idx >> /usr/local/cpanel/script
+            done
+        ;;
+    esac
+
+    for idx in `seq 1 14`
+    do
+        eval 'echo "$CPANEL_FUNKTION'$idx'" > /usr/local/cpanel/funktion'$idx
+    done
+
+    chmod -R u+rx /usr/local/cpanel
+
+    cpanel $CPANEL_PORT $CPANEL_SWITCHTIME $CPANEL_SCRIPTTIME &
+
+    end_script
+
+;;
+esac
