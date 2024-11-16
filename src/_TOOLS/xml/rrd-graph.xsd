@@ -1,0 +1,429 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+   <xs:annotation>
+      <xs:appinfo>rrd-graph</xs:appinfo>
+      <xs:documentation>
+         RRD-graph XML file
+      </xs:documentation>
+   </xs:annotation>
+   <xs:element name="rrd-graph" type="rrd-graphT"/>
+   <xs:complexType name="rrd-graphT">
+      <xs:annotation>
+         <xs:documentation>
+            RRD-graph file root element.<br/>
+            Must contain one &lt;rrd&gt; element
+            and one or multiple &lt;graph&gt; element.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:sequence>
+         <xs:element name="header" type="headerT"/>
+         <xs:element name="rrd" type="rrdT" minOccurs="0"/>
+         <xs:element name="hwmon" type="hwmonT" minOccurs="0"/>
+         <xs:element name="cat" type="catT" minOccurs="0"/>
+         <xs:element name="graph" type="graphT" minOccurs="0" maxOccurs="unbounded"/>
+         <xs:element name="include" type="includeT" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+   </xs:complexType>
+   <xs:complexType name="headerT">
+      <xs:annotation>
+         <xs:documentation>
+            Header definitions.
+         </xs:documentation>
+      </xs:annotation>      
+      <xs:attribute name="name" use="required" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               Name prefix.<br/>
+               The graph functions are named "[header/@name]_[graph/@name]_graph ()".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="title" use="required" type="labelT">
+         <xs:annotation>
+            <xs:documentation>
+               Title prefix of the RRD graphs.<br/>
+               This text will be prefixed to the title displayed in the RRD graph.<br/>
+               This text can be a variable name in the .cgi's language file.
+               In this case it has to be written as title="${&lt;varname&gt;}"
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType name="rrdT">
+      <xs:annotation>
+         <xs:documentation>
+            RRD Database definitions.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:attribute name="db" use="optional" type="xs:string">
+         <xs:annotation>
+            <xs:documentation>
+               Name of the RRD database (=rrd/@db)<br/>
+               The complete access path to an rrd variable is<br/>
+               "/data/rrdtool/db/[machine-name];/[rrd/@db]/[var/@rrd]:value".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="exponent" use="optional" type="xs:integer">
+         <xs:annotation>
+            <xs:documentation>
+               The units exponent.<br/>
+               Force the units exponent, e.g. 3 for kilo(10e3) or 6 for Mega(10e6).
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType name="hwmonT">
+      <xs:annotation>
+         <xs:documentation>
+            Hwmon sensor definitions
+         </xs:documentation>
+      </xs:annotation>
+      <xs:attribute name="chip" use="required" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               Sensor chip.<br/>
+               Sensor  chip for hwmon variables" 
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType name="catT">
+      <xs:annotation>
+         <xs:documentation>
+            
+         </xs:documentation>
+      </xs:annotation>
+      <xs:attribute name="path" use="required" type="xs:anyURI">
+         <xs:annotation>
+            <xs:documentation>
+               
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType  name="graphT">
+      <xs:annotation>
+         <xs:documentation>
+            RRD graph element.<br/>
+            Each file must have one ore multiple &lt;graph&gt; elements.<br/>
+            Eech &lt;graph&gt; element results in an graph function. 
+         </xs:documentation>
+      </xs:annotation>
+      <xs:sequence>
+         <xs:element name="rrd" type="rrdT" minOccurs="0"/>
+         <xs:element name="hwmon" type="hwmonT" minOccurs="0"/>
+         <xs:element name="cat" type="catT" minOccurs="0"/>
+         <xs:element maxOccurs="unbounded" name="group" type="groupT"/>
+      </xs:sequence>
+      <xs:attribute name="name" use="required" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               Name of the graph function.<br/>
+               The graph functions are named "[header/@name]_[graph/@name]_graph ()".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="tab" use="optional" type="labelT">
+         <xs:annotation>
+            <xs:documentation>
+               Tab title of the RRD graphs.<br/>
+               This text should be a variable name in the .cgi's language file.
+               In this case it has to be written as title="${&lt;varname&gt;}"
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="title" use="required" type="labelT">
+         <xs:annotation>
+            <xs:documentation>
+               Title of the RRD graphs.<br/>
+               This text will be prefixed by the title defined in [header/@title].
+               This text should be a variable name in the .cgi's language file.
+               In this case it has to be written as title="${&lt;varname&gt;}"
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="label" use="required" type="labelT">
+         <xs:annotation>
+            <xs:documentation>
+               Vertical label<br/>
+               This text should be a variable name in the .cgi's language file.
+               In this case it has to be written as title="${&lt;varname&gt;}"
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="minmax" use="optional" default="true" type="xs:boolean">
+         <xs:annotation>
+            <xs:documentation>
+               Show maximum, average and minimum in caption.<br/>
+               When this attribute is "false", no maximum, avarage and minimum columns will
+               be displayed in the caption area.<br/>
+               This attribute defaults to "true" if not entered.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="area" use="optional" default="false" type="xs:boolean">
+         <xs:annotation>
+            <xs:documentation>
+               Show all variables as areas.<br/>
+               When this attribute is "true", the variables are renedered as 
+               AREA's instead of LINE's.<br/>
+               When the attribute stack is "true" all areas will be stacked in
+               the order of the &lt;var&gt;> elements in the file.<br/>
+               When the attribute stack is "false" the areas will overwrite in 
+               the order of the &lt;var&gt;> elements in the file. A line is written
+               rendered for each &lt;var&gt; element after the areas.<br/>
+               This attribute defaults to "false" if not entered".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="stack" use="optional" default="false" type="xs:boolean">
+         <xs:annotation>
+            <xs:documentation>
+               Stack the variables areas.<br/>
+               When the attribute stack is "true" all areas will be stacked in
+               the order of the &lt;var&gt;> elements in the file.<br/>
+               When the attribute area is "false", the attribute stack has no effect.<br/>
+               This attribute defaults to "false" if not entered.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType name="includeT">
+      <xs:annotation>
+         <xs:documentation>
+            Inluded tab entry.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:attribute name="name" use="required" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               Name of the included function.<br/>
+               The included functions are named "[header/@name]_[include/@name] ()".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="tab" use="required" type="labelT">
+         <xs:annotation>
+            <xs:documentation>
+               Tab title of the etxra entry.<br/>
+               This text should be a variable name in the .cgi's language file.
+               In this case it has to be written as title="${&lt;varname&gt;}"
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="include" use="required" type="xs:anyURI">
+         <xs:annotation>
+            <xs:documentation>
+               Include file name.<br/>
+               Normaly /srv/www/include/&lt;file&gt;.inc. 
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="func" use="required" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               Name of the extra function.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="condition" use="optional" type="xs:string">
+         <xs:annotation>
+            <xs:documentation>
+               Condition when include is active
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType name="groupT">
+      <xs:annotation>
+         <xs:documentation>
+            Group of RRD variables.<br/>
+            Each graph must have one multiple variable groups, each group containing
+            one or multiple variables.<br/>
+            Having multiple groups can be used to display optional rrd-variables, eg.
+            when a variable is not written in every case.<br/>
+            When having multiple groups, the group containing the maximum amount of 
+            variables must be the first in order. All following groups must be subsets of
+            the preceeding groups.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:sequence>
+         <xs:element maxOccurs="unbounded" name="var" type="varT"/>
+      </xs:sequence>
+   </xs:complexType>
+   <xs:complexType name="varT">
+      <xs:annotation>
+         <xs:documentation>
+            RRD variable.<br/>
+            Defines a LINE or AREA for displaying a RRD data value.
+            Each variable can be scaled before displaying.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:sequence>
+         <xs:element name="rrd" type="rrdT" minOccurs="0"/>
+         <xs:element name="hwmon" type="hwmonT" minOccurs="0"/>
+         <xs:element name="cat" type="catT" minOccurs="0"/>
+         <xs:element minOccurs="0" maxOccurs="unbounded" name="cat-scale" type="scale-intT">
+            <xs:annotation>
+               <xs:documentation>
+                  Scale the cat data values.<br/>
+                  Apply the scaling operations to the cat data values when displayed.
+                  Multiple scaling operations are aplied in order of apearance.<br/>
+                  E.g. &lt;cat-scale val="2" op="*"&gt; will multiply the value by 2.
+               </xs:documentation>
+            </xs:annotation>
+         </xs:element>
+         <xs:element minOccurs="0" maxOccurs="unbounded" name="scale" type="scale-floatT">
+            <xs:annotation>
+               <xs:documentation>
+                  Scale the RRD data values.<br/>
+                  Apply the scaling operations to the RRD data values when displayed as 
+                  graph and in caption.
+                  Multiple scaling operations are aplied in order of apearance.<br/>
+                  E.g. &lt;scale val="2" op="*"&gt; will multiply every value by 2.
+               </xs:documentation>
+            </xs:annotation>
+         </xs:element>
+         <xs:element minOccurs="0" maxOccurs="unbounded" name="disp-scale" type="scale-floatT">
+            <xs:annotation>
+               <xs:documentation>
+                  Scale the RRD data values in display.<br/>
+                  Apply the scaling operations to the RRD data values when 
+                  displaying as graph only. This scaling operation is applied after 
+                  the operations defined by &lt;scale&gt; elements. 
+                  Multiple scaling operations are aplied in order of apearance
+               </xs:documentation>
+            </xs:annotation>
+         </xs:element>
+      </xs:sequence>
+      <!-- caption label, should be translatable 
+           use ${_MYCGI_TEXT_REPLACEMENT} -->
+      <xs:attribute name="label" use="required" type="labelT">
+         <xs:annotation>
+            <xs:documentation>
+               Variable label.<br/>
+               This text will be displayed in the caption area.<br/>
+               This text should be a variable name in the .cgi's language file.
+               In this case it has to be written as label="${&lt;varname&gt;}"
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <!-- rrd database variable, reflects .rrd file -->
+      <xs:attribute name="rrd" use="required" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               Name of the RRD variable<br/>
+               The complete access path to an rrd variable is<br/>
+               "/data/rrdtool/db/[machine-name];/[rrd/@db]/[var/@rrd]:value".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="sensor" use="optional" type="sensorT">
+         <xs:annotation>
+            <xs:documentation>
+               Name of the sensor variable.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="cat" use="optional" type="xs:anyURI"/>
+      <!-- rrd variable name (overrides 'value') -->
+      <xs:attribute name="val" use="optional" type="xs:NCName">
+         <xs:annotation>
+            <xs:documentation>
+               RRD date value name.<br/>
+               This attribute overides the dfault value "value" used in the 
+               rrd access path.<br/>
+               The complete access path to an rrd variable is<br/>
+               "/data/rrdtool/db/[machine-name];/[rrd/@db]/[var/@rrd]:[var/@val]".
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="color" use="required" type="colorT">
+         <xs:annotation>
+            <xs:documentation>
+               Color of the graph.<br/>
+               Must be entered as HTML color in the format "#RRGGBB", with 
+               RR GG and BB be hexadecimal values from 00 to FF.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <!-- format string for max,avg,min,last value e.g. "%.1lf" -->
+      <xs:attribute name="format" use="required" type="xs:string">
+         <xs:annotation>
+            <xs:documentation>
+               Format string.<br/>
+               Format for the maximum, average, minumum and last values displayed 
+               in the caption area.<br/>
+               The format has to be entered as printf format string, 
+               eg. "%.1lf" for double values with precision 1.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="dashes" use="optional" type="dashesT">
+         <xs:annotation>
+            <xs:documentation>
+               Render dashed line.<br/>
+               When this attribute is set a dashed line will be rendered with pixel widths as entered.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+   </xs:complexType>
+   <xs:complexType name="scale-floatT">
+      <xs:attribute name="val" use="required" type="xs:double">
+         <xs:annotation>
+            <xs:documentation>
+               Scaling value.<br/>
+               Value to be applied by the scaling operation define in scale/@op.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="op" use="required" type="op_T"/>
+   </xs:complexType>
+   <xs:complexType name="scale-intT">
+      <xs:attribute name="val" use="required" type="xs:integer">
+         <xs:annotation>
+            <xs:documentation>
+               Scaling value.<br/>
+               Value to be applied by the scaling operation define in scale/@op.
+            </xs:documentation>
+         </xs:annotation>
+      </xs:attribute>
+      <xs:attribute name="op" use="required" type="op_T"/>
+   </xs:complexType>
+   <xs:simpleType name="colorT">
+      <xs:restriction base="xs:string">
+         <xs:pattern value="#[0-9a-fA-F]{6}"/>
+      </xs:restriction>
+   </xs:simpleType>   
+   <xs:simpleType name="op_T">
+      <xs:annotation>
+         <xs:documentation>
+            Scaling operation.<br/>
+            The operation applied to the scaling factor. Must be one of<br/>
+            "*" mulitplication<br/>
+            "/" division<br/>
+            "+" addition<br/>
+            "-" substraction.<br/>
+         </xs:documentation>
+      </xs:annotation>
+      <xs:restriction base="xs:string">
+         <xs:pattern value="[+-/*]{1}"/>
+      </xs:restriction>
+   </xs:simpleType>
+   <xs:simpleType name="dashesT">
+      <xs:restriction base="xs:string">
+         <xs:pattern value="[1-9]([0-9])*(,[1-9]([0-9])*(,[1-9]([0-9])*,[1-9]([0-9])*)*)?"/>
+      </xs:restriction>
+   </xs:simpleType>
+   <xs:simpleType name="sensorT">
+      <xs:restriction base="xs:string">
+         <xs:pattern value="(in|temp|fan)[0-9]*"/>
+      </xs:restriction>
+   </xs:simpleType>
+   <xs:simpleType name="labelT">
+      <xs:restriction base="xs:string">
+         <xs:pattern value="(([-+&amp;_/ a-zA-Z0-9]*)|($\{_[_A-Z0-9]*\}))*"/>
+      </xs:restriction>
+   </xs:simpleType>
+</xs:schema>

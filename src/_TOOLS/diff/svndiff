@@ -1,0 +1,71 @@
+#! /bin/sh
+
+check_res ()
+{
+    if [ $1 -ne 0 ]; then
+	echo 1>&2
+	echo "    $2" 1>&2
+	res=$1
+    fi
+}
+
+if [ ! -d .svn ]
+then
+	echo "no .svn directory found"
+	exit 1
+fi
+
+res=0
+wrapper="--diff-cmd `dirname $0`/diff-wrapper"
+
+if [ "$1" = "-n" ]; then
+    shift
+    wrapper=
+fi
+
+revision=`echo $1 | sed -e 's/\./_/g'`
+shift
+url=`svn info | sed -n -e 's/^URL://p'`
+
+if [ x$revision  = x ]
+then
+	echo "usage: $0 <tag | revision> [ file | dir ]"
+	echo "available tags are:"
+	svn ls $tag
+	exit 1
+fi
+
+case $revision in
+    trunk) 
+        tag=$url
+        url=`echo $tag | sed -e "s,^\(.*\)\(trunk\|branches\|tags\).*,\1trunk,"` 
+	;;
+    *) 
+        if echo $revision | grep '^[0-9]*$'; then
+            tag=$url
+            postfix="@$revision"
+        else
+            tag=`echo $url | sed -e "s,^\(.*\)\(trunk\|branches\|tags\).*,\1tags/fli4l-$revision,"`
+        fi
+	;;
+esac
+
+if [ "$1" ]
+then
+	while [ "$1" ]
+	do
+	  if [ "$wrapper" ]; then
+		svn diff $wrapper $tag/$1$postfix $url/$1
+		check_res $? "svn diff $wrapper $tag/$1 $url/$1"
+		shift
+	  else
+		svn diff $tag/$1$postfix $url/$1
+		check_res $? "svn diff $wrapper $tag/$1 $url/$1"
+		shift
+	  fi
+	done
+else
+	svn diff $wrapper $tag$postfix $url
+	check_res $?
+fi
+exit $res
